@@ -1,4 +1,5 @@
 // Cycle de vie d'un modèle local : un fork par modèle choisi, llama-server lancé à la demande et tué avec le fork.
+// exe donné dans la config : le test ne dépend pas d'un llama-server installé sur la machine (CI).
 import { it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { Kernel, definePlugin, type LlmService } from "@floppy/core";
@@ -30,7 +31,7 @@ it("lance llama-server pour le modèle du slot, tue l'ancien avant le nouveau (m
     async apply(c) { got = await c.slot<LlmService>("brain.main"); },
   });
   const k = new Kernel({ logger: () => {}, plugins: [wrapped, consumer] });
-  const base = { id: "llm", plugin: "llm-llamacpp", config: { scanDirs: [], models: { a: { label: "A", model: "a.gguf" }, b: { label: "B", model: "b.gguf" } } } };
+  const base = { id: "llm", plugin: "llm-llamacpp", config: { exe: "llama-server", scanDirs: [], models: { a: { label: "A", model: "a.gguf" }, b: { label: "B", model: "b.gguf" } } } };
   try {
     // Sans consommateur : rien ne tourne.
     await k.applyConfig({ plugins: [base], slots: { "brain.main": "llm/a" } });
@@ -83,7 +84,7 @@ it("le tri (completion « cerveau ») partage le serveur du cerveau : jamais un 
     apply(c) { brainCtx = c; },
   });
   const k = new Kernel({ logger: () => {}, plugins: [wrapped, brain, veille] });
-  const base = { id: "llm", plugin: "llm-llamacpp", config: { scanDirs: [], models: { a: { label: "A", model: "a.gguf" }, b: { label: "B", model: "b.gguf" } } } };
+  const base = { id: "llm", plugin: "llm-llamacpp", config: { exe: "llama-server", scanDirs: [], models: { a: { label: "A", model: "a.gguf" }, b: { label: "B", model: "b.gguf" } } } };
   try {
     await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }], slots: { "brain.main": "llm/a", "veille.tri": "llm/cerveau" } });
     // Le cerveau dort : le tri charge le modèle du cerveau, puis le libère.
