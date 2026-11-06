@@ -1,0 +1,9 @@
+[project]
+name = "floppy-bench"
+version = "0.1.0"
+description = "Brain benchmark of Floppy: fake work MCP server + 40 graded requests"
+requires-python = ">=3.11"
+dependencies = ["mcp>=1.2"]
+
+[tool.uv]
+package = false

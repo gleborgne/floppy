@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- Page de capture d'un avatar (aperçu des réglages). Utilisée par avatar-previews.mjs : ?src=<file:// du renderer> -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #0a0e14; overflow: hidden; }
+  #face { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<div id="face"></div>
+<script type="module">
+  const src = new URLSearchParams(location.search).get("src");
+  try {
+    const mod = await import(src);
+    const av = mod.create(document.getElementById("face"), { reducedMotion: true });
+    av.setState?.("idle");
+    av.setMood?.(0.4, 0.5);
+    av.setEmotion?.("happy", 0.6, 4000);
+    window.__ready = true;
+  } catch (e) {
+    window.__error = String(e?.message ?? e);
+  }
+</script>
+</body>
+</html>

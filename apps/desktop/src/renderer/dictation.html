@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'">
+<title>Floppy — Dictée</title>
+<style>
+  :root { --neon: #c06bff; --neon2: #5ee7ff; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; }
+  .pill {
+    position: absolute; inset: 6px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px;
+    border-radius: 999px; background: rgba(14, 12, 24, .92); border: 1px solid rgba(192, 107, 255, .35);
+    box-shadow: 0 0 18px rgba(192, 107, 255, .25), inset 0 0 12px rgba(94, 231, 255, .06);
+  }
+  /* Le point : il respire pendant l'écoute, il brille quand des mots sont tapés. */
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--neon); box-shadow: 0 0 8px var(--neon); animation: breathe 1.6s ease-in-out infinite; transition: background .15s, box-shadow .15s; }
+  .dot.flash { background: var(--neon2); box-shadow: 0 0 14px var(--neon2); }
+  @keyframes breathe { 50% { transform: scale(.7); opacity: .6; } }
+  /* Les barres : elles suivent la voix (niveau du micro). */
+  .bars { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; height: 26px; }
+  .bars i { width: 4px; height: 4px; border-radius: 2px; background: linear-gradient(var(--neon2), var(--neon)); opacity: .55; transition: height .08s linear, opacity .08s linear; }
+  /* Après l'arrêt : les dernières phrases arrivent encore, les barres ondulent doucement. */
+  .finishing .dot { animation: none; opacity: .5; }
+  .finishing .bars i { animation: wave 1s ease-in-out infinite; }
+  @keyframes wave { 50% { height: 12px; opacity: .9; } }
+  button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255,255,255,.07); color: #cfc6e8; font-size: 16px; line-height: 30px; cursor: pointer; }
+  button:hover { background: rgba(255,255,255,.16); color: #fff; }
+  button .icon { width: 16px; height: 16px; vertical-align: -3px; }
+  button:focus-visible { outline: 2px solid var(--neon2); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .dot, .finishing .bars i { animation: none; } }
+</style>
+</head>
+<body>
+  <div class="pill" id="pill">
+    <div class="dot" id="dot"></div>
+    <div class="bars" id="bars"></div>
+    <button id="stop" title="Arrêter la dictée (Ctrl+Alt+D)" aria-label="Arrêter la dictée"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <script src="dictation.js"></script>
+</body>
+</html>

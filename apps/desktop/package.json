@@ -1,0 +1,23 @@
+{
+  "name": "@floppy/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "gallery": "electron scripts/capture.mjs ../../plugins/avatar/tv/gallery/gallery.html ../../docs/spec/img/avatar-emotions.png 1190 610",
+    "avatar-previews": "electron scripts/avatar-previews.mjs"
+  },
+  "dependencies": {
+    "@floppy/cli": "0.1.0",
+    "@floppy/protocol": "0.1.0",
+    "koffi": "3.3.7",
+    "markdown-it": "14.3.3"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "14.2.0",
+    "electron": "45.2.3"
+  }
+}

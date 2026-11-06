@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Ajouter un corps</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#46e3ea}a:hover{color:#8ff2f6}
+.type{display:flex;flex-direction:column;gap:4px;text-align:left;padding:13px 14px;border-radius:14px;background:#111821;border:1px solid rgba(255,255,255,.08);color:#eef8fa;font:inherit;cursor:pointer}
+.type.on{border-color:rgba(70,227,234,.6);background:#122029;box-shadow:0 0 0 3px rgba(70,227,234,.12)}
+.type small{color:#9fb3b9;font-size:12px;line-height:1.4}
+.lbl{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#b4c4c9}
+.in{height:38px;box-sizing:border-box;padding:0 12px;border-radius:10px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;font-size:13px}
+.hint{font-size:12px;color:#8fa3a9}
+.btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid rgba(120,220,230,.28);background:#141c26;color:#eef8fa;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn.pri{background:#46e3ea;color:#04262a;border-color:transparent}
+.step{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#46e3ea;color:#04262a;font-size:12px;font-weight:800;flex:none}
+.cap{font-size:12px;padding:4px 10px;border-radius:999px;background:#122a2e;color:#7ff0f4}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(120,220,230,.3);color:#9fb3b9;white-space:nowrap}
+</style>
+</helmet>
+<div style="width:1280px;height:820px;box-sizing:border-box;background:#0b0f15;color:#eef8fa;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;padding:28px 36px;display:flex;flex-direction:column;gap:18px">
+  <div style="display:flex;align-items:center;gap:14px">
+    <a href="Avatars.dc.html" style="font-size:13px;text-decoration:none">← Corps et affichage</a>
+    <h1 style="margin:0;font-size:24px">Ajouter un corps</h1>
+    <span style="flex:1"></span>
+    <span class="hint">Ou à la voix : « Floppy, ajoute mon Reachy » → ouvre cette fenêtre (l'accès se donne au clic)</span>
+  </div>
+  <div style="flex:1;display:flex;gap:28px;min-height:0">
+    <section aria-label="Type de corps" style="width:380px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px"><span class="step">1</span><strong>Quel corps ?</strong></div>
+      <button class="type on" type="button"><span style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Reachy Mini</strong><span class="badge">body-reachy</span></span><small>Robot de bureau : micro, haut-parleur, tête et antennes. Floppy s'y connecte sur le réseau.</small></button>
+      <button class="type" type="button"><span style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Telegram</strong><span class="badge">body-telegram</span></span><small>Parle à Floppy depuis ton téléphone, par messages texte ou vocaux. Cloud.</small></button>
+      <button class="type" type="button"><span style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Autre appareil</strong><span class="badge">body-ws</span></span><small>Une app qui se connecte à Floppy (téléphone, autre PC). Code à scanner, jeton.</small></button>
+      <button class="type" type="button"><span style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Corps de test</strong><span class="badge">body-ws</span></span><small>Une fenêtre texte, pour essayer.</small></button>
+      <div style="margin-top:4px;padding:12px 14px;border-radius:14px;border:1px dashed rgba(120,220,230,.3);color:#9fb3b9;font-size:12px;line-height:1.5">Les types viennent des plugins installés. Installer un plugin « corps » ajoute un type ici.</div>
+    </section>
+
+    <section aria-label="Configuration" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px"><span class="step">2</span><strong>Reachy Mini</strong><span class="hint">champs du schéma du plugin body-reachy</span></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:#0d1a1c;border:1px solid rgba(70,227,234,.3);font-size:13px">
+        <span style="width:9px;height:9px;border-radius:50%;background:#46e3ea"></span>
+        <span style="flex:1">Trouvé sur le réseau : <strong>reachy-mini.local</strong> (192.168.1.42)</span>
+        <button class="btn" type="button" style="height:32px">Chercher encore</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+        <label class="lbl">Nom<input class="in" value="Reachy Mini (bureau)"></label>
+        <label class="lbl">Adresse du robot<input class="in" value="http://reachy-mini.local:8000"></label>
+        <label class="lbl">Micro à utiliser<select class="in"><option>Micro du robot</option><option>Micro du PC (le robot parle seulement)</option></select><span class="hint">Si le PC et le robot entendent tous les deux : le premier qui détecte « Floppy » gagne.</span></label>
+        <label class="lbl">Voix sur ce corps<select class="in"><option>Même voix que le PC</option><option>Anna</option><option>Homme</option></select></label>
+        <label style="grid-column:1 / -1;display:flex;align-items:center;gap:10px;font-size:13px;color:#b4c4c9"><input type="checkbox" checked> Il peut répondre « oui » aux demandes d'accord (à la voix)</label>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-top:2px"><span class="step">3</span><strong>Essayer</strong></div>
+      <div style="flex:1;min-height:0;border-radius:14px;background:#111821;border:1px solid rgba(255,255,255,.07);padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px"><button class="btn" type="button">Se connecter</button><span style="color:#7ff0f4;font-size:13px">connecté · le robot a annoncé ses capacités</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px"><span class="cap">voix</span><span class="cap">émotions (tête, antennes)</span><span class="cap">gestes : hocher la tête, danser…</span><span class="cap">accord à la voix</span><span class="cap" style="background:#1a2129;color:#8fa3a9">pas d'écran</span></div>
+        <div style="display:flex;gap:10px"><button class="btn" type="button">Montrer « joie »</button><button class="btn" type="button">Hocher la tête</button><button class="btn" type="button">Dire « Bonjour »</button></div>
+        <span class="hint">Une demande faite à Reachy reçoit sa réponse sur Reachy. L'état et les émotions vont à tous les corps branchés.</span>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <a class="btn" href="Avatars.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">Annuler</a>
+        <a class="btn pri" href="Avatars.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">Ajouter et brancher</a>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

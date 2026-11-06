@@ -1,0 +1,28 @@
+{
+  "name": "floppy",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "plugins/*/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "licences": "node scripts/licences.mjs",
+    "check": "npm run typecheck && npm test && npm run licences",
+    "start": "npm start -w @floppy/desktop",
+    "bench": "node -e \"console.log('voir bench/README.md')\""
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/ws": "8.18.2",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

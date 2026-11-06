@@ -1,0 +1,6 @@
+{
+  "id": "pixel",
+  "name": { "fr": "Rond pixel", "en": "Pixel round" },
+  "description": { "fr": "WebGL · points lumineux · 12 émotions (les autres : la plus proche)", "en": "WebGL · glowing dots · 12 emotions (others map to the nearest)" },
+  "emotions": ["neutral","happy","joy","sad","angry","surprised","love","sleepy","thinking","wink","scared","confused"]
+}

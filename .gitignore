@@ -1,0 +1,34 @@
+# Dependencies and build output
+node_modules/
+out/
+dist/
+*.tsbuildinfo
+*.log
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local configuration (created from floppy.example.yml on first start)
+floppy.yml
+
+# Local voice service: downloaded models, personal reference voices, measurements
+services/voice/models/
+services/voice/voices/*
+!services/voice/voices/CREDITS.md
+!services/voice/voices/ref_fr_siwis.wav
+!services/voice/voices/ref_fr_siwis.txt
+services/voice/check_voices.json
+
+# Brain benchmark: personal configs and results
+bench/local/
+bench/out/
+bench/work_mcp/calls.jsonl
+
+# Editor and tool state
+.impeccable/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,31 @@
+# Brain benchmark: fake work MCP server + AI SDK brain + OpenAI-compatible API for grading.
+# Copy this file to bench/local/<name>.yml (ignored by git), set the model path, then see bench/README.md.
+assistant: { name: Floppy, language: fr, wake_words: [floppy] }
+approvals: { timeout_s: 30 }
+plugins:
+  - id: tools
+    plugin: tools
+    config:
+      port: 0
+      servers:
+        work:
+          # Fake work tools (calendar, mails, PRs, builds, tickets, notes). Python env: `uv sync --project bench`.
+          command: uv
+          args: [run, --project, bench, python, bench/work_mcp/server.py]
+          env: { WORK_TOOLS_LOG: bench/out/work_tools_calls.jsonl }
+          levels: { ouvrir_url: write, orca_confier_tache: send }
+  - id: llm
+    plugin: llm-llamacpp
+    config:
+      # exe: C:/llama.cpp/llama-server.exe   # if llama-server is not in the PATH
+      models:
+        model:
+          label: Model under test
+          model: C:/models/your-model.gguf
+          args: [-fa, "on", -np, "1"]
+  # Delegation to Claude Code (optional): uncomment to measure the "delegate" path.
+  # - { id: claude, plugin: brain-claude-cli, config: { model: sonnet, as: [delegate] } }
+  - { id: brain, plugin: brain-aisdk, config: { today: "2026-11-04T09:00:00", emotions: true } }
+  - { id: bench, plugin: bench-api, config: { port: 8751, approvalsLog: bench/out/approvals.jsonl } }
+slots:
+  brain.main: llm/model

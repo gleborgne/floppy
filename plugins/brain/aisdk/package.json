@@ -1,0 +1,17 @@
+{
+  "name": "@floppy/plugin-brain-aisdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.84",
+    "@floppy/core": "0.1.0",
+    "@floppy/protocol": "0.1.0",
+    "ai": "7.0.162",
+    "zod": "4.6.7"
+  }
+}

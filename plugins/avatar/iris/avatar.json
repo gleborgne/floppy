@@ -1,0 +1,6 @@
+{
+  "id": "iris",
+  "name": { "fr": "Iris", "en": "Iris" },
+  "description": { "fr": "WebGL · œil-caméra à diaphragme et anneau de LED · pas de bouche, tout passe par l'œil", "en": "WebGL · aperture camera eye with an LED ring · no mouth, the eye shows everything" },
+  "emotions": ["neutral","happy","sad","angry","surprised","love","confused","wink","sleepy","thinking"]
+}

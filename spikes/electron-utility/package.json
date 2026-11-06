@@ -1,0 +1,1 @@
+{"name":"spike-electron-utility","private":true,"type":"module","main":"main.mjs","devDependencies":{"electron":"^45.2.3"}}

@@ -1,0 +1,593 @@
+// Page de l'avatar : le corps par défaut. Parle au noyau par un MessagePort (protocole v0, voir packages/protocol).
+//   { j: <message JSON> }  ou  { a: <audio> }  (micro : Float32Array 16 kHz ; voix : 4 octets taux + PCM int16)
+
+const $ = (id) => document.getElementById(id);
+// ------------------------------------------------------------------ textes (fr / en)
+// Ce qu'on lit (bulle, cartes) suit la langue de l'interface (message display) ; ce que Floppy dit (résultats d'outils,
+// repris par le cerveau) suit la langue de l'assistant (message welcome du noyau).
+const TEXTS = {
+  fr: {
+    you: "Toi", listen: "Je t'écoute…", faceTip: "Floppy — Ctrl+Alt+F pour parler", closeTip: "Cliquer pour fermer",
+    micDown: "Micro indisponible", ask: "Ton accord ?", yes: "Oui", no: "Non", important: "Important", info: "Info", error: "Erreur",
+  },
+  en: {
+    you: "You", listen: "I'm listening…", faceTip: "Floppy — Ctrl+Alt+F to talk", closeTip: "Click to close",
+    micDown: "Microphone unavailable", ask: "Your approval?", yes: "Yes", no: "No", important: "Important", info: "Info", error: "Error",
+  },
+};
+const SAID = {
+  fr: { cardShown: "Carte affichée.", unknownTool: (n) => `outil inconnu : ${n}` },
+  en: { cardShown: "Card displayed.", unknownTool: (n) => `unknown tool: ${n}` },
+};
+let lang = "fr";            // langue de l'interface
+let assistantLang = "";     // langue de l'assistant (welcome) ; vide : celle de l'interface
+// Sur Mac, Ctrl+Alt s'écrit ⌃⌥ (la touche Alt s'appelle Option).
+const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+// Raccourci « parler » choisi dans les réglages (message display) ; vide = désactivé.
+let talkKeys = "Ctrl+Alt+F";
+const L = (k) => {
+  let s = (TEXTS[lang] ?? TEXTS.fr)[k] ?? TEXTS.fr[k];
+  if (typeof s !== "string") return s;
+  if (k === "faceTip") s = talkKeys ? s.replace("Ctrl+Alt+F", talkKeys) : "Floppy";
+  return isMac ? s.replaceAll("Ctrl+Alt+", "⌃⌥") : s;
+};
+const S = (k) => (SAID[assistantLang] ?? SAID[lang] ?? SAID.fr)[k];
+/** Texte { fr, en } (ou simple) dans la langue de l'assistant. */
+const said = (x) => (x && typeof x === "object" ? x[assistantLang] ?? x[lang] ?? x.fr ?? "" : String(x ?? ""));
+function applyTexts() {
+  document.documentElement.lang = lang;
+  const listen = $("listen");
+  if (listen?.lastChild?.nodeType === Node.TEXT_NODE) listen.lastChild.textContent = L("listen");
+  $("faceWrap")?.setAttribute("title", L("faceTip"));
+  const you = $("you")?.querySelector("b");
+  if (you) you.textContent = L("you");
+  // Cartes déjà affichées : leurs textes fixes changent de langue.
+  for (const c of $("cards")?.children ?? []) c._relabel?.();
+}
+function setLang(l) {
+  if (!TEXTS[l] || l === lang) return;
+  lang = l;
+  applyTexts();
+}
+// ------------------------------------------------------------------ avatar (plugin : plugins/avatar/<id>/renderer/index.js)
+// Un avatar exporte create(container, { reducedMotion }) → { setState, setEmotion(name, intensity, ms), setLevel, destroy }
+// et, s'il sait les montrer : setMood(valence, energy), lookAt(x, y) (-1..1), setHearing(niveau 0..1), cue(nom), resize.
+// Le noyau envoie toujours les mêmes états et émotions ; `face` les garde et les rejoue sur l'avatar chargé.
+const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+// Aucun avatar en dur : le noyau (plugin body-electron) dit lequel afficher et où est son dessin (message display).
+// Tant qu'il n'en a pas donné, ou si le chargement échoue, la page reste dans un état neutre (aucun avatar).
+let current = null;           // avatar chargé
+let currentId = "";
+let loadSeq = 0;
+// Au démarrage, Floppy dort (zzz) jusqu'au premier état envoyé par le noyau : la conversation l'envoie seulement
+// quand la voix et le cerveau sont prêts (modèles chargés).
+const last = { state: "sleep", emotion: null, intensity: undefined, emotionUntil: 0, level: 0, mood: null };
+const face = {
+  setState(s) { last.state = s; current?.setState(s); },
+  setEmotion(name, ms, intensity) {
+    last.emotion = name;
+    last.intensity = intensity;
+    last.emotionUntil = ms ? performance.now() + ms : 0;
+    current?.setEmotion(name, intensity, ms);
+  },
+  setLevel(v) { last.level = v; current?.setLevel(v); },
+  setMood(valence, energy) { last.mood = { valence, energy }; current?.setMood?.(valence, energy); },
+  lookAt(x, y) { current?.lookAt?.(x, y); },
+  setHearing(v) { current?.setHearing?.(v); },
+  cue(name) { current?.cue?.(name); },
+};
+/** État neutre : aucun avatar affiché. */
+function clearAvatar() {
+  loadSeq++;
+  try { current?.destroy(); } catch { /* déjà détruit */ }
+  current = null;
+  currentId = "";
+  $("face")?.replaceChildren();
+}
+async function loadAvatar(id, url) {
+  id = /^[a-z0-9_-]+$/i.test(String(id ?? "")) ? String(id) : "";
+  // Seulement un module local (file://) : le dessin d'un plugin d'avatar installé.
+  const src = typeof url === "string" && url.startsWith("file:") ? url : "";
+  if (!id || !src) { if (current) clearAvatar(); return; }
+  if (id === currentId && current) return;
+  const seq = ++loadSeq;
+  let mod;
+  try {
+    mod = await import(src);
+  } catch (e) {
+    console.log(`avatar ${id} : chargement impossible (${e?.message ?? e})`);
+    return;
+  }
+  if (seq !== loadSeq) return;
+  const box = $("face");
+  try { current?.destroy(); } catch { /* déjà détruit */ }
+  box.replaceChildren();
+  try {
+    current = mod.create(box, { reducedMotion });
+  } catch (e) {
+    console.log(`avatar ${id} : création impossible (${e?.message ?? e})`);
+    current = null;
+    currentId = "";
+    return;
+  }
+  currentId = id;
+  // On rejoue l'état courant sur le nouvel avatar.
+  current.setState(last.state);
+  current.setLevel(last.level);
+  if (last.mood) current.setMood?.(last.mood.valence, last.mood.energy);
+  if (last.emotion) {
+    const left = last.emotionUntil ? last.emotionUntil - performance.now() : 0;
+    if (!last.emotionUntil || left > 0) current.setEmotion(last.emotion, last.intensity, last.emotionUntil ? left : undefined);
+  }
+  console.log(`avatar : ${id}`);
+}
+const host = window.floppyHost;
+
+// ------------------------------------------------------------------ vie (commune à tous les avatars)
+// Ce qui rend Floppy vivant sans le noyau : réactions quand on le touche, petites manies quand il s'ennuie,
+// regard qui suit la souris. L'émotion du noyau reste prioritaire : une réaction locale est brève, puis
+// l'émotion du noyau revient si elle est encore en cours.
+const life = {
+  kernel: { name: "neutral", intensity: undefined, until: 0, at: 0 }, // dernière émotion du noyau
+  activeAt: performance.now(),  // dernière activité (état autre que repos, clic, émotion du noyau)
+  nextQuirk: performance.now() + 20000,
+  pokes: [],
+  lastPoke: "",
+  flashTimer: 0,
+};
+/** Émotion locale brève ; ensuite, l'émotion du noyau revient si elle est encore valable. */
+function flash(name, ms, intensity) {
+  face.setEmotion(name, ms, intensity);
+  clearTimeout(life.flashTimer);
+  const at = life.kernel.at;
+  life.flashTimer = setTimeout(() => {
+    const k = life.kernel;
+    if (k.at !== at || k.name === "neutral") return;
+    const left = k.until ? k.until - performance.now() : 0;
+    if (!k.until || left > 0) face.setEmotion(k.name, k.until ? left : undefined, k.intensity);
+  }, ms);
+}
+const POKE_REACTIONS = [["laugh", 1300, 1], ["shy", 1500, 1], ["wink", 900, 1], ["surprised", 800, 0.8], ["joy", 1200, 0.9], ["love", 1400, 0.8], ["mischief", 1100, 1]];
+/** Un clic sur la tête : il rit, rougit, fait un clin d'œil… et finit par se fâcher si on insiste. */
+function poke() {
+  const now = performance.now();
+  life.activeAt = now;
+  life.pokes = life.pokes.filter((t) => now - t < 4000);
+  life.pokes.push(now);
+  face.cue("poke");
+  const n = life.pokes.length;
+  if (curState === "sleep") return flash("annoyed", 900, 0.5); // on le dérange : il grogne, sans se réveiller
+  if (n >= 7) return flash("angry", 1600, 0.9);
+  if (n >= 4) return flash("annoyed", 1400, 1);
+  const choices = POKE_REACTIONS.filter(([name]) => name !== life.lastPoke);
+  const [name, ms, i] = choices[Math.floor(Math.random() * choices.length)];
+  life.lastPoke = name;
+  flash(name, ms, i);
+}
+/** Petites manies au repos : un regard ailleurs, un bâillement s'il est fatigué, un air malicieux… */
+function quirk() {
+  const energy = last.mood?.energy ?? 0.6;
+  const alone = performance.now() - life.activeAt;
+  const r = Math.random();
+  if (energy < 0.35 && r < 0.5) return flash("tired", 1900, 1.2);                 // bâillement
+  if (alone > 180000 && r < 0.35) return flash("bored", 2600, 0.7);
+  if (r < 0.3) { face.lookAt(Math.random() * 2 - 1, Math.random() - 0.6); return; } // un coup d'œil ailleurs
+  if (r < 0.45) return flash("curious", 1500, 0.6);
+  if (r < 0.6) { flash("happy", 2200, 0.5); face.cue("nod"); return; }             // il chantonne dans sa tête
+  if (r < 0.72) return flash("mischief", 900, 0.6);
+  if (r < 0.82) return flash("wink", 650, 1);
+  face.cue("perk");
+}
+setInterval(() => {
+  const now = performance.now();
+  if (curState !== "idle") { life.activeAt = now; return; }
+  if (now < life.nextQuirk || now - life.kernel.at < 10000 || now - life.activeAt < 15000) return;
+  life.nextQuirk = now + 15000 + Math.random() * 25000;
+  if (!document.hidden) quirk();
+}, 1000);
+/** Position de la souris (px dans la fenêtre) → regard de l'avatar (-1..1 autour du visage). */
+function lookAtPoint(x, y) {
+  const r = $("faceWrap")?.getBoundingClientRect();
+  if (!r?.width) return;
+  const dx = (x - (r.left + r.width / 2)) / (r.width * 1.2);
+  const dy = (y - (r.top + r.height * 0.45)) / (r.height * 1.4);
+  face.lookAt(Math.max(-1, Math.min(1, dx)), Math.max(-1, Math.min(1, dy)));
+}
+// Déplacer à la main, ou toucher : un appui sans bouger (moins de 5 px) est un clic sur la tête.
+{
+  const wrap = $("faceWrap");
+  let press = null;
+  const stop = (e, click) => {
+    if (!press) return;
+    if (press.moved) host?.drag?.("end");
+    else if (click) poke();
+    press = null;
+    wrap.classList.remove("dragging");
+    try { wrap.releasePointerCapture(e.pointerId); } catch { /* déjà relâché */ }
+  };
+  wrap?.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    press = { x: e.screenX, y: e.screenY, moved: false };
+    wrap.setPointerCapture(e.pointerId);
+  });
+  wrap?.addEventListener("pointermove", (e) => {
+    if (!press) return;
+    if (!press.moved && Math.hypot(e.screenX - press.x, e.screenY - press.y) > 4) {
+      press.moved = true;
+      wrap.classList.add("dragging");
+      host?.drag?.("start");
+    }
+    if (press.moved) host?.drag?.("move");
+  });
+  wrap?.addEventListener("pointerup", (e) => stop(e, true));
+  wrap?.addEventListener("pointercancel", (e) => stop(e, false));
+}
+
+let port = null;
+let micStarted = false;
+let pttOn = false;
+let dictating = false;
+let lastLevelAt = 0;
+let muted = false;
+let replyText = "";
+let hideTimer = 0;
+
+// ------------------------------------------------------------------ bulle
+let bubbleOn = true;
+function showBubble() {
+  if (!bubbleOn && !$("cards").children.length) return; // sans bulle, les cartes (accord, erreur) restent visibles
+  clearTimeout(hideTimer);
+  $("bubble").classList.remove("hide");
+  const sc = $("scroll");
+  requestAnimationFrame(() => { sc.scrollTop = sc.scrollHeight; });
+}
+// État de Floppy vu par la bulle : on ne cache jamais la conversation tant qu'il parle, écoute ou réfléchit.
+let curState = "sleep";
+const atRest = () => curState === "idle" || curState === "sleep";
+function hideBubbleSoon(ms = 9000) {
+  clearTimeout(hideTimer);
+  // Pas au repos : rien maintenant. Le retour au repos relance le minuteur (10 s).
+  if (!atRest()) return;
+  hideTimer = setTimeout(() => {
+    if (!atRest()) return;
+    // Seules les demandes d'accord retiennent la bulle (il faut y répondre). Les infos partent avec elle.
+    if ($("cards").querySelector(".card.ask")) return;
+    $("cards").querySelectorAll(".card:not(.ask)").forEach((c) => c.remove());
+    $("bubble").classList.add("hide");
+    setTimeout(() => { if ($("bubble").classList.contains("hide")) { $("you").textContent = ""; $("reply").textContent = ""; } }, 250);
+  }, ms);
+}
+// « Je t'écoute… » : visible pendant l'écoute, tant qu'il n'a rien entendu de nouveau.
+let listenShown = false;
+function showListening(on) {
+  if (on === listenShown) return;
+  listenShown = on;
+  $("listen").hidden = !on;
+  if (on) showBubble();
+}
+/** Il entend son nom : anneau autour du visage + petit saut, puis « Je t'écoute… ». */
+let wokeTimer = 0;
+function woke() {
+  const w = $("faceWrap");
+  w.classList.remove("woke");
+  void w.offsetWidth; // relance l'animation
+  w.classList.add("woke");
+  clearTimeout(wokeTimer);
+  wokeTimer = setTimeout(() => w.classList.remove("woke"), 750);
+  if (curState !== "thinking" && curState !== "speaking") showListening(true);
+}
+function setYou(text) {
+  const you = $("you");
+  you.textContent = "";
+  const b = document.createElement("b"); b.textContent = L("you");
+  you.append(b, document.createTextNode(text));
+}
+
+// Fenêtre transparente : les clics traversent les zones vides ; la tête et la bulle restent cliquables.
+let interactive = null;
+window.addEventListener("mousemove", (e) => {
+  lookAtPoint(e.clientX, e.clientY);
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const hit = !!el?.closest("#bubble:not(.hide), #faceWrap");
+  if (hit !== interactive) { interactive = hit; host?.setInteractive(hit); }
+});
+document.addEventListener("mouseleave", () => { if (interactive !== false) { interactive = false; host?.setInteractive(false); } });
+
+/** Une carte. title et les libellés des boutons : un texte, ou une clé de TEXTS (suit la langue de l'interface). */
+function card(kind, title, text, buttons) {
+  const el = document.createElement("div");
+  el.className = `card ${kind}`;
+  const h = document.createElement("h3");
+  const p = document.createElement("p"); p.textContent = text;
+  el.append(h, p);
+  const btns = [];
+  if (buttons) {
+    const row = document.createElement("div"); row.className = "row";
+    for (const b of buttons) {
+      const btn = document.createElement("button");
+      btn.className = b.cls ?? "";
+      btn.onclick = b.onClick;
+      btns.push([btn, b.label]);
+      row.append(btn);
+    }
+    el.append(row);
+  }
+  const txt = (x) => (typeof x === "object" && x ? L(x.key) : x);
+  el._relabel = () => {
+    h.textContent = txt(title);
+    for (const [btn, label] of btns) btn.textContent = txt(label);
+    if (kind !== "ask") el.title = L("closeTip");
+  };
+  el._relabel();
+  // Info, erreur : une carte identique déjà affichée n'est pas répétée ; clic = fermer ; départ seul après 12 s.
+  if (kind !== "ask") {
+    const same = [...$("cards").querySelectorAll(`.card.${kind}`)].find((c) => c.textContent === el.textContent);
+    if (same) { showBubble(); return same; }
+    el.style.cursor = "pointer";
+    el.addEventListener("click", () => { el.remove(); if (!$("cards").children.length) hideBubbleSoon(1500); });
+    setTimeout(() => { el.remove(); if (!$("cards").children.length) hideBubbleSoon(1500); }, 12000);
+  }
+  $("cards").append(el);
+  showBubble();
+  return el;
+}
+
+// ------------------------------------------------------------------ voix (lecture)
+const play = { ctx: null, head: 0, sources: new Set(), analyser: null, gain: null, playing: false };
+function ensurePlay() {
+  if (play.ctx) return;
+  play.ctx = new AudioContext();
+  play.ctx.resume().catch(() => {});
+  play.analyser = play.ctx.createAnalyser();
+  play.analyser.fftSize = 512;
+  // Volume après l'analyseur : la bouche bouge pareil quand la voix est baissée.
+  play.gain = play.ctx.createGain();
+  play.analyser.connect(play.gain);
+  play.gain.connect(play.ctx.destination);
+}
+function playChunk(buf) {
+  ensurePlay();
+  const u8 = new Uint8Array(buf);
+  const rate = new DataView(u8.buffer, u8.byteOffset, 4).getUint32(0, true);
+  const n = (u8.byteLength - 4) >> 1;
+  if (n <= 0) return;
+  const pcm = new Int16Array(u8.slice(4).buffer, 0, n);
+  const ab = play.ctx.createBuffer(1, n, rate);
+  const ch = ab.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = pcm[i] / 32768;
+  const src = play.ctx.createBufferSource();
+  src.buffer = ab;
+  src.connect(play.analyser);
+  play.head = Math.max(play.head, play.ctx.currentTime + 0.04);
+  src.start(play.head);
+  play.head += ab.duration;
+  play.sources.add(src);
+  src.onended = () => play.sources.delete(src);
+  if (!play.playing) { play.playing = true; send({ type: "playback", playing: true }); }
+}
+function stopPlayback() {
+  for (const s of play.sources) { try { s.stop(); } catch { /* déjà fini */ } }
+  play.sources.clear();
+  if (play.ctx) play.head = play.ctx.currentTime;
+  setDuck(false);
+}
+/** Voix baissée pendant que le noyau vérifie si l'utilisateur coupe la parole (ou si c'est l'écho). */
+function setDuck(on) {
+  if (!play.gain) return;
+  play.gain.gain.setTargetAtTime(on ? 0.15 : 1, play.ctx.currentTime, 0.04);
+}
+// Niveau de la voix → bouche ; fin de la file → playback:false.
+const levelBuf = new Float32Array(512);
+setInterval(() => {
+  if (!play.ctx) return;
+  play.analyser.getFloatTimeDomainData(levelBuf);
+  let s = 0;
+  for (const v of levelBuf) s += v * v;
+  face.setLevel(Math.min(1, Math.sqrt(s / levelBuf.length) * 5));
+  if (play.playing && play.ctx.currentTime > play.head + 0.05) {
+    play.playing = false;
+    face.setLevel(0);
+    send({ type: "playback", playing: false });
+  }
+}, 33);
+
+// ------------------------------------------------------------------ micro
+const WORKLET = `
+class Mic extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Float32Array(512); this.n = 0; }
+  process(inputs) {
+    const ch = inputs[0][0];
+    if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      this.buf[this.n++] = ch[i];
+      if (this.n === 512) { this.port.postMessage(this.buf.slice(0)); this.n = 0; }
+    }
+    return true;
+  }
+}
+registerProcessor("mic", Mic);`;
+
+async function startMic() {
+  if (micStarted) return;
+  micStarted = true;
+  try {
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    await ctx.resume();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+    const node = new AudioWorkletNode(ctx, "mic");
+    let frames = 0, peak = 0, lastLog = performance.now();
+    node.port.onmessage = (e) => {
+      frames++;
+      let sq = 0;
+      for (const v of e.data) { peak = Math.max(peak, Math.abs(v)); sq += v * v; }
+      // Ce qu'il entend : l'avatar réagit à la voix (seulement quand il écoute vraiment).
+      const heard = muted || curState !== "listening" ? 0 : Math.min(1, Math.sqrt(sq / e.data.length) * 9);
+      face.setHearing(heard);
+      // Dictée : le niveau du micro anime la pilule (environ 20 fois par seconde).
+      if (dictating && performance.now() - lastLevelAt > 50) { lastLevelAt = performance.now(); host?.dictationLevel?.(Math.min(1, Math.sqrt(sq / e.data.length) * 9)); }
+      if (listenShown) $("listen").style.setProperty("--lvl", heard.toFixed(2));
+      if (performance.now() - lastLog > 10000) {
+        console.log(`micro : ${frames} trames en 10 s, crête ${peak.toFixed(3)}, contexte ${ctx.state}, port ${port ? "ok" : "absent"}`);
+        frames = 0; peak = 0; lastLog = performance.now();
+      }
+      // Copie (pas de transfert de tampon : Electron abandonne ces messages vers le utilityProcess).
+      if (port && (!muted || dictating)) port.postMessage({ a: e.data }); // la dictée écoute même quand Floppy dort
+    };
+    ctx.createMediaStreamSource(stream).connect(node);
+    const track = stream.getAudioTracks()[0];
+    console.log(`micro actif : « ${track?.label ?? "?"} », ${ctx.sampleRate} Hz, contexte ${ctx.state}`);
+  } catch (e) {
+    micStarted = false;
+    console.log(`micro indisponible : ${e?.message ?? e}`);
+    card("error", { key: "micDown" }, String(e?.message ?? e));
+  }
+}
+
+// ------------------------------------------------------------------ protocole
+function send(msg) { port?.postMessage({ j: msg }); }
+
+const TOOLS = [
+  // Ouvrir une page web : c'est le plugin « browser » (Réglages → Connecteurs), plus un outil de l'avatar.
+  { name: "afficher_carte", description: "Affiche une carte à l'écran (titre et quelques lignes), pour une information longue. La réponse reste dite à voix haute.",
+    inputSchema: { type: "object", properties: { titre: { type: "string" }, lignes: { type: "array", items: { type: "string" } } }, required: ["titre"] }, level: "read" },
+  { name: "placer_avatar", description: "Déplace l'avatar de Floppy à l'écran (par ex. « remets-toi en place », « va en haut à gauche », « va sur l'écran 2 », « mets-toi sur ma fenêtre »). Sans précision : en bas à droite de l'écran principal, sa place habituelle.",
+    inputSchema: { type: "object", properties: {
+      coin: { type: "string", enum: ["bas_droite", "bas_gauche", "haut_droite", "haut_gauche", "centre"], description: "Où dans la zone. Par défaut bas_droite." },
+      ecran: { type: "integer", minimum: 1, description: "Numéro d'écran : 1 = principal, puis de gauche à droite." },
+      cible: { type: "string", enum: ["ecran", "fenetre"], description: "fenetre : dans la fenêtre active (celle où l'utilisateur travaille) au lieu de tout l'écran." },
+    } }, level: "read" },
+];
+
+async function onToolCall(m) {
+  try {
+    if (m.name === "afficher_carte") {
+      card("info", String(m.args.titre ?? ""), (m.args.lignes ?? []).join("\n"));
+      send({ type: "tool.result", callId: m.callId, ok: true, text: S("cardShown") });
+    } else if (m.name === "placer_avatar" && host?.place) {
+      // Réponse de l'app : { ok, text: { fr, en } } (ou une phrase, version plus ancienne).
+      const r = await host.place(m.args ?? {});
+      const ok = r && typeof r === "object" && "ok" in r ? r.ok !== false : true;
+      send({ type: "tool.result", callId: m.callId, ok, text: said(r && typeof r === "object" && "ok" in r ? r.text : r) });
+    } else send({ type: "tool.result", callId: m.callId, ok: false, text: S("unknownTool")(m.name) });
+  } catch (e) {
+    send({ type: "tool.result", callId: m.callId, ok: false, text: String(e?.message ?? e) });
+  }
+}
+
+const approvals = new Map();
+function onMessage(m) {
+  switch (m.type) {
+    case "welcome":
+      if (typeof m.assistant?.language === "string") assistantLang = m.assistant.language.slice(0, 2).toLowerCase();
+      startMic();
+      break;
+    case "state":
+      curState = m.state;
+      if (m.state !== "idle") life.activeAt = performance.now();
+      face.setState(m.state);
+      host?.setState(m.state);
+      if (m.state === "listening" || m.state === "thinking") { pttOn = pttOn && m.state === "listening"; }
+      showListening(m.state === "listening");
+      // De retour au repos : la conversation s'efface au bout de 10 s (sauf demande d'accord en cours).
+      // Rien n'a été dit (seulement « Je t'écoute… ») : elle part tout de suite.
+      if (m.state === "idle" || m.state === "sleep") hideBubbleSoon(!$("you").textContent && !$("reply").textContent ? 600 : 10000);
+      else clearTimeout(hideTimer);
+      break;
+    case "emotion":
+      clearTimeout(life.flashTimer);
+      life.kernel = { name: m.emotion, intensity: m.intensity, until: m.ms ? performance.now() + m.ms : 0, at: performance.now() };
+      face.setEmotion(m.emotion, m.ms, m.intensity);
+      break;
+    case "mood": face.setMood(m.valence, m.energy); break;
+    case "cue":
+      face.cue(m.cue);
+      if (m.cue === "wake") woke();
+      break;
+    case "transcript":
+      showListening(false);
+      setYou(m.text); replyText = ""; $("reply").textContent = "";
+      showBubble(); break;
+    case "dictation": host?.dictation?.({ del: m.del, ins: m.ins }); break; // tapé dans la fenêtre active, pas de bulle
+    case "reply.delta":
+      replyText += m.text; $("reply").textContent = replyText.trim(); showBubble(); break;
+    case "reply.done":
+      if (m.text) $("reply").textContent = m.text;
+      hideBubbleSoon(); break;
+    case "interrupt": stopPlayback(); break;
+    case "duck": setDuck(!!m.on); break;
+    case "approval.request": {
+      host?.activity("approval");
+      const el = card("ask", { key: "ask" }, m.summary, [
+        { label: { key: "yes" }, cls: "yes", onClick: () => send({ type: "approval.response", id: m.id, ok: true }) },
+        { label: { key: "no" }, onClick: () => send({ type: "approval.response", id: m.id, ok: false }) },
+      ]);
+      const bar = document.createElement("div");
+      bar.className = "ttl";
+      bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: m.ttl_s * 1000, fill: "forwards" });
+      el.append(bar);
+      approvals.set(m.id, el);
+      break;
+    }
+    case "approval.closed": {
+      approvals.get(m.id)?.remove();
+      approvals.delete(m.id);
+      if (!approvals.size) host?.approvalClosed();
+      if (!$("cards").children.length) hideBubbleSoon(4000);
+      break;
+    }
+    case "tool.call": onToolCall(m); break;
+    case "card": card("info", m.title, m.lines.join("\n")); break;
+    case "panel": host?.openPanel?.(m); break;
+    case "document": host?.openDocument?.(m); break;
+    case "documents": host?.updateDocuments?.(m.liste); break;
+    case "notify": card("info", { key: m.important ? "important" : "info" }, m.text); hideBubbleSoon(); break;
+    case "error": card("error", { key: "error" }, m.text); break;
+  }
+}
+
+function connect(p) {
+  port?.close();
+  port = p;
+  // Nouvelle connexion : les anciennes demandes d'accord n'existent plus côté noyau. On retire les cartes
+  // et on prévient l'app (sinon le masquage automatique reste bloqué).
+  if (approvals.size) {
+    for (const el of approvals.values()) el.remove();
+    approvals.clear();
+    host?.approvalClosed();
+  }
+  port.onmessage = (e) => {
+    const d = e.data;
+    if (d?.j) onMessage(d.j);
+    else if (d?.a) playChunk(d.a);
+  };
+  port.start();
+  send({ type: "hello", id: "avatar", name: "Avatar (bureau)", version: "0.1.0",
+         capabilities: ["voice", "display", "emotion", "approval", "panel", "document"], tools: TOOLS });
+}
+
+window.addEventListener("message", (e) => {
+  if (e.data === "floppy:body-port" && e.ports[0]) connect(e.ports[0]);
+  const disp = e.data?.floppyDisplay;
+  if (disp) {
+    if (typeof disp.raccourcis?.parler === "string" && disp.raccourcis.parler !== talkKeys) {
+      talkKeys = disp.raccourcis.parler;
+      $("faceWrap")?.setAttribute("title", L("faceTip"));
+    }
+    if (typeof disp.lang === "string") setLang(disp.lang);
+    if (typeof disp.avatar === "string") void loadAvatar(disp.avatar, disp.avatarUrl);
+    bubbleOn = disp.bulle !== false;
+    document.body.classList.toggle("nobubble", !bubbleOn);
+    if (!bubbleOn && !$("cards").children.length) $("bubble").classList.add("hide");
+  }
+  const docOpen = e.data?.floppyDocumentOpen;
+  if (typeof docOpen === "string") send({ type: "document.open", id: docOpen });
+  const docDel = e.data?.floppyDocumentDelete;
+  if (docDel && typeof docDel.id === "string") send({ type: "document.delete", id: docDel.id, ...(docDel.current ? { current: docDel.current } : {}) });
+  const cur = e.data?.floppyCursor;
+  if (cur) lookAtPoint(cur.x, cur.y);
+  const sc = e.data?.floppyShortcut;
+  if (sc === "ptt-on" || sc === "ptt-off") { pttOn = sc === "ptt-on"; stopPlayback(); send({ type: "ptt", on: pttOn }); }
+  if (sc === "dictate-on" || sc === "dictate-off") { dictating = sc === "dictate-on"; if (dictating) stopPlayback(); send({ type: "dictate", on: dictating }); }
+  if (sc === "mute-on" || sc === "mute-off") { muted = sc === "mute-on"; send({ type: "mute", on: muted }); }
+});

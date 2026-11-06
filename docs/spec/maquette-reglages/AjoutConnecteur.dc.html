@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Ajouter un connecteur</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#46e3ea}a:hover{color:#8ff2f6}
+.type{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;border-radius:14px;background:#111821;border:1px solid rgba(255,255,255,.08);color:#eef8fa;font:inherit;cursor:pointer}
+.type.on{border-color:rgba(70,227,234,.6);background:#122029;box-shadow:0 0 0 3px rgba(70,227,234,.12)}
+.type small{color:#9fb3b9;font-size:12px;line-height:1.4}
+.lbl{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#b4c4c9}
+.in{height:38px;box-sizing:border-box;padding:0 12px;border-radius:10px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;font-size:13px}
+.hint{font-size:12px;color:#8fa3a9}
+.btn{height:38px;padding:0 16px;border-radius:10px;border:1px solid rgba(120,220,230,.28);background:#141c26;color:#eef8fa;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn.pri{background:#46e3ea;color:#04262a;border-color:transparent}
+.step{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#46e3ea;color:#04262a;font-size:12px;font-weight:800;flex:none}
+</style>
+</helmet>
+<div style="width:1280px;height:820px;box-sizing:border-box;background:#0b0f15;color:#eef8fa;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;padding:28px 36px;display:flex;flex-direction:column;gap:18px">
+  <div style="display:flex;align-items:center;gap:14px">
+    <a href="Connecteurs.dc.html" style="font-size:13px;text-decoration:none">← Connecteurs</a>
+    <h1 style="margin:0;font-size:24px">Ajouter un connecteur</h1>
+    <span style="flex:1"></span>
+    <span class="hint">Ou demande à l'assistant IA : « Ajoute le connecteur Office 365 »</span>
+  </div>
+  <div style="flex:1;display:flex;gap:28px;min-height:0">
+    <section aria-label="Type de connecteur" style="width:380px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px"><span class="step">1</span><strong>Quel type ?</strong></div>
+      <button class="type on" type="button"><strong>Serveur MCP local</strong><small>Une commande lancée sur ton PC (npx, python, exe…). Ex. Office 365, fichiers, Obsidian.</small></button>
+      <button class="type" type="button"><strong>Serveur MCP distant</strong><small>Une adresse web (HTTP). Connexion par jeton, OAuth ou Azure CLI. Ex. Azure DevOps.</small></button>
+      <button class="type" type="button"><strong>Commande</strong><small>Une ligne de commande en lecture seule, transformée en outil (ex. « git status » d'un dossier).</small></button>
+      <button class="type" type="button"><strong>Application (plugin)</strong><small>Fourni par un plugin installé : Orca, et demain d'autres. Chaque plugin apporte ses propres champs.</small></button>
+      <div style="margin-top:6px;padding:12px 14px;border-radius:14px;border:1px dashed rgba(120,220,230,.3);color:#9fb3b9;font-size:12px;line-height:1.5">Les types viennent des plugins installés. Installer un plugin « connecteur » ajoute un type ici.</div>
+    </section>
+
+    <section aria-label="Configuration" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px"><span class="step">2</span><strong>Serveur MCP local</strong><span class="hint">champs du schéma « serveur MCP local »</span></div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+        <label class="lbl">Nom<input class="in" value="Office 365"></label>
+        <label class="lbl">Rubrique d'outils (pour le cerveau)<input class="in" value="agenda, mails, fichiers"></label>
+        <label class="lbl" style="grid-column:1 / -1">Commande<input class="in" value="npx"></label>
+        <label class="lbl" style="grid-column:1 / -1">Arguments<input class="in" value="[paquet du serveur MCP Office 365]"><span class="hint">Copie ici la commande donnée par la documentation du serveur.</span></label>
+        <label class="lbl">Variable d'environnement<input class="in" value="TENANT_ID = [ton tenant]"></label>
+        <label class="lbl">Secret<input class="in" type="password" value="••••••••••"><span class="hint">Rangé dans le Gestionnaire d'identification Windows, jamais dans un fichier.</span></label>
+        <label style="grid-column:1 / -1;display:flex;align-items:center;gap:10px;font-size:13px;color:#b4c4c9"><input type="checkbox" checked> Ses données vont dans le cloud (Microsoft 365) : l'allumer à la voix demandera ton accord</label>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px"><span class="step">3</span><strong>Essayer</strong></div>
+      <div style="flex:1;min-height:0;border-radius:14px;background:#111821;border:1px solid rgba(255,255,255,.07);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px"><button class="btn" type="button">Se connecter et lister les outils</button><span style="color:#7ff0f4;font-size:13px">connecté · 24 outils trouvés</span></div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:13px">
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" checked> <code>list_calendar_events</code> <span class="hint">lecture</span></label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" checked> <code>list_mail_messages</code> <span class="hint">lecture</span></label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" checked> <code>get_mail_message</code> <span class="hint">lecture</span></label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox"> <code>send_mail</code> <span class="hint" style="color:#f3cf6b">envoi · accord</span></label>
+        </div>
+        <span class="hint">Noms d'outils donnés pour l'exemple : la vraie liste vient du serveur. Conseil : garde surtout la lecture, le cerveau local reste rapide.</span>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <a class="btn" href="Connecteurs.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">Annuler</a>
+        <a class="btn pri" href="Connecteurs.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">Ajouter et allumer</a>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

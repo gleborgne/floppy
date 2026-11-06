@@ -1,0 +1,144 @@
+# Floppy configuration — example.
+# On first start, Floppy copies this file to floppy.yml (ignored by git). Edit floppy.yml, not this file.
+# The file is reloaded live. Most choices are also available in the Settings window, which is the easier path.
+# Secrets (API keys, tokens, passwords) never go here: the Settings forms store them in the OS keychain.
+assistant:
+  name: Floppy
+  language: fr
+  wake_words: [floppy, flopy, floppie, flopi]
+approvals: { read: always, write: ask, send: ask, delete: ask, timeout_s: 90 }
+# Initial slot choices ("<entry id>/<item>"), used until something is chosen in Settings or by voice.
+# The kernel only runs the chosen item while someone uses it.
+slots:
+  # brain.main: llm/gemma          # main brain: add a local model below (or in Settings → Brain), then choose it
+  brain.delegate: claude/claude    # delegation to Claude Code (needs the `claude` CLI; "@none" to disable)
+  # voice.tts: tts-local/femme     # voice in Local mode (default: the first one offered, e.g. a system voice)
+  conversation.live: "@none"       # "@none" = Local mode; "live-gemini/account" = Gemini Live
+  listen.wakeword: wakeword-stt/account   # wake word engine ("@none" = push-to-talk only)
+  veille.tri: claude/sonnet               # brain that sorts the news digest
+  veille.recherche: websearch/claude      # web search engine of the digest ("@none" = RSS feeds only)
+plugins:
+  # --- Tools (MCP servers). Add connectors in Settings → Connectors, or here.
+  - id: tools
+    plugin: tools
+    config:
+      port: 8740
+      servers: {}
+        # Read-only Obsidian vault (example):
+        # obsidian:
+        #   label: Obsidian
+        #   note: "For a note or a saved link, search the notes first."
+        #   command: node
+        #   args: [services/obsidian-mcp/server.mjs, "C:/path/to/your/vault"]
+        # Remote Azure DevOps MCP server, Entra token from Azure CLI (az login) (example):
+        # azuredevops:
+        #   url: https://mcp.dev.azure.com/<your-organization>
+        #   auth: { type: azcli, resource: "https://mcp.dev.azure.com" }
+        #   label: Azure DevOps
+        #   cloud: true
+  # --- Brain
+  # Local models (GGUF) run by llama-server. llama-server is looked up in the PATH;
+  # otherwise set `exe` here or Settings → Brain → llama-server program.
+  - id: llm
+    plugin: llm-llamacpp
+    config:
+      # exe: C:/llama.cpp/llama-server.exe
+      models: {}
+        # gemma:
+        #   label: Gemma 4 12B
+        #   aliases: [gemma]
+        #   model: C:/models/gemma-4-12B-it-Q4_0.gguf
+        #   draft: C:/models/mtp-gemma-4-12B-it-Q4_0.gguf   # optional (MTP speculative decoding)
+  # Remote models (OpenAI-compatible API): add them in Settings → Brain.
+  - { id: llmremote, plugin: llm-openai }
+  - { id: memory, plugin: memory }
+  - { id: claude, plugin: brain-claude-cli, config: { model: sonnet, as: [delegate] } }
+  # Codex (needs the `codex` CLI, signed in): main brain or delegate, one item per model. Also addable in Settings → Brain.
+  # - { id: codex, plugin: brain-codex-cli }
+  # Antigravity (needs the `agy` CLI, signed in to Google): isolated home, Floppy tools only. Google's terms are unclear for third-party tools.
+  # - { id: antigravity, plugin: brain-agy-cli }
+  # Agent sessions: "ask Claude to use Opus to…" opens a real Claude Code / Codex / Antigravity session in a terminal (approval first).
+  - { id: sessions, plugin: agent-sessions }
+  - { id: brain, plugin: brain-aisdk }
+  # --- Voice and bodies
+  # Listening: speech detector + transcription chosen in Settings → Listening (slots listen.vad, listen.stt).
+  # It doesn't speak: voices come from the tts-* plugins (slot voice.tts).
+  - { id: listen, plugin: voice-listen }
+  # sherpa-onnx runner (CPU, in process): ONNX models, also addable in Settings → Listening.
+  - id: sherpa
+    plugin: stt-sherpa
+    config:
+      models: {}
+      #   silero: { label: Silero VAD, path: C:/models/sherpa/silero_vad.onnx }
+      #   parakeet: { label: Parakeet TDT v3, path: C:/models/sherpa/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 }
+  # Cloud voice and Live providers: available in Settings ("Activate"). None is used by default.
+  - id: tts-local
+    plugin: tts-audiocpp
+    config:
+      # exe: C:/audiocpp/audiocpp_server.exe
+      # backend: cpu      # no graphics card: Pocket TTS speaks in real time on the CPU
+      models: {}
+      # Models from the Hugging Face repo audio-cpp/audio.cpp-gguf:
+      #   femme:          # Floppy's female voice (SIWIS, CC BY 4.0), cloned by Pocket TTS (CPU)
+      #     label: Floppy
+      #     model: C:/models/audiocpp/pocket-tts-french-q8_0.gguf
+      #     famille: pocket_tts
+      #     voix: clone
+      #     refWav: plugins/tts/audiocpp/voices/ref_fr_siwis.wav
+      #   anna:           # Qwen3-TTS CustomVoice preset voice (graphics card)
+      #     label: Anna
+      #     model: C:/models/audiocpp/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf
+      #     famille: qwen3_tts
+      #     voix: integree
+      #     speaker: ono_anna
+  - { id: tts-elevenlabs, plugin: tts-elevenlabs }
+  - { id: tts-gemini, plugin: tts-gemini }
+  # Voices already installed on the computer (free, offline). `languages: [fr, en]` changes the voices shown.
+  - { id: tts-system, plugin: tts-system }
+  - { id: live-gemini, plugin: live-gemini }
+  - { id: live-openai, plugin: live-openai }
+  # Wake word engines: configure them in Settings → Listening, then choose one.
+  - { id: wakeword-stt, plugin: wakeword-stt }
+  - { id: wakeword-sherpa, plugin: wakeword-sherpa }
+  - { id: wakeword-porcupine, plugin: wakeword-porcupine }
+  - { id: body, plugin: body-hub }
+  - { id: bodyel, plugin: body-electron, config: { avatar: tv } }
+  # Avatars of the desktop app (plugins/avatar/).
+  - { id: avatar-tv, plugin: avatar-tv }
+  - { id: avatar-pixel, plugin: avatar-pixel }
+  - { id: avatar-essaim, plugin: avatar-essaim }
+  - { id: avatar-gyre, plugin: avatar-gyre }
+  - { id: avatar-goutte, plugin: avatar-goutte }
+  - { id: avatar-oscillo, plugin: avatar-oscillo }
+  - { id: avatar-iris, plugin: avatar-iris }
+  - { id: avatar-pixelcat, plugin: avatar-pixelcat }
+  - { id: bodyws, plugin: body-ws, config: { port: 8750 } }
+  # Reachy Mini robots: add them in Settings → Bodies.
+  - { id: reachy, plugin: body-reachy }
+  - { id: conv, plugin: conversation }
+  # --- AI assistant of the Settings window: your Claude Code or Codex subscription, no API key.
+  - { id: coder, plugin: coder }
+  # --- Apps (Settings → Connectors)
+  - { id: browser, plugin: browser }
+  - { id: websearch, plugin: websearch, config: { engine: claude, claudeModel: haiku } }
+  - { id: m365, plugin: m365 }
+  - { id: orca, plugin: orca, config: { pollSeconds: 15, notifications: importantes } }
+  - { id: documents, plugin: documents }
+  # --- Tasks: the scheduler runs plugin tasks on time (Settings → Tasks).
+  - { id: scheduler, plugin: scheduler }
+  # --- News digest (veille): interests in Settings → News, digest every morning.
+  - id: veille
+    plugin: veille
+    config:
+      interets:
+        ia-locale:
+          nom: IA locale
+          description: "New open-weights models, llama.cpp, local inference on consumer GPUs, local voice (STT/TTS)."
+          flux:
+            - https://simonwillison.net/atom/everything/
+            - https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day
+  # --- Notification channels (Settings → Notifications). Tokens live in the OS keychain.
+  - { id: telegram, plugin: notify-telegram }
+  - { id: mail, plugin: notify-mail }
+  # --- SearXNG (local search): add it in Settings → Connectors, or uncomment with your address.
+  # - { id: searxng, plugin: searxng, config: { url: "http://localhost:8888" } }

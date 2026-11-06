@@ -1,0 +1,35 @@
+// API publique du noyau.
+export const VERSION = "0.1.0";
+
+export { Kernel, consoleLogger, type Logger, type EntryStatus, type SlotStatus, type KernelOptions } from "./plugin/kernel.ts";
+export { definePlugin, manifestError, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
+export type { Context, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
+export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
+export type { NotifyMessage, NotifyService } from "./services.ts";
+export type { SearchHit, SearchService, CompletionRequest, CompletionService, DocRef, DocumentsService, TaskReason, TaskRunInput, TaskResult, TaskService } from "./services.ts";
+export { CatalogRegistry, ItemStore, SECRET_SET, slug, type FieldDef, type FieldType, type ItemKind, type ItemChild, type ItemInfo, type ItemStatus, type OpResult, type OpReply, type ProviderDef, type ProviderSnapshot, type CatalogOp, type CatalogVia, type ItemOverlay } from "./catalog.ts";
+export { MemorySecrets, OsSecrets, defaultSecrets, scopedSecrets, type Secrets } from "./secrets.ts";
+export { tr, allTexts, LANGS, T, TextError, errorText, isLang, type Lang, type Text } from "./i18n.ts";
+export { SettingsRegistry, type SettingDef, type SettingInfo, type SettingOption, type SettingRisk, type ChangeResult } from "./settings.ts";
+export { SectionRegistry, type SectionDef, type SectionInfo } from "./sections.ts";
+export { ToolRegistry, REFUSED_TEXT, NEVER_TEXT, type ToolDef, type ToolInfo, type ToolOutput, type ToolResult, type ToolStatus, type ToolCallMeta, type ToolCallInput, type JsonSchema } from "./tools.ts";
+export { EffectScope, type Disposer } from "./plugin/effects.ts";
+export { Hooks, type Middleware, type Next } from "./plugin/hooks.ts";
+export { Bus, type CoreEvents, type PluginState } from "./bus.ts";
+export { ApprovalManager, strictest, type ApprovalInput, type ApprovalRequest, type Decision, type DecisionReason } from "./approval.ts";
+export { FileAudit, MemoryAudit, type Audit, type AuditRecord } from "./audit.ts";
+export { KernelConfig, EntryConfig, AssistantSettings, ApprovalSettings, Level, Rule, type KernelConfigInput } from "./config/schema.ts";
+export { loadConfigFile, watchConfig } from "./config/loader.ts";
+export { findExe, killTree, stableStringify } from "./util/process.ts";
+export { startControl, controlCall, floppyHome, type ControlInfo, type ControlHandlers } from "./control.ts";
+export type { Services, LlmService, BrainService, BrainEvent, BrainRunInput, TurnMode, MemoryService, MemorySnapshot, VoiceService, VoiceStream, VoiceEvent, CoderService, CoderEvent, CoderAgent, CoderAgentInfo, CoderMode } from "./services.ts";
+export type { McpEndpoint, ScopedEndpoint, ScopedOptions, ExtraTool, BodyHub, BodySessionInfo, HubEvent, AttachOpts, AvatarInfo, AvatarEntry, AvatarRegistry } from "./services.ts";
+export { defineAvatar, readAvatarDir } from "./avatars.ts";
+export type { TtsChunk, TtsService, VadEvent, VadStream, VadService, SttService, LiveEvent, LiveSession, LiveService } from "./services.ts";
+export { providerConfig } from "./provider-config.ts";
+export { floatToPcm16, Pcm16Decoder, AudioHistory, wavPcm } from "./audio.ts";
+export { readSse } from "./streaming.ts";
+export { connectJsonSocket, type JsonSocket } from "./json-socket.ts";
+export type { ConversationCommand, ConversationCommandInput } from "./services.ts";
+export type { WakewordService, WakewordStream, WakewordDetection, WakewordTranscript, Availability } from "./services.ts";
+export { agentPrompt } from "./agent-prompt.ts";

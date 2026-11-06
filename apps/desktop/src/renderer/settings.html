@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:">
+<title>Floppy — Réglages</title>
+<link rel="stylesheet" href="./settings.css">
+<link rel="stylesheet" href="./assistant.css">
+<link rel="stylesheet" href="./settings-v2.css">
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <h1 id="title">Réglages</h1>
+      <label class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input id="search" type="search" autocomplete="off" aria-label="Chercher">
+      </label>
+      <span class="grow"></span>
+      <button id="undo" type="button" class="btn">Annuler le dernier changement</button>
+      <button id="assistant-btn" type="button" class="btn accent">Assistant IA</button>
+    </header>
+    <div class="body">
+      <nav id="nav" aria-label="Rubriques"></nav>
+      <div class="pages">
+        <main id="content" tabindex="-1"></main>
+        <div id="pane-assistant" hidden>
+          <button id="assistant-toggle" type="button" aria-controls="assistant" aria-expanded="true" hidden>Assistant IA</button>
+          <aside id="assistant" aria-label="Assistant IA"></aside>
+        </div>
+      </div>
+    </div>
+  </div>
+  <dialog id="editor" aria-labelledby="editor-title"></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="./icons.js"></script>
+  <script type="module" src="./settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "id": "gyre",
+  "name": { "fr": "Gyre", "en": "Gyre" },
+  "description": { "fr": "WebGL · présence 3D abstraite : noyau en fil de lumière et anneaux gyroscope · sans visage", "en": "WebGL · abstract 3D presence: wire-light core and gyroscope rings · no face" },
+  "emotions": ["neutral","happy","sad","angry","surprised","love","confused","wink","sleepy","thinking"]
+}

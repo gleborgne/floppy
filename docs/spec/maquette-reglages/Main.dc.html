@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Réglages — Cerveau</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#46e3ea}a:hover{color:#8ff2f6}
+.nav{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:10px;color:#b4c4c9;font-size:14px;text-decoration:none}
+.nav.on{background:#16202b;color:#eef8fa;box-shadow:inset 0 0 0 1px rgba(70,227,234,.35)}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(120,220,230,.3);color:#9fb3b9}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;background:#122a2e;color:#7ff0f4}
+.btn{height:36px;padding:0 14px;border-radius:10px;border:1px solid rgba(120,220,230,.28);background:#141c26;color:#eef8fa;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn.pri{background:#46e3ea;color:#04262a;border-color:transparent}
+.sw{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9fb3b9}.sw i{width:30px;height:17px;border-radius:999px;background:#2a3540;position:relative;display:inline-block}.sw i::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#8fa3a9}.sw.on i{background:#46e3ea}.sw.on i::after{left:15px;background:#04262a}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid rgba(255,255,255,.06)}
+</style>
+</helmet>
+<div style="width:1280px;height:820px;box-sizing:border-box;background:#0b0f15;color:#eef8fa;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column">
+  <header style="height:60px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <strong style="font-size:18px">Réglages</strong>
+    <label style="flex:1;max-width:420px;display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:10px;background:#121821;border:1px solid rgba(255,255,255,.08);color:#8fa3a9;font-size:13px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input aria-label="Chercher un réglage" placeholder="Chercher un réglage, un plugin, un outil…" style="flex:1;background:transparent;border:0;color:#eef8fa;font:inherit;outline:none">
+    </label>
+    <span style="flex:1"></span>
+    <button class="btn">Annuler le dernier changement</button>
+    <button class="btn" style="color:#46e3ea">Assistant IA</button>
+  </header>
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="Rubriques" style="width:232px;box-sizing:border-box;padding:16px 12px;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:2px">
+      <a class="nav" href="#">Général</a>
+      <a class="nav on" href="#" aria-current="page">Cerveau</a>
+      <a class="nav" href="Voix.dc.html">Voix</a>
+      <a class="nav" href="#">Écoute</a>
+      <a class="nav" href="Connecteurs.dc.html">Connecteurs <span class="badge" style="margin-left:auto">5</span></a>
+      <a class="nav" href="Avatars.dc.html">Corps et affichage</a>
+      <a class="nav" href="#">Plugins</a>
+      <a class="nav" href="#">Assistant IA</a>
+      <a class="nav" href="#">Système</a>
+      <span style="flex:1"></span>
+      <p style="margin:0;padding:12px;font-size:12px;line-height:1.5;color:#8fa3a9">Chaque rubrique se construit avec les plugins installés. Un nouveau plugin y ajoute ses options.</p>
+    </nav>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:28px 36px;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;align-items:flex-end;gap:16px">
+        <div style="flex:1">
+          <h1 style="margin:0;font-size:24px">Cerveau</h1>
+          <p style="margin:6px 0 0;color:#9fb3b9;font-size:14px">Qui réfléchit et répond. Choisis un rôle pour chaque moteur, ou ajoute le tien.</p>
+        </div>
+        <div role="group" aria-label="Mode" style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#9fb3b9">MODE
+          <div style="display:flex;border-radius:10px;border:1px solid rgba(255,255,255,.12);overflow:hidden">
+            <button type="button" style="height:34px;padding:0 14px;border:0;background:#46e3ea;color:#04262a;font:inherit;font-size:13px;font-weight:700">Séparé : cerveau + voix</button>
+            <a href="CerveauLive.dc.html" style="height:34px;padding:0 14px;display:inline-flex;align-items:center;background:#0d131b;color:#b4c4c9;font-size:13px;text-decoration:none">Live : un seul modèle</a>
+          </div>
+        </div>
+      </div>
+
+      <section aria-label="Rôles" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+        <div style="padding:16px 18px;border-radius:16px;background:#111821;border:1px solid rgba(70,227,234,.35)">
+          <div style="font-size:12px;letter-spacing:.08em;color:#46e3ea;font-weight:700">CERVEAU PRINCIPAL</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <strong style="font-size:17px">Gemma 4 12B</strong><span class="chip">local</span><span class="badge">LLM local · llama.cpp</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#9fb3b9">Changer pour
+            <select aria-label="Cerveau principal" style="flex:1;height:34px;border-radius:9px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;padding:0 8px"><option>Gemma 4 12B (local)</option><option>Qwen3.6 35B-A3B (local)</option><option>Mistral Large (API distante)</option><option>Claude Haiku (CLI)</option></select>
+          </label>
+        </div>
+        <div style="padding:16px 18px;border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08)">
+          <div style="font-size:12px;letter-spacing:.08em;color:#9fb3b9;font-weight:700">DÉLÉGATION (DEMANDES DIFFICILES)</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <strong style="font-size:17px">Claude Sonnet</strong><span class="chip" style="background:#2a2412;color:#f3cf6b">cloud</span><span class="badge">Claude Code · CLI</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#9fb3b9">Changer pour
+            <select aria-label="Délégation" style="flex:1;height:34px;border-radius:9px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;padding:0 8px"><option>Claude Sonnet (CLI)</option><option>Codex (CLI)</option><option>Aucune délégation</option></select>
+          </label>
+        </div>
+      </section>
+
+      <section aria-label="Moteurs" style="display:flex;flex-direction:column;gap:14px;min-height:0">
+        <div style="display:flex;align-items:center;gap:12px">
+          <h2 style="margin:0;font-size:16px">Moteurs disponibles</h2>
+          <span style="color:#8fa3a9;font-size:13px">fournis par les plugins installés</span>
+          <span style="flex:1"></span>
+          <button class="btn">Installer un plugin…</button>
+        </div>
+
+        <div style="border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px">
+            <strong>LLM local</strong><span class="badge">plugin llm-llamacpp</span>
+            <span style="color:#8fa3a9;font-size:13px">un seul modèle chargé à la fois · GPU 18,1 Go / 24</span>
+            <span style="flex:1"></span>
+            <a class="btn pri" href="AjoutModele.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">+ Ajouter un modèle local</a>
+          </div>
+          <div class="row"><span style="width:10px;height:10px;border-radius:50%;background:#46e3ea" aria-hidden="true"></span><strong style="width:200px">Gemma 4 12B</strong><span style="color:#9fb3b9;font-size:13px;flex:1">Q4_0 + MTP · GPU ~8 Go · chargé</span><span class="chip">principal</span><span class="sw on" title="Visible pour Floppy"><i></i>actif</span><button class="btn">Modifier</button></div>
+          <div class="row"><span style="width:10px;height:10px;border-radius:50%;background:#3a4652" aria-hidden="true"></span><strong style="width:200px">Qwen3.6 35B-A3B</strong><span style="color:#9fb3b9;font-size:13px;flex:1">MoE · GPU ~9,6 Go + RAM 13 Go · experts en RAM</span><span class="sw on" title="Visible pour Floppy"><i></i>actif</span><button class="btn">Modifier</button></div>
+          <div class="row" style="opacity:.55"><span style="width:10px;height:10px;border-radius:50%;background:#3a4652" aria-hidden="true"></span><strong style="width:200px">Qwen3.5 9B</strong><span style="color:#9fb3b9;font-size:13px;flex:1">Q6_K · GPU ~7,9 Go · désactivé : Floppy ne le voit plus, rien n'est supprimé</span><span class="sw" title="Invisible pour Floppy"><i></i>inactif</span><button class="btn">Modifier</button></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">
+          <div style="padding:14px;border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08)">
+            <div style="display:flex;align-items:center;gap:8px"><strong>API compatible OpenAI</strong><span class="chip" style="background:#2a2412;color:#f3cf6b">distant</span></div>
+            <p style="margin:6px 0 10px;color:#9fb3b9;font-size:13px">Toute API au format OpenAI : adresse, modèle, clé. 1 modèle : Mistral Large.</p>
+            <button class="btn">+ Ajouter un modèle distant</button>
+          </div>
+          <div style="padding:14px;border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08)">
+            <div style="display:flex;align-items:center;gap:8px"><strong>Claude Code</strong><span class="chip" style="background:#2a2412;color:#f3cf6b">cloud</span></div>
+            <p style="margin:6px 0 10px;color:#9fb3b9;font-size:13px">Ton abonnement, par le CLI. 2 profils : Sonnet, Haiku.</p>
+            <button class="btn">Gérer les profils</button>
+          </div>
+          <div style="padding:14px;border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08)">
+            <div style="display:flex;align-items:center;gap:8px"><strong>Codex</strong><span class="chip" style="background:#2a2412;color:#f3cf6b">cloud</span></div>
+            <p style="margin:6px 0 10px;color:#9fb3b9;font-size:13px">Ton abonnement ChatGPT, par le CLI. 1 profil : défaut.</p>
+            <button class="btn">Gérer les profils</button>
+          </div>
+          <div style="padding:14px;border-radius:16px;background:#0f141b;border:1px dashed rgba(120,220,230,.3)">
+            <div style="display:flex;align-items:center;gap:8px"><strong>Gemini Live</strong><span class="badge">non installé</span></div>
+            <p style="margin:6px 0 10px;color:#9fb3b9;font-size:13px">Mode live : voix et cerveau en un. Installé, il apparaît ici et dans Voix.</p>
+            <button class="btn">Installer</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

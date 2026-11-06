@@ -1,0 +1,105 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-05T13:50:00Z"
+  },
+  "title": "Floppy — nouveaux réglages",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 820,
+      "title": "1 · Cerveau : fournisseurs, instances et rôles"
+    },
+    "AjoutModele.dc.html": {
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 820,
+      "title": "2 · Ajouter un modèle local (formulaire tiré du schéma du plugin)"
+    },
+    "Connecteurs.dc.html": {
+      "x": 0,
+      "y": 940,
+      "w": 1280,
+      "h": 820,
+      "title": "3 · Connecteurs : MCP, CLI, Orca… et détail d'un connecteur"
+    },
+    "AjoutConnecteur.dc.html": {
+      "x": 1360,
+      "y": 940,
+      "w": 1280,
+      "h": 820,
+      "title": "4 · Ajouter un connecteur : type, puis formulaire"
+    },
+    "Voix.dc.html": {
+      "x": 0,
+      "y": 1880,
+      "w": 1280,
+      "h": 820,
+      "title": "5 · Voix, mode séparé : cascade locale + Gemini TTS (bouche seulement)"
+    },
+    "CerveauLive.dc.html": {
+      "x": 1360,
+      "y": 1880,
+      "w": 1280,
+      "h": 820,
+      "title": "6 · Cerveau, mode live : Gemini Live = cerveau + voix, la délégation reste"
+    },
+    "VoixLive.dc.html": {
+      "x": 0,
+      "y": 2820,
+      "w": 1280,
+      "h": 820,
+      "title": "7 · Voix, mode live : gérée par Gemini Live, le mot d'activation reste local"
+    },
+    "Avatars.dc.html": {
+      "x": 1360,
+      "y": 2820,
+      "w": 1280,
+      "h": 820,
+      "title": "8 · Corps et affichage : corps branchés + avatars (plugins)"
+    },
+    "AjoutCorps.dc.html": {
+      "x": 0,
+      "y": 3760,
+      "w": 1280,
+      "h": 820,
+      "title": "9 · Ajouter un corps : Reachy Mini, Telegram, autre appareil"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "AjoutModele.dc.html",
+    "Connecteurs.dc.html",
+    "AjoutConnecteur.dc.html",
+    "Voix.dc.html",
+    "CerveauLive.dc.html",
+    "VoixLive.dc.html",
+    "Avatars.dc.html",
+    "AjoutCorps.dc.html"
+  ],
+  "notes": {
+    "titre": {
+      "x": 0,
+      "y": -300,
+      "text": "Réglages pilotés par les plugins",
+      "kind": "title1",
+      "maxW": 2640
+    },
+    "regle": {
+      "x": 0,
+      "y": -180,
+      "text": "Règle commune : chaque élément (modèle, voix, connecteur, outil, plugin) a un interrupteur actif / inactif. Inactif = invisible pour Floppy, mais gardé. Supprimer est une action à part.",
+      "kind": "body",
+      "maxW": 1280
+    }
+  },
+  "designSystems": []
+}

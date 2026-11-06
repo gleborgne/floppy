@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Réglages — Connecteurs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#46e3ea}a:hover{color:#8ff2f6}
+.nav{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:10px;color:#b4c4c9;font-size:14px;text-decoration:none}
+.nav.on{background:#16202b;color:#eef8fa;box-shadow:inset 0 0 0 1px rgba(70,227,234,.35)}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(120,220,230,.3);color:#9fb3b9;white-space:nowrap}
+.btn{height:36px;padding:0 14px;border-radius:10px;border:1px solid rgba(120,220,230,.28);background:#141c26;color:#eef8fa;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn.pri{background:#46e3ea;color:#04262a;border-color:transparent}
+.item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:#111821;border:1px solid rgba(255,255,255,.07)}
+.item.on{border-color:rgba(70,227,234,.45);background:#121d27}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.tool{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;font-size:13px}
+.lv{font-size:11px;padding:1px 7px;border-radius:6px}
+</style>
+</helmet>
+<div style="width:1280px;height:820px;box-sizing:border-box;background:#0b0f15;color:#eef8fa;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column">
+  <header style="height:60px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <strong style="font-size:18px">Réglages</strong>
+    <span style="flex:1"></span>
+    <button class="btn">Annuler le dernier changement</button>
+    <button class="btn" style="color:#46e3ea">Assistant IA</button>
+  </header>
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="Rubriques" style="width:232px;box-sizing:border-box;padding:16px 12px;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:2px">
+      <a class="nav" href="#">Général</a>
+      <a class="nav" href="Main.dc.html">Cerveau</a>
+      <a class="nav" href="Voix.dc.html">Voix</a>
+      <a class="nav" href="#">Écoute</a>
+      <a class="nav on" href="#" aria-current="page">Connecteurs <span class="badge" style="margin-left:auto">5</span></a>
+      <a class="nav" href="#">Corps et affichage</a>
+      <a class="nav" href="#">Plugins</a>
+      <a class="nav" href="#">Assistant IA</a>
+      <a class="nav" href="#">Système</a>
+    </nav>
+    <main style="flex:1;min-width:0;display:flex;min-height:0">
+      <section aria-label="Liste des connecteurs" style="width:420px;box-sizing:border-box;padding:28px 20px 20px 32px;display:flex;flex-direction:column;gap:12px;border-right:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <h1 style="margin:0;font-size:24px;flex:1">Connecteurs</h1>
+          <a class="btn pri" href="AjoutConnecteur.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">+ Ajouter</a>
+        </div>
+        <p style="margin:0 0 6px;color:#9fb3b9;font-size:13px;line-height:1.5">Ce que Floppy peut lire et faire : serveurs MCP, commandes, applications. Chaque connecteur s'allume ou s'éteint sans redémarrer.</p>
+        <div class="item on"><span class="dot" style="background:#46e3ea" aria-hidden="true"></span><div style="flex:1;min-width:0"><strong>Azure DevOps</strong><div style="color:#8fa3a9;font-size:12px">connecté · 5 outils sur 43</div></div><span class="badge">MCP distant</span></div>
+        <div class="item"><span class="dot" style="background:#46e3ea" aria-hidden="true"></span><div style="flex:1;min-width:0"><strong>Orca</strong><div style="color:#8fa3a9;font-size:12px">surveillance active · 2 outils</div></div><span class="badge">application</span></div>
+        <div class="item"><span class="dot" style="background:#46e3ea" aria-hidden="true"></span><div style="flex:1;min-width:0"><strong>Obsidian</strong><div style="color:#8fa3a9;font-size:12px">connecté · lecture seule · 2 outils</div></div><span class="badge">MCP local</span></div>
+        <div class="item"><span class="dot" style="background:#e8a33c" aria-hidden="true"></span><div style="flex:1;min-width:0"><strong>Office 365</strong><div style="color:#e8c27a;font-size:12px">connexion à finir : se connecter à Microsoft</div></div><span class="badge">MCP local</span></div>
+        <div class="item" style="opacity:.75"><span class="dot" style="background:#3a4652" aria-hidden="true"></span><div style="flex:1;min-width:0"><strong>Démo (agenda, mails)</strong><div style="color:#8fa3a9;font-size:12px">éteint</div></div><span class="badge">MCP local</span></div>
+      </section>
+
+      <section aria-label="Détail du connecteur" style="flex:1;min-width:0;padding:28px 32px;display:flex;flex-direction:column;gap:16px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px">
+          <h2 style="margin:0;font-size:20px">Azure DevOps</h2><span class="badge">MCP distant</span><span class="badge" style="color:#f3cf6b;border-color:rgba(243,207,107,.4)">données dans le cloud</span>
+          <span style="flex:1"></span>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#b4c4c9"><input type="checkbox" checked aria-label="Allumé"> Allumé</label>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#b4c4c9">Adresse<input value="https://mcp.dev.azure.com/[organisation]" style="height:36px;box-sizing:border-box;padding:0 12px;border-radius:10px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;font-size:13px"></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#b4c4c9">Connexion<select style="height:36px;border-radius:10px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;font-size:13px;padding:0 8px"><option>Mon compte Azure CLI (az login)</option><option>Jeton</option><option>OAuth (navigateur)</option><option>Aucune</option></select></label>
+        </div>
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;border-radius:14px;background:#111821;border:1px solid rgba(255,255,255,.07)">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06)">
+            <strong style="font-size:14px">Outils donnés au cerveau</strong>
+            <span style="color:#8fa3a9;font-size:12px">5 sur 43 · ~3 700 jetons par demande</span>
+            <span style="flex:1"></span>
+            <input aria-label="Filtrer les outils" placeholder="Filtrer…" style="width:160px;height:30px;box-sizing:border-box;padding:0 10px;border-radius:8px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;font-size:12px">
+          </div>
+          <div style="padding:8px;display:flex;flex-direction:column;gap:2px;overflow:hidden">
+            <label class="tool"><input type="checkbox" checked> <code style="flex:1">repo_pull_request</code><span class="lv" style="background:#123033;color:#7ff0f4">lecture · libre</span></label>
+            <label class="tool"><input type="checkbox" checked> <code style="flex:1">pipelines_build</code><span class="lv" style="background:#123033;color:#7ff0f4">lecture · libre</span></label>
+            <label class="tool"><input type="checkbox" checked> <code style="flex:1">wit_work_item</code><span class="lv" style="background:#123033;color:#7ff0f4">lecture · libre</span></label>
+            <label class="tool"><input type="checkbox" checked> <code style="flex:1">search_workitem</code><span class="lv" style="background:#123033;color:#7ff0f4">lecture · libre</span></label>
+            <label class="tool"><input type="checkbox" checked> <code style="flex:1">core_list_projects</code><span class="lv" style="background:#123033;color:#7ff0f4">lecture · libre</span></label>
+            <label class="tool"><input type="checkbox"> <code style="flex:1">wit_work_item_comment_write</code><span class="lv" style="background:#33280f;color:#f3cf6b">écriture · accord</span></label>
+            <label class="tool"><input type="checkbox"> <code style="flex:1">repo_pull_request_write</code><span class="lv" style="background:#3a1712;color:#ff9b85">suppression · accord</span></label>
+            <label class="tool"><input type="checkbox"> <code style="flex:1">wiki</code><span class="lv" style="background:#123033;color:#7ff0f4">lecture · libre</span></label>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn">Tester la connexion</button>
+          <button class="btn">Voir le journal</button>
+          <span style="flex:1"></span>
+          <button class="btn" style="color:#ff9b85">Supprimer le connecteur</button>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

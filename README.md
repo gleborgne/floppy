@@ -1,0 +1,128 @@
+# Floppy
+
+**A local-first voice assistant for your PC, where everything is a plugin.**
+
+You call it by name ("Floppy…"), it answers out loud, and it acts with your tools: calendar, mail, notes, pull requests, the web.
+The brain, the voice, the avatar, the tools and even the body it lives in are plugins you can swap, by config or by voice.
+
+![Floppy's avatar showing different emotions](docs/spec/img/avatar-emotions.png)
+
+> **Status: early prototype.** It runs every day on its author's machine, but it is not packaged yet.
+> Windows first (the code stays portable). The interface supports French and English; most docs and code comments are in French for now.
+
+## What it does
+
+- **Always listening, local by default.** Wake word, speech-to-text and text-to-speech all run on your computer, with or without a GPU. Cloud services are used only for the plugins you turn on.
+- **Swappable brain.** A local model through [llama.cpp](https://github.com/ggml-org/llama.cpp) (Gemma, Qwen…) that delegates hard requests to Claude Code or Codex, a remote OpenAI-compatible model, or a live speech model (Gemini Live, GPT Live).
+- **Swappable voice.** Listening with Silero + Parakeet ([sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), CPU). Speaking with [audio.cpp](https://github.com/0xShug0/audio.cpp) (Pocket TTS on the CPU, Qwen3-TTS on the GPU), cloud voices (Gemini TTS, ElevenLabs), or the voices built into the OS. No Python.
+- **Several bodies.** The desktop app with an animated avatar, a text chat in the terminal, a WebSocket client, or a [Reachy Mini](https://www.pollen-robotics.com/reachy-mini/) robot.
+- **Real tools through MCP.** Any MCP server, plus built-in connectors: browser, web search, Microsoft 365, Azure DevOps, Obsidian (read-only), Orca.
+- **Approvals.** Reading is free within the rights you granted. Writing, sending or deleting asks you first, by voice or by click. Everything is logged.
+- **Tasks, digests and notifications.** A scheduler runs plugin tasks (for example a daily news digest) and can send results to Telegram or by mail.
+- **Settings driven by plugins.** Each plugin declares its own settings forms. An AI assistant in the Settings window (your Claude Code or Codex) can tune Floppy or write a new plugin with you.
+
+## Requirements
+
+- Windows 10/11, [Node.js 24](https://nodejs.org/).
+- For a **local brain**: an NVIDIA GPU (about 16 GB of free VRAM for brain + voice) and [llama.cpp](https://github.com/ggml-org/llama.cpp/releases) (`llama-server`), plus a GGUF model.
+- For the **local voice**: [audio.cpp](https://github.com/0xShug0/audio.cpp/releases) (`audiocpp_server`) and its GGUF models, plus the sherpa-onnx listening models (about 1 GB in all). No GPU needed.
+- Optional: the [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex CLI, signed in (delegation, web search, Settings assistant).
+- Without a GPU: listening and voice run on the CPU; use Claude Code, Codex or a cloud model as the brain (API keys are entered in the Settings forms and stored in the OS keychain).
+
+## Quick start
+
+```powershell
+git clone https://github.com/gleborgne/floppy.git
+cd floppy
+npm install
+npm start          # first start creates floppy.yml from floppy.example.yml
+```
+
+Then open **Settings** (tray icon) to choose a brain and a voice.
+
+**Local brain.** Put `llama-server` in your PATH, or set its path in *Settings → Brain → llama-server program*.
+Add a GGUF model in *Settings → Brain*, then activate it.
+
+**Local voice.** Listening: download `silero_vad.onnx` and the Parakeet TDT v3 int8 folder from the
+[sherpa-onnx models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models), then add both in *Settings → Listening → sherpa-onnx*.
+Speaking: put `audiocpp_server` in your PATH (or set its path in *Settings → Voice*), and add a model from the Hugging Face repo
+`audio-cpp/audio.cpp-gguf` in *Settings → Voice → audio.cpp* (Pocket TTS for the CPU). Without them, Floppy uses the system voices.
+No GPU: see the guide `docs/guide/configuration-avancee.md` (section « Floppy sans carte graphique »).
+
+Restart Floppy. Say "Floppy" or press `Ctrl+Alt+F` to talk without the wake word.
+
+### Command line
+
+```powershell
+npx floppy plugins            # plugin status
+npx floppy chat               # a second body, in text
+npx floppy approvals          # pending approvals; npx floppy approve <id> [--no]
+npx floppy log 20             # audit log
+npx floppy set service.tts tts-gemini     # change a choice from the CLI
+npx floppy start --config <file>          # headless (disable body-electron in that file)
+npm run check                 # typecheck + tests + licence check
+```
+
+Configuration lives in `floppy.yml` (reloaded live, ignored by git). User data lives in `%LOCALAPPDATA%\floppy` (or `FLOPPY_HOME`).
+
+## How it is built
+
+```mermaid
+flowchart LR
+  subgraph APP["Desktop app (Electron)"]
+    AV["Avatar + Settings windows"]
+    subgraph K["Kernel (utility process)"]
+      P["Plugins: brain · llm · voice · tools · memory · bodies · tasks…"]
+    end
+  end
+  K --> LS["llama-server (local model)"]
+  K --> AC["audio.cpp server (voice)"]
+  K --> MCP["MCP servers (tools)"]
+  K --> CLI["Claude Code / Codex CLI"]
+  K --> CLOUD["Cloud providers you enable"]
+```
+
+The kernel has no dependency on Electron. Plugins declare the services they provide and need, their rights and their settings.
+Heavy resources (a model on the GPU, a voice) run only while an active plugin uses them.
+
+| Folder | Role |
+|---|---|
+| `packages/core` | The kernel: plugins (services, dependencies, effects, hooks), live YAML config, approvals, tool registry, audit log, local control endpoint. |
+| `packages/protocol` | Kernel ↔ body protocol: emotions, states, capabilities. |
+| `plugins/<family>/<name>` | All plugins: `brain`, `llm`, `voice`, `tts`, `live`, `wakeword`, `body`, `avatar`, `tools`, `memory`, `tasks`, `veille` (news digest), `notify`, `conversation`… |
+| `apps/desktop` | The Electron app: kernel in a `utilityProcess`, WebGL avatar, Settings window. |
+| `apps/cli` | The `floppy` CLI and the plugin catalog. |
+| `services/obsidian-mcp` | Read-only Obsidian MCP server. |
+| `bench` | Brain benchmark: 40 graded requests through the kernel. |
+| `docs` | Specification and guides (French). |
+
+## Documentation
+
+- [Specification](docs/spec/README.md): kernel, plugins, brain, security, settings, tasks… (French)
+- [User guides](docs/guide/README.md): notifications, cloud voices, Live mode, wake word engines, writing a plugin (French)
+- [Security model](docs/spec/securite.md) and [how to report a vulnerability](SECURITY.md)
+
+## Writing a plugin
+
+```ts
+import { definePlugin } from "@floppy/core";
+import { z } from "zod";
+
+export default definePlugin({
+  manifest: { id: "my-plugin", version: "0.1.0", licence: "MIT", provides: ["myService"], inject: ["llm"] },
+  config: z.object({ port: z.number().default(9000) }),
+  async apply(ctx, cfg) {
+    const llm = ctx.get("llm");
+    ctx.spawn("my-exe", ["--port", String(cfg.port)]);   // killed when the plugin unloads
+    ctx.tools.register([/* tools: level read/write/send/delete, go through approvals */]);
+    ctx.provide("myService", { /* … */ });
+  },
+});
+```
+
+Add it to `apps/cli/src/catalog.ts` and to `floppy.yml`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence
+
+[MIT](LICENSE). Models, voices and icons used by Floppy have their own licences: see [THIRD_PARTY.md](THIRD_PARTY.md).
+Models are not included in this repository; you download them and accept their licences.

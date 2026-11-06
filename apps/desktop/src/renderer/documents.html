@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src https: data:; script-src 'self'">
+<title>Floppy — Documents</title>
+<link rel="stylesheet" href="./documents.css">
+</head>
+<body>
+<aside id="side">
+  <h2 id="side-title">Documents</h2>
+  <div id="filters" role="group" aria-label="Filtre"></div>
+  <nav id="list" aria-label="Documents"></nav>
+</aside>
+<main id="main">
+  <header id="head"><h1 id="titre"></h1><p id="date"></p></header>
+  <article id="doc" class="md" aria-live="polite"><p class="empty">Aucun document pour l'instant.</p></article>
+</main>
+<script src="./icons.js"></script>
+<script src="./documents.js"></script>
+</body>
+</html>

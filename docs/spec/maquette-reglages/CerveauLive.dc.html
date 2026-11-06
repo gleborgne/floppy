@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Réglages — Cerveau (mode live)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#46e3ea}a:hover{color:#8ff2f6}
+.nav{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:10px;color:#b4c4c9;font-size:14px;text-decoration:none}
+.nav.on{background:#16202b;color:#eef8fa;box-shadow:inset 0 0 0 1px rgba(70,227,234,.35)}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(120,220,230,.3);color:#9fb3b9;white-space:nowrap}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;background:#122a2e;color:#7ff0f4}
+.cloud{background:#2a2412;color:#f3cf6b}
+.btn{height:36px;padding:0 14px;border-radius:10px;border:1px solid rgba(120,220,230,.28);background:#141c26;color:#eef8fa;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.sel{flex:1;height:34px;border-radius:9px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;padding:0 8px}
+.card{padding:16px 18px;border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08)}
+.cap{font-size:12px;letter-spacing:.08em;color:#9fb3b9;font-weight:700}
+.flow{display:flex;align-items:center;gap:10px;font-size:13px}
+.step{padding:8px 12px;border-radius:10px;background:#0d131b;border:1px solid rgba(255,255,255,.1);white-space:nowrap}
+.step.k{border-color:rgba(70,227,234,.45);color:#7ff0f4}
+.step.c{border-color:rgba(243,207,107,.45);color:#f3cf6b}
+.arr{color:#5d6f77}
+</style>
+</helmet>
+<div style="width:1280px;height:820px;box-sizing:border-box;background:#0b0f15;color:#eef8fa;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column">
+  <header style="height:60px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <strong style="font-size:18px">Réglages</strong>
+    <span style="flex:1"></span>
+    <button class="btn">Annuler le dernier changement</button>
+    <button class="btn" style="color:#46e3ea">Assistant IA</button>
+  </header>
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="Rubriques" style="width:232px;box-sizing:border-box;padding:16px 12px;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:2px">
+      <a class="nav" href="#">Général</a>
+      <a class="nav on" href="#" aria-current="page">Cerveau</a>
+      <a class="nav" href="VoixLive.dc.html">Voix</a>
+      <a class="nav" href="#">Écoute</a>
+      <a class="nav" href="Connecteurs.dc.html">Connecteurs <span class="badge" style="margin-left:auto">5</span></a>
+      <a class="nav" href="#">Corps et affichage</a>
+      <a class="nav" href="#">Plugins</a>
+      <a class="nav" href="#">Assistant IA</a>
+      <a class="nav" href="#">Système</a>
+    </nav>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:28px 36px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:16px">
+        <div style="flex:1">
+          <h1 style="margin:0;font-size:24px">Cerveau</h1>
+          <p style="margin:6px 0 0;color:#9fb3b9;font-size:14px">Mode live : un seul modèle entend, réfléchit et parle. La délégation reste.</p>
+        </div>
+        <div role="group" aria-label="Mode" style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#9fb3b9">MODE
+          <div style="display:flex;border-radius:10px;border:1px solid rgba(255,255,255,.12);overflow:hidden">
+            <a href="Main.dc.html" style="height:34px;padding:0 14px;display:inline-flex;align-items:center;background:#0d131b;color:#b4c4c9;font-size:13px;text-decoration:none">Séparé : cerveau + voix</a>
+            <button type="button" style="height:34px;padding:0 14px;border:0;background:#46e3ea;color:#04262a;font:inherit;font-size:13px;font-weight:700">Live : un seul modèle</button>
+          </div>
+        </div>
+      </div>
+
+      <section aria-label="Rôles" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+        <div class="card" style="border-color:rgba(70,227,234,.35)">
+          <div class="cap" style="color:#46e3ea">CERVEAU ET VOIX (LIVE)</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <strong style="font-size:17px">Gemini Live</strong><span class="chip cloud">cloud</span><span class="badge">plugin gemini-live</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#9fb3b9">Changer pour
+            <select class="sel" aria-label="Modèle live"><option>Gemini Live</option><option>GPT Live (non configuré)</option></select>
+          </label>
+          <p style="margin:10px 0 0;font-size:12px;color:#8fa3a9">Voix : Kore · réglée dans <a href="VoixLive.dc.html">Voix</a>.</p>
+        </div>
+        <div class="card">
+          <div class="cap">DÉLÉGATION (DEMANDES DIFFICILES)</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <strong style="font-size:17px">Claude Sonnet</strong><span class="chip cloud">cloud</span><span class="badge">Claude Code · CLI</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#9fb3b9">Changer pour
+            <select class="sel" aria-label="Délégation"><option>Claude Sonnet (CLI)</option><option>Codex (CLI)</option><option>Gemma 4 12B (local)</option><option>Aucune délégation</option></select>
+          </label>
+          <p style="margin:10px 0 0;font-size:12px;color:#8fa3a9">Le modèle live appelle l'outil « deleguer », puis lit la réponse.</p>
+        </div>
+      </section>
+
+      <section aria-label="Chemin d'une demande" class="card" style="display:flex;flex-direction:column;gap:12px">
+        <div class="cap">CHEMIN D'UNE DEMANDE EN MODE LIVE</div>
+        <div class="flow">
+          <span class="step k">Micro</span><span class="arr">→</span>
+          <span class="step k">Mot d'activation (local)</span><span class="arr">→</span>
+          <span class="step c">Gemini Live : entend, réfléchit, parle</span><span class="arr">→</span>
+          <span class="step k">Haut-parleur</span>
+        </div>
+        <div class="flow" style="padding-left:300px">
+          <span class="arr">↳ outils</span>
+          <span class="step k">Noyau : accord + journal</span><span class="arr">→</span>
+          <span class="step">Connecteurs · mémoire · deleguer</span>
+        </div>
+        <p style="margin:0;font-size:12px;color:#8fa3a9">Bleu : sur ton PC. Jaune : cloud. Le son part au cloud seulement après « Floppy » et s'arrête après l'écoute libre.</p>
+      </section>
+
+      <section aria-label="Moteurs" class="card" style="display:flex;align-items:center;gap:14px;opacity:.7">
+        <strong>Modèles locaux et distants</strong>
+        <span style="color:#9fb3b9;font-size:13px;flex:1">Gardés, mais au repos en mode live : le GPU est libéré. Ils restent possibles pour la délégation.</span>
+        <a class="btn" href="Main.dc.html" style="display:inline-flex;align-items:center;text-decoration:none">Voir les 4 modèles</a>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

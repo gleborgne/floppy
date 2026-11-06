@@ -1,0 +1,97 @@
+:root {
+  --ink: #eef8fa;
+  --muted: #9fb3b9;
+  --accent: #46e3ea;
+  --card: rgb(13, 17, 24);
+  --line: rgba(120, 220, 230, 0.22);
+}
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+body { font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--ink); }
+#root { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+/* Pas de zone « drag » : le déplacement est fait à la main (app.js), pour qu'un clic puisse chatouiller Floppy. */
+#faceWrap { width: 100%; height: 230px; flex: none; cursor: grab; touch-action: none; user-select: none; }
+#faceWrap.dragging { cursor: grabbing; }
+#face { width: 100%; height: 100%; display: block; }
+
+/* Bulle de BD au-dessus de la tête */
+#bubble {
+  position: relative; flex: none; box-sizing: border-box;
+  width: max-content; max-width: calc(100% - 24px); min-width: 120px;
+  margin: 0 12px -6px; padding: 10px 14px 11px;
+  border-radius: 18px; background: var(--card); border: 1px solid var(--line);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  -webkit-app-region: no-drag;
+  transition: opacity 180ms ease, transform 180ms ease;
+  /* La bulle ne dépasse jamais le haut de la fenêtre (560 px - 230 px de tête). Le texte en haut défile,
+     les cartes (accord, info, erreur) restent en bas, à part : elles ne cachent plus la conversation. */
+  display: flex; flex-direction: column; max-height: calc(100vh - 236px);
+}
+#bubble.hide { opacity: 0; transform: translateY(8px) scale(0.97); pointer-events: none; }
+#bubble::after { /* pointe vers le visage */
+  content: ""; position: absolute; left: 50%; bottom: -8px; width: 14px; height: 14px;
+  background: var(--card); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  transform: translateX(-50%) rotate(45deg); border-bottom-right-radius: 3px;
+}
+#scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(120, 220, 230, 0.3) transparent; }
+#scroll::-webkit-scrollbar { width: 6px; }
+#scroll::-webkit-scrollbar-thumb { background: rgba(120, 220, 230, 0.3); border-radius: 3px; }
+#scroll::-webkit-scrollbar-button { display: none; }
+#you { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+#you:empty { display: none; }
+#you b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+#reply { margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#reply:empty { display: none; }
+#you:not(:empty) + #reply:not(:empty) { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+
+#cards { flex: none; max-height: 150px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(120, 220, 230, 0.3) transparent; }
+#cards:empty { display: none; }
+/* Conversation visible au-dessus : un trait sépare le texte des cartes. */
+body:not(.nobubble) #scroll:has(#you:not(:empty), #reply:not(:empty), #listen:not([hidden])) + #cards {
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+body.nobubble #scroll { display: none; }
+
+.card {
+  margin-top: 8px; padding: 9px 10px; border-radius: 12px;
+  background: rgba(70, 227, 234, 0.07); border: 1px solid rgba(70, 227, 234, 0.3);
+}
+.card:first-child { margin-top: 0; }
+.card h3 { margin: 0 0 3px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.card p { margin: 0; overflow-wrap: anywhere; font-size: 13px; }
+.card .row { display: flex; gap: 8px; margin-top: 8px; }
+.card button {
+  flex: 1; padding: 6px 0; border-radius: 9px; border: 1px solid var(--line); cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: rgba(255, 255, 255, 0.06);
+}
+.card button.yes { background: var(--accent); color: #042326; border-color: transparent; }
+.card button:hover { filter: brightness(1.12); }
+.card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card .ttl { height: 2px; margin-top: 8px; background: var(--accent); transform-origin: left; border-radius: 2px; opacity: 0.6; }
+.card.info { background: rgba(255, 255, 255, 0.04); border-color: var(--line); }
+.card.error { border-color: rgba(255, 100, 80, 0.5); background: rgba(255, 100, 80, 0.08); }
+.card.error h3 { color: #ff8a70; }
+body.nobubble #you, body.nobubble #reply, body.nobubble #listen { display: none; }
+
+/* « Je t'écoute… » : il attend qu'on parle. Les barres suivent le micro (--lvl, 0..1). */
+#listen { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 13px; font-weight: 600; }
+#listen[hidden] { display: none; }
+#you:not(:empty) ~ #listen, #reply:not(:empty) ~ #listen { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+#listen .bars { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
+#listen .bars i { width: 3px; border-radius: 2px; background: var(--accent); height: calc(4px + var(--lvl, 0) * 10px); transition: height 80ms linear; animation: listenPulse 1.1s ease-in-out infinite; }
+#listen .bars i:nth-child(2) { animation-delay: 0.15s; height: calc(4px + var(--lvl, 0) * 14px); }
+#listen .bars i:nth-child(3) { animation-delay: 0.3s; height: calc(4px + var(--lvl, 0) * 12px); }
+#listen .bars i:nth-child(4) { animation-delay: 0.45s; }
+@keyframes listenPulse { 50% { opacity: 0.45; } }
+
+/* Il entend son nom : un anneau part du visage. Commun à tous les avatars. */
+#faceWrap { position: relative; }
+#faceWrap.woke::after {
+  content: ""; position: absolute; left: 50%; top: 45%; width: 150px; height: 150px; margin: -75px 0 0 -75px;
+  border-radius: 50%; border: 3px solid var(--accent); pointer-events: none;
+  animation: wakeRing 700ms ease-out forwards;
+}
+@keyframes wakeRing { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(1.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #listen .bars i { animation: none; transition: none; }
+  #faceWrap.woke::after { animation: none; opacity: 0; }
+}

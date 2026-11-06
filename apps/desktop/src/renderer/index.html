@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' blob:; worker-src blob:; style-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'self' data:">
+<title>Floppy</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main id="root">
+    <section id="bubble" class="hide" aria-live="polite">
+      <div id="scroll">
+        <div id="you"></div>
+        <div id="reply"></div>
+        <div id="listen" hidden><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Je t'écoute…</div>
+      </div>
+      <div id="cards"></div>
+    </section>
+    <div id="faceWrap" title="Floppy — Ctrl+Alt+F pour parler">
+      <div id="face"></div>
+    </div>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

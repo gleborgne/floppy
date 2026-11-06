@@ -1,0 +1,6 @@
+{
+  "id": "tv",
+  "name": { "fr": "Visage TV", "en": "TV face" },
+  "description": { "fr": "WebGL · 28 émotions · fourni avec Floppy", "en": "WebGL · 28 emotions · ships with Floppy" },
+  "emotions": ["neutral","happy","joy","laugh","love","excited","proud","sad","cry","angry","annoyed","scared","surprised","shocked","confused","skeptical","mischief","wink","shy","bored","tired","sleepy","thinking","curious","focused","sorry","relieved","determined"]
+}

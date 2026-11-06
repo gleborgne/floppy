@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Réglages — Voix</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#46e3ea}a:hover{color:#8ff2f6}
+.nav{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:10px;color:#b4c4c9;font-size:14px;text-decoration:none}
+.nav.on{background:#16202b;color:#eef8fa;box-shadow:inset 0 0 0 1px rgba(70,227,234,.35)}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(120,220,230,.3);color:#9fb3b9;white-space:nowrap}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;background:#122a2e;color:#7ff0f4}
+.btn{height:34px;padding:0 13px;border-radius:10px;border:1px solid rgba(120,220,230,.28);background:#141c26;color:#eef8fa;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn.pri{background:#46e3ea;color:#04262a;border-color:transparent}
+.sw{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#9fb3b9}.sw i{width:30px;height:17px;border-radius:999px;background:#2a3540;position:relative;display:inline-block}.sw i::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#8fa3a9}.sw.on i{background:#46e3ea}.sw.on i::after{left:15px;background:#04262a}
+.row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid rgba(255,255,255,.06);font-size:13px}
+.box{border-radius:16px;background:#111821;border:1px solid rgba(255,255,255,.08);overflow:hidden}
+.hd{display:flex;align-items:center;gap:12px;padding:14px}
+.play{width:30px;height:30px;border-radius:50%;border:1px solid rgba(120,220,230,.3);background:#141c26;color:#46e3ea;display:inline-flex;align-items:center;justify-content:center;flex:none}
+</style>
+</helmet>
+<div style="width:1280px;height:820px;box-sizing:border-box;background:#0b0f15;color:#eef8fa;font-family:'Segoe UI Variable','Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column">
+  <header style="height:60px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <strong style="font-size:18px">Réglages</strong>
+    <span style="flex:1"></span>
+    <button class="btn">Annuler le dernier changement</button>
+    <button class="btn" style="color:#46e3ea">Assistant IA</button>
+  </header>
+  <div style="flex:1;display:flex;min-height:0">
+    <nav aria-label="Rubriques" style="width:232px;box-sizing:border-box;padding:16px 12px;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:2px">
+      <a class="nav" href="#">Général</a>
+      <a class="nav" href="Main.dc.html">Cerveau</a>
+      <a class="nav on" href="#" aria-current="page">Voix</a>
+      <a class="nav" href="#">Écoute</a>
+      <a class="nav" href="Connecteurs.dc.html">Connecteurs <span class="badge" style="margin-left:auto">5</span></a>
+      <a class="nav" href="Avatars.dc.html">Corps et affichage</a>
+      <a class="nav" href="#">Plugins</a>
+      <a class="nav" href="#">Assistant IA</a>
+      <a class="nav" href="#">Système</a>
+    </nav>
+    <main style="flex:1;min-width:0;overflow:hidden;padding:26px 36px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:flex-end;gap:16px">
+        <div style="flex:1">
+          <h1 style="margin:0;font-size:24px">Voix</h1>
+          <p style="margin:6px 0 0;color:#9fb3b9;font-size:14px">Mode séparé : choisis les oreilles et la bouche. Une voix désactivée reste là, mais Floppy ne la propose plus. <a href="VoixLive.dc.html">Voir en mode live</a></p>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#9fb3b9">Ton
+          <select aria-label="Ton" style="height:34px;border-radius:9px;background:#0d131b;color:#eef8fa;border:1px solid rgba(255,255,255,.12);font:inherit;padding:0 8px"><option>Chaleureux</option><option>Neutre</option><option>Taquin</option><option>Bref</option></select>
+        </label>
+      </div>
+
+      <div class="box">
+        <div class="hd">
+          <strong>Voix locale (cascade)</strong><span class="badge">plugin voice-cascade</span><span class="chip">en service</span>
+          <span style="color:#8fa3a9;font-size:13px">écoute : Parakeet · voix : Qwen3-TTS</span>
+          <span style="flex:1"></span>
+          <span class="sw on"><i></i>actif</span>
+          <button class="btn pri">+ Ajouter une voix</button>
+        </div>
+        <div class="row"><span class="play" aria-label="Écouter">▶</span><strong style="width:160px">Homme</strong><span style="color:#9fb3b9;flex:1">clone · posée, grave</span><span class="chip">utilisée</span><span class="sw on"><i></i>actif</span><button class="btn">Modifier</button></div>
+        <div class="row"><span class="play" aria-label="Écouter">▶</span><strong style="width:160px">Anna</strong><span style="color:#9fb3b9;flex:1">voix intégrée · claire, rapide</span><span class="sw on"><i></i>actif</span><button class="btn">Modifier</button></div>
+        <div class="row"><span class="play" aria-label="Écouter">▶</span><strong style="width:160px">Femme</strong><span style="color:#9fb3b9;flex:1">clone · douce</span><span class="sw on"><i></i>actif</span><button class="btn">Modifier</button></div>
+        <div class="row" style="opacity:.55"><span class="play" aria-label="Écouter">▶</span><strong style="width:160px">Homme 2</strong><span style="color:#9fb3b9;flex:1">clone · désactivée : « liste les voix » ne la donne plus</span><span class="sw"><i></i>inactif</span><button class="btn">Modifier</button></div>
+        <div class="row" style="opacity:.55"><span class="play" aria-label="Écouter">▶</span><strong style="width:160px">Kokoro</strong><span style="color:#9fb3b9;flex:1">moteur léger · désactivée</span><span class="sw"><i></i>inactif</span><button class="btn">Modifier</button></div>
+        <div class="row" style="color:#8fa3a9">« Ajouter une voix » : un fichier WAV de 10 à 20 s + son texte → un clone. Ou une voix intégrée avec une consigne (« voix joyeuse, débit rapide »).</div>
+      </div>
+
+      <div class="box">
+        <div class="hd">
+          <strong>Gemini TTS</strong><span class="badge">plugin gemini-tts</span><span class="chip" style="background:#2a2412;color:#f3cf6b">cloud</span><span class="badge">bouche seulement : le cerveau reste le tien</span>
+          <span style="flex:1"></span>
+          <span class="sw on"><i></i>actif</span>
+          <button class="btn">Configurer</button>
+        </div>
+        <div class="row" style="gap:16px">
+          <span style="display:inline-flex;align-items:center;gap:8px"><span class="play">▶</span><strong>Kore</strong><span class="sw on"><i></i></span></span>
+          <span style="display:inline-flex;align-items:center;gap:8px"><span class="play">▶</span><strong>Puck</strong><span class="sw on"><i></i></span></span>
+          <span style="display:inline-flex;align-items:center;gap:8px;opacity:.55"><span class="play">▶</span><strong>Charon</strong><span class="sw"><i></i></span></span>
+          <span style="flex:1"></span>
+          <span style="color:#8fa3a9">Le son part au cloud, pas le micro. « Floppy, prends la voix Kore » marche comme pour les autres.</span>
+        </div>
+      </div>
+      <p style="margin:0;color:#8fa3a9;font-size:12px">Partout dans les réglages (modèles, voix, connecteurs, plugins) : l'interrupteur désactive sans supprimer. « Supprimer » est un bouton à part, dans « Modifier ».</p>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
