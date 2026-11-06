@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel } from "@floppy/core";
-import { createOrcaPlugin, type OrcaWorktree } from "../src/index.ts";
+import { createOrcaPlugin, type OrcaCli, type OrcaWorktree } from "../src/index.ts";
 
 const NOW = 1_800_000_000_000;
 const ag = (paneKey: string, state: string, extra: Record<string, unknown> = {}) =>
@@ -14,8 +14,8 @@ const wt = (id: string, name: string, agents: unknown[], extra: Record<string, u
 let kernels: Kernel[] = [];
 afterEach(async () => { for (const k of kernels) await k.stopAll(); kernels = []; });
 
-async function start(data: { v: OrcaWorktree[]; fail?: boolean; calls: number }, config: Record<string, unknown> = {}) {
-  const plugin = createOrcaPlugin({ run: async () => { data.calls++; if (data.fail) throw new Error("hors ligne"); return data.v; }, now: () => NOW });
+async function start(data: { v: OrcaWorktree[]; fail?: boolean; calls: number }, config: Record<string, unknown> = {}, cli?: OrcaCli) {
+  const plugin = createOrcaPlugin({ run: async () => { data.calls++; if (data.fail) throw new Error("hors ligne"); return data.v; }, now: () => NOW, ...(cli ? { cli } : {}), phrase: async () => undefined });
   const k = new Kernel({ logger: () => {}, plugins: [plugin], home: mkdtempSync(join(tmpdir(), "orca-")) });
   kernels.push(k);
   const got: { text: string; importance: string; key?: string }[] = [];
@@ -139,13 +139,13 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     expect(it).toMatchObject({ id: "orca", enabled: true, status: "ok", removable: true });
     // Ses réglages sont montrés dans l'élément (« Configurer »), pas dans la rubrique.
     expect(it.settings).toEqual(["orca_notifications", "orca_surveillance"]);
-    expect(it.children!.map((c) => c.id)).toEqual(["orca_agents", "orca_detail"]);
+    expect(it.children!.map((c) => c.id)).toEqual(["orca_agents", "orca_detail", "orca_ecran"]);
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
 
     expect((await k.items.run({ op: "enable", provider: P, id: "orca", on: false }, "cli")).ok).toBe(true);
     expect(k.tools.list().some((t) => t.name.startsWith("orca_"))).toBe(false);
     expect(await orca(k)).toMatchObject({ enabled: false, status: "off" });
-    expect((await orca(k)).children!.length).toBe(2);
+    expect((await orca(k)).children!.length).toBe(3);
     const n = data.calls;
     await new Promise((r) => setTimeout(r, 120));
     expect(data.calls).toBe(n);

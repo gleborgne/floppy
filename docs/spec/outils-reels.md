@@ -40,12 +40,20 @@ flowchart LR
 
 ## Orca (plugin `orca`)
 
-Orca gère les worktrees et les agents de code (Claude Code, Codex). Le plugin lit son état par la CLI `orca worktree ps --json` (lecture seule ; aucune commande qui crée, envoie ou modifie).
+Orca gère les worktrees et les agents de code (Claude Code, Codex). Le plugin lit son état par la CLI `orca worktree ps --json`, `orca terminal list --json` et `orca terminal read --screen --json` (lecture seule ; aucune commande qui crée, envoie, modifie ou change l'affichage d'Orca).
+
+**But : informer sans changer de contexte.** Floppy ne répond pas aux agents et ne bascule pas l'affichage d'Orca. Il donne assez de détails pour que l'utilisateur décide (oui ou non) sans quitter ce qu'il fait.
 
 | Outil | Niveau | Rôle |
 |---|---|---|
 | `orca_agents(filtre)` | read | agents par espace de travail : en cours / terminé / en attente / interrompu, tâche, depuis quand, extrait du dernier message (≤ 1 500 caractères en tout) |
-| `orca_detail(nom)` | read | dernier message complet d'un agent (recherche floue sur le nom, le dépôt, la tâche) |
+| `orca_detail(nom?)` | read | fiche d'un agent : état, branche, PR liée, note du worktree, demande, action en cours (outil et commande), dernier message complet. Recherche floue sur le worktree, le dépôt, la branche, la tâche ; les agents qui attendent passent en premier |
+| `orca_ecran(nom?)` | read | ce que montre le terminal de l'agent (60 lignes de l'écran rendu, sans lignes de cadre, ≤ 2 000 caractères) : question exacte, permission demandée, choix proposés |
+
+- **Sans nom**, `orca_detail` et `orca_ecran` visent l'agent annoncé en dernier ; sinon le seul agent qui attend (hors workers d'orchestration) ; sinon ils demandent lequel. Exemple : « Sur Differendum, ton agent attend » → « qu'est-ce qu'il demande exactement ? ».
+- **Terminal d'un agent** : le `paneKey` d'un agent vaut `tabId:leafId` d'un terminal ; à défaut, un terminal du même worktree. L'identifiant de terminal rendu par Orca est le seul argument variable d'une commande ; il doit ressembler à `term_…` (lettres, chiffres, tirets), sinon il est ignoré. Le texte de l'utilisateur n'entre jamais dans une commande.
+- **Noms dictés** : la reconnaissance vocale déforme les noms techniques (« différend dom » pour `differendum`, « dev m c p » pour `dev-mcp`). La recherche d'agent compare sans espaces ni tirets, puis tolère quelques fautes (distance d'édition ≤ un quart du mot). Elle compare aussi les mots que Floppy a dits dans l'annonce (nom de projet lisible, tâche nettoyée). Une correspondance exacte passe avant une ressemblance. Le cerveau passe le nom tel qu'il l'a entendu, sans le corriger.
+- Écarté pour l'instant : la recherche plein texte d'Orca (`orca search`). Elle est désactivée par défaut et s'active seulement dans les Réglages d'Orca (« Agent Session History »), pas par la CLI. Elle demanderait aussi de passer le texte de l'utilisateur dans la commande (seulement sans shell, avec `orca.exe`).
 
 - Testé : « fais-moi une synthèse de mes jobs Orca » → 3 phrases justes en 4,2 s (Gemma résume lui-même, sans délégation).
 
