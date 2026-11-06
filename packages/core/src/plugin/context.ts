@@ -13,6 +13,7 @@ import type { ProviderDef, ItemStore, CatalogOp, CatalogVia, OpResult, ProviderS
 import type { Secrets } from "../secrets.ts";
 import type { Text } from "../i18n.ts";
 import type { TaskInfo, TaskOutcome } from "../tasks.ts";
+import type { ContextDownloads } from "../downloads.ts";
 
 /** Tâches des plugins (voir tasks.ts) : pour un déclencheur (Planificateur) ou un plugin qui en lance une. */
 export interface ContextTasks {
@@ -28,9 +29,9 @@ export interface ContextSettings {
   declare(defs: SettingDef[]): void;
   /** Valeur gardée d'un démarrage précédent, à appliquer au démarrage. */
   saved<T>(key: string): T | undefined;
-  /** Valeur courante d'un réglage (sans calculer les choix ni les autres réglages). */
   /** Valeurs gardées dont la clé commence par `prefix` (non vide). */
   savedEntries(prefix: string): Record<string, unknown>;
+  /** Valeur courante d'un réglage (sans calculer les choix ni les autres réglages). */
   value(key: string): unknown;
   /** Tous les réglages déclarés (tous plugins). */
   list(): SettingInfo[];
@@ -132,6 +133,8 @@ export interface Context {
   /** Coffre des secrets (Gestionnaire d'identification Windows). Cloisonné : seuls les noms « <plugin>/… » (id du manifeste) sont permis. */
   readonly secrets: Secrets;
   readonly tasks: ContextTasks;
+  /** Téléchargements de fichiers (modèles, voix) dans un dossier propre à l'entrée. Sites permis : permissions.net. */
+  readonly downloads: ContextDownloads;
 
   /** Fork : l'élément que ce contexte fait tourner (voir offer). Absent pour une entrée normale. */
   readonly item?: string;

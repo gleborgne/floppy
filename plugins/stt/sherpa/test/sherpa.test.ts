@@ -111,3 +111,53 @@ describe.runIf(!!real && existsSync(real))("pour de vrai (FLOPPY_TEST_SHERPA)", 
     } finally { await k.stopAll(); }
   }, 60_000);
 });
+
+describe("bibliothèque : télécharger un modèle connu (réseau simulé)", () => {
+  it("le modèle téléchargé rejoint la liste, prêt à activer ; Supprimer le retire", async () => {
+    const { createHash } = await import("node:crypto");
+    const body = (name: string) => Buffer.from(`contenu de ${name}`);
+    const sha = (name: string) => createHash("sha256").update(body(name)).digest("hex");
+    const url = (name: string) => `https://huggingface.co/x/resolve/abc/${name}`;
+    const files = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
+    const known = [{
+      id: "mini-stt", label: { fr: "Mini STT", en: "Mini STT" }, target: "mini",
+      files: files.map((f) => ({ url: url(f), path: `mini/${f}`, size: body(f).length, sha256: sha(f) })),
+    }];
+    const asked: string[] = [];
+    const fetch = (async (u: string) => {
+      asked.push(u);
+      const name = u.slice(u.lastIndexOf("/") + 1);
+      return new Response(body(name), { status: 200, headers: { "content-length": String(body(name).length) } });
+    }) as unknown as typeof globalThis.fetch;
+    const native: Native = { vad: () => fakeVad([]), recognizer: async () => ({ createStream: () => ({ acceptWaveform() {} }), decodeAsync: async () => ({ text: "" }) }) };
+    const k = new Kernel({ logger: () => {}, plugins: [makePlugin(native, known)], downloads: { fetch } });
+    await k.applyConfig({ plugins: [{ id: "sherpa", plugin: "stt-sherpa" }], services: {} });
+    const snap = async () => Object.fromEntries((await k.items.snapshot()).map((p) => [p.id, p]));
+    expect((await snap())["sherpa-library"]).toMatchObject({ layout: "library", offers: ["vad", "stt"] });
+    expect((await snap())["sherpa"]!.items).toHaveLength(0);
+
+    await k.items.run({ op: "action", provider: "sherpa-library", id: "mini-stt", action: "download" }, "ui");
+    for (let i = 0; i < 100 && !(await snap())["sherpa"]!.items.length; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(asked).toEqual(files.map(url));
+    const item = (await snap())["sherpa"]!.items[0]!;
+    expect(item).toMatchObject({ label: "Mini STT", values: { path: join(k.modelsDir, "sherpa", "mini") } });
+    expect(k.settings.list().find((s) => s.key === "slot.listen.stt")).toBeUndefined(); // aucun consommateur ici
+    expect((await snap())["sherpa-library"]!.items[0]).toMatchObject({ status: "ok", actions: [{ id: "remove" }] });
+
+    await k.items.run({ op: "action", provider: "sherpa-library", id: "mini-stt", action: "remove" }, "ui");
+    expect((await snap())["sherpa"]!.items).toHaveLength(0);
+    expect(existsSync(join(k.modelsDir, "sherpa", "mini"))).toBe(false);
+  });
+
+  it("les modèles connus ont des adresses figées et une empreinte pour chaque fichier", async () => {
+    const { KNOWN_MODELS } = await import("../src/known-models.ts");
+    for (const m of KNOWN_MODELS) {
+      for (const f of m.files) {
+        expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
+        expect(f.size).toBeGreaterThan(0);
+        expect(f.url).not.toMatch(/\/resolve\/main\//);
+        expect(f.path.startsWith(m.target)).toBe(true);
+      }
+    }
+  });
+});

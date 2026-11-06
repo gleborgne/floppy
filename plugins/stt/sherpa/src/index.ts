@@ -3,10 +3,12 @@
 // - transcription par transducteur, ex. Parakeet TDT (un dossier) -> service `stt` (slot listen.stt).
 // Les modèles sont des éléments de son catalogue (Réglages → Écoute). Chacun est offert au service qui correspond à
 // ses fichiers, et chargé dans un fork seulement quand le plugin Écoute s'en sert.
+import { resolve } from "node:path";
 import { z } from "zod";
-import { definePlugin, T, TextError, type ItemInfo, type ItemKind, type OpResult, type PluginDef, type SttService, type VadEvent, type VadService, type VadStream } from "@floppy/core";
+import { definePlugin, modelLibrary, T, TextError, tr, type ItemInfo, type ItemKind, type OpResult, type PluginDef, type SttService, type VadEvent, type VadService, type VadStream } from "@floppy/core";
 import { detect, recognizerConfig, vadConfig, type Detected } from "./models.ts";
 import { realNative, type Native } from "./native.ts";
+import { KNOWN_MODELS, type KnownModel } from "./known-models.ts";
 
 export { detect } from "./models.ts";
 
@@ -58,10 +60,18 @@ export function vadStream(vad: ReturnType<Native["vad"]>): VadStream {
   };
 }
 
-export function makePlugin(native: Native): PluginDef<Config> {
+/** Même chemin (sans tenir compte de la casse sous un système qui l'ignore). */
+const samePath = (a: string, b: string): boolean => {
+  const n = (p: string) => (process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p));
+  return n(a) === n(b);
+};
+
+export function makePlugin(native: Native, known: KnownModel[] = KNOWN_MODELS): PluginDef<Config> {
   return definePlugin<Config>({
     manifest: {
       id: "stt-sherpa", version: "0.1.0", licence: "MIT", provides: ["vad", "stt"],
+      // Téléchargement des modèles connus (voir known-models.ts).
+      permissions: { net: ["github.com", "huggingface.co"] },
       description: "Lecteur sherpa-onnx : détecteur de parole Silero et transcription (Parakeet TDT…), modèles ONNX sur le processeur.",
       sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
       addable: {
@@ -205,6 +215,31 @@ export function makePlugin(native: Native): PluginDef<Config> {
           const d = detect(String(values.path ?? ""));
           if (d.kind === "error") return { ok: false, text: T(d.reason.fr, d.reason.en) };
           return { ok: true, text: d.kind === "vad" ? T("Détecteur de parole reconnu.", "Speech detector recognized.") : T("Modèle de transcription reconnu.", "Transcription model recognized.") };
+        },
+      });
+
+      // Modèles à télécharger : une fois sur le disque, ils rejoignent la liste ci-dessus (prêts à activer).
+      const targetOf = (e: KnownModel) => resolve(ctx.downloads.dir, e.target);
+      const mine = (e: KnownModel) => all().filter((m) => samePath(m.path, targetOf(e)));
+      modelLibrary(ctx, {
+        id: "sherpa-library", section: "ecoute", order: 41, offers: ["vad", "stt"],
+        label: T("Modèles sherpa-onnx", "sherpa-onnx models"),
+        entries: () => known,
+        has: (e) => mine(e as KnownModel).length > 0,
+        installed: (e) => {
+          const k = e as KnownModel;
+          if (mine(k).length) return;
+          const path = targetOf(k);
+          detected.delete(path);
+          const values: Model = { label: tr(k.label, ctx.uiLang()), path, threads: 2, threshold: 0.5, minSilenceMs: 500 };
+          store.add(KIND.id, values as unknown as Record<string, unknown>, k.id, Object.keys(base));
+          ctx.items.changed();
+        },
+        removed: (e) => {
+          const list = mine(e as KnownModel);
+          for (const m of list) { const no = busy(m.id, m.label); if (no) throw new TextError(no.text as { fr: string; en: string }); }
+          for (const m of list) { store.remove(m.id); detected.delete(m.path); }
+          ctx.items.changed();
         },
       });
     },

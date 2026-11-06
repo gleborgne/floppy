@@ -5,8 +5,8 @@
 import { z } from "zod";
 import type { ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { definePlugin, findExe, killTree, Pcm16Decoder, wavPcm, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
+import { basename, dirname, join, resolve } from "node:path";
+import { definePlugin, modelLibrary, findExe, killTree, Pcm16Decoder, wavPcm, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -249,7 +249,16 @@ export function scanGguf(dirs: string[], max = 60): string[] {
   return out.sort((a, b) => voice(a) - voice(b));
 }
 
-export default definePlugin<Config>({
+import { KNOWN_VOICE_MODELS, type KnownVoiceModel } from "./known-voices.ts";
+
+/** Même fichier (sans tenir compte de la casse sous un système qui l'ignore). */
+const samePath = (a: string, b: string): boolean => {
+  const n = (p: string) => (process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p));
+  return n(a) === n(b);
+};
+
+export function makePlugin(known: KnownVoiceModel[] = KNOWN_VOICE_MODELS) {
+return definePlugin<Config>({
   manifest: {
     id: "tts-audiocpp",
     version: "0.1.0",
@@ -257,7 +266,8 @@ export default definePlugin<Config>({
     sections: [{ id: "voix", label: { fr: "Voix", en: "Voice" } }],
     description: "Voix locales (audio.cpp) : un modèle de synthèse vocale à la fois, lancé seulement quand il sert.",
     provides: ["tts"],
-    permissions: { exec: ["audiocpp_server"] },
+    // net : téléchargement des modèles connus (voir known-voices.ts).
+    permissions: { exec: ["audiocpp_server"], net: ["huggingface.co"] },
     addable: { section: "voix", label: "audio.cpp", description: { fr: "Modèles de voix GGUF sur ce PC (voix clonée ou intégrée), lancés seulement quand ils servent.", en: "GGUF voice models on this PC (cloned or built-in voice), run only while in use." }, single: true },
   },
   config: Config,
@@ -388,6 +398,17 @@ export default definePlugin<Config>({
     const voiceText = (m: Entry) => m.voix === "clone"
       ? T(`voix clonée${m.refWav ? ` (${basename(m.refWav)})` : ""}`, `cloned voice${m.refWav ? ` (${basename(m.refWav)})` : ""}`)
       : T(`voix intégrée${m.speaker ? ` (${m.speaker})` : ""}`, `built-in voice${m.speaker ? ` (${m.speaker})` : ""}`);
+    /** Fichier GGUF d'un modèle connu, dans le dossier des téléchargements. */
+    const knownFile = (k: KnownVoiceModel) => resolve(ctx.downloads.dir, k.model);
+    /**
+     * Plusieurs voix d'un même fichier (ex. les voix de Pocket TTS) : groupées sous le modèle. La fenêtre fait alors
+     * choisir le modèle, puis la voix. Un fichier qui n'a qu'une voix reste une ligne simple.
+     */
+    const groupOf = (m: Entry): Pick<ItemInfo, "group"> => {
+      if (all().filter((x) => samePath(x.model, m.model)).length < 2) return {};
+      const k = known.find((x) => samePath(knownFile(x), m.model));
+      return { group: { id: m.model.replace(/\\/g, "/").toLowerCase(), label: k?.label ?? basename(m.model), ...(k?.description ? { detail: k.description } : {}) } };
+    };
     const info = (m: Entry): ItemInfo => {
       const size = sizeOf(m.model);
       const q = quantOf(m.model);
@@ -409,6 +430,7 @@ export default definePlugin<Config>({
           : noRef ? T("voix clonée sans enregistrement : choisis un WAV", "cloned voice without a recording: pick a WAV") : undefined,
         values: { ...m } as unknown as Record<string, unknown>,
         editable: true, removable: !active, toggleable: !active || !on,
+        ...groupOf(m),
       };
     };
     const refuseActive = (m: Entry, what: { fr: string; en: string }): OpResult | undefined =>
@@ -493,8 +515,37 @@ export default definePlugin<Config>({
         return { ok: true, text: found.length ? T(`${found.length} fichier(s) GGUF trouvé(s) :\n${found.join("\n")}`, `${found.length} GGUF file(s) found:\n${found.join("\n")}`) : T("Aucun nouveau fichier GGUF trouvé.", "No new GGUF file found.") };
       },
     });
+
+    // Modèles à télécharger : un modèle arrive avec ses voix intégrées, une voix par élément (groupées sous le modèle).
+    const mine = (k: KnownVoiceModel) => all().filter((m) => samePath(m.model, knownFile(k)));
+    const ui = (t: Text) => (typeof t === "string" ? t : (t[ctx.uiLang()] ?? t.fr));
+    modelLibrary(ctx, {
+      id: "voix-locale-library", section: "voix", order: 21, offers: "tts",
+      label: T("Modèles de voix audio.cpp", "audio.cpp voice models"),
+      entries: () => known,
+      has: (e) => mine(e as KnownVoiceModel).length > 0,
+      installed: (e) => {
+        const k = e as KnownVoiceModel;
+        if (mine(k).length) return;
+        for (const v of k.voices) {
+          const values = clean({ label: ui(v.label), model: knownFile(k), famille: k.famille, voix: "integree", speaker: v.id, langue: k.langue });
+          store.add("gguf", values as unknown as Record<string, unknown>, `${k.id}-${v.id}`, Object.keys(baseList));
+        }
+        ctx.items.changed();
+      },
+      removed: (e) => {
+        const list = mine(e as KnownVoiceModel);
+        const loaded = list.find((m) => running.has(m.id));
+        if (loaded) throw new TextError(T(`${loaded.label} est chargé en ce moment : choisis d'abord une autre voix.`, `${loaded.label} is loaded right now: choose another voice first.`));
+        for (const m of list) store.remove(m.id);
+        ctx.items.changed();
+      },
+    });
   },
 });
+}
+
+export default makePlugin();
 
 /**
  * Format des poids, lu dans le nom du fichier, en court : « q8_0 » → « Q8 », « q4_k_m » → « Q4 », « bf16 » → « BF16 ».

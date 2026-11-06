@@ -34,6 +34,7 @@ import { defaultSecrets, MemorySecrets, scopedSecrets, type Secrets } from "../s
 import { errorText, isLang, LANGS, T, TextError, tr, type Text } from "../i18n.ts";
 import { Apps } from "../apps.ts";
 import { TaskRegistry, taskTools } from "../tasks.ts";
+import { DownloadManager, downloadsDir, type DownloadManagerOptions } from "../downloads.ts";
 import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
 import { killTree, stableStringify } from "../util/process.ts";
@@ -115,6 +116,8 @@ export interface KernelOptions {
   home?: string;
   /** Coffre des secrets (défaut : trousseau de l'OS si home est donné, sinon mémoire). */
   secrets?: Secrets;
+  /** Téléchargements (tests : un fetch simulé). Défaut : fetch global, 2 en même temps. */
+  downloads?: DownloadManagerOptions;
 }
 
 export class Kernel {
@@ -131,6 +134,10 @@ export class Kernel {
   readonly items: CatalogRegistry;
   readonly secrets: Secrets;
   readonly home: string;
+  /** Téléchargements de fichiers des plugins (modèles, voix) : une seule file pour tout le noyau. */
+  readonly downloads: DownloadManager;
+  /** Dossier où les plugins rangent les fichiers téléchargés (réglage « dossier_modeles », défaut <home>/models). */
+  modelsDir: string;
   /** Langue de la fenêtre des réglages et des menus (fr, en). */
   uiLang = "fr";
   /** Langue de l'assistant choisie dans les réglages (sinon celle de floppy.yml : assistant.language). */
@@ -226,6 +233,28 @@ export class Kernel {
         if (this.baseCfg) { const base = this.baseCfg; void this.enqueue(() => this.applyNow(base)).catch(() => {}); }
       },
     }]);
+    this.downloads = new DownloadManager(opts.downloads);
+    this.modelsDir = this.settings.savedValue<string>("dossier_modeles") || join(this.home, "models");
+    this.settings.declare("core", [{
+      key: "dossier_modeles", section: "general", group: { fr: "Modèles", en: "Models" },
+      label: { fr: "Dossier des modèles téléchargés", en: "Downloaded models folder" },
+      description: {
+        fr: "Où Floppy range les modèles et les voix téléchargés depuis les réglages. Vide : le dossier de données de Floppy. Les modèles déjà téléchargés restent dans l'ancien dossier.",
+        en: "Where Floppy stores the models and voices downloaded from the settings. Empty: Floppy's data folder. Models already downloaded stay in the old folder.",
+      },
+      type: "text", maxLength: 500, risk: "cli",
+      get: () => this.modelsDir,
+      set: (v) => { const d = String(v ?? "").trim(); this.modelsDir = d || join(this.home, "models"); },
+    }]);
+    // Fin d'un téléchargement : une carte (sans voix) pour le dire, même si la fenêtre est fermée.
+    this.downloads.onChange((d) => {
+      if (d.state !== "done" && d.state !== "error") return;
+      const name = tr(d.label, this.uiLang);
+      const text = d.state === "done"
+        ? tr({ fr: `${name} est téléchargé.`, en: `${name} is downloaded.` }, this.uiLang)
+        : `${name} : ${tr(d.error, this.uiLang)}`;
+      this.bus.emit("initiative", { source: "downloads", text, importance: "normal", key: `download:${d.key}` });
+    });
     {
       const saved = this.settings.savedValue<string>("langue_assistant");
       if (saved && isLang(saved)) this.assistantLang = saved;
@@ -966,6 +995,7 @@ export class Kernel {
       settings: {
         declare: (defs) => { scope.add(this.settings.declare(e.cfg.id, defs)); },
         saved: (key) => this.settings.savedValue(key),
+        savedEntries: (prefix) => this.settings.savedEntries(prefix),
         value: (key) => this.settings.value(key),
         list: () => this.settings.list(),
         change: (key, value, origin) => this.settings.change(key, value, "voice", origin),
@@ -989,13 +1019,25 @@ export class Kernel {
         },
       },
       secrets: scopedSecrets(this.secrets, def.manifest.id),
+      downloads: {
+        get dir() { return downloadsDir(kernel.modelsDir, e.cfg.id); },
+        start: (req) => {
+          const s = this.downloads.start(`${e.cfg.id}/${req.key}`, req, downloadsDir(this.modelsDir, e.cfg.id), def.manifest.permissions?.net);
+          return { ...s, key: req.key };
+        },
+        get: (key) => { const s = this.downloads.get(`${e.cfg.id}/${key}`); return s && { ...s, key }; },
+        cancel: (key) => this.downloads.cancel(`${e.cfg.id}/${key}`),
+        onChange: (fn) => {
+          const prefix = `${e.cfg.id}/`;
+          scope.add(this.downloads.onChange((s) => { if (s.key.startsWith(prefix)) fn({ ...s, key: s.key.slice(prefix.length) }); }));
+        },
+      },
       tools: {
         register: (defs) => { const clean = defs.map(({ selfApproved: _s, ...d }) => d); const remove = scope.add(this.tools.register(e.cfg.id, clean)); return () => { void remove(); }; },
         list: () => this.tools.list(),
         call: (name, args, meta) => this.tools.call(name, args, meta),
         onChange: (fn) => { scope.add(this.tools.onChange(fn)); },
       },
-        savedEntries: (prefix) => this.settings.savedEntries(prefix),
       get alive() { return !scope.isClosed; },
       ...(e.fork ? { item: e.fork.item } : {}),
       provide(name, impl) {

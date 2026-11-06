@@ -141,6 +141,11 @@ components:
   chip-tag:
     backgroundColor: "#1a2129"
     textColor: "{colors.muted}"
+  progress-bar:
+    backgroundColor: "{colors.panel-2}"
+    textColor: "{colors.accent}"
+    rounded: "999px"
+    height: "6px"
   field:
     backgroundColor: "{colors.field-well}"
     textColor: "{colors.ink}"
@@ -307,6 +312,10 @@ Compact and quiet; the cyan fill is spent on one action per view.
 - **Danger** (`.btn.danger`): secondary shape with the error colour on text and border. Destructive actions confirm in place: the button turns into "Confirm" (see the Documents trash, `.del.armed`).
 - **Ghost** (`.ghost`, assistant pane): transparent with `line` border; hover tints cyan at 8%.
 - **Disabled:** opacity 0.45, `cursor: not-allowed`.
+
+### Progress bar
+- **Progress bar** (`.pbar`, model library): 6px pill track in `panel-2` with a 1px `line` inset, filled with `accent` up to the value (width set through the CSSOM, never a `style` attribute: the window's CSP refuses it). `role="progressbar"` with `aria-valuenow` and the item's name as `aria-label`. Beside it, the state in 12.5px `muted-2` tabular figures ("42 % · 1,2 / 2,9 Go"). The fill moves in 250ms `ease` (off with reduced motion). During a download only the bar, its text and the button summaries are patched: the page is not redrawn, so focus and typing stay.
+- **Model library** (`dialog#editor.library`): title "Models to download · For <role>", a search field (focused on open) when the plugin can search online, then section labels over cards of rows. A row: name, one sentence, grey tag chips (size, licence, memory), and on the right its buttons; "Download" and "Retry" are secondary buttons with the Lucide `download` icon (The One Cyan Rule), an error sits under the description in `bad`, "Installed" in `good` with a check, "Delete" confirms in place. A muted footer says that downloading means accepting the licence.
 
 ### Toggles (switches)
 - **Switch** (`.sw`, the only switch): 30 by 17px track, `track` off with a `muted-2` knob; `accent` on with an `accent-ink` knob; knob slides in 120ms. Always `role="switch"` with `aria-checked` and an `aria-label` that names the item and its state.

@@ -90,7 +90,7 @@ interface SttService {
 
 1. Lecteur audio.cpp : offrir aussi `stt` (familles `*_asr`, dont `parakeet_tdt`) et `vad`, un seul serveur partagé.
 2. Lecteur transcribe.cpp (Parakeet Ultra, Silero intégré).
-3. « Modèles connus » à ajouter en un clic (téléchargement : capacité à créer dans le noyau).
+3. « Modèles connus » à ajouter en un clic : **fait** (Silero VAD, Parakeet TDT v3), voir [telechargements.md](telechargements.md).
 4. Voix locales sans Python : **fait** pour le processeur avec audio.cpp — Pocket TTS (voix clonée, en flux, 1er son ~50 ms)
    et Supertonic 3 (familles `pocket_tts`, `supertonic`). Kokoro écarté : eSpeak-ng (GPL) requis en français ;
    sherpa-onnx 2 l'a retiré, audio.cpp 0.9.4 ne charge pas la DLL fournie (cause non trouvée).

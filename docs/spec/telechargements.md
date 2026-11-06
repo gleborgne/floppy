@@ -1,0 +1,75 @@
+# Télécharger des modèles depuis les réglages
+
+Comme LM Studio ou Handy : dans Réglages, sous chaque rôle (cerveau, transcription, détecteur de parole, voix),
+le bouton **Télécharger des modèles** ouvre une fenêtre avec des modèles prêts à l'emploi. Un clic les télécharge ;
+une fois sur le disque, ils rejoignent la liste du rôle, prêts à activer. Rien à taper, aucun chemin à chercher.
+
+## Ce que voit l'utilisateur
+
+- **Sous la liste d'un rôle** : « Télécharger des modèles ». Pendant un téléchargement, le bouton le dit
+  (« · 1 en cours · 42 % »), même fenêtre fermée.
+- **La fenêtre « Modèles à télécharger »** : les modèles choisis par Floppy (testés), et pour le cerveau une case de
+  recherche sur Hugging Face. Chaque ligne : nom, une phrase, étiquettes (taille, licence, langues, mémoire
+  estimée), et ses boutons :
+  - **Télécharger** (avec son icône) ; **Écouter** (un extrait, s'il existe) et **Licence** s'ouvrent dans le navigateur ;
+  - pendant le téléchargement : une barre d'avancement, « 42 % · 1,2 / 2,9 Go », **Annuler** ;
+  - en cas d'échec : le message sous la description, **Réessayer** (reprend là où il s'est arrêté) ;
+  - une fois fini : « ✓ Installé », **Supprimer** (2 clics : le 2e confirme). Supprimer efface les fichiers et retire
+    le modèle de la liste ; un modèle en service est refusé (« choisis d'abord un autre … »).
+- **Fin d'un téléchargement** : une carte « Gemma 4 12B est téléchargé. » (sans voix), même fenêtre fermée.
+- **Licence** : le pied de la fenêtre dit que télécharger un modèle, c'est accepter sa licence.
+- **Dossier** : réglage « Dossier des modèles téléchargés » (rubrique Général, clic seulement). Défaut : `models` dans
+  le dossier de données de Floppy. Chaque entrée de la config range ses fichiers dans `<dossier>/<entrée>/`.
+
+## Le noyau : `ctx.downloads`
+
+Le noyau télécharge des fichiers ; il ne connaît aucun site ni aucun modèle (`packages/core/src/downloads.ts`).
+
+- `start({ key, label, files: [{ url, path, size?, sha256? }] })` lance et rend la main tout de suite (une requête de
+  la fenêtre expire à 60 s). Relancer un téléchargement en cours rend son état.
+- `get(key)`, `cancel(key)`, `onChange(fn)` ; `dir` : le dossier de l'entrée.
+- **Sûr** : `path` reste dans `dir` (pas de `..`, pas de chemin absolu) ; adresse http(s) seulement ; l'hôte doit être
+  dans `permissions.net` du manifeste (« huggingface.co », « *.hf.co »). Les redirections (CDN) suivent le serveur permis.
+- **Fiable** : écrit dans `<fichier>.part`, reprend un fichier coupé (en-tête `Range` ; sans reprise du serveur,
+  recommence), vérifie la taille et le sha256, puis renomme. Un fichier abîmé est jeté. Un fichier déjà là, de la
+  bonne taille, n'est pas retéléchargé. Annuler jette les fichiers partiels.
+- **Une file pour tout le noyau** : 2 téléchargements à la fois, les autres attendent. Avancement annoncé au plus
+  4 fois par seconde.
+- Les téléchargements continuent si le plugin redémarre (la file est au noyau).
+
+## La bibliothèque : `modelLibrary(ctx, …)`
+
+Aide pour les plugins (`packages/core/src/model-library.ts`). Le plugin donne ses modèles (`entries`, fichiers figés
+à un commit, avec sha256), et dit quoi faire quand un modèle est prêt (`installed` : ajouter l'élément), quand il est
+supprimé (`removed` : retirer l'élément, ou refuser par une `TextError`), et s'il a déjà l'élément (`has`). Optionnel :
+`search(query)` pour une recherche en ligne.
+
+Elle déclare un fournisseur `layout: "library"` avec `offers` (les services que ces modèles rendront). La fenêtre ne
+le montre pas dans la page : elle met le bouton sous les rôles de ces services. Ses éléments portent `progress`
+(0 à 1) et leurs boutons (`download`, `cancel`, `remove`, `use`, `listen`, `licence`). Un modèle sur le disque mais
+absent de la liste du plugin montre « Ajouter à la liste ». Deux modèles peuvent partager un fichier : Supprimer garde
+ceux qu'un autre modèle installé utilise.
+
+Catalogue : `ItemInfo.progress`, `ProviderDef.search` + `searchHint`, opération `{ op: "search", provider, query }`
+(résultat : `items`). Chercher ne change rien : ni journal, ni mise à jour de la fenêtre ; refusé à la voix.
+
+## Les plugins
+
+| Plugin | Modèles choisis | Après le téléchargement |
+|---|---|---|
+| `stt-sherpa` (Écoute) | Silero VAD (GitHub sherpa-onnx), Parakeet TDT v3 int8 (miroir Hugging Face, fichier par fichier : pas d'archive à décompresser) | un élément : le fichier (détecteur) ou le dossier (transcription) |
+| `tts-audiocpp` (Voix) | Pocket TTS français et anglais (avec toutes leurs voix, `embeddings/` à côté du GGUF), Supertonic 3, Qwen3-TTS 1.7B CustomVoice | **une voix intégrée par élément**, groupées sous le modèle : la page Voix fait choisir le modèle, puis la voix |
+| `llm-llamacpp` (Cerveau) | Qwen3.5 4B et 9B, Gemma 4 E4B et 12B (QAT), Mistral Small 3.2 24B | un modèle du cerveau, prêt à activer |
+
+**Recherche Hugging Face** (cerveau, `plugins/llm/llamacpp/src/hf.ts`) : les 8 dépôts GGUF les plus téléchargés pour
+la requête ; pour chacun, au plus 3 quantifications (Q4_K_M d'abord, puis Q4_0, Q5_K_M, Q6_K, Q8_0…). Un modèle en
+plusieurs fichiers (`-00001-of-0000N`) est une seule ligne. Ignorés : dépôts protégés (accord à signer), fichiers
+sans empreinte, `mmproj`. Chaque fichier est figé au commit lu. Étiquette « ≈ N Go de mémoire » : le fichier + ~1,2 Go
+(contexte, tampons) ; le bouton Essayer d'un modèle donne l'estimation détaillée.
+
+## Pas encore
+
+- Fichiers `mmproj` (vision) et modèles brouillons (MTP) du cerveau.
+- Mémoire de la carte graphique lue sur la machine (« tient dans ta carte graphique »).
+- Voix à cloner téléchargeables (WAV + texte) : les voix intégrées de Pocket TTS couvrent le besoin pour l'instant.
+- Voix des services en ligne (Gemini, ElevenLabs) en liste.

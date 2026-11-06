@@ -34,6 +34,8 @@ Guides pas à pas pour les utilisateurs : [docs/guide](../guide/README.md).
 | [Documents Markdown (implémenté)](documents.md) | Floppy répond par un document dans une fenêtre ; fichiers .md ; sécurité du rendu |
 | [Notifications (implémenté)](notifications.md) | Contrat `notify`, canaux Telegram et mail, « Envoyer à » par tâche, outil `envoyer` |
 | [Veille (implémenté)](veille.md) | Centres d'intérêt, flux RSS et recherches, pré-tri en code, tri par un modèle, digest quotidien, avis à la voix |
+| [Télécharger des modèles (implémenté)](telechargements.md) | Bibliothèque de modèles dans les réglages : modèles choisis, recherche Hugging Face, `ctx.downloads`, barre d'avancement |
+| [Premier lancement (implémenté)](premier-lancement.md) | Lire la machine (carte séparée ou mémoire unifiée), niveaux du texte seul au tout local, fenêtre « Bienvenue », test de vitesse |
 | [Écoute en plugins (en cours)](ecoute.md) | Contrats `vad` et `stt`, plugin Écoute (règles reprises de Python), lecteur sherpa-onnx, retrait de Python |
 | [Corps, émotions et avatar (implémenté)](corps-et-avatar.md) | Plusieurs corps, protocole v0, émotions, avatar WebGL |
 | [Architecture](architecture.md) | Noyau, services, couche de plugins, manifeste, protocole noyau ↔ corps, services Python |

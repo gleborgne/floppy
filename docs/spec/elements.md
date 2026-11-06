@@ -86,6 +86,10 @@ flowchart LR
 - Il répond aux **opérations** : ajouter, modifier, supprimer, activer, choisir un sous-élément, essayer, action.
 - Le bouton « Ajouter » d'une rubrique propose les types de **tous** les fournisseurs de la rubrique
   (par ex. Connecteurs : MCP local, MCP distant, commande — et demain un type apporté par un autre plugin).
+- Un fournisseur `layout: "library"` liste ce qu'on peut **télécharger** (modèles, voix). Il n'est pas montré dans la
+  page : la fenêtre met « Télécharger des modèles » sous les rôles de ses `offers`, et ouvre sa bibliothèque. Ses
+  éléments portent `progress` (0 à 1, une barre) ; `search(query)` ajoute une case de recherche (opération
+  `search`, résultat `items`). Voir [telechargements.md](telechargements.md) et l'aide `modelLibrary`.
 
 ## Désactiver n'est pas supprimer
 

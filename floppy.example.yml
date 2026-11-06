@@ -43,6 +43,7 @@ plugins:
     plugin: llm-llamacpp
     config:
       # exe: C:/llama.cpp/llama-server.exe
+      # Empty is fine: Settings → Brain → Download models (or search Hugging Face).
       models: {}
         # gemma:
         #   label: Gemma 4 12B
@@ -64,7 +65,8 @@ plugins:
   # Listening: speech detector + transcription chosen in Settings → Listening (slots listen.vad, listen.stt).
   # It doesn't speak: voices come from the tts-* plugins (slot voice.tts).
   - { id: listen, plugin: voice-listen }
-  # sherpa-onnx runner (CPU, in process): ONNX models, also addable in Settings → Listening.
+  # sherpa-onnx runner (CPU, in process): ONNX models, also addable in Settings → Listening
+  # (Download models: Silero VAD and Parakeet TDT v3 in one click each).
   - id: sherpa
     plugin: stt-sherpa
     config:
@@ -76,6 +78,7 @@ plugins:
     plugin: tts-audiocpp
     config:
       # exe: C:/audiocpp/audiocpp_server.exe
+      # Models: Settings → Voice → Download models (Pocket TTS, Supertonic, Qwen3-TTS, with their voices).
       # backend: cpu      # no graphics card: Pocket TTS speaks in real time on the CPU
       models: {}
       # Models from the Hugging Face repo audio-cpp/audio.cpp-gguf:

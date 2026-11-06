@@ -43,8 +43,11 @@ Then open **Settings** (tray icon) to choose a brain and a voice.
 **Local brain.** Put `llama-server` in your PATH, or set its path in *Settings → Brain → llama-server program*.
 Add a GGUF model in *Settings → Brain*, then activate it.
 
-**Local voice.** Listening: download `silero_vad.onnx` and the Parakeet TDT v3 int8 folder from the
-[sherpa-onnx models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models), then add both in *Settings → Listening → sherpa-onnx*.
+**Download models from Settings.** Under each role (Brain, Listening, Voice), *Download models* lists ready-to-use
+models (and searches Hugging Face for the brain). One click downloads them; they join the list, ready to activate.
+
+**Local voice.** Listening: download Silero VAD and Parakeet TDT v3 in *Settings → Listening → Download models*
+(or by hand from the [sherpa-onnx models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models), then add both in *Settings → Listening → sherpa-onnx*).
 Speaking: put `audiocpp_server` in your PATH (or set its path in *Settings → Voice*), and add a model from the Hugging Face repo
 `audio-cpp/audio.cpp-gguf` in *Settings → Voice → audio.cpp* (Pocket TTS for the CPU). Without them, Floppy uses the system voices.
 No GPU: see the guide `docs/guide/configuration-avancee.md` (section « Floppy sans carte graphique »).

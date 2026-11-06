@@ -4,6 +4,7 @@ export const VERSION = "0.1.0";
 export { Kernel, consoleLogger, type Logger, type EntryStatus, type SlotStatus, type KernelOptions } from "./plugin/kernel.ts";
 export { definePlugin, manifestError, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
 export type { Context, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
+export { DownloadManager, hostAllowed, type ContextDownloads, type DownloadFile, type DownloadRequest, type DownloadState, type DownloadPhase, type DownloadManagerOptions } from "./downloads.ts";
 export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
 export type { NotifyMessage, NotifyService } from "./services.ts";
 export type { SearchHit, SearchService, CompletionRequest, CompletionService, DocRef, DocumentsService, TaskReason, TaskRunInput, TaskResult, TaskService } from "./services.ts";
@@ -27,6 +28,7 @@ export type { McpEndpoint, ScopedEndpoint, ScopedOptions, ExtraTool, BodyHub, Bo
 export { defineAvatar, readAvatarDir } from "./avatars.ts";
 export type { TtsChunk, TtsService, VadEvent, VadStream, VadService, SttService, LiveEvent, LiveSession, LiveService } from "./services.ts";
 export { providerConfig } from "./provider-config.ts";
+export { modelLibrary, formatBytes, entrySize, type LibraryEntry, type LibraryOptions } from "./model-library.ts";
 export { floatToPcm16, Pcm16Decoder, AudioHistory, wavPcm } from "./audio.ts";
 export { readSse } from "./streaming.ts";
 export { connectJsonSocket, type JsonSocket } from "./json-socket.ts";

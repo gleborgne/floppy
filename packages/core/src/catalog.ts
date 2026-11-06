@@ -107,6 +107,8 @@ export interface ItemInfo {
   section?: string;
   /** Groupe de l'élément (ex. le modèle d'une voix). La fenêtre fait choisir le groupe, puis l'élément. */
   group?: { id: string; label: Text; detail?: Text };
+  /** Avancement d'un travail en cours (téléchargement), de 0 à 1. La fenêtre montre une barre. */
+  progress?: number;
 }
 
 export interface OpResult {
@@ -119,6 +121,8 @@ export interface OpResult {
   open?: string;
   /** Après un clic dans la fenêtre : texte à copier dans le presse-papiers (ex. code de connexion). */
   copy?: string;
+  /** Réponse à une recherche (op « search ») : les éléments trouvés, avec leurs boutons. */
+  items?: ItemInfo[];
 }
 
 /** Résultat rendu par CatalogRegistry.run : le message est déjà dans la langue de l'origine de la demande. */
@@ -129,8 +133,11 @@ export interface ProviderDef {
   id: string;
   /** Id d'une rubrique (voir sections.ts). Une sous-rubrique (avec `parent`) se montre dans la page de son parent. */
   section: string;
-  /** Présentation : "list" (défaut : liste + détail) ou "grid" (cartes, ex. avatars). */
-  layout?: "list" | "grid";
+  /**
+   * Présentation : "list" (défaut : liste + détail), "grid" (cartes, ex. avatars) ou "library" (ce qu'on peut télécharger :
+   * pas montré dans la page, mais dans la bibliothèque ouverte depuis les rôles de `offers`, avec ses boutons d'action).
+   */
+  layout?: "list" | "grid" | "library";
   /** Capacités libres du fournisseur (ex. "live" : modèle unique qui écoute et parle). Lues par la fenêtre. */
   capabilities?: string[];
   /**
@@ -157,12 +164,19 @@ export interface ProviderDef {
   /** Essayer avant d'ajouter (id absent) ou un élément existant. */
   test?(kind: string, values: Record<string, unknown>, id?: string): Promise<OpResult>;
   action?(id: string, action: string): Promise<OpResult>;
+  /**
+   * Recherche en ligne (ex. modèles sur Hugging Face) : rend des éléments avec leurs boutons (`items` du résultat).
+   * Les boutons d'un résultat passent par action(id, …) comme ceux de la liste.
+   */
+  search?(query: string): Promise<OpResult>;
+  /** Texte d'aide de la case de recherche (« Chercher sur Hugging Face »). */
+  searchHint?: Text;
 }
 
 export interface ProviderSnapshot {
   id: string;
   section: string;
-  layout: "list" | "grid";
+  layout: "list" | "grid" | "library";
   capabilities: string[];
   offers?: string | string[];
   label: Text;
@@ -172,8 +186,9 @@ export interface ProviderSnapshot {
   kinds: ItemKind[];
   addLabel?: Text;
   childrenLabel?: Text;
+  searchHint?: Text;
   source: string;
-  can: { add: boolean; update: boolean; remove: boolean; enable: boolean; child: boolean; test: boolean; action: boolean };
+  can: { add: boolean; update: boolean; remove: boolean; enable: boolean; child: boolean; test: boolean; action: boolean; search: boolean };
   items: ItemInfo[];
   error?: string;
 }
@@ -187,7 +202,8 @@ export type CatalogOp =
   | { op: "enable"; provider: string; id: string; on: boolean }
   | { op: "child"; provider: string; id: string; child: string; on: boolean }
   | { op: "test"; provider: string; kind: string; values: Record<string, unknown>; id?: string }
-  | { op: "action"; provider: string; id: string; action: string };
+  | { op: "action"; provider: string; id: string; action: string }
+  | { op: "search"; provider: string; query: string };
 
 /**
  * D'où vient la demande. « voice » : seulement enable (et avec contrôle du risque). « ui » / « cli » : l'hôte seulement.
@@ -248,9 +264,10 @@ export class CatalogRegistry {
         kinds: def.kinds ?? [],
         ...(def.addLabel ? { addLabel: def.addLabel } : {}),
         ...(def.childrenLabel ? { childrenLabel: def.childrenLabel } : {}),
+        ...(def.searchHint ? { searchHint: def.searchHint } : {}),
         can: {
           add: !!def.add && (def.kinds?.length ?? 0) > 0, update: !!def.update, remove: !!def.remove,
-          enable: !!def.setEnabled, child: !!def.setChild, test: !!def.test, action: !!def.action,
+          enable: !!def.setEnabled, child: !!def.setChild, test: !!def.test, action: !!def.action, search: !!def.search,
         },
         items,
         ...(error ? { error } : {}),
@@ -326,11 +343,16 @@ export class CatalogRegistry {
           if (!def.action) return { ok: false, text: T("Pas d'action ici.", "No action here.") };
           r = await def.action(o.id, o.action);
           break;
+        case "search":
+          if (!def.search) return { ok: false, text: T("Pas de recherche ici.", "No search here.") };
+          r = await def.search(String(o.query ?? "").slice(0, 200));
+          break;
       }
     } catch (e) {
       r = { ok: false, text: errorText(e) };
     }
-    if (o.op !== "test") {
+    // Essayer et chercher ne changent rien : ni journal, ni mise à jour de la fenêtre.
+    if (o.op !== "test" && o.op !== "search") {
       this.audit.write({
         kind: "catalog", op: o.op, provider: o.provider, via, ok: r.ok,
         ...("id" in o && o.id ? { id: o.id } : {}), ...(r.id ? { newId: r.id } : {}),

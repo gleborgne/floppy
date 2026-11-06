@@ -5,6 +5,7 @@
 import { initAssistant } from "./assistant.js";
 import { entryOf, offersOf, slotSources } from "./slot-sources.js";
 import { isLight } from "./tab-rules.js";
+import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "./library.js";
 
 const api = window.floppySettings;
 const SECRET_SET = "__secret_set__";
@@ -41,6 +42,11 @@ const I = {
     plugState: { active: "actif", error: "erreur", waiting: "en attente", loaded: "chargé", stopped: "arrêté", starting: "démarrage" },
     waitsFor: "attend", askVoice: "accord à la voix", cliOnly: "clic seulement", apply: "Appliquer", provError: "Erreur", childrenDef: "Éléments",
     statusOk: "ok", noPlugins: "Aucun plugin.", results: "Résultats", search0: "Recherche",
+    getModels: "Télécharger des modèles", libTitle: "Modèles à télécharger", libFor: "Pour", dlRunning: "en cours",
+    libKnown: "Choisis par Floppy", libKnownNote: "testés avec Floppy", libResults: "Résultats de la recherche", libSearching: "Recherche…",
+    libNoResult: "Aucun modèle trouvé.", libSearchLabel: "Chercher un modèle", libConfirm: "Confirmer ?",
+    libNote: "Télécharger un modèle, c'est accepter sa licence. Les fichiers vont dans le dossier des modèles (rubrique Général). Le téléchargement continue si tu fermes cette fenêtre.",
+    libReady: "Prêt : active-le dans la liste.",
   },
   en: {
     title: "Settings", search: "Search a setting, a plugin, a tool…", searchLabel: "Search a setting",
@@ -71,6 +77,11 @@ const I = {
     plugState: { active: "active", error: "error", waiting: "waiting", loaded: "loaded", stopped: "stopped", starting: "starting" },
     waitsFor: "waiting for", askVoice: "voice approval", cliOnly: "click only", apply: "Apply", provError: "Error", childrenDef: "Items",
     statusOk: "ok", noPlugins: "No plugin.", results: "Results", search0: "Search",
+    getModels: "Download models", libTitle: "Models to download", libFor: "For", dlRunning: "in progress",
+    libKnown: "Picked by Floppy", libKnownNote: "tested with Floppy", libResults: "Search results", libSearching: "Searching…",
+    libNoResult: "No model found.", libSearchLabel: "Search a model", libConfirm: "Confirm?",
+    libNote: "Downloading a model means accepting its licence. Files go to the models folder (General section). The download goes on if you close this window.",
+    libReady: "Ready: turn it on in the list.",
   },
 };
 let lang = "fr";
@@ -157,6 +168,9 @@ function toast(text, bad) {
 // ------------------------------------------------------------------ état
 let settings = { list: [], plugins: [] };
 let items = { providers: [] };
+let libraries = [];        // fournisseurs « library » (modèles à télécharger), montrés dans leur fenêtre
+let libShape = "";         // forme des bibliothèques (voir libraryShape) : inchangée = mise à jour des barres seulement
+let itemsKey = "";         // les autres fournisseurs, tels quels : inchangés = pas de rendu de la page
 let section = location.hash.slice(1);   // vide : la première rubrique du menu
 let query = "";
 let deferred = false;      // un rendu attend que le champ en cours d'édition soit quitté
@@ -718,16 +732,19 @@ function slotAddBar(slot, page) {
   for (const [, provs] of pluginsFor(slot.service)) {
     for (const p of provs) if (p.can.add && p.kinds.length) bar.append(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
   }
+  const libs = librariesFor(libraries, slot.service);
+  if (libs.length) bar.append(libButton(slot.service, "", tr(slot.label)));
   bar.append(h("button", { type: "button", class: "btn small", text: `+ ${t("addPlugin")}`, onclick: () => openCatalogue(page, roleOf(slot)) }));
   return bar;
 }
 
 /** Bandeau d'un plugin : description, « + Ajouter … », Réglages, interrupteur Actif. */
-function pluginHead(source, provs) {
+function pluginHead(source, provs, service, roleLabel) {
   const app = appOf(source);
   const bar = h("div", { class: "scard phead" });
   bar.append(h("span", { class: "chip", text: t("builtin") }), h("p", { text: tr(app?.[1].detail) || tr(provs[0]?.description) }));
   for (const p of provs) if (p.can.add && p.kinds.length) bar.append(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
+  if (service && librariesFor(libraries, service, source).length) bar.append(libButton(service, source, roleLabel));
   if (app) { const c = pluginControls(app[0], app[1]); bar.append(...c.acts, ...c.sw); }
   return bar;
 }
@@ -800,7 +817,7 @@ function slotTabs(slot, page) {
   if (cur === "@none") panel.append(h("div", { class: "scard" }, noneRow(slot, page)));
   else {
     const { provs = [], options = [] } = plugins.find((x) => x.source === cur) ?? {};
-    panel.append(pluginHead(cur, provs));
+    panel.append(pluginHead(cur, provs, slot.service, tr(slot.label)));
     const rows = provs.flatMap((p) => p.items.map((it) => [p, it]));
     if (rows.some(([, it]) => it.group)) panel.append(...groupedRows(slot, rows, page));
     else {
@@ -913,7 +930,8 @@ let catalog = null;   // { category, source, role?: { services, label } }
  * qui fournissent un de ces services ; la pastille « Pour : … » enlève le filtre. Sinon : la rubrique de la page.
  */
 function openCatalogue(page, role) {
-  ed = null;
+  ed = null; library = null;
+  dlg.classList.remove("library");
   const cats = appProviders().map((p) => p.section);
   catalog = role?.services?.length ? { category: "", source: "builtin", role } : { category: cats.includes(page) ? page : "", source: "builtin" };
   drawCatalogue();
@@ -978,6 +996,164 @@ function drawCatalogue() {
       h("button", { type: "button", class: "btn small", "aria-label": t("close"), text: "×", onclick: () => { catalog = null; dlg.close(); } })),
     h("div", { class: "cbody" }, nav, list));
   dlg.classList.add("catalog");
+}
+
+// ------------------------------------------------------------------ bibliothèque de modèles (téléchargements)
+// Une fenêtre par rôle (ex. Transcription) : les modèles choisis par Floppy, la recherche en ligne si le plugin la
+// propose, une barre d'avancement par téléchargement. Les barres se mettent à jour sans redessiner (voir patchLibraries).
+let library = null;   // { service, source, role, query, results: [[provider, item]] | null, searching, armed, list }
+
+/** Texte du bouton : « Télécharger des modèles » ou « … · 1 en cours · 42 % ». */
+function libSummary(service, source) {
+  const { count, progress } = downloadSummary(librariesFor(libraries, service, source || undefined));
+  if (!count) return "";
+  return ` · ${count} ${t("dlRunning")}${progress === null ? "" : ` · ${percent(progress)} %`}`;
+}
+
+function libButton(service, source, role) {
+  return h("button", { type: "button", class: "btn small lib", onclick: () => openLibrary(service, source, role) },
+    window.lucideIcon("download"), h("span", { text: t("getModels") }),
+    h("span", { class: "libsum", "data-libsum": "1", "data-service": service, "data-source": source ?? "", text: libSummary(service, source) }));
+}
+
+function openLibrary(service, source, role) {
+  ed = null; catalog = null;
+  library = { service, source, role, query: "", results: null, searching: false, armed: "", list: null };
+  drawLibrary(true);
+  if (!dlg.open) dlg.showModal();
+}
+
+const libsOpen = () => (library ? librariesFor(libraries, library.service, library.source || undefined) : []);
+
+/** L'état à jour d'un élément : celui de la liste (avancement), sinon celui du résultat de recherche. */
+function liveItem(providerId, id) {
+  const p = libraries.find((x) => x.id === providerId);
+  return p?.items.find((x) => x.id === id) ?? library?.results?.find(([pp, it]) => pp.id === providerId && it.id === id)?.[1];
+}
+
+async function libAction(p, it, action) {
+  const r = await quickOp({ op: "action", provider: p.id, id: it.id, action });
+  if (r.ok && action === "download" && library?.results) drawLibrary();
+}
+
+/** Barre d'avancement + texte (« 42 % · 1,2 / 2,9 Go »). */
+function progressNode(it) {
+  const pct = percent(it.progress);
+  // Largeur par le CSSOM : la politique de sécurité de la fenêtre refuse l'attribut style.
+  const fill = h("i");
+  fill.style.width = `${pct}%`;
+  return h("div", { class: "lprog" },
+    h("div", { class: "pbar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct), "aria-label": tr(it.label) }, fill),
+    h("span", { class: "lst", text: tr(it.statusText) }));
+}
+
+function libRow(p, it) {
+  const side = h("div", { class: "lside" });
+  const acts = it.actions ?? [];
+  // Un seul bouton plein par écran (DESIGN.md) : Télécharger reste secondaire, avec son icône.
+  const btn = (a, icon) => h("button", { type: "button", class: `btn small${icon ? " lib" : ""}`, "aria-label": `${tr(a.label)} : ${tr(it.label)}`, onclick: () => libAction(p, it, a.id) },
+    icon ? window.lucideIcon(icon) : null, h("span", { text: tr(a.label) }));
+  if (it.status === "loading") {
+    side.append(progressNode(it), ...acts.map((a) => btn(a)));
+  } else {
+    if (it.status === "ok") side.append(h("span", { class: "lst good" }, window.lucideIcon("check"), h("span", { text: tr(it.statusText) })));
+    const main = acts.find((a) => a.id === "download" || a.id === "use");
+    for (const a of acts.filter((x) => x !== main)) {
+      if (a.id !== "remove") { side.append(btn(a)); continue; }
+      // Supprimer : le 1er clic arme, le 2e confirme (5 s).
+      const k = `${p.id}/${it.id}`;
+      const sure = library?.armed === k;
+      side.append(h("button", { type: "button", class: `btn small${sure ? " danger" : ""}`, text: sure ? t("libConfirm") : tr(a.label), "aria-label": `${sure ? t("libConfirm") : tr(a.label)} : ${tr(it.label)}`,
+        onclick: () => {
+          if (!sure) { library.armed = k; drawLibrary(); setTimeout(() => { if (library?.armed === k) { library.armed = ""; drawLibrary(); } }, 5000); return; }
+          library.armed = "";
+          void libAction(p, it, "remove");
+        } }));
+    }
+    if (main) side.append(btn(main, main.id === "download" ? "download" : null));
+  }
+  const tags = (it.tags ?? []).map((x) => h("span", { class: "chip tag", text: tr(x) }));
+  return h("div", { class: "srow lrow", "data-provider": p.id, "data-id": it.id },
+    h("div", { class: "rt" },
+      h("div", { class: "rn" }, h("strong", { text: tr(it.label) })),
+      it.detail ? h("div", { class: "rd", text: tr(it.detail) }) : null,
+      it.status === "error" ? h("div", { class: "lerr", role: "alert", text: tr(it.statusText) }) : null,
+      tags.length ? h("div", { class: "tags" }, tags) : null),
+    side);
+}
+
+let libTimer = 0;
+async function runLibrarySearch() {
+  if (!library) return;
+  const q = library.query;
+  const searchable = libsOpen().filter((p) => p.can.search);
+  if (q.length < 2) { library.results = null; library.searching = false; drawLibrary(); return; }
+  library.searching = true; drawLibrary();
+  const found = [];
+  for (const p of searchable) {
+    const r = await itemOp({ op: "search", provider: p.id, query: q });
+    if (!r.ok) toast(r.text || t("refused"), true);
+    for (const it of r.items ?? []) found.push([p, it]);
+  }
+  if (!library || library.query !== q) return; // une autre recherche est partie
+  library.results = found; library.searching = false;
+  drawLibrary();
+}
+
+/** full : construit la fenêtre (titre, recherche, pied) ; sinon seulement la liste (le champ de recherche garde le focus). */
+function drawLibrary(full = false) {
+  if (!library) return;
+  const libs = libsOpen();
+  if (full || !library.list || !dlg.contains(library.list)) {
+    library.list = h("div", { class: "lbody", "aria-live": "polite" });
+    const searchable = libs.filter((p) => p.can.search);
+    const search = searchable.length ? h("div", { class: "lsearch" }, h("input", {
+      type: "search", class: "lsinput", "aria-label": t("libSearchLabel"), placeholder: tr(searchable[0].searchHint) || t("libSearchLabel"), value: library.query,
+      oninput: (e) => { library.query = e.target.value.trim(); clearTimeout(libTimer); libTimer = setTimeout(runLibrarySearch, 400); },
+      onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(libTimer); void runLibrarySearch(); } },
+    })) : null;
+    dlg.replaceChildren(
+      h("div", { class: "ed-head chead" },
+        h("h2", { id: "editor-title" }, h("span", { text: t("libTitle") }), library.role ? h("span", { class: "sub", text: ` · ${t("libFor")} ${library.role}` }) : null),
+        h("button", { type: "button", class: "btn small", "aria-label": t("close"), text: "×", onclick: () => dlg.close() })),
+      search, library.list,
+      h("p", { class: "lfoot", text: t("libNote") }));
+    dlg.classList.add("catalog", "library");
+    // Le focus va à la recherche (sinon le navigateur le pose sur « Fermer »).
+    if (search) queueMicrotask(() => search.querySelector("input")?.focus());
+  }
+  const nodes = [];
+  if (library.query.length >= 2 && libs.some((p) => p.can.search)) {
+    nodes.push(h("h3", { class: "shead" }, h("span", { text: t("libResults") })));
+    const card = h("div", { class: "scard" });
+    if (!library.results?.length) card.append(h("div", { class: "empty-line", text: library.searching ? t("libSearching") : t("libNoResult") }));
+    else for (const [p, it] of library.results) card.append(libRow(p, liveItem(p.id, it.id) ?? it));
+    nodes.push(card);
+  }
+  for (const p of libs) {
+    if (!p.items.length) continue;
+    nodes.push(h("h3", { class: "shead" }, h("span", { text: libs.length > 1 ? tr(p.label) : t("libKnown") }), h("span", { class: "sub", text: tr(p.description) || t("libKnownNote") })));
+    const card = h("div", { class: "scard" });
+    for (const it of p.items) card.append(libRow(p, it));
+    nodes.push(card);
+  }
+  if (!nodes.length) nodes.push(h("div", { class: "empty-line", text: t("noItems") }));
+  library.list.replaceChildren(...nodes);
+}
+
+/** Pendant un téléchargement : seulement les barres, les textes d'état et les résumés des boutons. */
+function patchLibraries() {
+  for (const el of document.querySelectorAll("[data-libsum]")) el.textContent = libSummary(el.dataset.service, el.dataset.source);
+  if (!library?.list) return;
+  for (const row of library.list.querySelectorAll(".lrow[data-id]")) {
+    const it = liveItem(row.dataset.provider, row.dataset.id);
+    const bar = row.querySelector(".pbar");
+    if (!it || !bar) continue;
+    const pct = percent(it.progress);
+    bar.setAttribute("aria-valuenow", String(pct));
+    bar.firstElementChild.style.width = `${pct}%`;
+    row.querySelector(".lprog .lst").textContent = tr(it.statusText);
+  }
 }
 
 // ------------------------------------------------------------------ pages
@@ -1168,8 +1344,8 @@ function defaultsOf(kind) {
 }
 
 function openEditor(init) {
-  catalog = null;
-  dlg.classList.remove("catalog");
+  catalog = null; library = null;
+  dlg.classList.remove("catalog", "library");
   ed = { mode: init.mode, kinds: init.kinds ?? [], provider: init.provider ?? null, kind: init.kind ?? null, item: init.item ?? null, values: {}, step: init.mode === "edit" ? 2 : 1, result: null, trial: null, busy: false };
   if (ed.mode === "edit") ed.values = { ...defaultsOf(ed.kind), ...(init.item.values ?? {}) };
   else if (ed.kinds.length === 1) chooseKind(ed.kinds[0]);
@@ -1186,7 +1362,7 @@ function chooseKind(k) {
 }
 
 function closeEditor() { if (dlg.open) dlg.close(); ed = null; }
-dlg.addEventListener("close", () => { ed = null; catalog = null; dlg.classList.remove("catalog"); if (deferred) render(); });
+dlg.addEventListener("close", () => { ed = null; catalog = null; library = null; dlg.classList.remove("catalog", "library"); if (deferred) render(); });
 dlg.addEventListener("cancel", () => { ed = null; });
 
 const visible = (f, values) => !f.showIf || (f.showIf.values ?? []).some((v) => String(v) === String(values[f.showIf.key]));
@@ -1405,8 +1581,17 @@ function updateSettings(d) {
 function updateItems(d) {
   if (!d) return;
   if (d.lang) setLang(d.lang);
-  items = { providers: d.providers ?? [] };
+  const { libraries: libs, others } = splitLibraries(d.providers ?? []);
+  const key = JSON.stringify(others);
+  const shape = libraryShape(libs);
+  // Seul l'avancement d'un téléchargement a bougé : on met à jour les barres, sans redessiner la page (ni clignoter).
+  const onlyProgress = key === itemsKey && shape === libShape;
+  items = { providers: others };
+  libraries = libs;
+  itemsKey = key; libShape = shape;
+  if (onlyProgress) { patchLibraries(); return; }
   render();
+  if (library) drawLibrary();
 }
 
 $("search").addEventListener("input", (e) => { query = e.target.value.trim(); deferred = false; render(); });

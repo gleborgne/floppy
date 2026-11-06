@@ -273,3 +273,53 @@ describe.runIf(!!realExe && !!realPocket && !!realRef)("pour de vrai : Pocket TT
     } finally { await k.stopAll(); }
   }, 120_000);
 });
+
+describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simulé)", () => {
+  it("télécharge le modèle et ses voix, crée une voix par élément groupée sous le modèle, puis supprime le tout", async () => {
+    const { createHash } = await import("node:crypto");
+    const { makePlugin } = await import("../src/index.ts");
+    const body = (p: string) => Buffer.from(`fichier ${p}`);
+    const sha = (p: string) => createHash("sha256").update(body(p)).digest("hex");
+    const paths = ["Mini/mini.gguf", "Mini/embeddings/alba.safetensors", "Mini/embeddings/marius.safetensors"];
+    const known = [{
+      id: "mini", famille: "pocket_tts" as const, langue: "fr", label: { fr: "Mini TTS", en: "Mini TTS" }, model: "Mini/mini.gguf",
+      voices: [{ id: "alba", label: "Alba" }, { id: "marius", label: "Marius" }],
+      files: paths.map((p) => ({ url: `https://huggingface.co/r/resolve/c/${p}`, path: p, size: body(p).length, sha256: sha(p) })),
+    }];
+    const fetch = (async (u: string) => {
+      const p = u.slice(u.indexOf("/resolve/c/") + "/resolve/c/".length);
+      return new Response(body(p), { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const k = new Kernel({ logger: () => {}, plugins: [makePlugin(known)], downloads: { fetch } });
+    await k.applyConfig({ plugins: [{ id: "tts-local", plugin: "tts-audiocpp", config: { models: {} } }], services: {} });
+    const prov = async (id: string) => (await k.items.snapshot()).find((p) => p.id === id)!;
+
+    await k.items.run({ op: "action", provider: "voix-locale-library", id: "mini", action: "download" }, "ui");
+    for (let i = 0; i < 100 && (await prov("voix-locale")).items.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    const items = (await prov("voix-locale")).items;
+    const gguf = join(k.modelsDir, "tts-local", "Mini", "mini.gguf");
+    expect(items.map((x) => x.label)).toEqual(["Alba", "Marius"]);
+    expect(items[0]!.values).toMatchObject({ model: gguf, famille: "pocket_tts", voix: "integree", speaker: "alba", langue: "fr" });
+    expect(items[1]!.values).toMatchObject({ speaker: "marius" });
+    expect(items[0]!.group).toMatchObject({ label: { fr: "Mini TTS" } });
+    expect(items[0]!.group?.id).toBe(items[1]!.group?.id);
+    expect(existsSync(join(k.modelsDir, "tts-local", "Mini", "embeddings", "marius.safetensors"))).toBe(true);
+
+    await k.items.run({ op: "action", provider: "voix-locale-library", id: "mini", action: "remove" }, "ui");
+    expect((await prov("voix-locale")).items).toHaveLength(0);
+    expect(existsSync(gguf)).toBe(false);
+  });
+
+  it("les modèles connus : adresses figées, une empreinte par fichier, le GGUF et une voix par fichier d'empreinte", async () => {
+    const { KNOWN_VOICE_MODELS } = await import("../src/known-voices.ts");
+    for (const m of KNOWN_VOICE_MODELS) {
+      expect(m.files.some((f) => f.path === m.model)).toBe(true);
+      expect(m.voices.length).toBeGreaterThan(0);
+      for (const f of m.files) {
+        expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
+        expect(f.url).toMatch(/\/resolve\/[0-9a-f]{40}\//);
+      }
+      if (m.famille === "pocket_tts") expect(m.files.length).toBe(m.voices.length + 1);
+    }
+  });
+});

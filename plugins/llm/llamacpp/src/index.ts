@@ -10,8 +10,11 @@ import { z } from "zod";
 import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { definePlugin, findExe, killTree, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
+import { join, resolve } from "node:path";
+import { definePlugin, modelLibrary, type LibraryEntry, findExe, killTree, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
+
+import { KNOWN_MODELS } from "./known-models.ts";
+import { searchHf } from "./hf.ts";
 
 const DEFAULT_ARGS = ["-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "--fit", "off", "-ngl", "99", "-np", "1"];
 
@@ -325,7 +328,15 @@ function scanGguf(dirs: string[], max = 60): string[] {
   return out;
 }
 
-export default definePlugin<Config>({
+/** Même fichier (sans tenir compte de la casse sous un système qui l'ignore). */
+const samePath = (a: string, b: string): boolean => {
+  const n = (p: string) => (process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p));
+  return n(a) === n(b);
+};
+
+/** `known` : modèles choisis ; `search` : recherche en ligne (Hugging Face). Remplaçables pour les tests. */
+export function makePlugin(known: LibraryEntry[] = KNOWN_MODELS, search: (q: string) => Promise<LibraryEntry[]> = (q) => searchHf(q)) {
+return definePlugin<Config>({
   manifest: {
     id: "llm-llamacpp",
     version: "0.1.0",
@@ -335,7 +346,8 @@ export default definePlugin<Config>({
     ],
     description: "LLM local (llama-server) : chaque modèle tourne à la demande, un seul chargé à la fois.",
     provides: ["llm", "completion"],
-    permissions: { exec: ["llama-server"] },
+    // net : modèles choisis et recherche sur Hugging Face (voir known-models.ts, hf.ts).
+    permissions: { exec: ["llama-server"], net: ["huggingface.co"] },
     addable: { section: "cerveau", label: "llama.cpp", description: { fr: "Modèles GGUF sur ce PC, lancés seulement quand ils servent. Un seul à la fois.", en: "GGUF models on this PC, run only while in use. One at a time." }, single: true },
   },
   config: Config,
@@ -581,8 +593,37 @@ export default definePlugin<Config>({
       },
     });
 
+    // Modèles à télécharger (choisis, ou trouvés sur Hugging Face) : une fois sur le disque, ils rejoignent la liste.
+    // Un modèle en plusieurs fichiers se lance par le premier (llama-server lit les autres).
+    const fileOf = (e: LibraryEntry) => resolve(ctx.downloads.dir, e.files[0]!.path);
+    const mine = (e: LibraryEntry) => all().filter((m) => samePath(m.model, fileOf(e)));
+    modelLibrary(ctx, {
+      id: "llm-local-library", section: "cerveau", order: 11, offers: "llm",
+      label: T("Modèles GGUF", "GGUF models"),
+      searchHint: T("Chercher sur Hugging Face (ex. gemma, qwen, mistral)", "Search Hugging Face (e.g. gemma, qwen, mistral)"),
+      entries: () => known,
+      search,
+      has: (e) => mine(e).length > 0,
+      installed: (e) => {
+        if (mine(e).length) return;
+        const label = typeof e.label === "string" ? e.label : (e.label[ctx.uiLang()] ?? e.label.fr);
+        const v = clean({ label, model: fileOf(e) }, cfg);
+        store.add("gguf", v as unknown as Record<string, unknown>, label, Object.keys(baseList));
+        ctx.items.changed();
+      },
+      removed: (e) => {
+        const list = mine(e);
+        const loaded = list.find((m) => runningOf()?.id === m.id);
+        if (loaded) throw new TextError(T(`${loaded.label} est chargé en ce moment : active d'abord un autre cerveau.`, `${loaded.label} is loaded right now: activate another brain first.`));
+        for (const m of list) store.remove(m.id);
+        ctx.items.changed();
+      },
+    });
   },
 });
+}
+
+export default makePlugin();
 
 /** Un appel ponctuel à llama-server (sans réflexion : tri, résumé). Avec un schéma, la réponse JSON est lue et vérifiée. */
 export async function localComplete(baseURL: string, model: string, req: { system: string; prompt: string; schema?: Record<string, unknown>; signal?: AbortSignal }): Promise<{ text: string; json?: unknown }> {
