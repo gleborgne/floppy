@@ -336,7 +336,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 
 ### Navigation
 - **Left nav** (`.nav`): 40px rows, 10px radius, `ink-soft` 14px text with an optional second line in 11.5px `muted-2`; hover `rgba(255, 255, 255, 0.04)`; current (`aria-current="page"`) uses `selected` with a cyan inset outline. A muted note sits at the bottom.
-- **Tabs** (`.ptabs` / `.ptab`): 40px, 14px at 600, `muted` text; the active tab turns `ink` with a 2px cyan underline inset 10px from each side. Exposed with `role="tablist"`, `role="tab"`, `aria-selected` and roving `tabindex`.
+- **Tabs** (`.ptabs` / `.ptab`): 40px, 14px at 600, `muted` text; the active tab turns `ink` with a 2px cyan underline inset 10px from each side. Exposed with `role="tablist"`, `role="tab"`, `aria-selected` and roving `tabindex`. A group of only one or two settings (`data-light`, e.g. Tone under Voice) never gets a tab of its own: it stays on the page, below the tab panel, and a page left with a single tab shows no tab bar.
 - **Breadcrumbs** (`.crumbs`): a small "Back" button, then cyan text links separated by `›`, the current page in `ink` with `aria-current="page"`.
 - **Clickable rows** (`.srow.pick`): the whole row opens the detail, shows a chevron that turns cyan on hover, and has an inset focus ring.
 

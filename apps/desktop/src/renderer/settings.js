@@ -3,6 +3,8 @@
 // Sans window.floppySettings (ouverture hors de l'app), la page charge des données d'exemple (settings-demo.js).
 // Tout texte venu du noyau est inséré avec textContent : jamais de innerHTML.
 import { initAssistant } from "./assistant.js";
+import { entryOf, offersOf, slotSources } from "./slot-sources.js";
+import { isLight } from "./tab-rules.js";
 
 const api = window.floppySettings;
 const SECRET_SET = "__secret_set__";
@@ -102,7 +104,6 @@ const pageOfSetting = pageOf;
 // choisi seulement quand quelqu'un s'en sert. La fenêtre ne connaît aucun slot : tout vient de settings.slots.
 const slotsOn = (page) => (settings.slots ?? []).filter((x) => pageOf(x.section) === page);
 const slotSetting = (slot) => settings.list.find((x) => x.key === `slot.${slot.id}`);
-const offersOf = (p) => (Array.isArray(p.offers) ? p.offers : p.offers ? [p.offers] : []);
 /** Slots qu'un fournisseur d'éléments peut remplir. */
 const slotsFor = (p) => (settings.slots ?? []).filter((x) => offersOf(p).includes(x.service));
 const valueOf = (p, it) => `${p.source}/${it.id}`;
@@ -264,7 +265,7 @@ function settingsBlocks(list) {
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(s);
   }
-  return [...groups].map(([g, l]) => h("div", { class: "sgroup", "data-tab": g || t("settingsTab") }, g ? h("h3", { text: g }) : null, h("div", { class: "card" }, l.map(settingRow))));
+  return [...groups].map(([g, l]) => h("div", { class: "sgroup", "data-tab": g || t("settingsTab"), ...(isLight(l) ? { "data-light": "1" } : {}) }, g ? h("h3", { text: g }) : null, h("div", { class: "card" }, l.map(settingRow))));
 }
 
 // ------------------------------------------------------------------ éléments (fournisseurs)
@@ -319,7 +320,8 @@ let detailStack = [];   // pages ouvertes : [{ pid, iid }], de la rubrique vers 
 const tabSel = new Map();
 function tabify(key, nodes) {
   const list = nodes.filter(Boolean);
-  const named = list.filter((n) => n.dataset?.tab);
+  // Un bloc léger (1 ou 2 réglages, ex. le Ton sous Voix) ne vaut pas un onglet : il reste affiché sur la page.
+  const named = list.filter((n) => n.dataset?.tab && !n.dataset.light);
   const labels = [...new Set(named.map((n) => n.dataset.tab))];
   if (labels.length < 2) return list;
   let cur = tabSel.get(key);
@@ -336,8 +338,9 @@ function tabify(key, nodes) {
   }, l)));
   const panel = h("div", { class: "tabpanel", role: "tabpanel", "aria-labelledby": ids[labels.indexOf(cur)] }, ...named.filter((n) => n.dataset.tab === cur));
   const top = list.filter((n) => !n.dataset?.tab && n.dataset?.place !== "end");
+  const light = list.filter((n) => n.dataset?.tab && n.dataset.light);
   const end = list.filter((n) => n.dataset?.place === "end");
-  return [...top, bar, panel, ...end];
+  return [...top, bar, panel, ...light, ...end];
 }
 
 /** Transition au prochain rendu : "fwd" (on avance), "back" (on revient), "fade" (autre rubrique), "tab" (autre onglet). */
@@ -591,18 +594,10 @@ const pluginName = (source, provs) => tr(appOf(source)?.[1].label) || tr(provs[0
  * dont la fiche montre le cerveau). Tirés des options du réglage du slot, groupés par entrée : [entrée, options].
  */
 function looseOptions(slot) {
-  const shown = new Set();
-  for (const [, provs] of pluginsFor(slot.service)) for (const p of provs) for (const it of p.items) shown.add(valueOf(p, it));
-  const m = new Map();
-  for (const o of slotSetting(slot)?.options ?? []) {
-    if (o.value === "@none" || shown.has(o.value)) continue;
-    const e = entryOf(o.value);
-    if (!m.has(e)) m.set(e, []);
-    m.get(e).push(o);
-  }
-  return [...m];
+  return sourcesOf(slot).filter((x) => x.options.length).map((x) => [x.source, x.options]);
 }
-const entryOf = (v) => (v && v !== "@none" ? v.slice(0, v.indexOf("/")) : "@none");
+/** Tous les plugins d'un slot (fournisseurs, plugins installés même éteints, choix offerts par ctx.offer seul). */
+const sourcesOf = (slot) => slotSources(items.providers, slotSetting(slot)?.options ?? [], slot.service);
 const modeSlotOf = (page) => slotsOn(page).find((x) => x.display === "mode");
 
 function inUseBadge() { return h("span", { class: "inuse" }, h("i", { "aria-hidden": "true" }), t("inUseShort")); }
@@ -786,15 +781,17 @@ function pluginCards(services, page, title) {
 
 /** Un slot en onglets, un par plugin (ex. Voix, mot d'activation). */
 function slotTabs(slot, page) {
-  const plugins = pluginsFor(slot.service);
+  const plugins = sourcesOf(slot);
   const active = entryOf(slot.value);
-  const ids = [...plugins.map(([s]) => s), ...(slot.none ? ["@none"] : [])];
+  const ids = [...plugins.map((x) => x.source), ...(slot.none ? ["@none"] : [])];
   let cur = uiTab.get(slot.id);
   if (!ids.includes(cur)) cur = ids.includes(active) ? active : ids[0];
   const tabs = h("div", { class: "stabs", role: "tablist", "aria-label": tr(slot.label) });
   const tabBtn = (id, label, extra) => h("button", { type: "button", role: "tab", class: `stab${id === cur ? " on" : ""}`, "aria-selected": String(id === cur), onclick: () => { uiTab.set(slot.id, id); render(); } }, label, extra);
-  for (const [source, provs] of plugins) {
-    const warn = provs.some((p) => p.items.some((it) => it.enabled && (it.status === "warn" || it.status === "error")));
+  for (const { source, provs } of plugins) {
+    const app = appOf(source)?.[1];
+    const bad = (it) => it.enabled && (it.status === "warn" || it.status === "error");
+    const warn = provs.some((p) => p.items.some(bad)) || (app && bad(app));
     tabs.append(tabBtn(source, pluginName(source, provs), source === active ? inUseBadge() : warn ? h("span", { class: "wdot", "aria-label": t("needsSetup") }) : null));
   }
   if (slot.none) tabs.append(tabBtn("@none", tr(slot.none), active === "@none" ? inUseBadge() : null));
@@ -802,14 +799,20 @@ function slotTabs(slot, page) {
   const panel = h("div", { class: "spanel" });
   if (cur === "@none") panel.append(h("div", { class: "scard" }, noneRow(slot, page)));
   else {
-    const provs = plugins.find(([s]) => s === cur)?.[1] ?? [];
+    const { provs = [], options = [] } = plugins.find((x) => x.source === cur) ?? {};
     panel.append(pluginHead(cur, provs));
     const rows = provs.flatMap((p) => p.items.map((it) => [p, it]));
     if (rows.some(([, it]) => it.group)) panel.append(...groupedRows(slot, rows, page));
     else {
       const card = h("div", { class: "scard" });
       for (const [p, it] of rows) card.append(itemRow(slot, p, it, page));
-      if (!rows.length) card.append(h("div", { class: "empty-line", text: t("noItems") }));
+      // Choix offerts par ctx.offer seul (ex. les voix du système) : rien d'autre ne les montre.
+      for (const o of options) card.append(optionRow(slot, o, page));
+      if (!card.childElementCount) {
+        const app = appOf(cur)?.[1];
+        // Plugin éteint, ou en erreur : dire pourquoi la liste est vide plutôt que « Rien pour l'instant ».
+        card.append(h("div", { class: "empty-line", text: app && (!app.enabled || app.status === "error" || app.status === "warn") ? tr(app.statusText) : t("noItems") }));
+      }
       panel.append(card);
     }
   }
@@ -1053,7 +1056,8 @@ function pageNodes(page, nodes, { embedded = false } = {}) {
     if (own.length) nodes.push(...settingsBlocks(own));
     // Sous-rubriques : un bloc par sous-rubrique, avec son titre.
     for (const sub of [...new Set(rest.map((s) => s.section))].filter((id) => id !== page)) {
-      nodes.push(h("div", { class: "block", "data-tab": secLabel(sub) }, h("h3", { text: secLabel(sub) }), ...settingsBlocks(rest.filter((s) => s.section === sub))));
+      const subSets = rest.filter((s) => s.section === sub);
+      nodes.push(h("div", { class: "block", "data-tab": secLabel(sub), ...(isLight(subSets) ? { "data-light": "1" } : {}) }, h("h3", { text: secLabel(sub) }), ...settingsBlocks(subSets)));
     }
   };
   if (merged || roles) { provBlock(); nodes.push(...gridNodes); setBlock(); }
