@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 2,
+  "id": "floppy",
+  "name": "Floppy",
+  "version": "0.1.0",
+  "description": "Tells the Floppy voice assistant, at once, when an agent changes state.",
+  "engines": { "orca": ">=1.4.248" },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "capabilities": [{ "kind": "agent:read" }],
+  "contributes": { "events": [{ "on": "agent.status.changed" }] }
+}

@@ -85,6 +85,35 @@ sequenceDiagram
 - Si Orca ne tourne pas : un seul avertissement au journal, puis le plugin réessaie sans bruit.
 - **Pas encore vérifié en vrai** : aucun job Orca n'a fini pendant les essais. La logique est couverte par les tests (`plugins/tools/orca/test`, `plugins/conversation/default/test`).
 
+### Pont : Orca prévient Floppy aussitôt (`plugins/tools/orca/orca-plugin`)
+
+La vérification régulière annonce une fin avec jusqu'à 15 s de retard. Un plugin Orca (« Floppy », worker Node) reçoit
+chaque changement d'état d'un agent (`agent.status.changed`) et le transmet aussitôt à Floppy.
+
+```mermaid
+sequenceDiagram
+  participant O as Orca
+  participant W as plugin Orca « Floppy » (worker)
+  participant F as fichier orca-bridge.json
+  participant P as plugin orca de Floppy
+  P->>F: au démarrage : port libre + jeton aléatoire (127.0.0.1)
+  O->>W: agent.status.changed { paneKey, state : working / blocked / waiting / done }
+  W->>W: même état que le précédent ? on ignore (Orca répète beaucoup)
+  W->>F: lit port et jeton (relu si Floppy a redémarré)
+  W->>P: POST /orca (Bearer jeton)
+  P->>P: working → autre état ? lit le message de l'agent (orca worktree ps), annonce
+```
+
+- **Installation** (une fois) : `orca plugin dev load plugins/tools/orca/orca-plugin`, puis la même commande avec `--approve <empreinte>` qu'Orca affiche. Le plugin demande seulement `agent:read`. Orca garde le dossier chargé (Réglages → Plugins → Development folders) et le recharge quand ses fichiers changent.
+- **Dossier de Floppy vu d'Orca** : `FLOPPY_HOME`, sinon `LOCALAPPDATA/floppy`, sinon (Windows) `~/AppData/Local/floppy`, sinon `~/.local/share/floppy`. Orca lance ses workers **sans** `LOCALAPPDATA` : d'où le chemin Windows écrit en dur à partir du dossier personnel.
+- **Orca démarre le worker au premier événement**, pas au lancement. Floppy passe « en direct » au premier message reçu.
+- **Pont en direct** (un message depuis moins de 10 min) : la vérification régulière tombe à une par minute (filet de sécurité). État affiché : « surveillance en direct ».
+- **Pont et vérification tiennent le même tableau d'états** ; le premier qui voit une fin l'annonce. Un état reçu du pont gagne 30 s sur la vérification, qui peut lire un état plus ancien. La clé d'annonce est le type d'état (`orca:<worktree>:<pane>:termines`), donc la même fin vue deux fois n'est dite qu'une fois (anti-doublon de la conversation, 10 min).
+- **États** : `working` → en cours ; `blocked`, `waiting` → en attente (annonce importante) ; `done` → terminé, ou interrompu si `outcome` vaut `interruption` / `cancellation`.
+- **Sécurité** : 127.0.0.1 seulement, jeton comparé en temps constant, corps ≤ 64 Kio, JSON objet, chaque champ vérifié. Le contenu reste une donnée (jamais une consigne).
+- **Floppy arrêté** : le worker échoue sans bruit et écrit une seule ligne au journal d'Orca, avec les fichiers essayés (`orca plugin logs local.floppy`). Un fichier `orca-bridge.json` oublié est sans danger : le worker relit le fichier à chaque échec.
+- **Vérifié en vrai** (6 novembre 2026) : un événement « bloqué » envoyé par Orca (`orca plugin dev emit`) devient une annonce importante dans Floppy en environ 0,5 s, lancement de la commande compris.
+
 
 ### Annonces en langage parlé (`plugins/tools/orca/src/speech.ts`)
 

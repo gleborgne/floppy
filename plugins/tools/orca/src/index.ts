@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { delimiter, extname, isAbsolute, join } from "node:path";
 import { definePlugin, T, type Text, type ToolDef, type ToolOutput } from "@floppy/core";
 import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
+import { BRIDGE_LIVE_MS, BRIDGE_POLL_MS, EVENT_WINS_MS, kindOfEvent, startBridge, type BridgeEvent } from "./bridge.ts";
 
 const Config = z.object({
   /** Commande Orca (par défaut `orca` sur le PATH). */
@@ -63,6 +64,8 @@ export interface OrcaOptions {
   run?: OrcaRunner;
   /** Autres commandes Orca en lecture (terminal list / read). Tests : simulées. */
   cli?: OrcaCli;
+  /** Porte d'entrée du plugin Orca « Floppy » (par défaut : ouverte). */
+  bridge?: boolean;
   now?: () => number;
   /** Phrase parlée d'une annonce (tests). Par défaut : LLM local, sinon phrase faite par le code. */
   phrase?: (f: Facts) => Promise<string | undefined>;
@@ -292,6 +295,11 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       let busy = false;
       /** Dernier agent annoncé : cible par défaut de « qu'est-ce qu'il demande ? ». */
       let lastAnnounced: { worktreeId: string; paneKey: string } | undefined;
+      /** Dernier événement du pont, par agent : la vérification (plus lente) n'écrase pas un état plus récent. */
+      const eventAt = new Map<string, number>();
+      let bridgeSeen = 0;
+      let lastPoll = 0;
+      const bridgeLive = (): boolean => bridgeSeen > 0 && Date.now() - bridgeSeen < BRIDGE_LIVE_MS;
 
       const t = (fr: string, en: string): Text => ({ fr, en });
       const group = t("Orca", "Orca");
@@ -386,7 +394,8 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       ctx.tools.register(tools);
       const showStatus = (): void => {
         if (warned) ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
-        else ctx.items.status(surveillance ? t("surveillance active", "monitoring on") : t("surveillance coupée", "monitoring off"));
+        else if (!surveillance) ctx.items.status(t("surveillance coupée", "monitoring off"));
+        else ctx.items.status(bridgeLive() ? t("surveillance en direct", "live monitoring") : t("surveillance active", "monitoring on"));
       };
       showStatus();
 
@@ -402,12 +411,38 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
         lastAnnounced = { worktreeId: w.worktreeId, paneKey: a.paneKey };
         const text = said ?? plainSentence(f);
         const important = notifications === "toutes" || k === "en_attente";
-        ctx.emit("initiative", { source: "orca", text, importance: important ? "important" : "normal", key: `orca:${w.worktreeId}:${a.paneKey}:${a.state ?? k}` });
+        // Clé par type d'état (pas l'état brut d'Orca) : la même fin vue par le pont puis par la vérification = une seule annonce.
+        ctx.emit("initiative", { source: "orca", text, importance: important ? "important" : "normal", key: `orca:${w.worktreeId}:${a.paneKey}:${k}` });
+      };
+
+      // Pont : le plugin Orca « Floppy » (dossier orca-plugin) envoie chaque changement d'état aussitôt.
+      // Vérifications et pont tiennent le même tableau d'états : le premier qui voit la fin l'annonce.
+      const onBridge = async (e: BridgeEvent): Promise<void> => {
+        const first = !bridgeLive();
+        bridgeSeen = Date.now();
+        if (first) showStatus();
+        if (e.kind !== "agent" || !surveillance || typeof e.paneKey !== "string" || typeof e.workspaceId !== "string") return;
+        const id = `${e.workspaceId}|${e.paneKey}`;
+        const k = kindOfEvent(e.state, e.outcome);
+        const prev = states.get(id);
+        states.set(id, k);
+        eventAt.set(id, Date.now());
+        if (!baseline || prev !== "en_cours" || k === "en_cours") return;
+        // Le message de l'agent n'est pas dans l'événement : une lecture d'Orca pour l'annonce.
+        let hit: Hit | undefined;
+        try {
+          for (const w of await run()) for (const a of w.agents ?? []) if (a.paneKey === e.paneKey) hit = { w, a };
+        } catch { /* Orca lent : annonce avec le titre seul */ }
+        const title = typeof e.title === "string" ? e.title : undefined;
+        void announce(hit?.w ?? { worktreeId: e.workspaceId, ...(title ? { displayName: title } : {}) }, hit?.a ?? { paneKey: e.paneKey, state: String(e.state ?? ""), ...(title ? { taskTitle: title } : {}) }, k);
       };
 
       const tick = async (): Promise<void> => {
         if (!surveillance || busy || !ctx.alive) return;
+        // Pont actif : une vérification par minute suffit (filet de sécurité).
+        if (bridgeLive() && Date.now() - lastPoll < BRIDGE_POLL_MS) return;
         busy = true;
+        lastPoll = Date.now();
         try {
           const wts = await run();
           if (warned) { warned = false; showStatus(); }
@@ -416,19 +451,25 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
             for (const a of w.agents ?? []) {
               const id = `${w.worktreeId}|${a.paneKey}`;
               seen.add(id);
+              if (Date.now() - (eventAt.get(id) ?? 0) < EVENT_WINS_MS) continue;
               const prev = states.get(id);
               const k = kindOf(a);
               states.set(id, k);
               if (baseline && prev === "en_cours" && k !== "en_cours") void announce(w, a, k);
             }
           }
-          for (const id of [...states.keys()]) if (!seen.has(id)) states.delete(id);
+          for (const id of [...states.keys()]) if (!seen.has(id) && !eventAt.has(id)) states.delete(id);
+          for (const [id, at] of eventAt) if (Date.now() - at > BRIDGE_LIVE_MS) eventAt.delete(id);
           baseline = true;
         } catch (e) {
           if (!warned) { warned = true; showStatus(); ctx.log("warn", "Orca ne répond pas, on continue d'essayer en silence.", { erreur: String(e) }); }
         } finally { busy = false; }
       };
 
+      if (opts.bridge !== false) {
+        const stop = startBridge(ctx.home, (e) => { void onBridge(e); }, (m, d) => ctx.log("warn", m, d));
+        ctx.effect(async () => { await (await stop)(); });
+      }
       void tick();
       ctx.interval(() => { void tick(); }, Math.round(cfg.pollSeconds * 1000));
     },

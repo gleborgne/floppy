@@ -81,7 +81,7 @@ describe("surveillance", () => {
     const n2 = data.calls;
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(n2 + 3));
     expect(got).toHaveLength(1);
-    expect(got[0]).toMatchObject({ source: "orca", importance: "normal", key: "orca:w1:p1:done" });
+    expect(got[0]).toMatchObject({ source: "orca", importance: "normal", key: "orca:w1:p1:termines" });
     expect(got[0]!.text).toBe("Sur Repo dev mcp, ton agent a fini : migration.");
   });
 
