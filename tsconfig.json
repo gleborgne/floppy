@@ -1,4 +1,12 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["apps/cli/src/**/*.ts", "packages/*/src/**/*.ts", "plugins/*/*/src/**/*.ts", "packages/*/test/**/*.ts", "plugins/*/*/test/**/*.ts", "apps/cli/test/**/*.ts"]
+  "include": [
+    "apps/cli/src/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "plugins/*/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "plugins/*/*/test/**/*.ts",
+    "apps/cli/test/**/*.ts",
+    "packages/sdk/examples/**/*.ts"
+  ]
 }

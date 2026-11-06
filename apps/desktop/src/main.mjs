@@ -5,7 +5,7 @@
 // - Icône dans la barre des tâches (couleur = état), raccourcis globaux.
 import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, utilityProcess, MessageChannelMain, shell, ipcMain, screen, session, dialog, clipboard } from "electron";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
 import { createWriteStream, mkdirSync, existsSync, renameSync } from "node:fs";
 import { renderMarkdown } from "./markdown.mjs";
@@ -14,6 +14,10 @@ import { Typer, foregroundRect } from "./typer.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..", "..");                     // dossier assistant/
 const CONFIG = resolve(process.env.FLOPPY_CONFIG ?? join(ROOT, "floppy.yml"));
+// Mode debug d'un plugin : `npm start -- --dev-plugin <dossier>` (répétable). Le noyau le charge activé et le relit
+// à chaque sauvegarde (apps/cli/src/boot.ts, variable FLOPPY_DEV_PLUGINS ; le noyau hérite de l'environnement).
+const DEV_PLUGINS = (process.argv ?? []).flatMap((a, i, all) => a === "--dev-plugin" && all[i + 1] ? [resolve(all[i + 1])] : a.startsWith("--dev-plugin=") ? [resolve(a.slice(13))] : []);
+if (DEV_PLUGINS.length) process.env.FLOPPY_DEV_PLUGINS = DEV_PLUGINS.join(delimiter);
 const W = 320;
 const H = 560;     // taille fixe : la bulle a toute la place au-dessus de la tête (les zones vides laissent passer les clics)
 

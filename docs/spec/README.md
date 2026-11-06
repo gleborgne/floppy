@@ -28,6 +28,7 @@ Guides pas à pas pour les utilisateurs : [docs/guide](../guide/README.md).
 | [Éléments : réglages pilotés par les plugins (implémenté)](elements.md) | Rubriques déclarées par les plugins ; ajouter, désactiver, supprimer modèles, voix, connecteurs, corps, avatars ; formulaires générés ; secrets ; fr/en |
 | [Recherche web et fenêtre A2UI (implémenté)](a2ui.md) | Chercher sur internet avec ton abonnement Claude ou Codex ; résultats dans une fenêtre A2UI ; avatar qui dort au démarrage |
 | [Assistant IA et plugins utilisateur (implémenté)](assistant-ia.md) | Ton Claude ou ton Codex dans la fenêtre des réglages ; écrire ses propres plugins |
+| [Plugins tiers (implémenté)](plugins-tiers.md) | Installer un plugin d'un autre (dossier, zip, git) : contrôles, revue par un agent IA, clic, processus isolé, mode debug, SDK |
 | [Vrais outils (implémenté)](outils-reels.md) | Connecteurs MCP, Azure DevOps distant, Orca, initiatives |
 | [Tâches et Planificateur (implémenté)](taches.md) | Contrat `task`, registre du noyau, horloge et rattrapage, `ctx.borrow` |
 | [Documents Markdown (implémenté)](documents.md) | Floppy répond par un document dans une fenêtre ; fichiers .md ; sécurité du rendu |

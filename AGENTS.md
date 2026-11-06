@@ -8,7 +8,7 @@ A change is done when `npm run check` passes (typecheck + Vitest + licence check
 
 ## Architecture rules
 
-- **Plugin first.** A new capability is a plugin in `plugins/<family>/<name>`, registered in `apps/cli/src/catalog.ts` and listed in `floppy.example.yml`. The kernel (`packages/core`) stays free of Electron and of any specific plugin (`packages/core/test/boundaries.test.ts` guards this).
+- **Plugin first.** A new capability is a plugin in `plugins/<family>/<name>`, registered in `apps/cli/src/catalog.ts` and listed in `floppy.example.yml`. Plugins written by others (third-party: `floppy-plugin.json`, isolated process, AI review) follow `docs/spec/plugins-tiers.md`; their types live in `packages/sdk/floppy-plugin.d.ts`. The kernel (`packages/core`) stays free of Electron and of any specific plugin (`packages/core/test/boundaries.test.ts` guards this).
 - **Plugins declare** the services they provide and inject, their permissions, settings (`ctx.settings.declare`) and settings forms (`ctx.items.declare`, `providerConfig`). The Settings window is generated from these declarations.
 - **Tools carry a level** (`read`, `write`, `send`, `delete`, `physical`). Anything above `read` goes through approvals in the kernel; a plugin never asks the user itself.
 - **Heavy resources run on demand.** A model on the GPU or a local voice is offered with `ctx.offer` and runs only while a slot uses it.

@@ -57,8 +57,11 @@ utilise `ctx.interval` / `ctx.timeout` (automatique) ou `ctx.effect(() => ...)`.
 
 ## Textes
 
-Tout ce que l'utilisateur voit ou entend est en français, en phrases simples : libellés, descriptions, retours des outils.
+Tout ce que l'utilisateur voit ou entend existe en français et en anglais, en phrases simples : `{ fr: "…", en: "…" }`.
+Cela vaut pour les libellés, les descriptions de réglages, les options et le `text` rendu par un outil. Floppy choisit la langue.
+La `description` d'un outil est lue par le modèle seulement : le français suffit.
 Le code (noms de variables) peut être en français ou en anglais simple.
+Guide complet : docs/guide/plugins/README.md dans le dépôt de Floppy.
 
 ## Sécurité
 

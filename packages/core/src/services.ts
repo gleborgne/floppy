@@ -254,6 +254,13 @@ export interface CoderService {
   answerPermission(sessionId: string, permissionId: string, allow: boolean): void;
   close(sessionId: string): void;
   onEvent(fn: (e: CoderEvent) => void): () => void;
+  /** Agents qui savent relire un plugin tiers (CLI trouvé). */
+  reviewers?(): Promise<CoderAgentInfo[]>;
+  /**
+   * Relit un plugin tiers : un tour unique, SANS outil (le code est dans `prompt`), dans un dossier vide.
+   * `agent` absent : le premier disponible. Rend la réponse brute de l'agent.
+   */
+  review?(input: { prompt: string; agent?: CoderAgent; signal?: AbortSignal }): Promise<{ agent: CoderAgent; text: string }>;
 }
 
 // ------------------------------------------------------------------ service mcp (fourni par le plugin tools)

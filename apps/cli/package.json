@@ -57,6 +57,7 @@
     "@floppy/plugin-tts-audiocpp": "0.1.0",
     "@floppy/plugin-tts-system": "0.1.0",
     "@floppy/plugin-voice-listen": "0.1.0",
-    "@floppy/plugin-stt-sherpa": "0.1.0"
+    "@floppy/plugin-stt-sherpa": "0.1.0",
+    "@floppy/sdk": "0.1.0"
   }
 }

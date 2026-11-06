@@ -1,0 +1,10 @@
+{
+  "id": "__ID__",
+  "version": "0.1.0",
+  "licence": "MIT",
+  "api": 1,
+  "description": {
+    "fr": "Dit bonjour. Remplace cette phrase par ce que fait ton plugin.",
+    "en": "Says hello. Replace this sentence with what your plugin does."
+  }
+}

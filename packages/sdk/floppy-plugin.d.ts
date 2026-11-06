@@ -1,5 +1,17 @@
-// Types d'un plugin utilisateur Floppy. Ce fichier ne contient que des types : ne l'importe qu'avec `import type`.
-// Usage dans <id>/index.ts :  import type { UserPlugin } from "../floppy-plugin.d.ts";
+// Types d'un plugin Floppy (plugin personnel ou plugin tiers). Ce fichier ne contient que des types :
+// importe-le seulement avec `import type`, qui est effacé à l'exécution.
+//   Plugin personnel (<home>/plugins/<id>/index.ts) : import type { UserPlugin } from "../floppy-plugin.d.ts";
+//   Plugin tiers (dossier créé par `floppy plugin new`) : import type { UserPlugin } from "./floppy-plugin.d.ts";
+// Guide : docs/guide/plugins/README.md (français) et docs/guide/plugins/README.en.md (English).
+
+/** Version de l'API décrite ici. Un plugin tiers la recopie dans `api` de floppy-plugin.json. */
+export type PluginApi = 1;
+
+/**
+ * Texte montré à l'utilisateur : une chaîne (français), ou les deux langues. Floppy choisit la langue.
+ * Écris les deux langues : { fr: "Lancer un minuteur", en: "Start a timer" }.
+ */
+export type Text = string | { fr: string; en?: string };
 
 /** Niveau d'un outil. Il décide de l'accord demandé à l'utilisateur. */
 export type ToolLevel = "read" | "write" | "send" | "delete";
@@ -7,33 +19,37 @@ export type ToolLevel = "read" | "write" | "send" | "delete";
 export type SettingRisk = "free" | "ask" | "cli";
 
 export interface Permissions {
-  /** Dossiers lus (chemins ou motifs). */
-  "fs.read"?: string[];
-  /** Dossiers écrits. */
-  "fs.write"?: string[];
-  /** Hôtes réseau joignables (ex. "api.exemple.fr"). Sans cela : aucun accès réseau. */
+  /**
+   * Hôtes réseau joignables avec fetch (ex. "api.contoso.com", "*.contoso.com"). Sans cette liste : aucun accès réseau.
+   * Plugin tiers : fetch est le seul accès réseau, et chaque requête est vérifiée par Floppy.
+   */
   net?: string[];
-  /** Programmes lancés. */
-  exec?: string[];
+  /** Le plugin envoie des données de l'utilisateur à un service en ligne. */
   cloud?: boolean;
+  /** Plugin personnel seulement (un plugin tiers n'a ni fichiers ni programmes). */
+  "fs.read"?: string[];
+  /** Plugin personnel seulement. */
+  "fs.write"?: string[];
+  /** Plugin personnel seulement. */
+  exec?: string[];
 }
 
 export interface Manifest {
   /** Identique au nom du dossier : ^[a-z][a-z0-9-]*$ */
   id: string;
   version: string;
-  description?: string;
+  description?: Text;
   /** Licence du plugin (ex. "MIT"). */
   licence: string;
-  /** Services fournis. Souvent vide pour un plugin d'outils. */
+  /** Services fournis. Plugin personnel seulement ; souvent vide. */
   provides?: string[];
-  /** Services obligatoires : sans eux, le plugin attend. */
+  /** Services obligatoires : sans eux, le plugin attend. Plugin personnel seulement. */
   inject?: string[];
-  /** Services facultatifs. */
+  /** Services facultatifs. Plugin personnel seulement. */
   optional?: string[];
   permissions?: Permissions;
   /** Rubriques que ce plugin ajoute à la fenêtre des réglages (id, label, order…). Facultatif. */
-  sections?: { id: string; label: string | { fr: string; en?: string }; description?: string | { fr: string; en?: string }; order?: number; parent?: string }[];
+  sections?: { id: string; label: Text; description?: Text; order?: number; parent?: string }[];
 }
 
 export type JsonSchema = Record<string, unknown>;
@@ -47,8 +63,8 @@ export interface ToolCallMeta {
 export interface ToolResult {
   /** done = fait ; unverified = fait mais non vérifié ; failed = raté ; refused = refusé. */
   status: "done" | "unverified" | "failed" | "refused";
-  /** Texte rendu au modèle (en français, court). */
-  text: string;
+  /** Texte rendu au modèle et parfois montré : court, dans les deux langues si l'utilisateur peut le lire. */
+  text: Text;
   raw?: unknown;
 }
 
@@ -56,53 +72,54 @@ export interface ToolResult {
 export interface ToolDef {
   /** snake_case, en français ou anglais simple (ex. "lancer_minuteur"). */
   name: string;
-  /** Dit au modèle quand l'utiliser. */
+  /** Dit au modèle quand l'utiliser (lu par le modèle seulement : une langue suffit). */
   description: string;
   /** JSON Schema des paramètres (type: "object"). */
   inputSchema: JsonSchema;
   level: ToolLevel;
-  /** Phrase pour la demande d'accord. */
-  summary?: (args: Record<string, unknown>) => string;
+  /** Phrase pour la demande d'accord (plugin personnel ; un plugin tiers reçoit une phrase standard). */
+  summary?: (args: Record<string, unknown>) => Text;
   handler: (args: Record<string, unknown>, meta: ToolCallMeta) => Promise<ToolResult>;
 }
 
 export interface SettingOption {
   value: string;
-  label: string;
-  /** Mots qui désignent cette valeur à l'oral. */
+  label: Text;
+  /** Mots qui désignent cette valeur à l'oral, dans les deux langues. */
   aliases?: string[];
 }
 
 /** Un réglage, visible dans la fenêtre des réglages et modifiable à la voix. */
 export interface SettingDef {
-  /** [a-z0-9_] ; préfixe-le par l'id du plugin pour éviter les conflits. */
+  /** [a-z0-9_] ; commence par l'id du plugin (tirets remplacés par « _ ») suivi de « _ ». */
   key: string;
-  label: string;
-  description: string;
+  label: Text;
+  description: Text;
   type: "enum" | "number" | "boolean" | "text";
   /**
    * Rubrique de la fenêtre des réglages (obligatoire) : "general" pour un réglage ordinaire, ou l'id d'une rubrique
    * déclarée par un plugin (cerveau, voix, ecoute, connecteurs, corps…) ou par ton manifeste (`sections`).
    */
   section: string;
-  group?: string;
+  group?: Text;
   options?: SettingOption[];
   min?: number;
   max?: number;
   maxLength?: number;
   risk: SettingRisk;
+  /** Plugin personnel seulement. */
   riskFor?: (value: unknown) => SettingRisk;
   get(): unknown;
   /** Applique la valeur tout de suite. */
   set(value: unknown): void | Promise<void>;
 }
 
-/** Événements du bus que tu peux écouter (ctx.on) ou émettre (ctx.emit). */
+/** Événements du bus que tu peux écouter (ctx.on) ou émettre (ctx.emit). Un plugin tiers n'émet que `initiative`. */
 export interface BusEvents {
   /** Quelque chose à dire à l'utilisateur de soi-même (rappel, fin de tâche). `key` évite les doublons. */
   initiative: { source: string; text: string; importance: "important" | "normal"; key?: string };
   /** Changement d'état d'un plugin. */
-  "plugin.state": { id: string; plugin: string; state: string; error?: string };
+  "plugin.state": { id: string; plugin: string; state: string; error?: Text };
   /** Un service a un nouveau fournisseur. */
   "service.changed": { name: string; provider?: string };
 }
@@ -134,10 +151,10 @@ export interface PluginContext {
   /** Vrai tant que le plugin n'est pas arrêté. */
   readonly alive: boolean;
   /** Signale une panne grave : le plugin s'arrête et l'erreur est visible. */
-  fail(reason: string): void;
+  fail(reason: Text): void;
 }
 
-/** Ce que `export default` d'un plugin utilisateur doit être : un simple objet. */
+/** Ce que `export default` d'un plugin doit être : un simple objet. */
 export interface UserPlugin<C = Record<string, never>> {
   manifest: Manifest;
   /** Facultatif : valide la config de l'entrée. Rends la config propre, ou lève une erreur. */

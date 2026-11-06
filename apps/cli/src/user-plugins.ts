@@ -9,19 +9,34 @@
 // Activation : un réglage par plugin (`plugin_<id>`, risque cli : jamais à la voix, car le code n'est pas vérifié).
 // Oui → entrée `u-<id>` ajoutée au noyau (setExtraEntries). Le choix est gardé par le registre des réglages.
 //
-// SÉCURITÉ : importer ou tester un plugin EXÉCUTE son code avec tous les droits du processus.
+// SÉCURITÉ : importer ou tester un plugin personnel EXÉCUTE son code avec tous les droits du processus.
 // C'est pourquoi `recharger_plugins` et `tester_plugin` sont de niveau « write » (accord demandé par défaut).
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+//
+// Plugin distribué (dossier avec floppy-plugin.json, voir plugins/format.ts) : jamais importé ici. Il tourne dans un
+// processus Node isolé (plugins/sandbox.ts). S'il a été installé par la boutique (plugins/store.ts), son empreinte est
+// dans lock.json et il ne démarre pas si ses fichiers ont changé depuis la revue.
+//
+// Mode debug (`floppy dev <dossier>`) : des dossiers hors de <home>/plugins, activés d'office et relus à chaque
+// modification de fichier (watch).
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, watch, type FSWatcher } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Kernel, MemorySecrets, consoleLogger, manifestError, type EntryConfig, type Logger, type PluginDef, type SettingDef, type ToolDef, type Text, T, TextError, tr } from "@floppy/core";
+import { Kernel, MemorySecrets, consoleLogger, manifestError, type EntryConfig, type Logger, type PluginDef, type SettingDef, type ToolDef, type Text, T, TextError, errorText, tr } from "@floppy/core";
+import { hasPackage, readPackage } from "./plugins/format.ts";
+import { readLock } from "./plugins/lock.ts";
+import { sandboxedPlugin, type SandboxOptions } from "./plugins/sandbox.ts";
 
 const ID_RE = /^[a-z][a-z0-9-]*$/;
+
+/** local : plugin personnel (importé) ; tiers : installé par la boutique (isolé, empreinte vérifiée) ;
+ * paquet : dossier avec floppy-plugin.json copié à la main (isolé) ; dev : mode debug. */
+export type UserPluginKind = "local" | "tiers" | "paquet" | "dev";
 
 export interface UserPluginInfo {
   id: string;
   dir: string;
+  kind: UserPluginKind;
   /** Description du manifeste (si le chargement a réussi). */
   description?: Text;
   /** Erreur du dernier chargement (le plugin chargé avant reste en place). */
@@ -63,6 +78,7 @@ export interface UserPlugins {
 interface Slot {
   id: string;
   dir: string;
+  kind: UserPluginKind;
   def?: PluginDef<any>;
   signature?: string;
   error?: string;
@@ -139,13 +155,66 @@ export function describePermissions(p: PluginDef["manifest"]["permissions"], lan
   return parts.length ? parts.join(" ; ") : none;
 }
 
+/**
+ * Essai d'un plugin dans un noyau jetable (10 s au plus) : état final, erreur, outils et réglages déclarés, journal.
+ * Rien n'est gardé : dossier temporaire, coffre en mémoire.
+ */
+export async function throwawayTest(def: PluginDef<any>, id: string, rep: TestReport = { id, ok: false, missing: [], tools: [], settings: [], logs: [] }): Promise<TestReport> {
+  const tmp = mkdtempSync(join(tmpdir(), "floppy-testplugin-"));
+  const k = new Kernel({
+    home: tmp,
+    secrets: new MemorySecrets(), // jamais le trousseau de l'OS pour un essai jetable
+    plugins: [def],
+    logger: (r) => { rep.logs.push(`[${r.level}] ${r.source} : ${r.msg}${r.data ? " " + JSON.stringify(r.data) : ""}`.slice(0, 400)); },
+  });
+  const eid = "u-" + id;
+  try {
+    const done = k.applyConfig({ plugins: [{ id: eid, plugin: id, config: {} }] }).then(() => true);
+    const ok = await Promise.race([done, new Promise<false>((r) => setTimeout(() => r(false), 10_000))]);
+    if (!ok) { rep.timedOut = true; rep.error = "délai de 10 s dépassé (apply() ne finit pas)"; }
+    const st = k.status().find((s) => s.id === eid);
+    rep.state = st?.state;
+    if (st?.error && !rep.error) rep.error = tr(st.error);
+    rep.missing = st?.missing ?? [];
+    rep.tools = k.tools.list().filter((t) => t.source === eid).map((t) => ({ name: t.name, level: t.level }));
+    rep.settings = k.settings.list().filter((s) => s.source === eid).map((s) => ({ key: s.key, label: tr(s.label), risk: s.risk }));
+    rep.ok = !rep.error && (st?.state === "active" || st?.state === "waiting");
+  } catch (e) {
+    rep.error = errText(e);
+  } finally {
+    await Promise.race([k.stopAll(), new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* fichier encore ouvert : sans gravité */ }
+  }
+  return rep;
+}
+
+/** Charge un dossier de plugin hors de Floppy (CLI `floppy plugin test`) : isolé s'il a un floppy-plugin.json. */
+export async function loadPluginDir(dir: string, sandbox: UserPluginsOptions["sandbox"] = {}): Promise<{ id: string; def: PluginDef<any> }> {
+  const abs = resolve(dir);
+  if (hasPackage(abs)) {
+    const pkg = readPackage(abs);
+    return { id: pkg.id, def: sandboxedPlugin({ dir: abs, pkg, ...sandbox }) };
+  }
+  const id = basename(abs);
+  return { id, def: await importUserPlugin(abs, id, new Set()) };
+}
+
 export function settingKey(id: string): string {
   return "plugin_" + id.replaceAll("-", "_");
 }
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errText = (e: unknown) => tr(errorText(e));
 
-export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<string>; logger?: Logger }): UserPlugins {
+export interface UserPluginsOptions {
+  builtin: Iterable<string>;
+  logger?: Logger;
+  /** Mode debug : dossiers de plugins hors de <home>/plugins, activés d'office et surveillés. */
+  devDirs?: string[];
+  /** Réglages du processus isolé (Node, débogueur, délais, fetch des tests). */
+  sandbox?: Partial<Pick<SandboxOptions, "node" | "inspect" | "timeouts" | "fetch">>;
+}
+
+export function createUserPlugins(kernel: Kernel, opts: UserPluginsOptions): UserPlugins {
   const builtin = new Set(opts.builtin);
   const logger = opts.logger ?? consoleLogger;
   const root = join(kernel.home, "plugins");
@@ -154,6 +223,25 @@ export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<stri
   let offSettings: () => void = () => {};
   let declaredKeys = "";
   let chain: Promise<unknown> = Promise.resolve();
+  const devDirs = (opts.devDirs ?? []).map((d) => resolve(d));
+  const watchers: FSWatcher[] = [];
+
+  /** Définition d'un plugin : isolée s'il a un floppy-plugin.json, importée sinon (plugin personnel). */
+  async function loadDef(slot: Slot): Promise<PluginDef<any>> {
+    if (hasPackage(slot.dir)) {
+      const pkg = readPackage(slot.dir);
+      if (pkg.id !== slot.id) throw new Error(`l'id « ${pkg.id} » (floppy-plugin.json) doit être égal au nom du dossier « ${slot.id} »`);
+      if (builtin.has(pkg.id)) throw new Error(`l'id « ${pkg.id} » est pris par un plugin livré avec l'app`);
+      const lock = slot.kind === "dev" ? undefined : readLock(kernel.home)[pkg.id];
+      return sandboxedPlugin({ dir: slot.dir, pkg, ...(lock ? { expectHash: lock.hash } : {}), ...opts.sandbox });
+    }
+    return importUserPlugin(slot.dir, slot.id, builtin);
+  }
+
+  function kindOf(dir: string, id: string): UserPluginKind {
+    if (!hasPackage(dir)) return "local";
+    return readLock(kernel.home)[id] ? "tiers" : "paquet";
+  }
 
   const entries = (): EntryConfig[] =>
     [...slots.values()].filter((s) => s.def && enabled.get(s.id)).map((s) => ({ id: "u-" + s.id, plugin: s.id, config: {}, disabled: false }));
@@ -163,10 +251,16 @@ export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<stri
   function describe(s: Slot, lang: string): string {
     const m = (fr: string, en: string) => (lang === "en" ? en : fr);
     const base = s.def?.manifest.description ? s.def.manifest.description + " " : "";
+    const lock = s.kind === "tiers" ? readLock(kernel.home)[s.id] : undefined;
+    const origin = s.kind === "dev" ? m("Mode debug, dossier ", "Debug mode, folder ") + s.dir + ". "
+      : lock ? m(`Plugin tiers ${lock.version}, de ${lock.source}${lock.commit ? " @ " + lock.commit.slice(0, 12) : ""} ; revue (${lock.review.agent}) : ${lock.review.verdict}. Il tourne isolé. `,
+        `Third-party plugin ${lock.version}, from ${lock.source}${lock.commit ? " @ " + lock.commit.slice(0, 12) : ""}; review (${lock.review.agent}): ${lock.review.verdict}. It runs isolated. `)
+      : s.kind === "paquet" ? m("Plugin distribué copié à la main (non relu). Il tourne isolé. ", "Packaged plugin copied by hand (not reviewed). It runs isolated. ") : "";
     const load = s.error ? m(`Chargement : erreur : ${s.error}`, `Loading: error: ${s.error}`)
       : s.def ? m("Chargement : chargé", "Loading: loaded") : m("Pas encore lu : il sera lu quand tu l'activeras", "Not read yet: it will be read when you turn it on");
     const perms = s.def ? m(` Droits déclarés : ${describePermissions(s.def.manifest.permissions, lang)}.`, ` Declared permissions: ${describePermissions(s.def.manifest.permissions, lang)}.`) : "";
     const state = enabled.get(s.id) ? m(" ; état : ", "; state: ") + stateOf(s.id, lang) : "";
+    if (s.kind !== "local") return m(`${base}(${origin}${perms.trim()} ${load}${state}.)`, `${base}(${origin}${perms.trim()} ${load}${state}.)`);
     return m(`${base}(Plugin de l'utilisateur, code non vérifié.${perms} ${load}${state}.)`, `${base}(User plugin, unverified code.${perms} ${load}${state}.)`);
   }
 
@@ -181,11 +275,11 @@ export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<stri
       risk: "cli",
       get: () => enabled.get(s.id) ?? false,
       async set(v) {
-        const on = v === true;
+        const on = v === true || s.kind === "dev"; // mode debug : toujours actif
         // Pas encore lu (désactivé au démarrage) : on le lit maintenant, le clic d'activation vaut accord.
         if (on && !s.def && !s.error) {
           try {
-            s.def = await importUserPlugin(s.dir, s.id, builtin);
+            s.def = await loadDef(s);
             await kernel.replacePlugin(s.def);
           } catch (e) { s.error = errText(e); }
         }
@@ -208,29 +302,41 @@ export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<stri
   /** importAll = false (démarrage) : un plugin désactivé n'est PAS importé (importer exécute son code). */
   async function doReload(importAll = false): Promise<ReloadItem[]> {
     const report: ReloadItem[] = [];
-    let folders: string[] = [];
+    const found: { id: string; dir: string; kind: UserPluginKind }[] = [];
     try {
-      folders = readdirSync(root, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && existsSync(join(root, e.name, "index.ts")))
-        .map((e) => e.name).sort();
+      for (const e of readdirSync(root, { withFileTypes: true })) {
+        if (!e.isDirectory() || !existsSync(join(root, e.name, "index.ts"))) continue;
+        found.push({ id: e.name, dir: join(root, e.name), kind: kindOf(join(root, e.name), e.name) });
+      }
     } catch { /* pas de dossier plugins : rien à charger */ }
+    for (const dir of devDirs) {
+      let id = basename(dir);
+      try { if (hasPackage(dir)) id = readPackage(dir).id; } catch { /* erreur montrée au chargement */ }
+      const i = found.findIndex((f) => f.id === id);
+      if (i >= 0) found.splice(i, 1); // le dossier de debug remplace un plugin installé du même nom
+      found.push({ id, dir, kind: "dev" });
+    }
+    found.sort((a, b) => a.id.localeCompare(b.id));
+    const folders = found.map((f) => f.id);
 
-    for (const id of folders) {
-      const dir = join(root, id);
-      const sig = signature(dir);
+    for (const { id, dir, kind } of found) {
+      const sig = signature(dir) + "|" + kind + "|" + dir;
       let slot = slots.get(id);
       if (slot && slot.signature === sig) { report.push({ id, status: "inchangé", ...(slot.error ? { error: slot.error } : {}) }); continue; }
       const isNew = !slot?.def;
-      if (!slot) { slot = { id, dir }; slots.set(id, slot); }
+      if (!slot) { slot = { id, dir, kind }; slots.set(id, slot); }
+      slot.dir = dir;
+      slot.kind = kind;
       slot.signature = sig;
-      if (!enabled.has(id)) enabled.set(id, kernel.settings.savedValue(settingKey(id)) === true);
+      if (kind === "dev") enabled.set(id, true);
+      else if (!enabled.has(id)) enabled.set(id, kernel.settings.savedValue(settingKey(id)) === true);
       if (!importAll && !enabled.get(id)) {
         slot.signature = undefined; // pas lu : il le sera à l'activation (clic) ou au rechargement demandé
         report.push({ id, status: "inchangé" });
         continue;
       }
       try {
-        const def = await importUserPlugin(dir, id, builtin);
+        const def = await loadDef(slot);
         delete slot.error;
         slot.def = def;
         await kernel.replacePlugin(def);
@@ -255,35 +361,16 @@ export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<stri
 
   async function test(id: string): Promise<TestReport> {
     const rep: TestReport = { id, ok: false, missing: [], tools: [], settings: [], logs: [] };
-    if (!ID_RE.test(id) || !existsSync(join(root, id, "index.ts"))) { rep.error = `aucun plugin « ${id} » dans ${root}`; return rep; }
+    const known = slots.get(id);
+    const slot: Slot | undefined = known ?? (ID_RE.test(id) && existsSync(join(root, id, "index.ts")) ? { id, dir: join(root, id), kind: kindOf(join(root, id), id) } : undefined);
+    if (!slot) { rep.error = `aucun plugin « ${id} » dans ${root}`; return rep; }
+    return testDef(slot, rep);
+  }
+
+  async function testDef(slot: Slot, rep: TestReport): Promise<TestReport> {
     let def: PluginDef<any>;
-    try { def = await importUserPlugin(join(root, id), id, builtin); } catch (e) { rep.error = errText(e); return rep; }
-    const tmp = mkdtempSync(join(tmpdir(), "floppy-testplugin-"));
-    const k = new Kernel({
-      home: tmp,
-      secrets: new MemorySecrets(), // jamais le trousseau de l'OS pour un essai jetable
-      plugins: [def],
-      logger: (r) => { rep.logs.push(`[${r.level}] ${r.source} : ${r.msg}${r.data ? " " + JSON.stringify(r.data) : ""}`.slice(0, 400)); },
-    });
-    const eid = "u-" + id;
-    try {
-      const done = k.applyConfig({ plugins: [{ id: eid, plugin: id, config: {} }] }).then(() => true);
-      const ok = await Promise.race([done, new Promise<false>((r) => setTimeout(() => r(false), 10_000))]);
-      if (!ok) { rep.timedOut = true; rep.error = "délai de 10 s dépassé (apply() ne finit pas)"; }
-      const st = k.status().find((s) => s.id === eid);
-      rep.state = st?.state;
-      if (st?.error && !rep.error) rep.error = st.error;
-      rep.missing = st?.missing ?? [];
-      rep.tools = k.tools.list().filter((t) => t.source === eid).map((t) => ({ name: t.name, level: t.level }));
-      rep.settings = k.settings.list().filter((s) => s.source === eid).map((s) => ({ key: s.key, label: tr(s.label), risk: s.risk }));
-      rep.ok = !rep.error && (st?.state === "active" || st?.state === "waiting");
-    } catch (e) {
-      rep.error = errText(e);
-    } finally {
-      await Promise.race([k.stopAll(), new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
-      try { rmSync(tmp, { recursive: true, force: true }); } catch { /* fichier encore ouvert : sans gravité */ }
-    }
-    return rep;
+    try { def = await loadDef(slot); } catch (e) { rep.error = errText(e); return rep; }
+    return throwawayTest(def, slot.id, rep);
   }
 
   const reload = (importAll = true): Promise<ReloadItem[]> => {
@@ -344,14 +431,30 @@ export function createUserPlugins(kernel: Kernel, opts: { builtin: Iterable<stri
   ];
   const offTools = kernel.tools.register("user-plugins", tools);
 
+  // Mode debug : chaque modification de fichier relit le plugin (après un court calme : un éditeur écrit en plusieurs fois).
+  for (const dir of devDirs) {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      watchers.push(watch(dir, { recursive: true }, (_ev, file) => {
+        if (file && /(^|[\\/])(\.floppy-dev|node_modules|\.git)([\\/]|$)/.test(String(file))) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          void reload(true).then((r) => {
+            for (const x of r) if (x.status !== "inchangé") logger({ level: x.status === "erreur" ? "warn" : "info", source: "dev", msg: `${x.id} : ${x.status}${x.error ? " — " + x.error : ""}` });
+          });
+        }, 250);
+      }));
+    } catch (e) { logger({ level: "warn", source: "dev", msg: `surveillance impossible de ${dir} : ${errText(e)}` }); }
+  }
+
   return {
     reload,
     test,
     list: () => [...slots.values()].map((s) => ({
-      id: s.id, dir: s.dir, registered: !!s.def, enabled: enabled.get(s.id) ?? false,
+      id: s.id, dir: s.dir, kind: s.kind, registered: !!s.def, enabled: enabled.get(s.id) ?? false,
       ...(s.def ? { permissions: describePermissions(s.def.manifest.permissions) } : {}),
       ...(s.def?.manifest.description ? { description: s.def.manifest.description } : {}), ...(s.error ? { error: s.error } : {}),
     })),
-    dispose: () => { offSettings(); offTools(); },
+    dispose: () => { for (const w of watchers.splice(0)) w.close(); offSettings(); offTools(); },
   };
 }

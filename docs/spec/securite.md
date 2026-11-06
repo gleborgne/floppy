@@ -82,6 +82,15 @@ flowchart LR
 | Connecteur MCP | Délai de connexion : 30 s. |
 | Assistant IA (`coder`) | Mode plugin : `Read`, `Glob`, `Grep` passent par l'outil de permission (pas pré-autorisés), confinés au dossier des plugins. Codex : `approvalPolicy: "untrusted"` (toute écriture et toute commande hors lecture reviennent en demande d'accord). |
 
+### Plugins tiers
+
+Un plugin écrit par quelqu'un d'autre (dossier avec `floppy-plugin.json`) n'est jamais importé dans le noyau. Détail : [plugins-tiers.md](plugins-tiers.md).
+
+- Avant l'installation : contrôles automatiques du texte (imports, `eval`, modules Node, réseau non déclaré, code masqué, fichiers), puis revue **obligatoire** par un agent de code, sans outil.
+- Installation sur un clic (réglage de risque cli), désactivé ensuite ; empreinte gardée dans `lock.json`, vérifiée à chaque démarrage.
+- Exécution : processus Node à part, `--permission` (lecture de son seul dossier, ni écriture ni programme), aucun module importable, aucune variable d'environnement, `fetch` fait par le noyau vers les seuls hôtes de `permissions.net`. Chaque message du processus est vérifié par le noyau.
+- Limite : Node 24 ne bride pas le réseau par `--permission` ; il est fermé par le retrait des modules, le remplacement de `fetch` et les contrôles.
+
 ### Limite connue : lancements directs
 
 `ctx.spawn` applique `permissions.exec`, mais **plusieurs plugins lancent encore un processus directement** (`spawn` ou `execFile` de Node), sans passer par lui : `coder` (CLI Claude et Codex), `browser`, `websearch`, `orca`, et dans `tools` le connecteur « commande » et la connexion Azure CLI (`azcli`). Pour ces plugins, la liste `permissions.exec` est **déclarative** : rien ne l'impose. À corriger plus tard : faire passer ces lancements par `ctx.spawn`.

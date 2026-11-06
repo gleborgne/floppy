@@ -111,6 +111,13 @@ export class SettingsRegistry {
     return this.saved[key] as T | undefined;
   }
 
+  /** Valeurs gardées dont la clé commence par `prefix` (plugin isolé : copie envoyée à son processus). */
+  savedEntries(prefix: string): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(this.saved)) if (prefix && k.startsWith(prefix)) out[k] = v;
+    return out;
+  }
+
   declare(source: string, defs: SettingDef[]): () => void {
     for (const d of defs) {
       const cur = this.defs.get(d.key);

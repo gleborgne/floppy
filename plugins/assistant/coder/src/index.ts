@@ -15,10 +15,12 @@ import { CodexRunner } from "./codex.ts";
 import { copyKit } from "./kit.ts";
 import { systemPrompt } from "./prompts.ts";
 import { itemsTools } from "./items-tools.ts";
+import { REVIEW_AGENTS, runReview, type ReviewAgent } from "./review.ts";
 
 export { copyKit, KIT_DIR } from "./kit.ts";
 export { claudeArgs } from "./claude.ts";
 export { codexOverrides } from "./codex.ts";
+export { reviewArgs, runReview, REVIEW_SYSTEM, type ReviewAgent } from "./review.ts";
 
 const MAX_SESSIONS = 3;
 const REGLAGES_TOOLS = ["lister_reglages", "changer_reglage", "annuler_reglage", "etat_plugins", "lister_elements", "activer_element"];
@@ -31,6 +33,11 @@ const Config = z.object({
   /** Arguments avant ceux du CLI (tests : `node faux-cli.mjs`). */
   claudeExeArgs: z.array(z.string()).default([]),
   codexExeArgs: z.array(z.string()).default([]),
+  /** CLI Antigravity (relecture des plugins tiers seulement). */
+  agyExe: z.string().optional(),
+  agyExeArgs: z.array(z.string()).default([]),
+  /** Durée maximale d'une relecture de plugin tiers. */
+  review_timeout_s: z.number().default(300),
   /** Délai de réponse à une validation avant refus. */
   permission_timeout_s: z.number().default(600),
 });
@@ -217,6 +224,30 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
 
     onEvent(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
 
+    async reviewers() {
+      const e = find();
+      const agy = cfg.agyExe ?? findExe("agy");
+      return [
+        { id: "claude", label: "Claude Code", available: !!e.claude, loginHint: "claude /login" },
+        { id: "codex", label: "Codex", available: !!e.codex, loginHint: "codex login" },
+        { id: "agy", label: "Antigravity", available: !!agy, loginHint: "agy" },
+      ];
+    },
+
+    async review({ prompt, agent, signal }) {
+      const e = { ...find(), agy: cfg.agyExe ?? findExe("agy") } as Record<ReviewAgent, string | undefined>;
+      const pick = (agent ? [agent] : REVIEW_AGENTS).find((a) => REVIEW_AGENTS.includes(a as ReviewAgent) && e[a as ReviewAgent]) as ReviewAgent | undefined;
+      if (!pick) {
+        throw new TextError(agent
+          ? T(`L'agent « ${agent} » n'est pas installé.`, `The agent "${agent}" is not installed.`)
+          : T("Aucun agent de code installé (Claude Code, Codex ou Antigravity) : il en faut un pour relire un plugin tiers.", "No coding agent installed (Claude Code, Codex or Antigravity): one is needed to review a third-party plugin."));
+      }
+      const exeArgs = pick === "claude" ? cfg.claudeExeArgs : pick === "codex" ? cfg.codexExeArgs : cfg.agyExeArgs;
+      ctx.audit.write({ kind: "coder.review", agent: pick, chars: prompt.length });
+      const text = await runReview({ agent: pick, exe: e[pick]!, exeArgs, prompt, ...(pick === "claude" ? { model: model() } : {}), timeoutMs: cfg.review_timeout_s * 1000, ...(signal ? { signal } : {}) });
+      return { agent: pick, text };
+    },
+
     async stop() {
       for (const id of [...sessions.keys()]) this.close(id);
       listeners.clear();
@@ -232,7 +263,7 @@ export default definePlugin<Config>({
     description: "Assistant IA de la fenêtre des réglages : le CLI de l'utilisateur (Claude Code ou Codex), branché seulement sur des outils précis de Floppy.",
     provides: ["coder"],
     inject: ["mcp"],
-    permissions: { exec: ["claude", "codex"], "fs.write": ["plugins"], cloud: true },
+    permissions: { exec: ["claude", "codex", "agy"], "fs.write": ["plugins"], cloud: true },
     sections: [{ id: "assistant", order: 70, view: "assistant", label: { fr: "Assistant IA", en: "AI assistant" }, description: { fr: "Discute avec un agent de code (Claude Code, Codex…) pour régler Floppy ou créer un plugin.", en: "Chat with a coding agent (Claude Code, Codex…) to tune Floppy or create a plugin." } }],
   },
   config: Config,

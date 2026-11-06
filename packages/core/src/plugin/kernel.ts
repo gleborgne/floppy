@@ -995,6 +995,7 @@ export class Kernel {
         call: (name, args, meta) => this.tools.call(name, args, meta),
         onChange: (fn) => { scope.add(this.tools.onChange(fn)); },
       },
+        savedEntries: (prefix) => this.settings.savedEntries(prefix),
       get alive() { return !scope.isClosed; },
       ...(e.fork ? { item: e.fork.item } : {}),
       provide(name, impl) {

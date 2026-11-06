@@ -1,20 +1,20 @@
 import { it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { EventEmitter } from 'node:events';
 
 // Le vrai processus principal, dans un bac sans Electron ni processus/fichiers réels.
-function desktop() {
+function desktop(argv: string[] = []) {
   const events = new EventEmitter();
   const child = Object.assign(new EventEmitter(), { postMessage: vi.fn(), kill: vi.fn() });
   const app = { quit:vi.fn(), requestSingleInstanceLock:()=>true, commandLine:{appendSwitch(){}}, whenReady:()=>new Promise(()=>{}), on:events.on.bind(events), getAppPath:()=>'.', getLoginItemSettings:()=>({executableWillLaunchAtLogin:false}), setLoginItemSettings(){} };
   const source = readFileSync(new URL('../src/main.mjs', import.meta.url),'utf8')
     .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.mjs',import.meta.url).href));
-  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, dirname,join,resolve, process:{env:{},chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},createWriteStream:()=>({write(){}}),setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork:()=>child}, console };
+  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},createWriteStream:()=>({write(){}}),setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork:()=>child}, console };
   runInNewContext(source+';globalThis.api={applyDisplay,startKernel,setWindow:w=>{win=w;}};',context);
-  return { api:context.api,events,child,app };
+  return { api:context.api,events,child,app,env:context.process.env as Record<string,string> };
 }
 
 it('ignore un affichage reçu pour une fenêtre déjà détruite',()=>{
@@ -37,4 +37,10 @@ it('ignore les messages du noyau après le début de la fermeture',()=>{
   expect(()=>d.child.emit('message',{type:'display',settings:{avatar_visible:true}})).not.toThrow();
   d.child.emit('exit',0);
   expect(d.app.quit).toHaveBeenCalledOnce();
+});
+
+it('--dev-plugin : passe les dossiers de debug au noyau (FLOPPY_DEV_PLUGINS)',()=>{
+  expect(desktop().env.FLOPPY_DEV_PLUGINS).toBeUndefined();
+  const d=desktop(['electron','.','--dev-plugin','plug-a','--dev-plugin=plug-b']);
+  expect(d.env.FLOPPY_DEV_PLUGINS).toBe([resolve('plug-a'),resolve('plug-b')].join(delimiter));
 });

@@ -29,6 +29,8 @@ export interface ContextSettings {
   /** Valeur gardée d'un démarrage précédent, à appliquer au démarrage. */
   saved<T>(key: string): T | undefined;
   /** Valeur courante d'un réglage (sans calculer les choix ni les autres réglages). */
+  /** Valeurs gardées dont la clé commence par `prefix` (non vide). */
+  savedEntries(prefix: string): Record<string, unknown>;
   value(key: string): unknown;
   /** Tous les réglages déclarés (tous plugins). */
   list(): SettingInfo[];

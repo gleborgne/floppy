@@ -1,0 +1,14 @@
+{
+  "name": "@floppy/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Types, gabarit et exemples pour écrire un plugin Floppy.",
+  "exports": {
+    "./floppy-plugin.d.ts": "./floppy-plugin.d.ts",
+    "./template/*": "./template/*",
+    "./examples/*": "./examples/*",
+    "./package.json": "./package.json"
+  }
+}

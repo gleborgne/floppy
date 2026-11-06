@@ -67,7 +67,8 @@ sequenceDiagram
 - **Au démarrage, un plugin désactivé n'est pas lu** (lire = exécuter son code) : il est seulement listé par son nom. Il est lu au clic d'activation, ou par `recharger_plugins` / `tester_plugin` (niveau write : accord demandé).
 - `tester_plugin` le fait tourner dans un **noyau jetable** (10 s) et rend : état, erreur, services manquants, outils, réglages, journal.
 - Rechargement à chaud : le noyau remplace la définition et redémarre seulement ce plugin et ses dépendants (`replacePlugin`).
-- Risque restant : un plugin activé tourne dans le noyau avec tous les droits (pas de bac à sable pour l'instant).
+- Risque restant : un plugin personnel activé tourne dans le noyau avec tous les droits.
+- Un dossier qui a un `floppy-plugin.json` (plugin distribué) n'est jamais importé : il tourne dans un processus isolé. Installer le plugin de quelqu'un d'autre, le faire relire par un agent IA, le mode debug et le SDK : [plugins-tiers.md](plugins-tiers.md).
 
 ## Testé
 

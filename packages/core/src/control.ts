@@ -54,6 +54,11 @@ export async function startControl(kernel: Kernel, home: string, handlers: Contr
       case "GET /items": return send(res, 200, await kernel.items.snapshot());
       case "POST /items": return send(res, 200, await kernel.items.run(body as never, "cli"));
       case "POST /restart": await kernel.restart(String(body.id)); return send(res, 200, { ok: true });
+      // Appel direct d'un outil (CLI `floppy tool`, mode debug) : même chemin que le modèle, accord compris.
+      case "POST /tool": {
+        const args = body.args && typeof body.args === "object" && !Array.isArray(body.args) ? body.args as Record<string, unknown> : {};
+        return send(res, 200, await kernel.tools.call(String(body.name ?? ""), args, { caller: "cli", origin: "cli" }));
+      }
       case "POST /reload":
         if (!handlers.reload) return send(res, 501, { error: "pas de fichier de config" });
         await handlers.reload();
