@@ -338,11 +338,16 @@ Un seul dossier pour tout ce que Floppy garde : la config `floppy.yml`, les rég
 
 Ce qui reste de la revue d'architecture, par ordre d'intérêt :
 
+1. **Réseau** : faire passer tous les appels par `ctx.fetch`, puis refuser (et non plus signaler) un hôte hors `permissions.net`.
 2. **Code produit hors du noyau.** Premier lancement, lecture de la machine, bibliothèques de modèles et de programmes vivent dans `packages/core` ; cible : un paquet à part, ou des plugins.
-3. **Découper `kernel.ts`** (environ 1 550 lignes) : la fabrique du `ctx` et les réglages du noyau (langues, dossiers) en modules à part, ou en plugins internes posés au démarrage. Les pièces sans état sont déjà dans `plugin/lifecycle-util.ts`.
-4. **Fichiers trop gros côté app** : `apps/desktop/src/main.mjs`, `renderer/settings.js`, `plugins/conversation/default/src/index.ts`.
-5. **Doublons restants** : la normalisation de texte (une dizaine de petites fonctions proches mais pas identiques : accents, casse, ponctuation). Le serveur local (`startLocalServer`) et les secrets des éléments (`itemSecret`) sont partagés depuis le 7 novembre 2026.
-6. **Réseau** : faire passer tous les appels par `ctx.fetch`, puis refuser (et non plus signaler) un hôte hors `permissions.net`.
+3. **Fichiers encore gros.** Premier découpage fait le 7 novembre 2026 (voir ci-dessous). Prochaines coupes : les forks et les slots de `kernel.ts` (environ 1 080 lignes), le cycle du noyau et la barre des tâches de `apps/desktop/src/main.mjs` (environ 880), le catalogue, la bibliothèque et l'éditeur de `renderer/settings.js` (environ 1 660), un tour de `plugins/conversation/default/src/index.ts` (environ 570).
+4. **Doublons restants** : la normalisation de texte (une dizaine de petites fonctions proches mais pas identiques : accents, casse, ponctuation).
+
+**Comment les gros fichiers sont découpés.** Un module sorti d'un fichier reçoit ce dont il a besoin, déclaré :
+
+- **Noyau** : la fabrique du `ctx` (`plugin/context-factory.ts`), les réglages du noyau (`plugin/core-settings.ts`) et les réglages de choix `slot.<id>` / `service.<nom>` (`plugin/selection-settings.ts`) lisent la classe `Kernel` par sa vue interne (`plugin/kernel-internals.ts`) : ses membres privés, typés, sans élargir son API publique.
+- **Conversation** : `model.ts` (config, un tour, un corps), `initiatives.ts` et `voice-events.ts` reçoivent leurs dépendances par une interface (`InitiativeDeps`, `VoiceDeps`).
+- **App** : `windows.mjs` (une seule recette de fenêtre secondaire sûre), `main-texts.mjs`, `tray-icon.mjs`, `placement.mjs` ; côté réglages, `settings-texts.js`, `dom.js`, `fields.js` (branché par `configureFields`). Le JavaScript de l'app n'est pas typé : `apps/desktop/test/names.test.ts` vérifie que chaque nom utilisé existe.
 
 ## Le noyau dans l'app Electron (vérifié)
 
