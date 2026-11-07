@@ -9,6 +9,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, httpHealthy, startLocalServer, scanGguf as scanAll, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
 import { speechInstructions, type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
 import { dynamicCatalogue } from "./catalogue.ts";
+import { expressionProfile, fishDeliveryText } from "./expression.ts";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -25,6 +26,7 @@ const ModelEntry = z.object({
   langue: z.string().optional(),
   rate: z.number().int().optional(),
   mode: z.enum(["streaming", "offline"]).optional(),
+  seed: z.number().int().nonnegative().optional(),
 });
 
 const Config = z.object({
@@ -58,6 +60,8 @@ export interface ModelValues {
   /** 0 = automatique selon la famille. */
   rate: number;
   mode: "streaming" | "offline";
+  /** Graine facultative pour comparer deux rendus ; absente en conversation normale. */
+  seed?: number;
 }
 export type Entry = ModelValues & { id: string };
 
@@ -83,6 +87,7 @@ export function clean(v: Record<string, unknown>): ModelValues {
     instruct: str(v.instruct), langue: typeof v.langue === "string" ? v.langue.trim() : "",
     rate: Number.isFinite(rate) && rate >= 8000 ? Math.round(rate) : 0,
     mode: fam === "chatterbox" || v.mode === "offline" ? "offline" : "streaming",
+    ...(typeof v.seed === "number" && Number.isSafeInteger(v.seed) && v.seed >= 0 ? { seed: v.seed } : {}),
   };
 }
 
@@ -114,15 +119,17 @@ export function speechRequest(item: ModelValues, text: string, lang?: string, de
   const language = item.langue || lang;
   const options: Record<string, unknown> = {};
   const fam = familyOf(item);
-  // Seul CustomVoice 1.7B garantit ce contrôle ; le clonage garde son chemin habituel.
-  const expressive = fam === "qwen3_tts" && /1[._-]7b.*customvoice/i.test(item.model) && item.voix === "integree";
-  const instructions = delivery && expressive ? [delivery.intent === "reassure" ? "" : item.instruct, speechInstructions(delivery)].filter(Boolean).join("\n") : item.instruct;
+  const expression = expressionProfile(fam, item.model, item.voix);
+  const instructions = delivery && expression === "instructions" ? [delivery.intent === "reassure" ? "" : item.instruct, speechInstructions(delivery)].filter(Boolean).join("\n") : item.instruct;
+  const input = delivery && expression === "fish-s2-tags" ? fishDeliveryText(text, delivery) : text;
+  if (expression === "fish-s2-tags") options.text_chunk_mode = "tag_aware";
   if (fam === "voxcpm2") options.retry_badcase = false;
   if (item.voix === "integree") {
     if (item.speaker) options.voice_id = item.speaker;
   } else if (!item.refText && (fam === "qwen3_tts" || fam === "voxcpm2")) options.x_vector_only_mode = true; // option propre à ces familles
   return {
-    model: MODEL_ID, input: text,
+    model: MODEL_ID, input,
+    ...(item.seed === undefined ? {} : { seed: item.seed }),
     ...(item.voix === "clone" ? { voice: VOICE_NAME } : {}),
     ...(item.mode === "streaming" ? { stream_format: "sse" } : { response_format: "wav" }),
     ...(language ? { language } : {}),

@@ -159,13 +159,14 @@ export default definePlugin<Config>({
     };
 
     /** Envoie une phrase à la voix et la garde en mémoire pour reconnaître son écho. */
-    const speakOut = (b: Body, id: string, text: string, emotion?: string) => {
+    const speakOut = (b: Body, id: string, text: string, emotion?: string, intensity?: number) => {
       const now = Date.now();
       b.spoken = [...(b.spoken ?? []).filter((x) => now - x.at < 120_000), { text, at: now }].slice(-30);
       const intent = emotion && ["sorry", "sad", "cry", "scared"].includes(emotion) ? "reassure"
         : emotion && ["mischief", "wink", "laugh", "joy", "excited"].includes(emotion) ? "playful"
         : emotion && ["thinking", "focused", "curious"].includes(emotion) ? "explain" : "neutral";
-      b.output!.speak(id, text, { intent, profile, language: lang, tone });
+      b.output!.speak(id, text, { intent, profile, language: lang, tone,
+        ...(emotion ? { emotion } : {}), ...(intensity === undefined ? {} : { intensity }) });
     };
     /** Floppy parle ou vient de parler : un texte entendu peut être l'écho de sa voix. */
     const mayEcho = (b: Body) => b.playing || !!b.duck || Date.now() - (b.playEndAt ?? 0) < ECHO_TAIL_MS;
@@ -258,16 +259,17 @@ export default definePlugin<Config>({
         // Émotion arrivée au milieu de la réponse : elle attend que sa phrase soit dite (voix seulement).
         let nextCue: { emotion: Emotion; intensity?: number } | undefined;
         let speakingEmotion: string | undefined;
+        let speakingIntensity: number | undefined;
         const say = (s: string, paragraph = false) => {
           if (mode !== "voice" || !b.stream || t.abort.signal.aborted) return;
           const id = `t${t.n}-${++seq}`;
-          if (nextCue) { t.cues.set(id, nextCue); speakingEmotion = nextCue.emotion; nextCue = undefined; }
+          if (nextCue) { t.cues.set(id, nextCue); speakingEmotion = nextCue.emotion; speakingIntensity = nextCue.intensity; nextCue = undefined; }
           if (paragraph) (t.pauses ??= new Set()).add(id);
           (t.gestures ??= new Map()).set(id, { intent: sentenceGesture(s, speakingEmotion, text),
             intensity: profile === "discreet" ? 0.45 : profile === "natural" ? 0.8 : 1 });
           t.pending.add(id);
           mark("first_sentence");
-          speakOut(b, id, s, speakingEmotion);
+          speakOut(b, id, s, speakingEmotion, speakingIntensity);
         };
         mark("brain_start");
         // Contexte d'une annonce récente (moins de 2 minutes) : « c'est quoi ce job ? » garde son sens.

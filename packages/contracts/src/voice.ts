@@ -50,6 +50,9 @@ export interface SpeechDelivery {
   profile: "discreet" | "natural" | "playful";
   language: "fr" | "en";
   tone?: string;
+  /** Même émotion que celle envoyée à l'avatar ; le moteur la traduit selon ses capacités. */
+  emotion?: string;
+  intensity?: number;
 }
 
 /** Début ou fin de parole ; sample = index de l'échantillon dans le flux du détecteur (compté depuis open ou reset). */

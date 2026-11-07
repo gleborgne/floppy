@@ -93,17 +93,36 @@ ce profil, à l'ouverture et à chaud quand le ton ou l'expressivité change.
 
 En mode séparé, la file de parole reçoit une intention par phrase, déduite de l'émotion du cerveau : expliquer,
 rassurer, plaisanter ou neutre. L'intention persiste jusqu'à la prochaine émotion ; la même émotion pilote
-l'avatar à la lecture. `TtsService.speak` reçoit un champ facultatif `delivery` (intention, profil, langue, ton),
+l'avatar à la lecture. `TtsService.speak` reçoit un champ facultatif `delivery` (intention, profil, langue, ton,
+émotion et intensité),
 séparé du texte prononcé. Qwen CustomVoice 1.7B à voix intégrée reçoit ces consignes dans `instructions`.
 La variante est reconnue par son nom de fichier standard (1.7b puis customvoice) ; un fichier renommé n'active
-pas automatiquement ce pilotage. Base/clonage, Pocket, Supertonic et les autres fournisseurs restent compatibles
+pas automatiquement ce pilotage. Qwen Base/clonage, Pocket, Supertonic et les fournisseurs sans adaptation restent compatibles
 et ignorent ce champ. Gemini TTS traduit désormais ce champ dans son prompt de synthèse, avant la transcription
 inchangée : intention, profil, langue et ton, avec une voix et un débit réguliers. La voix sélectionnée reste
 la même. Rassurer écarte le ton sarcastique et le style fixe de la voix pour garder une consigne calme.
 
+Depuis le 8 novembre 2026, **Fish Audio S2 Pro** traduit aussi `delivery`, dans `plugins/tts/audiocpp/src/expression.ts`.
+Le profil est reconnu par famille et nom du fichier standard ; S1, les fichiers renommés et les modèles inconnus
+n'héritent pas automatiquement de sa syntaxe. Une seule balise anglaise est préfixée au texte de synthèse :
+`[soft tone]` pour rassurer, `[warm and playful]` pour le jeu, `[clear and engaging]` pour expliquer ; curiosité
+explicite et faible intensité ont leur variante. Le profil discret atténue le jeu et ne balise pas le neutre.
+Aucun rire ni changement de débit n'est ajouté automatiquement, et le ton libre n'est pas interpolé dans une balise.
+Le découpage Fish emploie `text_chunk_mode=tag_aware`. Texte visible, historique et référence de clonage restent
+inchangés. Une balise explicite en début de texte d'essai n'est pas doublée. Sans `delivery`, le texte n'est pas enrichi.
+Ces profils sont des adaptations explicites documentées, pas une découverte automatique des émotions par les métadonnées.
+Les sources sont la [fiche Fish S2 Pro](https://huggingface.co/fishaudio/s2-pro) et le
+[contrat audio.cpp v0.9.4](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/model_specs/fish_audio.json).
+
 `bench/voice-compare.ts` produit trois paires WAV (témoin/joueur), les temps du premier bloc, le temps total et
-la durée du son, dans `bench/out/voice-compare`. Il lance un noyau isolé sur un autre port et ne change pas la
-voix sélectionnée. Les mesures excluent le chargement du modèle. Gemini reste à comparer ultérieurement.
+la durée du son et une page d'écoute `index.html`, dans `bench/out/voice-compare`. Il lance un noyau isolé sur
+un autre port et ne change pas la voix sélectionnée. Qwen utilise `--voice` ; Fish utilise `--family fish_audio`,
+`--reference <WAV>` et `--transcript <fichier texte>`. La graine de comparaison vaut 42 par défaut (`--seed`),
+sans fixer celle des conversations ordinaires. Une graine identique n'implique pas une réalisation acoustique identique
+quand on change le texte conditionnant le modèle. Les mesures excluent le chargement et ne prouvent pas la qualité
+perceptive. Les essais locaux du 8 novembre ont généré sans erreur trois paires Fish en français avec la référence
+SIWIS du projet et trois paires Qwen CustomVoice avec Anna. Leur naturel reste à évaluer à l'écoute.
+Gemini reste à comparer ultérieurement.
 
 ### Synchronisation avec la lecture (7 novembre 2026)
 

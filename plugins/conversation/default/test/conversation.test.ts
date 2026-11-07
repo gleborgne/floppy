@@ -324,8 +324,8 @@ it("transmet les intentions et le profil du tour jusqu'au fournisseur TTS", asyn
     body.send({ type: "text", text: "raconte" });
     await vi.waitFor(() => expect(deliveries).toHaveLength(2));
     expect(deliveries).toMatchObject([
-      { text: "Première phrase.", delivery: { intent: "neutral", profile: "playful", language: "fr" } },
-      { text: "Deuxième phrase.", delivery: { intent: "playful", profile: "playful", language: "fr" } },
+      { text: "Première phrase.", delivery: { intent: "neutral", profile: "playful", language: "fr", emotion: "happy" } },
+      { text: "Deuxième phrase.", delivery: { intent: "playful", profile: "playful", language: "fr", emotion: "mischief", intensity: 1.25 } },
     ]);
   } finally { await k.stopAll(); }
 });

@@ -103,8 +103,9 @@ manuellement ; elle garde les identifiants natifs, notamment la casse des voix S
 
 Les restrictions non commerciales de Voxtral et Fish sont visibles avant téléchargement (description, étiquette
 et lien de licence). Ces poids ne sont pas livrés avec Floppy. Les budgets mémoire des nouvelles familles sont
-indicatifs (poids + marge), pas des mesures de performance. Le profil expressif automatique reste réservé aux
-moteurs déjà adaptés ; l'ajout au catalogue ne prétend pas piloter le style de ces nouvelles voix.
+indicatifs (poids + marge), pas des mesures de performance. Le profil expressif automatique est décrit dans
+[Corps et avatar](corps-et-avatar.md#profil-dexpressivité) : Qwen CustomVoice 1.7B et Fish S2 Pro sont adaptés ;
+l'ajout d'une autre famille au catalogue ne suffit pas à activer un pilotage expressif.
 
 Parler-TTS n'a pas de famille dans audio.cpp v0.9.4 et n'est pas ajouté à cette bibliothèque. Kokoro nécessite
 en plus les ressources eSpeak pour le français ; son téléchargement guidé reste à intégrer.

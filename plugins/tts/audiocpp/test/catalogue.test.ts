@@ -25,7 +25,7 @@ it("le catalogue contient les quatre familles, leurs contraintes et les vingt vr
     const request = speechRequest(v, "Bonjour.", "fr");
     if (model.famille === "chatterbox") { expect(v.mode).toBe("offline"); expect(request).toHaveProperty("response_format", "wav"); expect(request).not.toHaveProperty("stream_format"); }
     else expect(request).toHaveProperty("stream_format", "sse");
-    if (model.famille === "fish_audio") { expect(rateOf(v)).toBe(44100); expect(request).not.toHaveProperty("options"); }
+    if (model.famille === "fish_audio") { expect(rateOf(v)).toBe(44100); expect(request.options).toEqual({ text_chunk_mode: "tag_aware" }); }
     if (model.famille === "voxtral_tts") expect(request).toHaveProperty("options.voice_id", "fr_female");
   }
 });

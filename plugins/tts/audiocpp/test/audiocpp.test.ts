@@ -17,6 +17,16 @@ const cfg = { port: 8095, backend: "cpu" as const, device: 0, threads: 4 };
 const clone = clean({ label: "Q", model, voix: "clone", refWav: wav, refText: "Bonjour", langue: "fr" });
 
 describe("serverConfig / speechRequest", () => {
+  it("Fish S2 traduit le jeu en une balise modérée sans changer les mots ni la voix", () => {
+    const fish = clean({ label: "Fish", famille: "fish_audio", model: "fish-audio-s2-pro-q8_0.gguf", voix: "clone", refWav: wav, refText: "Bonjour" });
+    const delivery = { intent: "playful", profile: "playful", language: "fr" } as const;
+    expect(speechRequest(fish, "Bien joué !", "fr").input).toBe("Bien joué !");
+    expect(speechRequest(fish, "Bien joué !", "fr", delivery)).toMatchObject({ input: "[warm and playful] Bien joué !", voice: "voix", options: { text_chunk_mode: "tag_aware" } });
+    expect(speechRequest(fish, "Ça va aller.", "fr", { ...delivery, intent: "reassure", tone: "sarcastique" }).input).toBe("[soft tone] Ça va aller.");
+    expect(speechRequest(fish, "Bonjour", "fr", { ...delivery, profile: "discreet", intent: "neutral" }).input).toBe("Bonjour");
+    expect(speechRequest({ ...fish, model: "fish-s1.gguf" }, "Bonjour", "fr", delivery).input).toBe("Bonjour");
+    expect(speechRequest(clone, "Bonjour", "fr", delivery).input).toBe("Bonjour");
+  });
   it("adapte le jeu au CustomVoice 1.7B sans envoyer de consignes dynamiques aux voix clonées", () => {
     const delivery = { intent: "reassure", profile: "playful", language: "fr", tone: "sarcastique" } as const;
     const custom = clean({ label: "Q", model: "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf", voix: "integree", speaker: "Vivian", instruct: "toujours sarcastique" });
