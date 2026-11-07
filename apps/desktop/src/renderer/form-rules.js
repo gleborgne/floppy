@@ -34,6 +34,16 @@ export function chainOf(slots) {
 }
 
 /**
+ * Après « Ajouter » dans la fenêtre d'ajout. Réussi : la fenêtre se ferme et un toast le dit (pas de 2e fenêtre
+ * à fermer). Raté : l'erreur sous le formulaire, valeurs gardées ; si la fenêtre est déjà fermée, un toast d'erreur.
+ */
+export function addOutcome(r, editorOpen, fallback = { done: "OK", refused: "Refusé" }) {
+  const text = r?.text || (r?.ok ? fallback.done : fallback.refused);
+  if (r?.ok) return { close: editorOpen, toast: { text, bad: false } };
+  return editorOpen ? { close: false, error: text } : { close: false, toast: { text, bad: true } };
+}
+
+/**
  * Valeur gardée d'une liste de choix qui n'est plus proposée (ex. un modèle qui ne fait plus l'affaire) : son nom
  * court (fin d'un chemin), pour la montrer marquée plutôt qu'une liste vide. undefined : rien à montrer.
  */

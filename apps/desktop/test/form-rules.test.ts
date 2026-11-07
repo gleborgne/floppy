@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 // @ts-expect-error module .js sans types
-import { listAdd, missingFields, chainOf, goneOption } from "../src/renderer/form-rules.js";
+import { listAdd, missingFields, chainOf, addOutcome, goneOption } from "../src/renderer/form-rules.js";
 
 describe("listAdd (pastilles d'un champ liste)", () => {
   it("ajoute un mot tapé, sans espaces autour", () => {
@@ -36,6 +36,20 @@ describe("chainOf (étapes d'une rubrique)", () => {
     expect(chainOf([{ id: "wake", step: 3 }])).toBeNull();
     expect(chainOf([{ id: "vad", step: 1 }, { id: "stt" }])).toBeNull();
     expect(chainOf([])).toBeNull();
+  });
+});
+
+describe("addOutcome (après « Ajouter »)", () => {
+  it("réussi : la fenêtre se ferme, un toast dit le résultat (pas de 2e fenêtre)", () => {
+    expect(addOutcome({ ok: true, text: "« X » ajouté." }, true)).toEqual({ close: true, toast: { text: "« X » ajouté.", bad: false } });
+    expect(addOutcome({ ok: true, text: "" }, true, { done: "Fait", refused: "Refusé" }).toast?.text).toBe("Fait");
+  });
+  it("raté : l'erreur sous le formulaire, la fenêtre reste ouverte", () => {
+    expect(addOutcome({ ok: false, text: "Il faut un nom." }, true)).toEqual({ close: false, error: "Il faut un nom." });
+  });
+  it("fenêtre fermée pendant l'attente : un toast, rouge si raté", () => {
+    expect(addOutcome({ ok: false, text: "Non" }, false)).toEqual({ close: false, toast: { text: "Non", bad: true } });
+    expect(addOutcome({ ok: true, text: "Oui" }, false)).toEqual({ close: false, toast: { text: "Oui", bad: false } });
   });
 });
 

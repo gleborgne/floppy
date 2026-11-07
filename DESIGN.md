@@ -349,7 +349,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 - **Range:** 6px track filled with `accent` up to the value (`--fill`), 16px thumb in `ink` with a 2px cyan ring; value shown beside it in tabular figures, cyan.
 - **Forms are generated** from plugin declarations: each declared setting type maps to one control (enum to segmented control or select, boolean to switch, number to range, text to text field, list to chips). Do not hand-build a one-off form.
 - **List chips** (`.lchips` / `.lchip`): the field well holds one 28px pill per value (`panel-2` fill, `edge` border, 13px `ink`) with a round × button, then a borderless text input; Enter or a comma adds, a multi-line paste adds several, duplicates are ignored. The well's border turns `accent` on `:focus-within`.
-- **In-place form** (`.iform`, an item's page or a single-item plugin tab): the item's fields sit directly on the page in a 14px card and save themselves on each finished change. "✓ Saved" (12px, `good`) shows top right for 2.5s, "Saving…" in `muted-2`; an error or an empty required field shows under the form in `bad` and nothing is sent. There is no Edit button: the editor dialog only adds items.
+- **In-place form** (`.iform`, an item's page or a single-item plugin tab): the item's fields sit directly on the page in a 14px card and save themselves on each finished change. "✓ Saved" (12px, `good`) shows top right for 2.5s, "Saving…" in `muted-2`; an error or an empty required field shows under the form in `bad` and nothing is sent. There is no Edit button: the editor dialog only adds items. A successful add closes the dialog and says so in the toast (never a second "Close" step); a failed add keeps the dialog and its values, with the error under the form in `bad`.
 
 ### Navigation
 - **Left nav** (`.nav`): 40px rows, 10px radius, `ink-soft` 14px text with an optional second line in 11.5px `muted-2`; hover `rgba(255, 255, 255, 0.04)`; current (`aria-current="page"`) uses `selected` with a cyan inset outline. A muted note sits at the bottom.
@@ -380,6 +380,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 
 ### Motion
 - **State transitions:** 120 to 180ms, `ease` (switch knob 120 to 140ms, bubble 180ms, toast 160ms, trash reveal 120ms).
+- **Page entry:** the slide or fade of a Settings page plays once per navigation (section, item page, tab), never on a data refresh; a refresh that shows nothing new leaves the page untouched.
 - **Navigation:** pages enter with 200ms `cubic-bezier(.2, .7, .2, 1)` and an 18px horizontal slide (forward from the right, back from the left); fades are 180ms with a 6px rise; tab panels fade in 150ms.
 - **Presence signals:** wake ring (150px cyan circle scaling 0.6 to 1.5 and fading over 700ms ease-out), listening bars (1.1s pulse, heights follow `--lvl`), loading dot pulse 1s, spinner 0.8s linear, dictation breathe 1.6s.
 - **Reduced motion:** every window honours `prefers-reduced-motion: reduce` (transitions and page animations off, wake ring and bars stopped), and avatars receive `reducedMotion` in `create()` and must damp breathing, nods, kicks and speed.

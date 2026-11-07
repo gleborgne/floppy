@@ -6,11 +6,11 @@ import { initAssistant } from "./assistant.js";
 import { entryOf, offersOf, slotSources } from "./slot-sources.js";
 import { isLight } from "./tab-rules.js";
 import { abortRecording } from "./voice-recorder.js";
-import { missingFields as missingOf, chainOf } from "./form-rules.js";
+import { missingFields as missingOf, chainOf, addOutcome } from "./form-rules.js";
 import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "./library.js";
 import { installSummary, rowStatus } from "./onboarding-view.js";
 import { I } from "./settings-texts.js";
-import { h, nextId } from "./dom.js";
+import { h, nextId, replaceIfChanged } from "./dom.js";
 import { configureFields, formNode, visible } from "./fields.js";
 
 const api = window.floppySettings;
@@ -1305,6 +1305,7 @@ function navSections() {
   return sections.filter((x) => !x.parent && !attached.has(x.id) && (x.view || filled(x.id)));
 }
 
+let animTimer = 0;
 function render() {
   // On ne reconstruit pas pendant qu'on tape dans un champ : le rendu attend la fin de la saisie.
   const a = document.activeElement;
@@ -1346,14 +1347,18 @@ function render() {
     nodes.push(...tabify(`page:${section}`, page));
     if (!settings.list.length && !items.providers.length) nodes.push(h("div", { class: "empty", text: api ? t("waiting") : "" }));
   }
-  root.replaceChildren(...nodes.filter(Boolean));
-  root.scrollTop = top;
+  // Données reçues sans rien de visible changé (cas le plus courant) : la page reste telle quelle.
+  const changed = replaceIfChanged(root, nodes.filter(Boolean));
+  if (changed) root.scrollTop = top;
   if (navAnim) {
-    // Relance l'animation même si la classe était déjà là (retrait, reflow, ajout).
+    // L'animation d'entrée suit une navigation, une seule fois : la classe est retirée à la fin. Restée sur la page,
+    // elle rejouait l'entrée à chaque reconstruction (le clignotement des réglages).
     root.classList.remove("anim-fwd", "anim-back", "anim-fade", "anim-tab");
     void root.offsetWidth;
     root.classList.add(`anim-${navAnim}`);
     navAnim = "";
+    clearTimeout(animTimer);
+    animTimer = setTimeout(() => root.classList.remove("anim-fwd", "anim-back", "anim-fade", "anim-tab"), 260);
   }
 }
 
@@ -1361,13 +1366,13 @@ function renderNav() {
   const nav = $("nav");
   nav.setAttribute("aria-label", t("navLabel"));
   const count = (page) => items.providers.filter((p) => p.layout !== "grid" && pageOf(p.section) === page).reduce((n, p) => n + p.items.length, 0);
-  nav.replaceChildren(...navSections().map((sec) => {
+  replaceIfChanged(nav, [...navSections().map((sec) => {
     const n = count(sec.id);
     const name = secLabel(sec.id);
     const sum = navSummary(sec.id);
     return h("button", { type: "button", class: "nav", "data-initial": name.slice(0, 1), ...(sec.icon ? { "data-icon": sec.icon } : {}), ...(sec.id === section && !query ? { "aria-current": "page" } : {}),
       onclick: () => { section = sec.id; detailStack = []; navAnim = "fade"; setQuery(""); } }, sum ? h("span", { class: "navt" }, h("span", { text: name }), h("small", { text: sum })) : name, !sum && n ? h("span", { class: "badge", text: String(n) }) : null);
-  }), h("p", { class: "nav-note", text: t("navNote") }));
+  }), h("p", { class: "nav-note", text: t("navNote") })]);
 }
 
 function setQuery(q) {
@@ -1408,7 +1413,7 @@ function openEditor(init) {
   catalog = null; library = null;
   dlg.classList.remove("catalog", "library");
   resetEditorAudio();
-  ed = { kinds: init.kinds ?? [], provider: null, kind: null, values: {}, step: 1, result: null, trial: null, busy: false };
+  ed = { kinds: init.kinds ?? [], provider: null, kind: null, values: {}, step: 1, trial: null, busy: false };
   if (ed.kinds.length === 1) chooseKind(ed.kinds[0]);
   drawEditor();
   if (!dlg.open) dlg.showModal();
@@ -1456,9 +1461,10 @@ async function submit() {
   e.busy = true; drawEditor();
   const r = await itemOp({ op: "add", provider: e.provider.id, kind: e.kind.id, values: e.values });
   e.busy = false;
-  if (ed !== e) { if (r.ok) toast(r.text || t("done")); return; } // éditeur fermé entre-temps
-  e.result = r;
-  drawEditor();
+  const o = addOutcome(r, ed === e, { done: t("done"), refused: t("refused") });
+  if (o.close) closeEditor();
+  if (o.toast) toast(o.toast.text, o.toast.bad);
+  if (o.error) { e.trial = { ok: false, text: o.error }; drawEditor(); }
 }
 
 function drawEditor() {
@@ -1466,13 +1472,9 @@ function drawEditor() {
   const title = `${t("addTitle")}${ed.kind ? " : " + tr(ed.kind.label) : ""}`;
   const body = h("div", { class: "ed-body" });
   const foot = h("div", { class: "ed-foot" });
-  const closeBtn = h("button", { type: "button", class: "btn", text: ed.result ? t("close") : t("cancel"), onclick: closeEditor });
+  const closeBtn = h("button", { type: "button", class: "btn", text: t("cancel"), onclick: closeEditor });
 
-  if (ed.result) {
-    body.append(h("div", { class: ed.result.ok ? "result" : "result bad", role: "status" }, h("pre", { text: ed.result.text || (ed.result.ok ? t("done") : t("refused")) })));
-    if (!ed.result.ok) foot.append(h("button", { type: "button", class: "btn", text: t("edit"), onclick: () => { ed.result = null; drawEditor(); } }));
-    foot.append(closeBtn);
-  } else if (ed.step === 1) {
+  if (ed.step === 1) {
     body.append(h("div", { class: "step-h" }, h("span", { class: "step", text: "1" }), t("stepType")));
     const types = h("div", { class: "types" });
     for (const k of ed.kinds) {
@@ -1556,7 +1558,8 @@ function inlineForm(p, it) {
     if (r.ok) {
       drafts.delete(key);
       show({ ok: true, at: Date.now() });
-      setTimeout(() => { if (saveSeq === n) status.textContent = ""; render(); }, 2600);
+      // « ✓ Enregistré » s'efface seul, sans reconstruire la page (un rendu ici clignotait et perdait les clics).
+      setTimeout(() => { if (saveSeq === n) { status.textContent = ""; status.classList.remove("ok"); } }, 2600);
     } else {
       drafts.set(key, values);
       show({ ok: false, text: tr(r.text) || t("refused"), at: Date.now() });
