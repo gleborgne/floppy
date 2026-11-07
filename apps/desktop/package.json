@@ -6,7 +6,9 @@
   "license": "MIT",
   "main": "src/main.ts",
   "scripts": {
-    "start": "electron .",
+    "build:ui": "node scripts/build-ui.mjs",
+    "dev:ui": "node scripts/build-ui.mjs --watch",
+    "start": "npm run build:ui && electron .",
     "gallery": "electron scripts/capture.mjs ../../plugins/avatar/tv/gallery/gallery.html ../../docs/spec/img/avatar-emotions.png 1190 610",
     "avatar-previews": "electron scripts/avatar-previews.mjs",
     "vendor": "node scripts/vendor-preact.mjs"

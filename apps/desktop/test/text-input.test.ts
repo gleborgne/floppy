@@ -1,13 +1,17 @@
 import { it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { stripTypeScriptTypes } from "node:module";
+
+/** Source d'une fenêtre sans ses types ni son `export {}` : le contexte simulé l'exécute comme un script. */
+const plain = (file: string) => stripTypeScriptTypes(readFileSync(new URL(`../src/renderer/${file}`, import.meta.url), "utf8")).replace("export {};", "");
 
 function input(ok = true) {
   const elements = Object.fromEntries(["prompt", "request", "send", "error", "label", "hint", "cancel"].map(id => [id, { value: "", hidden: true, disabled: false, textContent: "", focus: vi.fn(), requestSubmit: vi.fn(), events: {} as Record<string, Function>, addEventListener(name: string, fn: Function) { this.events[name] = fn; } }]));
   const events: Record<string, Function> = {};
   const host = { submit: vi.fn(async () => ok), close: vi.fn(), onLang: vi.fn(), onFocus: vi.fn() };
   const document = { documentElement: { lang: "" }, getElementById: (id: string) => elements[id], addEventListener: (name: string, fn: Function) => { events[name] = fn; } };
-  runInNewContext(readFileSync(new URL("../src/renderer/text.js", import.meta.url), "utf8"), { document, window: { floppyText: host } });
+  runInNewContext(plain("text.ts"), { document, window: { floppyText: host } });
   return { elements, events, host, document, submit: () => elements.request.events.submit({ preventDefault() {} }) };
 }
 
@@ -42,7 +46,7 @@ it("Entrée envoie, Maj+Entrée et la composition restent dans le champ ; Échap
 });
 
 it("l'avatar coupe la lecture et transmet la saisie sur son port de conversation habituel", () => {
-  const source = readFileSync(new URL("../src/renderer/app.js", import.meta.url), "utf8");
+  const source = plain("app.ts");
   let message!: Function;
   const send = vi.fn(), stopPlayback = vi.fn();
   const context = { window: { addEventListener: (_name: string, fn: Function) => { message = fn; } }, send, stopPlayback, muted: true };

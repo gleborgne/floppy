@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error module .js sans types
-import { gb, needsManual, stepsFor, machineRows, levelFacts, rowStatus, defaultLevel, installSummary, tr } from "../src/renderer/onboarding-view.js";
+import { gb, needsManual, stepsFor, machineRows, levelFacts, rowStatus, defaultLevel, installSummary, tr } from "../src/renderer/onboarding-view.ts";
 
 const GIB = 1024 ** 3;
 const t = (k: string) => `<${k}>`;

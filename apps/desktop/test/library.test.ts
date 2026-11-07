@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error module .js sans types
-import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "../src/renderer/library.js";
+import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "../src/renderer/library.ts";
 
 const lib = (id: string, source: string, offers: string | string[], items: object[] = [], can = { search: false }) => ({ id, source, offers, layout: "library", can, items });
 

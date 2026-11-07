@@ -16,6 +16,7 @@ import type { Lang, TextKey } from "./main-texts.ts";
 import { dotPng, COLORS } from "./tray-icon.ts";
 import type { Rgb } from "./tray-icon.ts";
 import { safeWindow, bringToFront } from "./windows.ts";
+import { pageFile, preloadFile, missingUi } from "./ui.ts";
 import { avatarSpot } from "./placement.ts";
 import type { Area, Bilingual } from "./placement.ts";
 
@@ -415,10 +416,10 @@ function createWindow() {
     width: W, height: H, x: home.x, y: home.y,
     frame: false, transparent: true, resizable: false, alwaysOnTop: true, skipTaskbar: true, hasShadow: false,
     show: false, backgroundColor: "#00000000",
-    webPreferences: { preload: join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+    webPreferences: { preload: preloadFile("preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
   });
   win.setAlwaysOnTop(true, "floating");
-  win.loadFile(join(here, "renderer", "index.html"));
+  win.loadFile(pageFile("index"));
   win.once("ready-to-show", () => { if (display.avatar_visible) win?.showInactive(); });
   win.setIgnoreMouseEvents(true, { forward: true }); // clics traversants, sauf sur la tête et la bulle (voir "interactive")
   // Vérification : FLOPPY_SNAPSHOT=<fichier.png> capture la fenêtre de l'avatar toutes les 3 s.
@@ -559,7 +560,7 @@ function openPanel(data: Msg | undefined): void {
     return;
   }
   panelWin = safeWindow({ size: { width: 620, height: 720, minWidth: 380, minHeight: 300 }, title: T("panelTitle"), background: "#0b0f15", preload: "preload-panel.cjs" });
-  panelWin.loadFile(join(here, "renderer", "panel.html"));
+  panelWin.loadFile(pageFile("panel"));
   panelWin.webContents.once("did-finish-load", () => { panelWin?.webContents.send("panel:show", payload); bringToFront(panelWin); });
   panelWin.on("closed", () => { panelWin = null; });
 }
@@ -581,7 +582,7 @@ function openDocuments(m: Msg | undefined): void {
     return;
   }
   docsWin = safeWindow({ size: { width: 1020, height: 760, minWidth: 520, minHeight: 320 }, title: T("documentsTitle"), background: "#0b0f15", preload: "preload-documents.cjs" });
-  docsWin.loadFile(join(here, "renderer", "documents.html"));
+  docsWin.loadFile(pageFile("documents"));
   docsWin.webContents.once("did-finish-load", () => { docsWin?.webContents.send("documents:show", payload); bringToFront(docsWin); });
   docsWin.on("closed", () => { docsWin = null; });
 }
@@ -591,7 +592,7 @@ function openSettings() {
   settingsWin = safeWindow({ size: { width: 1180, height: 760, minWidth: 480, minHeight: 420 }, title: T("settingsTitle"), background: "#0d1118", preload: "preload-settings.cjs" });
   // Vérification : FLOPPY_SETTINGS_PAGE=<rubrique> ouvre les réglages sur cette rubrique (avec FLOPPY_SNAPSHOT : image).
   const page = process.env.FLOPPY_SETTINGS_PAGE;
-  settingsWin.loadFile(join(here, "renderer", "settings.html"), page ? { hash: page } : undefined);
+  settingsWin.loadFile(pageFile("settings"), page ? { hash: page } : undefined);
   settingsWin.once("ready-to-show", () => bringToFront(settingsWin));
   settingsWin.on("closed", () => {
     settingsWin = null;
@@ -607,7 +608,7 @@ function openSettings() {
 function openOnboarding() {
   if (onbWin && !onbWin.isDestroyed()) { bringToFront(onbWin); return onbWin; }
   onbWin = safeWindow({ size: { width: 820, height: 700, minWidth: 420, minHeight: 480 }, title: T("onboardingTitle"), background: "#0b0f15", preload: "preload-onboarding.cjs" });
-  onbWin.loadFile(join(here, "renderer", "onboarding.html"));
+  onbWin.loadFile(pageFile("onboarding"));
   onbWin.once("ready-to-show", () => bringToFront(onbWin));
   onbWin.on("closed", () => { onbWin = null; });
   return onbWin;
@@ -637,7 +638,7 @@ async function showSettingsConfirmed(): Promise<void> {
 function openTextInput() {
   if (textWin && !textWin.isDestroyed()) { bringToFront(textWin); textWin.webContents.send("text:focus"); return textWin; }
   textWin = safeWindow({ size: { width: 560, height: 340, minWidth: 360, minHeight: 320 }, title: T("textTitle"), preload: "preload-text.cjs" });
-  textWin.loadFile(join(here, "renderer", "text.html"));
+  textWin.loadFile(pageFile("text"));
   textWin.webContents.once("did-finish-load", () => textWin?.webContents.send("text:lang", lang));
   textWin.once("ready-to-show", () => { bringToFront(textWin); textWin?.webContents.send("text:focus"); });
   textWin.on("closed", () => { textWin = null; });
@@ -664,10 +665,10 @@ function showDictationPill() {
     dictWin = new BrowserWindow({
       ...bounds, frame: false, transparent: true, resizable: false, movable: false, alwaysOnTop: true, skipTaskbar: true,
       focusable: false, hasShadow: false, show: false, backgroundColor: "#00000000",
-      webPreferences: { preload: join(here, "preload-dictation.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+      webPreferences: { preload: preloadFile("preload-dictation.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
     });
     dictWin.setAlwaysOnTop(true, "screen-saver");
-    dictWin.loadFile(join(here, "renderer", "dictation.html"));
+    dictWin.loadFile(pageFile("dictation"));
     dictWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     dictWin.webContents.on("will-navigate", (e) => e.preventDefault());
     dictWin.webContents.once("did-finish-load", () => dictWin?.webContents.send("dictation:lang", lang));
@@ -727,6 +728,9 @@ function applyShortcuts(next: unknown): void {
 
 // ------------------------------------------------------------------ démarrage
 app.whenReady().then(() => {
+  // Fenêtres non compilées (npm run build:ui) : message clair plutôt que des fenêtres blanches.
+  const missing = missingUi();
+  if (missing) { console.error(missing); dialog.showErrorBox("Floppy", missing); app.quit(); return; }
   // Micro : seulement pour nos fenêtres (fichiers locaux) : l'avatar, et les réglages (enregistrer une voix). Rien d'autre.
   const micOk = (wc: WebContents | null | undefined) => !!wc && (wc === win?.webContents || (!!settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents));
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && micOk(wc)));

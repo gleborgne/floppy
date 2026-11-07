@@ -2,16 +2,13 @@
 // Page locale, sans menu ; ni nouvelle fenêtre ni navigation ; le pont vers l'app passe par un preload isolé.
 import { app, BrowserWindow } from "electron";
 import type { BrowserWindowConstructorOptions } from "electron";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const here = dirname(fileURLToPath(import.meta.url));
+import { preloadFile } from "./ui.ts";
 
 export interface SafeWindowOptions {
   size: Pick<BrowserWindowConstructorOptions, "width" | "height" | "minWidth" | "minHeight">;
   title: string;
   background?: string;
-  /** Nom du fichier preload, à côté de ce module. */
+  /** Nom du fichier preload compilé (dans build/, voir ui.ts). */
   preload: string;
 }
 
@@ -19,7 +16,7 @@ export interface SafeWindowOptions {
 export function safeWindow({ size, title, background = "#0b0f15", preload }: SafeWindowOptions): BrowserWindow {
   const w = new BrowserWindow({
     ...size, title, backgroundColor: background, autoHideMenuBar: true, show: false,
-    webPreferences: { preload: join(here, preload), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    webPreferences: { preload: preloadFile(preload), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   w.setMenu(null);
   w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

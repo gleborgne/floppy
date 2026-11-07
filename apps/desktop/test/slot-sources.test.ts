@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error module .js sans types
-import { slotSources } from "../src/renderer/slot-sources.js";
+import { slotSources } from "../src/renderer/slot-sources.ts";
 
 // Rubrique Voix : audio.cpp déclare ses éléments, la voix du système n'offre que par ctx.offer.
 const audiocpp = { id: "voix-locale", source: "tts-audiocpp", offers: "tts", items: [{ id: "anna" }] };

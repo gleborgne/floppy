@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events';
 import * as texts from '../src/main-texts.ts';
 import * as trayIcon from '../src/tray-icon.ts';
 import * as placement from '../src/placement.ts';
+import * as ui from '../src/ui.ts';
 
 // Le vrai processus principal, dans un bac sans Electron ni processus/fichiers réels.
 function desktop(argv: string[] = []) {
@@ -24,7 +25,7 @@ function desktop(argv: string[] = []) {
   const shortcut = { unregisterAll() {}, register: vi.fn(() => true), unregister: vi.fn() };
   const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console,
     // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
-    ...texts, ...trayIcon, ...placement, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
+    ...texts, ...trayIcon, ...placement, ...ui, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
   context.globalShortcut = shortcut;
   runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};},pending:()=>pending};',context);
   return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };

@@ -456,7 +456,7 @@ Ce qui reste de la revue d'architecture, par ordre d'intérêt :
 
 1. **Réseau** : faire passer tous les appels par `ctx.fetch`, puis refuser (et non plus signaler) un hôte hors `permissions.net`.
 2. **Code produit hors du noyau.** Premier lancement, lecture de la machine, bibliothèques de modèles et de programmes vivent dans `packages/core` ; cible : un paquet à part, ou des plugins.
-3. **Fichiers encore gros.** Premier découpage fait le 7 novembre 2026 (voir ci-dessous). Prochaines coupes : les forks et les slots de `kernel.ts` (environ 1 080 lignes), le cycle du noyau et la barre des tâches de `apps/desktop/src/main.ts` (environ 880), le catalogue, la bibliothèque et l'éditeur de `renderer/settings.js` (environ 1 660), un tour de `plugins/conversation/default/src/index.ts` (environ 570).
+3. **Fichiers encore gros.** Premier découpage fait le 7 novembre 2026 (voir ci-dessous). Prochaines coupes : les forks et les slots de `kernel.ts` (environ 1 080 lignes), le cycle du noyau et la barre des tâches de `apps/desktop/src/main.ts` (environ 880), le catalogue, la bibliothèque et l'éditeur de `renderer/settings*.ts` (environ 1 660), un tour de `plugins/conversation/default/src/index.ts` (environ 570).
 4. **Doublons restants** : la normalisation de texte (une dizaine de petites fonctions proches mais pas identiques : accents, casse, ponctuation).
 
 **Comment les gros fichiers sont découpés.** Un module sorti d'un fichier reçoit ce dont il a besoin, déclaré :

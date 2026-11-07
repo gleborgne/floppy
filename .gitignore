@@ -32,3 +32,6 @@ bench/work_mcp/calls.jsonl
 .idea/
 .DS_Store
 Thumbs.db
+
+# Fenêtres compilées de l'app (npm run build:ui)
+apps/desktop/build/

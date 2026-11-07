@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error module .js sans types
-import { listAdd, missingFields, chainOf, addOutcome, goneOption } from "../src/renderer/form-rules.js";
+import { listAdd, missingFields, chainOf, addOutcome, goneOption } from "../src/renderer/form-rules.ts";
 
 describe("listAdd (pastilles d'un champ liste)", () => {
   it("ajoute un mot tapé, sans espaces autour", () => {

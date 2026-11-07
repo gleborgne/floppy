@@ -39,7 +39,7 @@ Plutôt que des cartes sur l'avatar, les résultats longs s'ouvrent dans une **f
 
 - Protocole : message `panel { id, title, a2ui }` (noyau → corps), capacité de corps `panel`.
 - `a2ui` : messages A2UI v0.8 (`surfaceUpdate` avec ses composants, puis `beginRendering` avec la racine).
-- Composants rendus (`apps/desktop/src/renderer/panel.js`) : `Column`, `Row`, `List`, `Card`, `Text` (`usageHint`
+- Composants rendus (`apps/desktop/src/renderer/panel.ts`) : `Column`, `Row`, `List`, `Card`, `Text` (`usageHint`
   h1 à h5, body, caption), `Button`, `Divider`, `Image` (https seulement).
 - Le texte est toujours mis en `textContent` (jamais de HTML). CSP stricte. La fenêtre n'a qu'un pont : recevoir une
   surface, envoyer une action.

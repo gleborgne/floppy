@@ -238,7 +238,7 @@ Pourquoi un test et pas un tableau des puces : sur une mémoire unifiée, la vit
 - `apps/cli/src/boot.ts` : `firstRun` (config créée à ce démarrage, ou `onboarding.json` pas fini) et l'objet `onboarding`.
 - `apps/desktop/src/kernel.ts` : messages `onboarding.get` (machine + niveaux), `onboarding.apply`, `onboarding.skip`,
   état poussé `onboarding.state`.
-- `apps/desktop/src/main.ts` : fenêtre `onboarding.html` (pont `preload-onboarding.cjs`), ouverte à `kernel.ready`
+- `apps/desktop/src/main.ts` : fenêtre `onboarding.html` (pont `preload-onboarding.cts`, compilé dans `build/`), ouverte à `kernel.ready`
   si `firstRun`, ou depuis les réglages.
 - CLI : `floppy machine` montre ce que Floppy lit de la machine et les niveaux.
 

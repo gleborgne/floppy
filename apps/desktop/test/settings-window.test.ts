@@ -29,7 +29,7 @@ const itemsWith = (detail: string) => {
 beforeAll(async () => {
   const html = readFileSync(resolve(R, "settings.html"), "utf8");
   document.body.innerHTML = html.slice(html.indexOf("<body>") + 6, html.indexOf("<script"));
-  ({ DEMO } = await import("../src/renderer/settings-demo.js"));
+  ({ DEMO } = await import("../src/renderer/settings-demo.ts"));
   (window as Any).floppySettings = {
     get: async () => structuredClone(DEMO.settings),
     items: async () => structuredClone(DEMO.items),
@@ -37,8 +37,8 @@ beforeAll(async () => {
     onboardingState: async () => null,
     set: async () => ({ ok: true, text: "" }), itemOp, undo: async () => ({ ok: true }),
   };
-  await import("../src/renderer/icons.js");
-  await import("../src/renderer/settings.js");
+  await import("../src/renderer/icons.ts");
+  await import("../src/renderer/settings.ts");
   await flush();
 });
 

@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error module .js sans types
-import { isLight } from "../src/renderer/tab-rules.js";
+import { isLight } from "../src/renderer/tab-rules.ts";
 
 describe("isLight", () => {
   it("un ou deux réglages restent sur la page (ex. le Ton sous Voix)", () => {

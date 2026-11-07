@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { wavPcm, wavFromDataUrl } from "@floppy/core";
-// @ts-expect-error module .js sans types
-import { analyze, encodeWav, RATE, trimSilence, waveBars, wavDataUrl, micChoices, micConstraints } from "../src/renderer/audio-tools.js";
+import { analyze, encodeWav, RATE, trimSilence, waveBars, wavDataUrl, micChoices, micConstraints } from "../src/renderer/audio-tools.ts";
 
 /** Une « voix » : un son de 200 Hz, entre deux silences. */
 function voice(silence: number, speech: number, amp = 0.5, noise = 0): Float32Array {

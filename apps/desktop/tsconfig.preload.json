@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["DOM", "ES2023"],
+    "types": [],
+    "verbatimModuleSyntax": false,
+    "noEmit": false,
+    "outDir": "build",
+    "rootDir": "src"
+  },
+  "include": ["src/preload*.cts", "src/renderer/*.d.ts"]
+}
