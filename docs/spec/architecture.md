@@ -10,10 +10,10 @@ Le cerveau est un **plugin** : agent **Vercel AI SDK** avec un LLM local, ou CLI
 │  Services :  voice   brain (AI SDK)   tools (MCP)   memory   skills   body   display│
 └──────┬─────────────────┬────────────────────┬─────────────────────┬───────────────┘
        │                 │                    │                     │
-  Services Python   Serveurs MCP et CLI  Corps (body)         Fournisseurs live
-  et natifs (ASR,   hors processus       Electron (v1)        (Gemini Live,
-  TTS, llama-server (Obsidian, O365,     Reachy (plus tard)   GPT Live)
-  pour le LLM)      Azure DevOps, Orca)
+  Programmes        Serveurs MCP et CLI  Corps (body)         Fournisseurs live
+  natifs (LLM,      hors processus       Electron (v1)        (Gemini Live,
+  voix) : llama-    (Obsidian, O365,     Reachy (plus tard)   GPT Live)
+  server, audio.cpp Azure DevOps, Orca)
 ```
 
 ## Les services
@@ -86,9 +86,8 @@ Chaque plugin déclare :
 - Le noyau envoie des **événements** : état (veille, écoute, réfléchit, parle), émotion, notification, UI A2UI, demande d'accord.
 - Le corps renvoie les **réponses d'accord** (voir [Sécurité → L'accord](securite.md#laccord)).
 
-## Les services Python
+## Les modèles locaux
 
-- Chaque modèle local (ASR, TTS, LLM) tourne dans un service Python ou natif à part, piloté par le noyau.
+- Chaque modèle local tourne dans un programme natif piloté par le noyau (llama-server pour le LLM, audio.cpp pour la voix), ou dans le noyau (sherpa-onnx pour l'écoute). Le service Python est retiré depuis le 6 novembre 2026 (voir [Écoute](ecoute.md)).
 - **Un seul LLM local** (un seul llama-server), utilisé par le cerveau. Voir le budget VRAM dans [Le cerveau](cerveau.md#budget-vram-24-go).
-- Les prototypes de `cascade\` (Parakeet, Qwen3-ASR, Qwen3-TTS avec faster-qwen3-tts, llama.cpp) sont la base du fournisseur « cascade locale ».
-- Le noyau démarre, surveille et arrête ces services (effets).
+- Le noyau démarre, surveille et arrête ces programmes (effets). Il note ceux qu'il lance (`children.json`) et arrête au démarrage suivant ceux restés d'un arrêt forcé.

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, MemoryAudit, MemorySecrets, SECRET_SET, type ItemInfo } from "@floppy/core";
+import { Kernel, MemoryAudit, MemorySecrets, SECRET_SET, type ItemInfo, type McpEndpoint } from "@floppy/core";
 import tools from "../src/index.ts";
 import { brandLogo } from "../src/connectors.ts";
 import { serverIcon, type Spec } from "../src/connection.ts";
@@ -20,6 +20,7 @@ async function start(servers: Record<string, unknown> = {}, home = mkdtempSync(j
   const k = new Kernel({ logger: () => {}, audit: new MemoryAudit(), plugins: [tools], home, secrets });
   kernels.push(k);
   await k.applyConfig({ plugins: [{ id: "tools", plugin: "tools", config: { port: 0, servers } }] });
+  await k.service<McpEndpoint>("mcp")?.connected?.();
   const run = (op: Record<string, unknown>, via: "ui" | "cli" | "voice" = "ui") =>
     k.items.run({ provider: "connectors", ...op } as never, via);
   const list = async (): Promise<ItemInfo[]> => k.items.provider("connectors")!.list();

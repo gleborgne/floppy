@@ -69,8 +69,10 @@ export default definePlugin<Config>({
     const base = Object.fromEntries(Object.entries(cfg.servers).map(([k, v]) => [k, v as Record<string, unknown>]));
     const connectors = declareConnectors(ctx, base);
     ctx.effect(() => connectors.stop());
-    // Le service `mcp` est fourni d'abord : un connecteur qui traîne (30 s au plus) ne doit pas le bloquer.
-    ctx.provide("mcp", await startFloppyMcp(ctx, cfg.port));
-    await connectors.start();
+    const endpoint = await startFloppyMcp(ctx, cfg.port);
+    // Les connecteurs se branchent en arrière-plan : le service `mcp` devient visible tout de suite (les cerveaux CLI
+    // démarrent), et un connecteur qui traîne (30 s au plus) ne retarde pas le démarrage de Floppy.
+    const connected = connectors.start().catch((e) => ctx.log("warn", `connecteurs : ${e instanceof Error ? e.message : String(e)}`));
+    ctx.provide("mcp", { ...endpoint, connected: () => connected });
   },
 });

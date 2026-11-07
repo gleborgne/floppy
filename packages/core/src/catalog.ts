@@ -18,8 +18,8 @@
 // - Ajouter, modifier, supprimer : clic ou CLI seulement (jamais à la voix). Un MCP local lance une commande.
 // - Activer / désactiver à la voix : désactiver = libre ; activer un élément « cloud » = accord.
 // - Les secrets (clés d'API, jetons) ne passent jamais par les fichiers : voir secrets.ts.
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { ApprovalManager } from "./approval.ts";
 import type { Audit } from "./audit.ts";
 import { allTexts, errorText, T, tr, type Text } from "./i18n.ts";
@@ -522,11 +522,8 @@ export class ItemStore<V = Record<string, unknown>> {
   constructor(file: string) {
     this.file = file;
     const empty: ItemOverlay<V> = { added: {}, edits: {}, disabled: [], removed: [], children: {}, extra: {} };
-    try {
-      this.data = existsSync(file) ? { ...empty, ...JSON.parse(readFileSync(file, "utf8")) } : empty;
-    } catch {
-      this.data = empty;
-    }
+    const saved = readJsonFile<Partial<ItemOverlay<V>>>(file);
+    this.data = saved && typeof saved === "object" ? { ...empty, ...saved } : empty;
   }
 
   static in(home: string, name: string): ItemStore {
@@ -594,8 +591,7 @@ export class ItemStore<V = Record<string, unknown>> {
   }
 
   save(): void {
-    mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(this.data, null, 2), "utf8");
+    writeJsonAtomic(this.file, this.data);
   }
 }
 

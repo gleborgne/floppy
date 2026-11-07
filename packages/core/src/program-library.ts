@@ -2,8 +2,9 @@
 // Le plugin donne les archives figées d'une version (une par système, processeur et moteur) ; l'aide choisit celle
 // qui va à la machine (ctx.machine), la télécharge et la décompresse (ctx.downloads), et dit où est le programme.
 // Elle se montre dans la même bibliothèque que les modèles du plugin. Voir docs/spec/premier-lancement.md.
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
+import { writeJsonAtomic } from "./util/files.ts";
 import type { ChildProcess } from "node:child_process";
 import type { Context } from "./plugin/context.ts";
 import type { ItemInfo, OpResult } from "./catalog.ts";
@@ -154,7 +155,7 @@ export function programLibrary(ctx: Context, opts: ProgramOptions): ProgramLibra
   const readCurrent = () => readJson<Current>(currentFile());
   /** Archives qui n'ont pas marché sur cette machine (pilote trop vieux, bibliothèque absente…) : plus choisies. */
   const broken = (): Set<string> => new Set(readJson<string[]>(brokenFile()) ?? []);
-  const setBroken = (ids: Set<string>) => { mkdirSync(base(), { recursive: true }); writeFileSync(brokenFile(), JSON.stringify([...ids]), "utf8"); };
+  const setBroken = (ids: Set<string>) => { mkdirSync(base(), { recursive: true }); writeJsonAtomic(brokenFile(), [...ids]); };
   const key = (b: ProgramBuild) => `program/${opts.version}/${b.id}`;
   const dirOf = (b: ProgramBuild) => join(base(), opts.version, b.id);
   const installed = (): ProgramBuild | undefined => {
@@ -209,7 +210,7 @@ export function programLibrary(ctx: Context, opts: ProgramOptions): ProgramLibra
       return;
     }
     if (process.platform !== "win32") { try { chmodSync(exe, 0o755); } catch { /* déjà exécutable */ } }
-    writeFileSync(currentFile(), JSON.stringify({ version: opts.version, build: b.id, exe: relative(base(), exe) } satisfies Current), "utf8");
+    writeJsonAtomic(currentFile(), { version: opts.version, build: b.id, exe: relative(base(), exe) } satisfies Current);
     cleanup();
     const reason = why.get(b.id) ?? "installed";
     why.delete(b.id);

@@ -23,6 +23,9 @@ export { FileAudit, MemoryAudit, type Audit, type AuditRecord } from "./audit.ts
 export { KernelConfig, EntryConfig, AssistantSettings, ApprovalSettings, Level, Rule, type KernelConfigInput } from "./config/schema.ts";
 export { loadConfigFile, watchConfig } from "./config/loader.ts";
 export { findExe, killTree, stableStringify } from "./util/process.ts";
+export { ChildRegistry, reapOrphans, systemReapDeps, programBase, type ChildRecord, type ReapDeps } from "./util/children.ts";
+export { installSafetyNet, type SafetyKind, type SafetyNetOptions } from "./util/safety.ts";
+export { writeFileAtomic, writeJsonAtomic, readJsonFile, corruptFiles, onCorruptFile, type CorruptReport } from "./util/files.ts";
 export { startControl, controlCall, floppyHome, type ControlInfo, type ControlHandlers } from "./control.ts";
 export type { Services, LlmService, BrainService, BrainEvent, BrainRunInput, TurnMode, MemoryService, MemorySnapshot, VoiceService, VoiceStream, VoiceEvent, CoderService, CoderEvent, CoderAgent, CoderAgentInfo, CoderMode } from "./services.ts";
 export type { McpEndpoint, ScopedEndpoint, ScopedOptions, ExtraTool, BodyHub, BodySessionInfo, HubEvent, AttachOpts, AvatarInfo, AvatarEntry, AvatarRegistry } from "./services.ts";

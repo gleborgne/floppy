@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { definePlugin, T, type MemoryService } from "@floppy/core";
+import { definePlugin, T, writeFileAtomic, type MemoryService } from "@floppy/core";
 
 const Config = z.object({
   dir: z.string().optional(),
@@ -133,7 +133,7 @@ export default definePlugin<Config>({
           if (next.length > limit(w)) {
             return { status: "failed", text: `Mémoire pleine (${next.length}/${limit(w)} caractères). Résume ou supprime d'abord des lignes.` };
           }
-          writeFileSync(path(w), next, "utf8");
+          writeFileAtomic(path(w), next);
           return { status: "done", text: "C'est retenu." };
         },
       },

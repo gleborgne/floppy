@@ -8,8 +8,7 @@
 // - Les valeurs choisies sont gardées dans <home>/settings.json et reprises au démarrage.
 // - Le cerveau a 3 outils internes : lister_reglages, changer_reglage, annuler_reglage. Le contrôle du risque est
 //   fait ICI, par le code (le modèle ne peut pas le contourner) ; chaque changement est journalisé.
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { ApprovalManager } from "./approval.ts";
 import type { Audit } from "./audit.ts";
 import { allTexts, errorText, T, tr, type Text } from "./i18n.ts";
@@ -103,7 +102,8 @@ export class SettingsRegistry {
     this.approvals = approvals;
     this.audit = audit;
     this.lang = lang;
-    try { if (existsSync(file)) this.saved = JSON.parse(readFileSync(file, "utf8")); } catch { this.saved = {}; }
+    const saved = readJsonFile<Record<string, unknown>>(file);
+    this.saved = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
   }
 
   /** Valeur gardée d'un démarrage précédent (le plugin l'applique au démarrage). */
@@ -277,8 +277,7 @@ export class SettingsRegistry {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(this.saved, null, 2), "utf8");
+    writeJsonAtomic(this.file, this.saved);
   }
 
   private changed(): void {

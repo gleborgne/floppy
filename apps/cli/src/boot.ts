@@ -1,7 +1,7 @@
 // Démarrage du noyau. Utilisé par `floppy start --headless` (Node 24) et par l'app Electron (utilityProcess).
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { Kernel, FileAudit, consoleLogger, loadConfigFile, watchConfig, startControl, floppyHome, onboardingFor, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
+import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, onboardingFor, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
 import { catalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
@@ -19,6 +19,10 @@ export interface BootOptions {
   sandbox?: UserPluginsOptions["sandbox"];
   /** Relecteur des plugins tiers (tests) ; défaut : le service coder. */
   reviewer?: StoreOptions["reviewer"];
+  /** Filet global du processus (défaut : installé). Les tests qui démarrent plusieurs noyaux le coupent. */
+  safetyNet?: boolean;
+  /** Arrête les programmes restés d'une session précédente (défaut : oui). */
+  reapOrphans?: boolean;
 }
 
 /** Dossiers de debug passés par l'app de bureau (variable FLOPPY_DEV_PLUGINS, séparés comme le PATH). */
@@ -48,14 +52,24 @@ export async function boot(opts: BootOptions): Promise<Running> {
     copyFileSync(example, configPath);
     console.log(sayer(cliLang(home))(`config créée depuis ${example} : ${configPath}`, `config created from ${example}: ${configPath}`));
   }
+  // Programmes restés en vie après un arrêt forcé du noyau (llama-server, voix locale…) : ils gardent la mémoire du GPU.
+  if (opts.reapOrphans !== false) {
+    for (const r of await reapOrphans(join(home, "children.json")).catch(() => [])) {
+      console.warn(`[kernel] programme resté d'une session précédente arrêté : ${r.name} (pid ${r.pid}, ${r.owner})`);
+    }
+  }
   const kernel = new Kernel({
     plugins: opts.plugins ?? catalog,
     audit: new FileAudit(join(home, "audit.jsonl")),
     home,
     ...(opts.logger ? { logger: opts.logger } : {}),
   });
-  // Plugins de l'utilisateur : chargés avant la config, pour démarrer ceux qu'il a activés avec le reste.
   const log = opts.logger ?? consoleLogger;
+  // Filet global : une erreur asynchrone oubliée par un plugin est écrite au journal au lieu de tuer le noyau.
+  const offSafety = opts.safetyNet === false ? () => {} : installSafetyNet({
+    onError: (kind, e) => log({ level: "error", source: "kernel", msg: `${kind} : ${e instanceof Error ? e.stack ?? e.message : String(e)}` }),
+  });
+  // Plugins de l'utilisateur : chargés avant la config, pour démarrer ceux qu'il a activés avec le reste.
   const devDirs = opts.devDirs ?? envDevDirs();
   const userPlugins = createUserPlugins(kernel, {
     builtin: (opts.plugins ?? catalog).map((p) => p.manifest.id), logger: log,
@@ -67,11 +81,12 @@ export async function boot(opts: BootOptions): Promise<Running> {
   const builtinManifests = (opts.plugins ?? catalog).map((p) => p.manifest);
   const offWiki = kernel.tools.register("plugins-wiki", [createWiki({ kernel, manifests: () => builtinManifests }).tool]);
   try { await userPlugins.reload(false); } catch (e) { log({ level: "error", source: "user-plugins", msg: String(e) }); }
-  await kernel.applyConfig(loadConfigFile(configPath));
-  const unwatch = opts.watch === false ? () => {} : watchConfig(configPath, kernel);
+  // Le point de contrôle s'ouvre avant la config : la CLI répond (`floppy status`) pendant qu'un modèle se charge.
   const stopControl = await startControl(kernel, home, {
     reload: () => kernel.applyConfig(loadConfigFile(configPath)),
   });
+  try { await kernel.applyConfig(loadConfigFile(configPath)); } catch (e) { await stopControl(); offSafety(); throw e; }
+  const unwatch = opts.watch === false ? () => {} : watchConfig(configPath, kernel);
   const onboarding = onboardingFor(kernel);
   if (created) onboarding.begin();
   // Floppy fermé pendant l'installation de départ : elle reprend (les blocs déjà téléchargés sont prêts tout de suite).
@@ -90,6 +105,7 @@ export async function boot(opts: BootOptions): Promise<Running> {
       userPlugins.dispose();
       await stopControl();
       await kernel.stopAll();
+      offSafety();
     })()),
   };
 }

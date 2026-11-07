@@ -1,7 +1,6 @@
 // Préférences de la veille : ce que l'utilisateur aime, évite, ne veut plus jamais voir, et des exemples d'articles notés.
 // Fichier lisible et modifiable à la main : <home>/veille/preferences.json.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "@floppy/core";
 import { norm } from "./pretri.ts";
 
 export interface Prefs {
@@ -32,8 +31,7 @@ export class PrefsStore {
 
   constructor(file: string) {
     this.file = file;
-    let raw: Partial<PrefsFile> = {};
-    try { raw = JSON.parse(readFileSync(file, "utf8")) as Partial<PrefsFile>; } catch { /* absent ou abîmé : on repart à vide */ }
+    const raw: Partial<PrefsFile> = readJsonFile<Partial<PrefsFile>>(file) ?? {};
     this.data = { global: fill(raw.global), interets: Object.fromEntries(Object.entries(raw.interets ?? {}).map(([k, v]) => [k, fill(v)])) };
   }
 
@@ -79,8 +77,7 @@ export class PrefsStore {
   }
 
   save(): void {
-    mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(this.data, null, 2), "utf8");
+    writeJsonAtomic(this.file, this.data);
   }
 }
 

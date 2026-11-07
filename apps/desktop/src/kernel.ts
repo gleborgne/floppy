@@ -10,7 +10,14 @@ interface ParentPort {
 const parent = (process as unknown as { parentPort: ParentPort }).parentPort;
 const configPath = process.argv[2] ?? process.env.FLOPPY_CONFIG ?? "floppy.yml";
 
-const running = await boot({ configPath });
+// Un démarrage impossible (floppy.yml invalide, plugin cassé au chargement) : la raison part à l'app avant l'arrêt,
+// pour qu'elle la montre au lieu de relancer en boucle.
+const running = await boot({ configPath }).catch((err: unknown) => {
+  console.error(err);
+  parent.postMessage({ type: "kernel.failed", text: errorText(err) });
+  setTimeout(() => process.exit(2), 200);
+  return new Promise<never>(() => {});
+});
 running.kernel.bus.on("plugin.state", (s) => parent.postMessage({ type: "plugin.state", ...s }));
 parent.postMessage({ type: "kernel.ready", plugins: running.kernel.status(), firstRun: running.firstRun });
 

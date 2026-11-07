@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, MemoryAudit, MemorySecrets } from "@floppy/core";
+import { Kernel, MemoryAudit, MemorySecrets, type McpEndpoint } from "@floppy/core";
 import tools from "../src/index.ts";
 import { formToPatch, toSpec, TEST_LIMIT } from "../src/connectors.ts";
 import { open, type Spec } from "../src/connection.ts";
@@ -20,6 +20,7 @@ async function start(servers: Record<string, unknown> = {}) {
   const k = new Kernel({ logger: () => {}, audit: new MemoryAudit(), plugins: [tools], home, secrets: new MemorySecrets() });
   kernels.push(k);
   await k.applyConfig({ plugins: [{ id: "tools", plugin: "tools", config: { port: 0, servers } }] });
+  await k.service<McpEndpoint>("mcp")?.connected?.();
   const run = (op: Record<string, unknown>) => k.items.run({ provider: "connectors", ...op } as never, "ui");
   const item = async (id: string) => (await k.items.provider("connectors")!.list()).find((i) => i.id === id)!;
   return { k, run, item };

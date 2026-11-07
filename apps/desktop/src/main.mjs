@@ -7,7 +7,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, utilityPro
 import { fileURLToPath } from "node:url";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
-import { createWriteStream, mkdirSync, existsSync, renameSync } from "node:fs";
+import { createWriteStream, mkdirSync, existsSync, renameSync, statSync } from "node:fs";
 import { renderMarkdown } from "./markdown.mjs";
 import { Typer, foregroundRect } from "./typer.mjs";
 
@@ -36,6 +36,9 @@ let lastOnb = null;            // dernier état de l'installation de départ (fe
 let lastItems = null;           // derniers { providers, lang } reçus du noyau (éléments : modèles, voix, connecteurs, corps, avatars)
 let lang = "fr";                // langue de l'interface (réglage « langue_interface » du noyau)
 let reqSeq = 0;
+let crashes = [];               // heures des dernières pannes du noyau (relance avec une attente qui grandit)
+let restarting = false;         // relance demandée (menu, réglage) : pas une panne
+let bootFailure = null;         // raison d'un démarrage impossible, envoyée par le noyau avant de s'arrêter
 // Logos { program } / { handler } des éléments (packages/core/src/logo.ts) : le noyau ne lit pas les icônes du système,
 // l'app les lit ici et les remplace par une adresse data: avant d'envoyer la liste à la fenêtre. Clé → adresse, "" (rien) ou attente.
 const logoCache = new Map();
@@ -106,6 +109,8 @@ if (!process.env.FLOPPY_HOME && !existsSync(logDir) && existsSync(join(dataParen
   try { renameSync(join(dataParent, "assistant"), logDir); } catch { logDir = join(dataParent, "assistant"); }
 }
 mkdirSync(logDir, { recursive: true });
+// Au-delà de 20 Mo, le journal devient kernel.1.log (l'ancien est remplacé) : il ne grossit jamais sans limite.
+try { if (statSync(join(logDir, "kernel.log")).size > 20 * 1024 * 1024) renameSync(join(logDir, "kernel.log"), join(logDir, "kernel.1.log")); } catch { /* absent */ }
 const kernelLog = createWriteStream(join(logDir, "kernel.log"), { flags: "a" });
 
 // ------------------------------------------------------------------ textes du processus principal (fr / en)
@@ -117,7 +122,8 @@ const TEXTS = {
     hide: "Cacher l'avatar (Ctrl+Alt+H)", show: "Montrer l'avatar (Ctrl+Alt+H)", settings: "Réglages…", restart: "Relancer le noyau",
     logs: "Ouvrir le dossier des journaux", quit: "Quitter", settingsTitle: "Floppy — Réglages", panelTitle: "Floppy — Résultats", documentsTitle: "Floppy — Documents", noKernel: "Le noyau n'est pas démarré.", noAnswer: "Le noyau n'a pas répondu.",
     pickTitle: "Choisir", invalid: "Demande invalide.", taken: "déjà pris",
-    problemNames: { "dictée": "dictée", raccourci: "raccourci" },
+    problemNames: { "dictée": "dictée", raccourci: "raccourci", noyau: "noyau" },
+    kernelLoop: "le noyau s'arrête sans cesse. Lis le journal, puis choisis « Relancer le noyau ».",
     onboardingTitle: "Floppy — Bienvenue", firstSetup: "Réglage de départ…",
     settingsNotOpened: "Réglages non ouverts", closedWhileLoading: "fenêtre fermée pendant le chargement", loadTooLong: "chargement trop long", notVisible: "fenêtre non visible",
   },
@@ -128,7 +134,8 @@ const TEXTS = {
     hide: "Hide the avatar (Ctrl+Alt+H)", show: "Show the avatar (Ctrl+Alt+H)", settings: "Settings…", restart: "Restart the kernel",
     logs: "Open the logs folder", quit: "Quit", settingsTitle: "Floppy — Settings", panelTitle: "Floppy — Results", documentsTitle: "Floppy — Documents", noKernel: "The kernel is not running.", noAnswer: "The kernel did not answer.",
     pickTitle: "Choose", invalid: "Invalid request.", taken: "already taken",
-    problemNames: { "dictée": "dictation", raccourci: "shortcut" },
+    problemNames: { "dictée": "dictation", raccourci: "shortcut", noyau: "kernel" },
+    kernelLoop: "the kernel keeps stopping. Read the log, then choose \"Restart the kernel\".",
     onboardingTitle: "Floppy — Welcome", firstSetup: "First setup…",
     settingsNotOpened: "Settings not opened", closedWhileLoading: "window closed while loading", loadTooLong: "loading took too long", notVisible: "window not visible",
   },
@@ -218,9 +225,21 @@ function refreshTray() {
 }
 
 // ------------------------------------------------------------------ noyau
+const RESTART_DELAYS = [2000, 5000, 15000, 60000];
+const CRASH_WINDOW = 120000;
+const CRASH_MAX = 5;
+/** Pannes récentes (la dernière comprise) → attente avant la relance, ou null : trop de pannes, on arrête et on le montre. */
+function restartDelay(times, now) {
+  const recent = times.filter((t) => now - t < CRASH_WINDOW);
+  if (recent.length >= CRASH_MAX) return null;
+  return RESTART_DELAYS[Math.min(Math.max(recent.length - 1, 0), RESTART_DELAYS.length - 1)];
+}
+
 function startKernel() {
   kernelWantsPort = false;
   problems.clear();
+  // La raison du dernier démarrage raté reste visible jusqu'à un démarrage réussi (kernel.ready).
+  if (bootFailure) problems.set("noyau", bootFailure);
   const entry = join(here, "kernel.ts");
   kernel = utilityProcess.fork(entry, [CONFIG], { stdio: "pipe", serviceName: "Floppy - noyau", cwd: ROOT });
   const source = kernel;
@@ -230,6 +249,7 @@ function startKernel() {
   kernel.on("message", (m) => {
     if (quitting || kernel !== source) return;
     if (m?.type === "need-body-port") { kernelWantsPort = true; connectBody(); }
+    else if (m?.type === "kernel.failed") bootFailure = m.text ?? null;
     else if (m?.type === "display") applyDisplay(m.settings);
     else if (m?.type === "settings.open") {
       const source = kernel;
@@ -273,6 +293,8 @@ function startKernel() {
       else problems.delete(m.id);
       refreshTray();
     } else if (m?.type === "kernel.ready") {
+      bootFailure = null;
+      problems.delete("noyau");
       for (const p of m.plugins) if (p.state === "error" || p.state === "waiting") problems.set(p.id, p.error ?? waitText(p.missing));
       refreshTray();
       // Fabricants des puces vues par l'appli : un indice pour la lecture de la machine, si aucune sonde ne répond.
@@ -289,17 +311,32 @@ function startKernel() {
     // Les demandes en cours n'auront jamais de réponse : on les clôt tout de suite (sinon 30-60 s d'attente).
     for (const [id, done] of [...pending]) { pending.delete(id); try { done({ ok: false, text: T("noAnswer"), error: T("noAnswer") }); } catch { /* résolveur déjà parti */ } }
     if (quitting) return;
-    refreshTray();
-    {
-      kernelLog.write(`\n[app] le noyau s'est arrêté (code ${code}) : relance dans 2 s\n`);
-      setTimeout(startKernel, 2000);
+    if (restarting) { restarting = false; startKernel(); return; }
+    const now = Date.now();
+    crashes = [...crashes.filter((t) => now - t < CRASH_WINDOW), now];
+    const delay = restartDelay(crashes, now);
+    if (delay === null) {
+      // Le noyau s'arrête sans cesse (souvent : floppy.yml invalide) : on ne relance plus, on montre pourquoi.
+      problems.set("noyau", bootFailure ?? { fr: TEXTS.fr.kernelLoop, en: TEXTS.en.kernelLoop });
+      kernelLog.write(`\n[app] le noyau s'est arrêté ${crashes.length} fois en 2 min (code ${code}) : relance arrêtée\n`);
+      refreshTray();
+      return;
     }
+    if (bootFailure) problems.set("noyau", bootFailure);
+    refreshTray();
+    kernelLog.write(`\n[app] le noyau s'est arrêté (code ${code}) : relance dans ${delay / 1000} s\n`);
+    setTimeout(() => { if (!kernel && !quitting) startKernel(); }, delay);
   });
   refreshTray();
 }
 
 function restartKernel() {
+  // Relance à la main : on repart de zéro (pannes oubliées, problème du noyau effacé).
+  crashes = [];
+  bootFailure = null;
+  problems.delete("noyau");
   if (!kernel) return startKernel();
+  restarting = true;
   kernel.postMessage({ type: "stop" });
   const k = kernel;
   setTimeout(() => { if (k === kernel) k.kill(); }, 6000);
@@ -906,3 +943,13 @@ app.on("before-quit", (e) => {
   try { source.postMessage({ type: "stop" }); } catch { finish(); }
 });
 app.on("window-all-closed", () => { /* l'app reste dans la barre des tâches */ });
+// Une fenêtre dont le rendu plante (avatar, réglages…) est rechargée ; au-delà de 3 pannes en 5 minutes, on la laisse.
+let rendererCrashes = [];
+app.on("render-process-gone", (_e, contents, details) => {
+  if (quitting || details?.reason === "clean-exit") return;
+  const now = Date.now();
+  rendererCrashes = [...rendererCrashes.filter((t) => now - t < 300000), now];
+  kernelLog.write(`\n[app] une fenêtre s'est arrêtée (${details?.reason}, code ${details?.exitCode})${rendererCrashes.length > 3 ? " : trop de pannes, pas de rechargement" : " : rechargement"}\n`);
+  if (rendererCrashes.length > 3) return;
+  setTimeout(() => { if (!contents.isDestroyed()) contents.reload(); }, 1000);
+});

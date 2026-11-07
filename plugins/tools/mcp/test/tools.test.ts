@@ -43,6 +43,7 @@ describe("plugin tools", () => {
         },
       }],
     });
+    await k.service<McpEndpoint>("mcp")?.connected?.();
     // Le « corps » de test : répond aux demandes d'accord.
     k.bus.on("approval.request", (r) => { if (answer !== "silence") k.approvals.respond(r.id, answer, "test"); });
     mcp = k.service<McpEndpoint>("mcp")!;

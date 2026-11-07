@@ -8,7 +8,7 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { Kernel, MemoryAudit } from "@floppy/core";
+import { Kernel, MemoryAudit, type McpEndpoint } from "@floppy/core";
 import tools from "../src/index.ts";
 import { parseAzToken, azTokenProvider } from "../src/azcli.ts";
 
@@ -39,6 +39,7 @@ describe("connecteurs : include et bascule à chaud", () => {
         },
       }],
     });
+    await k.service<McpEndpoint>("mcp")?.connected?.();
     k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, answer, "test"); });
   });
   afterAll(() => k.stopAll());
@@ -119,6 +120,7 @@ describe("serveur MCP distant (HTTP)", () => {
         config: { port: 0, servers: { distant: { url, headers: { Authorization: "Bearer secret-de-test" }, include: ["wit_*"], cloud: true } } },
       }],
     });
+    await k.service<McpEndpoint>("mcp")?.connected?.();
   });
   afterAll(async () => { await k.stopAll(); http.closeAllConnections(); await new Promise<void>((ok) => http.close(() => ok())); });
 

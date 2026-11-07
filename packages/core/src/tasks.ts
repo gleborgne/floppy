@@ -6,8 +6,7 @@
 // - ANNONCE : le noyau, après le passage (initiative + document montré).
 // Règles : un seul passage à la fois par tâche ; délai max ; le plugin est réveillé s'il dort, et gardé en marche
 // pendant le passage ; la fin du dernier passage réussi est gardée dans <home>/tasks.json.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { Audit } from "./audit.ts";
 import type { TaskDef, TaskSchedule } from "./plugin/manifest.ts";
 import type { TaskReason, TaskResult, TaskService } from "./services.ts";
@@ -198,9 +197,9 @@ function norm(s: string): string {
 }
 
 function readJson(file: string): Record<string, Saved> {
-  try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, Saved>; } catch { return {}; }
+  return readJsonFile<Record<string, Saved>>(file) ?? {};
 }
 
 function writeJson(file: string, v: unknown): void {
-  try { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify(v, null, 2)); } catch { /* disque plein : on garde en mémoire */ }
+  try { writeJsonAtomic(file, v); } catch { /* disque plein : on garde en mémoire */ }
 }

@@ -1,8 +1,8 @@
 // Premier lancement : niveaux possibles selon la machine (du texte seul au tout local), puis installation du niveau choisi.
 // Le plan vient des déclarations des plugins (bibliothèques de modèles : service, needs, uses) : aucun modèle en dur ici.
 // Voir docs/spec/premier-lancement.md.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { CatalogOp, ItemInfo, ModelNeeds, OpReply, ProviderSnapshot } from "./catalog.ts";
 import { GIB, gbText, machineSummary, type MachineInfo } from "./machine.ts";
 import { T, tr, type Text } from "./i18n.ts";
@@ -380,9 +380,9 @@ export class Onboarding {
   private get path(): string { return join(this.deps.home, "onboarding.json"); }
 
   read(): OnboardingFile | undefined {
-    try { return existsSync(this.path) ? JSON.parse(readFileSync(this.path, "utf8")) as OnboardingFile : undefined; } catch { return undefined; }
+    return readJsonFile<OnboardingFile>(this.path);
   }
-  private write(f: OnboardingFile): void { writeFileSync(this.path, JSON.stringify(f, null, 2), "utf8"); }
+  private write(f: OnboardingFile): void { writeJsonAtomic(this.path, f); }
 
   /** Premier lancement : à faire jusqu'à la fin (ou « Passer »). */
   begin(): void { if (!this.read()) this.write({ done: false }); }

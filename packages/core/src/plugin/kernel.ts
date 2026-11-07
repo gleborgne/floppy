@@ -39,13 +39,14 @@ import { DownloadManager, downloadsDir, type DownloadManagerOptions } from "../d
 import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
 import { findExe, killTree, stableStringify } from "../util/process.ts";
+import { ChildRegistry } from "../util/children.ts";
 import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
 export type Logger = (rec: { level: LogLevel; source: string; msg: string; data?: Record<string, unknown> }) => void;
 
 export const consoleLogger: Logger = ({ level, source, msg, data }) => {
   if (level === "debug" && !process.env.FLOPPY_DEBUG) return;
-  const line = `[${source}] ${msg}${data ? " " + JSON.stringify(data) : ""}`;
+  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${source}] ${msg}${data ? " " + JSON.stringify(data) : ""}`;
   (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
 };
 
@@ -140,6 +141,8 @@ export class Kernel {
   readonly items: CatalogRegistry;
   readonly secrets: Secrets;
   readonly home: string;
+  /** Programmes lancés par ctx.spawn (arrêtés au démarrage suivant si le noyau a été tué de force). */
+  readonly children: ChildRegistry;
   /** Téléchargements de fichiers des plugins (modèles, voix) : une seule file pour tout le noyau. */
   readonly downloads: DownloadManager;
   /** Dossier où les plugins rangent les fichiers téléchargés (réglage « dossier_modeles », défaut <home>/models). */
@@ -193,6 +196,7 @@ export class Kernel {
     // Sans dossier imposé (tests) : un dossier temporaire neuf par noyau, pour ne jamais mélanger les réglages.
     this.home = opts.home ?? mkdtempSync(join(tmpdir(), "floppy-kernel-"));
     this.logger = opts.logger ?? consoleLogger;
+    this.children = new ChildRegistry(join(this.home, "children.json"));
     this.approvals = new ApprovalManager(this.bus, this.audit, base.approvals);
     this.tools = new ToolRegistry(this.approvals, this.audit, this.hooks);
     this.tools.lang = () => this.assistant.language;
@@ -1219,7 +1223,10 @@ export class Kernel {
           throw new Error(`${e.cfg.id} : lancer « ${programName(command)} » demande permissions.exec dans le manifeste (exec: ["${programName(command)}"])`);
         }
         const child = nodeSpawn(command, args, { windowsHide: true, detached: process.platform !== "win32", ...options });
-        scope.add(() => killTree(child));
+        const close = scope.add(() => killTree(child));
+        this.children.track(child, command, e.cfg.id);
+        // Programme fini tout seul : sa fermeture est retirée (un plugin qui lance un programme par demande ne grossit pas).
+        child.once("exit", () => { void close(); });
         return child;
       },
       interval: (fn, ms) => { const t = setInterval(fn, ms); scope.add(() => clearInterval(t)); },

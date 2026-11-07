@@ -293,6 +293,8 @@ export interface McpEndpoint {
   token: string;
   /** Accès restreint à quelques outils (assistant de la fenêtre des réglages). */
   scoped(opts: ScopedOptions): ScopedEndpoint;
+  /** Tenue quand les connecteurs du démarrage ont fini de se brancher (réussis ou non). Ils se branchent après `apply`. */
+  connected?(): Promise<void>;
 }
 
 // ------------------------------------------------------------------ service body (fourni par body-hub)

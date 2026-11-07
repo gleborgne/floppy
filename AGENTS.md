@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Floppy: a local-first voice assistant where everything is a plugin. TypeScript (Node 24) kernel and plugins, Electron desktop app, Python voice service.
+Floppy: a local-first voice assistant where everything is a plugin. TypeScript (Node 24) kernel and plugins, Electron desktop app. Local models run as native programs (llama-server, audio.cpp) or in-process (sherpa-onnx).
 
 ## Done means green
 
@@ -11,9 +11,19 @@ A change is done when `npm run check` passes (typecheck + Vitest + licence check
 - **Plugin first.** A new capability is a plugin in `plugins/<family>/<name>`, registered in `apps/cli/src/catalog.ts` and listed in `floppy.example.yml`. Plugins written by others (third-party: `floppy-plugin.json`, isolated process, AI review) follow `docs/spec/plugins-tiers.md`; their types live in `packages/sdk/floppy-plugin.d.ts`. The kernel (`packages/core`) stays free of Electron and of any specific plugin (`packages/core/test/boundaries.test.ts` guards this).
 - **Plugins declare** the services they provide and inject, their permissions, settings (`ctx.settings.declare`) and settings forms (`ctx.items.declare`, `providerConfig`). The Settings window is generated from these declarations.
 - **Tools carry a level** (`read`, `write`, `send`, `delete`, `physical`). Anything above `read` goes through approvals in the kernel; a plugin never asks the user itself.
-- **Heavy resources run on demand.** A model on the GPU or a local voice is offered with `ctx.offer` and runs only while a slot uses it.
 - **Before reworking a subsystem**, read its spec from `docs/spec/README.md` (French) and update the spec with the behaviour.
 - **Before changing UI** (windows, Settings, avatars), read `DESIGN.md`: tokens, components and rules of the shipped interface.
+
+## Plugin lifecycle (Cordis rules)
+
+Before changing the kernel or how a plugin starts, stops or fails, read `docs/spec/noyau.md` (lifecycle rules).
+
+- **Everything through `ctx`.** Open processes, timers, listeners and servers with `ctx.spawn`, `ctx.interval`, `ctx.timeout`, `ctx.on`, `ctx.effect`: the kernel closes them when the plugin stops, and kills programs left over from a forced stop.
+- **Short `apply`.** `apply` declares and returns. Slow work (remote connections, model loading) runs in an `ctx.offer` fork or in the background after `apply`.
+- **Heavy resources on demand.** A model on the GPU or a local voice is offered with `ctx.offer` and runs only while a slot uses it.
+- **Fail loudly.** A plugin that loses its resource calls `ctx.fail(T(…))`; the error shows in the app and in `floppy plugins`.
+- **Bounded waits.** Every network call and child process has a timeout (`AbortSignal.timeout`).
+- **Safe files.** User data is written with `writeFileAtomic` / `writeJsonAtomic` and read with `readJsonFile`: a crash never leaves half a file, and a file that does not parse is set aside and reported.
 
 ## Two languages, everywhere
 

@@ -262,7 +262,7 @@ Testé (`plugins/tools/test/tools.test.ts`) : une écriture refusée ou sans ré
 - `exclude` masque des outils d'un serveur (exemple : le faux `ouvrir_url` du banc quand le plugin `browser` fournit le vrai).
 - Ajoute ses outils au registre, avec leur niveau.
 - Si un serveur s'arrête tout seul : **seul son connecteur** passe en erreur (« le serveur s'est arrêté : … »), avec une ligne au journal (`mcp.server_down`). Le plugin `tools` et les autres connecteurs continuent. Ce n'est pas un `ctx.fail()`.
-- Connexion à un serveur : délai de 30 s.
+- Connexion à un serveur : délai de 30 s. Les connecteurs se branchent **après** `apply`, en arrière-plan : le service `mcp` est visible tout de suite, et un connecteur lent ne retarde ni le démarrage ni les cerveaux CLI. `mcp.connected()` est tenue quand ils ont tous fini (réussis ou non).
 - Ouvre le **serveur MCP Floppy** (`127.0.0.1`, port 8740 par défaut, jeton nouveau à chaque démarrage) et fournit le service `mcp` = `{ url, token }` pour les cerveaux CLI.
 
 ## La CLI et le point de contrôle
@@ -286,6 +286,21 @@ sequenceDiagram
 | `floppy restart <id>`, `floppy reload` | relancer une entrée, relire la config |
 | `floppy settings`, `floppy set <clé> <valeur>`, `floppy undo` | réglages |
 | `floppy chat` | un corps texte au clavier, branché par `body-ws` (comme Telegram) |
+
+## Résilience
+
+Une pièce qui casse ne doit pas arrêter tout Floppy. Ce qui existe (testé dans `packages/core/test/files.test.ts`, `safety.test.ts`, `children.test.ts`, `audit.test.ts` et `apps/desktop/test/lifecycle.test.ts`) :
+
+| Panne | Ce que fait Floppy |
+|---|---|
+| Plantage pendant l'écriture d'un fichier de l'utilisateur (`settings.json`, `items/*.json`, `tasks.json`, `onboarding.json`, préférences de la veille, `MEMORY.md`) | Écriture dans un fichier temporaire puis renommage (`writeFileAtomic`) : l'ancien fichier reste entier. |
+| Fichier illisible au démarrage | Il est renommé en `<nom>.corrupt-<date>` et signalé dans le journal (`readJsonFile`). Il n'est jamais écrasé par la sauvegarde suivante. |
+| Erreur asynchrone oubliée par un plugin | Le filet global (`installSafetyNet`, posé par `boot`) l'écrit au journal ; le noyau continue. Au-delà de 20 exceptions en 60 s, le noyau s'arrête et l'hôte le relance. |
+| Noyau tué de force (llama-server ou la voix locale restent en vie) | `ctx.spawn` note chaque programme dans `<home>/children.json`. Au démarrage suivant, ceux qui tournent encore **sous le même nom** sont arrêtés. Un programme fini tout seul est retiré de la liste et des fermetures du plugin. |
+| Le noyau s'arrête dans l'app | Relance après 2 s, 5 s, 15 s puis 60 s. Au bout de 5 arrêts en 2 minutes, plus de relance : l'icône montre la raison (envoyée par le noyau quand le démarrage échoue, par exemple un `floppy.yml` invalide). « Relancer le noyau » repart de zéro. |
+| Une fenêtre de l'app plante | Elle est rechargée après 1 s ; au-delà de 3 pannes en 5 minutes, elle est laissée. |
+| Journaux | Chaque ligne du journal du noyau porte l'heure et le niveau. `kernel.log` et `audit.jsonl` passent à `*.1.*` au-delà de 20 Mo. Une écriture d'audit impossible (disque plein) est signalée, et l'action continue. |
+| Démarrage lent | Le point de contrôle de la CLI s'ouvre avant la config : `floppy plugins` répond pendant qu'un modèle se charge. |
 
 ## Le noyau dans l'app Electron (vérifié)
 
