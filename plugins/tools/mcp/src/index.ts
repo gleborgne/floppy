@@ -35,6 +35,8 @@ const ServerConfig = z.object({
   cloud: z.boolean().default(false),
   /** Niveau par outil ou par motif (« write_* »). `never` = interdit. */
   levels: z.record(z.string(), z.union([Level, z.literal("never")])).default({}),
+  /** Serveur distant : croire ses outils marqués « lecture seule » (sans accord). Défaut : non. */
+  trust_annotations: z.boolean().optional(),
   disabled: z.boolean().default(false),
   /** Si présent, seuls ces outils (noms ou motifs avec `*`) sont exposés. Appliqué avant `exclude`. */
   include: z.array(z.string()).optional(),

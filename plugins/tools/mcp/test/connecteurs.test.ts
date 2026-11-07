@@ -117,7 +117,7 @@ describe("serveur MCP distant (HTTP)", () => {
     await k.applyConfig({
       plugins: [{
         id: "tools", plugin: "tools",
-        config: { port: 0, servers: { distant: { url, headers: { Authorization: "Bearer secret-de-test" }, include: ["wit_*"], cloud: true } } },
+        config: { port: 0, servers: { distant: { url, headers: { Authorization: "Bearer secret-de-test" }, include: ["wit_*"], cloud: true, trust_annotations: true } } },
       }],
     });
     await k.service<McpEndpoint>("mcp")?.connected?.();
@@ -156,5 +156,15 @@ describe("jeton azcli", () => {
     // Le jeton suivant expire dans 2 minutes : jugé trop proche, donc refait à chaque appel.
     n = 1;
     expect(await azTokenProvider("https://x", async () => JSON.stringify({ accessToken: "a", expires_on: exp[1] }))()).toBe("a");
+  });
+});
+
+describe("serveur distant : « lecture seule » cru seulement sur confiance", () => {
+  it("sans confiance, un outil « lecture seule » d'un serveur distant demande l'accord ; « destructif » compte toujours", async () => {
+    const { resolveLevel } = await import("../src/levels.ts");
+    expect(resolveLevel("x", {}, { readOnlyHint: true }, false)).toEqual({ level: "write" });
+    expect(resolveLevel("x", {}, { readOnlyHint: true }, true)).toEqual({ level: "read" });
+    expect(resolveLevel("x", {}, { readOnlyHint: true, destructiveHint: true }, true)).toEqual({ level: "delete" });
+    expect(resolveLevel("x", { x: "read" }, {}, false)).toEqual({ level: "read" }); // la config de l'utilisateur passe avant
   });
 });

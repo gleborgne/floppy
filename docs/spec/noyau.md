@@ -135,7 +135,8 @@ Le `ctx` est la seule porte vers le noyau :
 | `slot(id)` | pendant `apply` : service de l'élément choisi pour un slot du manifeste ; son fork démarre à la demande. `undefined` : « aucun », ou élément indisponible |
 | `offer(service, { items, max?, start })` | offrir un service élément par élément. `start(f, item)` tourne dans un **fork** (son propre `ctx`, ses effets) et doit appeler `f.provide` |
 | `effect`, `spawn`, `interval`, `timeout` | tout ce qui est ouvert est fermé au déchargement, dans l'ordre inverse |
-| `on`, `emit` | bus d'événements (désabonnement automatique) |
+| `on`, `emit` | bus d'événements (désabonnement automatique) ; les événements du noyau (accords, état, services, tâches, relance) sont refusés à `emit` |
+| `fetch` | `fetch` avec un délai (30 s par défaut) ; un hôte hors `permissions.net` est signalé au journal |
 | `hook`, `runHook` | middlewares en cascade avec `next()` |
 | `tools.register / list / call` | registre d'outils du noyau ; `register` rend une fonction pour retirer ces outils plus tôt (un corps qui se débranche) ; tout est retiré au déchargement |
 | `settings.declare / saved` | réglages modifiables à la voix ou par la CLI (voir [Réglages à la voix](reglages.md)) |
@@ -261,10 +262,10 @@ flowchart LR
 | `read` | `always` |
 | `write`, `send`, `delete`, `physical` | `ask` |
 
-- Niveau d'un outil MCP : **config** (nom exact, puis motif `write_*`) > **annotations MCP** (`readOnlyHint` → read, `destructiveHint` → delete) > **inconnu = write**.
+- Niveau d'un outil MCP : **config** (nom exact, puis motif `write_*`) > **annotations MCP** (`readOnlyHint` → read, seulement pour un serveur local ou un serveur distant avec `trust_annotations: true` ; `destructiveHint` → delete) > **inconnu = write**.
 - `never` dans la config d'un serveur interdit l'outil sans même demander (exemple : `write_*` sur le coffre Obsidian).
 - Statuts d'un résultat : `done`, `unverified`, `failed`, `refused`.
-- Un plugin demande un accord par `ctx.approvals.check`. Seuls `body-hub`, `conversation` et `bench-api` peuvent répondre (`permissions.approvals: "respond"`) ; voir [Sécurité](securite.md#laccord).
+- Un plugin demande un accord par `ctx.approvals.check`. Seuls `body-hub`, `conversation` et `bench-api` (catalogue de développement, `FLOPPY_DEV=1`) peuvent répondre (`permissions.approvals: "respond"`) ; voir [Sécurité](securite.md#laccord).
 - La demande d'accord a un **id secret** (UUID) et une durée de vie. Le modèle ne le voit jamais. Seuls les corps (bus) et la CLI répondent. **La première réponse gagne**, les suivantes sont ignorées.
 
 Testé (`plugins/tools/test/tools.test.ts`) : une écriture refusée ou sans réponse **n'atteint jamais** le serveur MCP ; sans jeton, le serveur MCP Floppy répond 401 ; un serveur MCP cassé au démarrage n'empêche pas les autres.

@@ -10,6 +10,7 @@ standard de Python. Le faux serveur de travail (`work_mcp/server.py`) a besoin d
 ```powershell
 # depuis la racine du dépôt
 $env:FLOPPY_HOME = "$env:TEMP\floppy-bench"
+$env:FLOPPY_DEV = "1"   # le plugin bench-api n'existe qu'en mode développement
 npx floppy start -c bench/local/<nom>.yml
 # autre terminal :
 python -X utf8 bench/eval.py run <label>

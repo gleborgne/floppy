@@ -222,7 +222,13 @@ export interface Context {
 
   effect(dispose: Disposer): () => Promise<void>;
   on<K extends keyof CoreEvents & string>(event: K, fn: (payload: CoreEvents[K]) => void): void;
+  /** Émet sur le bus. Les événements du noyau (accords, état des plugins, services, tâches, relance) sont refusés. */
   emit<K extends keyof CoreEvents & string>(event: K, payload: CoreEvents[K]): void;
+  /**
+   * fetch avec un délai par défaut (30 s, `timeoutMs` le change) et l'hôte vérifié contre permissions.net : un hôte
+   * absent est signalé au journal (avertissement, pas encore refusé). Refusé après l'arrêt du plugin.
+   */
+  fetch(url: string | URL, init?: RequestInit & { timeoutMs?: number }): Promise<Response>;
   hook<I, O>(name: string, mw: Middleware<I, O>): void;
   /** Lance la chaîne d'un hook (ex. tools lance `tool.before`). */
   runHook<I, O>(name: string, input: I, final: (input: I) => Promise<O>): Promise<O>;

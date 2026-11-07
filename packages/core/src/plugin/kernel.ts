@@ -36,7 +36,7 @@ import { defaultSecrets, MemorySecrets, scopedSecrets, type Secrets } from "../s
 import { errorText, isLang, LANGS, T, TextError, tr, type Text } from "../i18n.ts";
 import { Apps } from "../apps.ts";
 import { TaskRegistry, taskTools } from "../tasks.ts";
-import { DownloadManager, downloadsDir, type DownloadManagerOptions } from "../downloads.ts";
+import { DownloadManager, downloadsDir, hostAllowed, type DownloadManagerOptions } from "../downloads.ts";
 import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
 import { findExe, killTree, stableStringify } from "../util/process.ts";
@@ -1427,7 +1427,27 @@ export class Kernel {
       },
       effect: (dispose) => scope.add(dispose),
       on: (event, fn) => { scope.add(this.bus.on(event, as(fn))); },
-      emit: (event, payload) => { if (!closed(`emit(${event})`)) this.bus.emit(event, payload); },
+      emit: (event, payload) => {
+        if (closed(`emit(${event})`)) return;
+        // Ces événements disent ce que le noyau a décidé : un plugin ne peut pas les imiter (fausse demande d'accord…).
+        if (KERNEL_EVENTS.has(event)) {
+          if (!warned.has(`kernel-event:${event}`)) { warned.add(`kernel-event:${event}`); this.log("warn", e.cfg.id, `emit(${event}) refusé : événement réservé au noyau`); }
+          return;
+        }
+        this.bus.emit(event, payload);
+      },
+      fetch: (url, init = {}) => {
+        if (closed("fetch")) return Promise.reject(stoppedError());
+        const { timeoutMs, ...rest } = init;
+        let host = "";
+        try { host = new URL(String(url)).hostname; } catch { /* adresse invalide : fetch le dira */ }
+        if (host && !hostAllowed(def.manifest.permissions?.net, host) && !warned.has(`net:${host}`)) {
+          warned.add(`net:${host}`);
+          this.log("warn", e.cfg.id, `réseau : ${host} n'est pas dans permissions.net (avertissement : la requête part quand même)`);
+        }
+        const limit = AbortSignal.timeout(timeoutMs ?? 30_000);
+        return fetch(url, { ...rest, signal: rest.signal ? AbortSignal.any([rest.signal, limit]) : limit });
+      },
       hook: (name, mw) => { scope.add(this.hooks.add(name, as(mw), e.cfg.id)); },
       runHook: (name, input, final) => closed(`runHook(${name})`) ? Promise.reject(stoppedError()) : this.hooks.run(name, input, final),
       spawn: (command: string, args: string[], options: SpawnOptions & { keep?: boolean } = {}) => {
@@ -1508,6 +1528,9 @@ export class Kernel {
     this.logger({ level, source, msg, ...(data ? { data } : {}) });
   }
 }
+
+/** Événements émis seulement par le noyau (ctx.emit les refuse aux plugins). */
+const KERNEL_EVENTS = new Set(["approval.request", "approval.closed", "plugin.state", "service.changed", "task.done", "floppy.restart"]);
 
 function sameEntry(a: EntryConfig, b: EntryConfig): boolean {
   return a.plugin === b.plugin && a.disabled === b.disabled && stableStringify(a.config) === stableStringify(b.config);

@@ -49,8 +49,15 @@ import sttSherpa from "@floppy/plugin-stt-sherpa";
 
 export const catalog: PluginDef<any>[] = [
   tools, llmLlamacpp, llmOpenai, memory, brainAisdk, brainClaudeCli, brainCodexCli, brainAgyCli,
-  bodyHub, bodyWs, bodyElectron, bodyReachy, conversation, orca, browser, inbox, websearch, m365, avatarTv, avatarPixel, avatarEssaim, avatarGyre, avatarGoutte, avatarOscillo, avatarIris, avatarPixelcat, coder, agentSessions, benchApi,
+  bodyHub, bodyWs, bodyElectron, bodyReachy, conversation, orca, browser, inbox, websearch, m365, avatarTv, avatarPixel, avatarEssaim, avatarGyre, avatarGoutte, avatarOscillo, avatarIris, avatarPixelcat, coder, agentSessions,
   ttsGemini, ttsElevenlabs, liveGemini, liveOpenai,
   wakewordStt, wakewordSherpa, wakewordPorcupine,
   searxng, documents, scheduler, veille, notifyTelegram, notifyMail, ttsAudiocpp, ttsSystem, voiceListen, sttSherpa,
 ];
+
+/**
+ * Plugins de développement, chargés seulement avec FLOPPY_DEV=1. `bench-api` répond aux accords tout seul pour le banc
+ * (en-tête X-Approval) : il ne doit jamais tourner dans un Floppy de tous les jours.
+ */
+export const devPlugins: PluginDef<any>[] = [benchApi];
+if (process.env.FLOPPY_DEV === "1") catalog.push(...devPlugins);

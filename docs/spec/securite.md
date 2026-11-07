@@ -13,7 +13,10 @@
 
 - À l'installation, l'utilisateur accorde les droits, une fois : manifestes des plugins du noyau, serveurs MCP et CLI déclarés dans la config. Ils sont mémorisés.
 - Chaque appel d'outil passe par le noyau : règles de refus, niveau de l'outil, accord (`toolApproval` de l'AI SDK) → exécution → journal. Mesuré (prototypes 3 bis et 3 ter) : une écriture refusée n'atteint jamais le serveur MCP.
-- Le niveau d'un outil MCP vient de la config ; à défaut, de ses annotations (`readOnlyHint`, `destructiveHint`). **Outil inconnu = traité comme une écriture.**
+- Le niveau d'un outil MCP vient de la config ; à défaut, de ses annotations (`readOnlyHint`, `destructiveHint`). **Outil inconnu = traité comme une écriture.** Un serveur **distant** n'est pas cru sur parole : son « lecture seule » compte seulement avec `trust_annotations: true` (case « Croire ses outils « lecture seule » » du connecteur). Un serveur local (la commande de l'utilisateur) est cru. « Destructif » compte toujours (il ne fait que durcir).
+- Les événements qui disent une décision du noyau (`approval.request`, `approval.closed`, `plugin.state`, `service.changed`, `task.done`, `floppy.restart`) ne s'émettent pas par `ctx.emit` : un plugin ne peut pas montrer une fausse demande d'accord.
+- `bench-api` (qui répond aux accords tout seul pour le banc) n'est dans le catalogue qu'avec `FLOPPY_DEV=1`.
+- Réseau : `ctx.fetch` donne un délai par défaut (30 s) et écrit au journal, une fois par hôte, une requête vers un hôte absent de `permissions.net` (avertissement ; le refus viendra quand tous les plugins passeront par lui).
 - Règle par niveau d'outil :
 
 | Niveau | Règle par défaut |

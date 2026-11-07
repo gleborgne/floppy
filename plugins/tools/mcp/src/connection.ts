@@ -21,6 +21,11 @@ export interface Spec {
   auth?: { type: "azcli"; resource: string } | { type: "token" };
   cloud: boolean;
   levels: Record<string, LevelSetting>;
+  /**
+   * Serveur distant : croire ses outils « lecture seule » (readOnlyHint), donc sans accord. Défaut : non, un serveur
+   * distant pourrait mentir. Un serveur local (la commande de l'utilisateur) est cru.
+   */
+  trustAnnotations?: boolean;
   include?: string[];
   exclude: string[];
   /** Nom de la variable d'environnement dont la valeur est un secret (rangée dans ctx.secrets). */
@@ -170,7 +175,7 @@ export async function open(
     return {
       ...(icon ? { icon } : {}),
       tools: tools.map((t) => {
-        const { level, rule } = resolveLevel(t.name, spec.levels, t.annotations);
+        const { level, rule } = resolveLevel(t.name, spec.levels, t.annotations, spec.kind !== "mcp-remote" || spec.trustAnnotations === true);
         return { name: t.name, description: t.description ?? "", inputSchema: t.inputSchema as Record<string, unknown>, level, ...(rule ? { rule } : {}) };
       }),
       call: async (name, args, signal) => {

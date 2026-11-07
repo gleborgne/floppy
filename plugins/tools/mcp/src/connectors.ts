@@ -45,6 +45,7 @@ export function toSpec(raw: Raw): Spec {
     ...(auth ? { auth } : {}),
     cloud: raw.cloud === true,
     levels: (raw.levels ?? {}) as Spec["levels"],
+    ...(raw.trustAnnotations === true || raw.trust_annotations === true ? { trustAnnotations: true } : {}),
     ...(include.length ? { include } : {}),
     exclude: list(raw.exclude),
     ...(raw.secretEnvName ? { secretEnvName: String(raw.secretEnvName) } : {}),
@@ -103,6 +104,7 @@ export const KINDS: ItemKind[] = [
       { key: "resource", label: t("Ressource Azure", "Azure resource"), type: "text", showIf: { key: "connection", values: ["azcli"] }, placeholder: "https://mcp.dev.azure.com" },
       { key: "cloud", label: t("Données dans le cloud", "Data in the cloud"), type: "boolean", default: true, hint: cloudHint },
       { key: "levels", label: t("Niveau par outil", "Level per tool"), type: "keyvalue", advanced: true, hint: t("outil = read (sans accord), write, send, delete (avec accord) ou never (interdit). Ex. : ask = read. Par défaut, un outil inconnu demande ton accord.", "tool = read (no approval), write, send, delete (with approval) or never (forbidden). E.g.: ask = read. By default, an unknown tool asks for your approval.") },
+      { key: "trustAnnotations", label: t("Croire ses outils « lecture seule »", "Trust its \"read-only\" tools"), type: "boolean", default: false, advanced: true, hint: t("Le serveur marque certains outils « lecture seule » : ils passent alors sans accord. À cocher seulement pour un serveur de confiance.", "The server marks some tools \"read-only\": they then run without approval. Tick only for a server you trust.") },
       { key: "note", label: t("Note pour le cerveau", "Note for the brain"), type: "textarea", advanced: true, hint: t("Ajoutée à la description de ses outils. Ex. : adresse web d'une PR = https://dev.azure.com/<org>/<projet>/_git/<dépôt>/pullrequest/<id>", "Added to its tools' description. E.g.: a PR web address = https://dev.azure.com/<org>/<project>/_git/<repo>/pullrequest/<id>") },
       { key: "toolFilter", label: t("Filtre d'outils", "Tool filter"), type: "list", advanced: true, hint: t("Seuls ces outils sont donnés au cerveau (jokers * permis). Vide = tous.", "Only these tools are given to the brain (wildcards * allowed). Empty = all.") },
     ],
@@ -165,7 +167,7 @@ export function formToPatch(kind: string, v: Values): Raw {
       if (!/^https?:\/\/[A-Za-z0-9._:/-]+$/.test(resource)) throw new TextError(t("Ressource Azure invalide.", "Invalid Azure resource."));
       auth = { type: "azcli", resource };
     } else if (conn === "token") auth = { type: "token" };
-    return { kind, label, url, auth, cloud: v.cloud !== false, ...(list(v.toolFilter).length ? { include: list(v.toolFilter) } : {}), levels: levelsOf(v.levels), note: str(v.note) || null };
+    return { kind, label, url, auth, cloud: v.cloud !== false, ...(list(v.toolFilter).length ? { include: list(v.toolFilter) } : {}), levels: levelsOf(v.levels), trustAnnotations: v.trustAnnotations === true, note: str(v.note) || null };
   }
   if (kind === "command") {
     if (!str(v.command)) throw new TextError(t("La commande est à remplir.", "The command is required."));
@@ -317,7 +319,7 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
         connection: spec.auth?.type ?? "none",
         ...(spec.auth?.type === "token" ? { token: ctx.secrets.has(secretName(id, "token")) ? SECRET_SET : "" } : {}),
         ...(spec.auth?.type === "azcli" ? { resource: spec.auth.resource } : {}),
-        toolFilter: spec.include ?? [], levels: spec.levels, note: spec.note ?? "",
+        toolFilter: spec.include ?? [], levels: spec.levels, trustAnnotations: spec.trustAnnotations === true, note: spec.note ?? "",
       };
     }
     return {

@@ -242,3 +242,52 @@ describe("8. lister_elements : rubriques dynamiques", () => {
     await k.stopAll();
   });
 });
+
+describe("lot sécurité : événements du noyau et réseau", () => {
+  it("un plugin ne peut pas imiter une demande d'accord ni l'état d'un plugin", async () => {
+    const seen: string[] = [];
+    let emitAll!: () => void;
+    const p = definePlugin({
+      manifest: { id: "p", version: "0", licence: "MIT" },
+      apply(ctx) {
+        emitAll = () => {
+          ctx.emit("approval.request", { id: "faux", tool: "t", args: {}, level: "write", summary: "?", ttl_s: 9, expiresAt: 0 });
+          ctx.emit("plugin.state", { id: "x", plugin: "x", state: "active" });
+          ctx.emit("initiative", { source: "p", text: "permis", importance: "normal" });
+        };
+      },
+    });
+    const logs: string[] = [];
+    const k = new Kernel({ logger: (r) => logs.push(r.msg), plugins: [p] });
+    k.bus.on("approval.request", () => { seen.push("approval.request"); });
+    k.bus.on("initiative", () => { seen.push("initiative"); });
+    await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
+    k.bus.on("plugin.state", (s) => { if (s.id === "x") seen.push("plugin.state"); });
+    emitAll();
+    expect(seen).toEqual(["initiative"]);
+    expect(logs.filter((l) => l.includes("réservé au noyau"))).toHaveLength(2);
+    await k.stopAll();
+  });
+
+  it("ctx.fetch : délai par défaut, hôte hors permissions.net signalé une fois", async () => {
+    const { createServer } = await import("node:http");
+    const srv = createServer((req, res) => { if (req.url === "/lent") return; res.end("ok"); });
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+    let ctx!: Context;
+    const p = definePlugin({ manifest: { id: "p", version: "0", licence: "MIT", permissions: { net: ["example.org"] } }, apply(c) { ctx = c; } });
+    const logs: string[] = [];
+    const k = new Kernel({ logger: (r) => logs.push(r.msg), plugins: [p] });
+    await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
+    try {
+      expect(await (await ctx.fetch(`${base}/a`)).text()).toBe("ok");
+      await ctx.fetch(`${base}/b`);
+      expect(logs.filter((l) => l.includes("127.0.0.1 n'est pas dans permissions.net"))).toHaveLength(1);
+      await expect(ctx.fetch(`${base}/lent`, { timeoutMs: 50 })).rejects.toThrow();
+    } finally {
+      await k.stopAll();
+      srv.closeAllConnections();
+      await new Promise<void>((r) => srv.close(() => r()));
+    }
+  });
+});

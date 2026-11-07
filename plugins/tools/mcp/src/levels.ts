@@ -1,4 +1,6 @@
 // Niveau d'un outil MCP : config > annotations MCP > inconnu = write.
+// « readOnlyHint » abaisse le niveau (plus d'accord) : il ne compte que d'un serveur auquel on fait confiance.
+// « destructiveHint » ne peut que durcir : il compte toujours.
 import type { Level, Rule } from "@floppy/core";
 
 export type LevelSetting = Level | "never";
@@ -20,11 +22,11 @@ export function levelFromConfig(name: string, levels: Record<string, LevelSettin
   return hits[0] ? levels[hits[0]] : undefined;
 }
 
-export function resolveLevel(name: string, levels: Record<string, LevelSetting>, ann?: Annotations): { level: Level; rule?: Rule } {
+export function resolveLevel(name: string, levels: Record<string, LevelSetting>, ann?: Annotations, trustReadOnly = true): { level: Level; rule?: Rule } {
   const fromCfg = levelFromConfig(name, levels);
   if (fromCfg === "never") return { level: "write", rule: "never" };
   if (fromCfg) return { level: fromCfg };
-  if (ann?.readOnlyHint === true) return { level: "read" };
+  if (ann?.readOnlyHint === true && trustReadOnly && ann.destructiveHint !== true) return { level: "read" };
   if (ann?.destructiveHint === true) return { level: "delete" };
   return { level: "write" }; // outil inconnu = traité comme une écriture
 }
