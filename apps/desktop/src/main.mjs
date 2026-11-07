@@ -262,7 +262,9 @@ function startKernel() {
       // Opération lancée par un clic dans la fenêtre des réglages : on peut ouvrir une page (http(s)) et copier un code.
       if (m.ok && typeof m.copy === "string" && m.copy.length < 200) clipboard.writeText(m.copy);
       if (m.ok && typeof m.open === "string") { try { const u = new URL(m.open); if (u.protocol === "https:" || u.protocol === "http:") void shell.openExternal(u.toString()); } catch { /* adresse invalide */ } }
-      pending.get(m.reqId)?.({ ok: m.ok, text: m.text, id: m.id, children: m.children });
+      // audio : le son d'un essai ou de « Écouter » (adresse data:audio/…), joué par la fenêtre.
+      const audio = typeof m.audio === "string" && m.audio.startsWith("data:audio/") ? m.audio : undefined;
+      pending.get(m.reqId)?.({ ok: m.ok, text: m.text, id: m.id, children: m.children, ...(audio ? { audio } : {}) });
       pending.delete(m.reqId);
     }
     else if (m?.type === "coder.event") settingsWin?.webContents.send("coder:event", m.event);

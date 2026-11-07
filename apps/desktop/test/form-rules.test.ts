@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 // @ts-expect-error module .js sans types
-import { listAdd, missingFields, chainOf } from "../src/renderer/form-rules.js";
+import { listAdd, missingFields, chainOf, goneOption } from "../src/renderer/form-rules.js";
 
 describe("listAdd (pastilles d'un champ liste)", () => {
   it("ajoute un mot tapé, sans espaces autour", () => {
@@ -36,5 +36,17 @@ describe("chainOf (étapes d'une rubrique)", () => {
     expect(chainOf([{ id: "wake", step: 3 }])).toBeNull();
     expect(chainOf([{ id: "vad", step: 1 }, { id: "stt" }])).toBeNull();
     expect(chainOf([])).toBeNull();
+  });
+});
+
+describe("goneOption (choix gardé qui n'est plus proposé)", () => {
+  const options = [{ value: "C:/models/base.gguf", label: "Base" }];
+  it("rend le nom court d'une valeur absente de la liste", () => {
+    expect(goneOption(options, "C:\\models\\custom.gguf")).toBe("custom.gguf");
+  });
+  it("rien quand la valeur est proposée ou vide", () => {
+    expect(goneOption(options, "C:/models/base.gguf")).toBeUndefined();
+    expect(goneOption(options, "")).toBeUndefined();
+    expect(goneOption(options, undefined)).toBeUndefined();
   });
 });

@@ -203,7 +203,7 @@ La ligne « En service » en haut de la page montre chaque slot, son élément e
 
 | Fournisseur | Types (ajout) | Notes |
 |---|---|---|
-| `voix-locale` (tts-audiocpp, `offers: "tts"`) | `voice` (« Nouvelle voix ») : nom, enregistrement (champ `audio`), ce qu'il dit, modèle qui la fait parler (seulement ceux qui clonent : Qwen3-TTS, VoxCPM2, Pocket TTS), phrase d'essai. `gguf` : nom, fichier, famille (Qwen3-TTS, VoxCPM2, Pocket TTS, Supertonic, autre), voix clonée (WAV + texte) ou intégrée (nom), style, langue | Voir « Studio de voix » ci-dessous. Le service Python `voices` (voice-cascade) est archivé depuis le 6 novembre 2026. |
+| `voix-locale` (tts-audiocpp, `offers: "tts"`) | `voice` (« Nouvelle voix ») : nom, enregistrement (champ `audio`), ce qu'il dit, modèle qui la fait parler (seulement ceux qui clonent : Qwen3-TTS Base, VoxCPM2, Pocket TTS), phrase d'essai. `gguf` : nom, fichier, famille (Qwen3-TTS, VoxCPM2, Pocket TTS, Supertonic, autre), voix clonée (WAV + texte) ou intégrée (nom), style, langue | Voir « Studio de voix » ci-dessous. Le service Python `voices` (voice-cascade) est archivé depuis le 6 novembre 2026. |
 | `sherpa` (stt-sherpa, `offers: ["vad", "stt"]`) | `onnx` : nom, fichier ou dossier ; le type (détecteur ou transcription) est lu aux fichiers | Voir [ecoute.md](ecoute.md). |
 | `tts-elevenlabs-account`, `tts-gemini-account` (`offers: "tts"`) | compte : modèle, voix, clé | « Activer » sur le compte = cette voix cloud en service (accord à la voix). |
 
@@ -223,12 +223,24 @@ de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partag�
   le plugin le **copie** dans `<dossier de Floppy>/tts-audiocpp/voices/<uuid>.wav` : l'original peut disparaître. Un
   nouvel enregistrement remplace l'ancien fichier ; supprimer la voix efface son fichier. Un fichier de l'utilisateur
   (ancienne voix clonée qui pointe ailleurs) n'est jamais effacé.
+- Au micro : une liste des micros de l'ordinateur (« par défaut » du système en premier) et « Réduire le bruit de
+  fond » (coché par défaut : la réduction de bruit du navigateur ; le clone copie tout ce qu'il entend, souffle
+  compris). Les deux choix restent sur cet ordinateur (stockage de la fenêtre). Un micro débranché : la liste est relue.
+- Les phrases à lire font une cinquantaine de mots (15 à 20 s à voix normale) : une lecture rapide reste au-dessus
+  des 10 s demandées, une fois les silences des bords coupés.
+- **Modèles qui clonent** : Qwen3-TTS **Base**, VoxCPM2, Pocket TTS. Qwen3-TTS CustomVoice (voix intégrées seulement :
+  audio.cpp répond « prefill requires speaker ») et VoiceDesign ne clonent pas ; la variante se lit dans le nom du
+  fichier. Ils ne sont pas proposés ; une voix clonée posée sur l'un d'eux est en erreur (« ne sait pas cloner »),
+  refusée à l'enregistrement et au chargement.
+- **Supprimer** est en haut de la page d'un élément, à côté de son nom (deux clics : le second confirme). Une voix
+  en service garde le bouton : le clic répond « choisis d'abord une autre voix ».
 - Une voix clonée se modifie avec le formulaire `voice` (type de l'élément : `voice` si clonée, `gguf` si intégrée).
-  Son action **Écouter** (`play`) rend l'enregistrement.
-- **Essayer** : la phrase d'essai est dite par le modèle **chargé en ce moment** (le serveur n'en garde qu'un),
-  l'enregistrement partant en `voice_ref` avec `reference_text` (Qwen3-TTS, VoxCPM2) : pas de redémarrage du serveur.
-  Rien de chargé, ou un modèle qui ne clone pas (Supertonic) : un message dit comment l'entendre (garder la voix, la
-  choisir).
+  Son action **Écouter** (`play`) rend l'enregistrement. Une action qui rend seulement un son ne redessine pas la
+  fenêtre ; le processus principal laisse passer le son (`audio`, adresse `data:audio/…`) jusqu'à la fenêtre.
+- **Essayer** : la phrase d'essai (déjà écrite dans la langue de la fenêtre, modifiable) est dite par le modèle
+  **chargé en ce moment** (le serveur n'en garde qu'un), l'enregistrement partant en `voice_ref` avec `reference_text`
+  (Qwen3-TTS, VoxCPM2) : pas de redémarrage du serveur. Rien de chargé, ou un modèle qui ne clone pas (Supertonic,
+  Qwen3 CustomVoice) : un message dit comment l'entendre (garder la voix, la choisir).
 - Pas encore : **décrire** une voix (modèle Qwen3-TTS VoiceDesign) ; transcrire seul un fichier importé (on écrit la
   phrase à la main).
 

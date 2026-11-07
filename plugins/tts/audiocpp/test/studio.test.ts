@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel, definePlugin, pcmWav, wavDataUrl, wavPcm } from "@floppy/core";
 import type { TtsService } from "@floppy/contracts";
-import tts from "../src/index.ts";
+import tts, { clones, PROMPTS } from "../src/index.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "tts-studio-files-"));
 const file = (name: string, bytes = 2048) => { const p = join(dir, name); writeFileSync(p, Buffer.alloc(bytes)); return p; };
@@ -43,8 +43,38 @@ describe("studio de voix", () => {
       const field = (key: string) => voice.fields.find((f) => f.key === key)!;
       expect(field("sample")).toMatchObject({ type: "audio", textKey: "refText", seconds: { min: 10, max: 20 } });
       expect(field("sample").prompts!.length).toBeGreaterThan(2);
-      expect(field("model").options!.map((o) => o.value)).toEqual([model]); // Supertonic ne clone pas
+      expect(field("model").options!.map((o) => o.value)).toEqual([model]); // Supertonic et Qwen3 CustomVoice ne clonent pas
+      expect(field("essai").default).toBe("Bonjour ! Je suis Floppy. Tu veux que je lise tes mails du jour ?");
     } finally { await k.stopAll(); }
+  });
+
+  it("les phrases à lire font au moins 40 mots (plus de 10 s à voix normale), en français et en anglais", () => {
+    for (const p of PROMPTS as { fr: string; en: string }[]) for (const s of [p.fr, p.en]) expect(s.split(/\s+/).length).toBeGreaterThanOrEqual(40);
+  });
+
+  it("Qwen3 CustomVoice ne clone pas : la voix est refusée, et une voix existante montre pourquoi", async () => {
+    const custom = file("qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf");
+    const { k, run, prov } = await kernel({ models: {
+      c: { label: "Custom", model: custom, voix: "integree", speaker: "Vivian" },
+      v: { label: "Clémentine", model: custom, voix: "clone", refWav: wav, refText: "x" },
+    } });
+    try {
+      const r = await run({ op: "add", kind: "voice", values: { label: "Ma voix", sample: recording(), model: custom } });
+      expect(r.ok).toBe(false);
+      expect(r.text).toMatch(/ne sait pas cloner/);
+      const v = (await prov()).items.find((i) => i.id === "v")!;
+      expect(v.status).toBe("error");
+      expect((v.statusText as { fr: string }).fr).toMatch(/ne sait pas cloner/);
+    } finally { await k.stopAll(); }
+  });
+
+  it("clones : la famille et la variante lue dans le nom du fichier", () => {
+    const m = (model: string, famille = "qwen3_tts") => ({ famille, familleAutre: "", model });
+    expect(clones(m("C:/models/qwen3-tts-12hz-1.7b-base-q8_0_v2.gguf"))).toBe(true);
+    expect(clones(m("C:/models/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf"))).toBe(false);
+    expect(clones(m("C:\\models\\Qwen3-TTS-12Hz-1.7B-VoiceDesign.gguf"))).toBe(false);
+    expect(clones(m("C:/models/pocket-tts-french-q8_0.gguf", "pocket_tts"))).toBe(true);
+    expect(clones(m("C:/models/supertonic-3-f16.gguf", "supertonic"))).toBe(false);
   });
 
   it("garder une voix : copiée chez Floppy ; Écouter la rend ; un nouvel enregistrement remplace l'ancien ; supprimer l'efface", async () => {
@@ -131,6 +161,12 @@ describe("studio de voix", () => {
       const back = wavPcm(new Uint8Array(Buffer.from(t.audio!.split(",")[1]!, "base64")));
       expect([...back.pcm]).toEqual([5, 6, 7]);
       expect(back.rate).toBe(24000);
+      // La voix en service garde « Supprimer » ; le clic explique quoi faire au lieu de rien montrer.
+      const q = (await k.items.snapshot()).find((x) => x.id === "voix-locale")!.items.find((i) => i.id === "q")!;
+      expect(q.removable).toBe(true);
+      const del = await k.items.run({ provider: "voix-locale", op: "remove", id: "q" } as never, "ui") as Reply;
+      expect(del.ok).toBe(false);
+      expect(del.text).toMatch(/chargé en ce moment : choisis d'abord une autre voix/);
     } finally { await k.stopAll(); }
   });
 });

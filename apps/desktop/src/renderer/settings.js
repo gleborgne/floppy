@@ -422,9 +422,25 @@ function detailPage() {
     ...(logoOf(it) ? { lead: logoTile(it) } : {}),
   });
   return h("div", { class: "dpage" }, crumbs,
-    h("div", { class: "page-head" }, h("div", {}, h("h2", { text: tr(it.label) }), h("p", { text: tr(p.label) }))),
+    // « Supprimer » en haut, à côté du nom : en bas, il se perdait sous les longs formulaires (ex. une voix).
+    h("div", { class: "page-head" }, h("div", {}, h("h2", { text: tr(it.label) }), h("p", { text: tr(p.label) })), removeBtn(p, it)),
     h("div", { class: "scard dhead" }, head),
     h("div", { class: "dbody" }, ...tabify(`detail:${detailStack.map((d) => `${d.pid}/${d.iid}`).join(">")}`, rowBody(p, it, more, !!firstAct))));
+}
+
+/** « Supprimer » d'un élément, en deux clics (le second confirme, 5 s pour le faire). null : pas supprimable. */
+function removeBtn(p, it) {
+  if (!p.can.remove || it.removable === false) return null;
+  const k = `${p.id}/${it.id}`;
+  const sure = removing === k;
+  return h("button", {
+    type: "button", class: "btn small danger", text: sure ? t("removeSure") : t("remove"),
+    onclick: async () => {
+      if (!sure) { removing = k; render(); setTimeout(() => { if (removing === k) { removing = ""; render(); } }, 5000); return; }
+      removing = "";
+      await quickOp({ op: "remove", provider: p.id, id: it.id });
+    },
+  });
 }
 
 /** Le détail d'un élément, en blocs : sans nom (en haut), avec un nom d'onglet (data-tab), ou en bas (data-place="end"). */
@@ -463,18 +479,6 @@ function rowBody(p, it, more, firstShown) {
   const foot = h("div", { class: "dfoot", "data-place": "end" });
   // Masquer un élément à rôle (modèle, voix) : il reste dans la liste, Floppy ne le voit plus.
   if (offering && p.can.enable && it.toggleable !== false) foot.append(h("button", { type: "button", class: "btn small", text: it.enabled ? t("hideIt") : t("showIt"), onclick: () => quickOp({ op: "enable", provider: p.id, id: it.id, on: !it.enabled }) }));
-  if (p.can.remove && it.removable !== false) {
-    const k = `${p.id}/${it.id}`;
-    const sure = removing === k;
-    foot.append(h("button", {
-      type: "button", class: "btn small danger", text: sure ? t("removeSure") : t("remove"),
-      onclick: async () => {
-        if (!sure) { removing = k; render(); setTimeout(() => { if (removing === k) { removing = ""; render(); } }, 5000); return; }
-        removing = "";
-        await quickOp({ op: "remove", provider: p.id, id: it.id });
-      },
-    }));
-  }
   if (foot.childElementCount) box.append(foot);
   if (!box.length) box.append(h("p", { class: "ddesc", text: t("noMore") }));
   return box;

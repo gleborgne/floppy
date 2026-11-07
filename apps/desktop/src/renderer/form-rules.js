@@ -32,3 +32,13 @@ export function chainOf(slots) {
   if (!slots || slots.length < 2 || slots.some((s) => !Number.isInteger(s.step))) return null;
   return [...slots].sort((a, b) => a.step - b.step);
 }
+
+/**
+ * Valeur gardée d'une liste de choix qui n'est plus proposée (ex. un modèle qui ne fait plus l'affaire) : son nom
+ * court (fin d'un chemin), pour la montrer marquée plutôt qu'une liste vide. undefined : rien à montrer.
+ */
+export function goneOption(options, v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  if ((options ?? []).some((o) => String(o.value) === String(v))) return undefined;
+  return String(v).split(/[\\/]/).pop();
+}

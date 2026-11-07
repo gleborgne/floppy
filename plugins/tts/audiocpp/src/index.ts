@@ -231,25 +231,44 @@ const KIND: ItemKind = {
 
 /** Familles qui savent cloner une voix à partir d'un enregistrement. */
 export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts"];
+
+/**
+ * Le modèle sait cloner une voix. Chez Qwen3-TTS, seule la variante « Base » clone : « CustomVoice » n'a que ses voix
+ * intégrées (audio.cpp répond « prefill requires speaker ») et « VoiceDesign » invente une voix d'après une description.
+ * La variante se lit dans le nom du fichier.
+ */
+export function clones(m: Pick<ModelValues, "famille" | "familleAutre" | "model">): boolean {
+  if (!CLONERS.includes(familyOf(m as ModelValues))) return false;
+  return !/custom[-_ ]?voice|voice[-_ ]?design/i.test(basename(m.model.replace(/\\/g, "/")));
+}
 /** Familles qui lisent le texte de l'enregistrement (sinon : seulement le timbre, x_vector_only_mode). */
 const WITH_TEXT = ["qwen3_tts", "voxcpm2"];
 
-/** Phrases à lire au micro : 10 à 15 s chacune, des sons variés. */
+/**
+ * Phrases à lire au micro : 15 à 20 s à voix normale (une cinquantaine de mots), des sons variés. Plus courtes, une
+ * lecture rapide passe sous les 10 s une fois les silences des bords coupés.
+ */
 export const PROMPTS: Text[] = [
-  T("Le matin, j'aime ouvrir la fenêtre et écouter la ville se réveiller. Les volets claquent, un vélo passe, et quelqu'un rit au coin de la rue.",
-    "In the morning, I like to open the window and listen to the city waking up. Shutters bang, a bike goes by, and someone laughs around the corner."),
-  T("Hier soir, nous avons préparé une grande soupe de légumes. Il y avait des carottes, des poireaux et beaucoup trop de poivre !",
-    "Last night, we made a big vegetable soup. There were carrots, leeks and far too much pepper!"),
-  T("Pour aller à la gare, prends la deuxième rue à gauche, traverse le petit pont, puis continue tout droit jusqu'à la boulangerie.",
-    "To get to the station, take the second street on the left, cross the little bridge, then keep going straight to the bakery."),
-  T("Tu sais quoi ? Je crois que le chat a encore caché mes clés sous le canapé. Il fait ça chaque fois que je suis pressé.",
-    "You know what? I think the cat hid my keys under the sofa again. He does that every time I'm in a hurry."),
-  T("Quand la pluie s'arrête enfin, l'air sent la terre mouillée, et les enfants sortent sauter dans toutes les flaques du jardin.",
-    "When the rain finally stops, the air smells of wet earth, and the children run out to jump in every puddle in the garden."),
+  T("Le matin, j'aime ouvrir la fenêtre et écouter la ville se réveiller. Les volets claquent, un vélo passe, et quelqu'un rit au coin de la rue. Ensuite, je prépare un café bien chaud, je regarde le ciel, et je me demande tranquillement ce que la journée va m'apporter.",
+    "In the morning, I like to open the window and listen to the city waking up. Shutters bang, a bike goes by, and someone laughs around the corner. Then I make a hot cup of coffee, look at the sky, and quietly wonder what the day is going to bring me."),
+  T("Hier soir, nous avons préparé une grande soupe de légumes. Il y avait des carottes, des poireaux, deux pommes de terre et beaucoup trop de poivre ! Mon frère a toussé pendant cinq minutes, puis il a ri si fort que toute la table a fini par rire avec lui.",
+    "Last night, we made a big vegetable soup. There were carrots, leeks, two potatoes and far too much pepper! My brother coughed for five long minutes, then he laughed so hard that the whole table ended up laughing with him, even my grandmother, who never laughs at dinner."),
+  T("Pour aller à la gare, prends la deuxième rue à gauche, traverse le petit pont, puis continue tout droit jusqu'à la boulangerie. Là, tourne à droite et marche encore deux cents mètres. Si tu vois la fontaine et le vieux kiosque à journaux, c'est que tu es presque arrivé.",
+    "To get to the station, take the second street on the left, cross the little bridge, then keep going straight to the bakery. There, turn right and walk another two hundred meters. If you see the fountain and the old newspaper stand, you are almost there."),
+  T("Tu sais quoi ? Je crois que le chat a encore caché mes clés sous le canapé. Il fait ça chaque fois que je suis pressé. Ce matin, j'ai cherché partout : dans la cuisine, dans mes poches, et même dans le frigo. Finalement, il me regardait, très fier de lui.",
+    "You know what? I think the cat hid my keys under the sofa again. He does that every time I'm in a hurry. This morning, I looked everywhere: in the kitchen, in my pockets, and even in the fridge. In the end, he was just watching me, very proud of himself."),
+  T("Quand la pluie s'arrête enfin, l'air sent la terre mouillée, et les enfants sortent sauter dans toutes les flaques du jardin. Les oiseaux recommencent à chanter, le soleil revient doucement entre les nuages, et les grands ouvrent les fenêtres pour laisser entrer un peu de fraîcheur.",
+    "When the rain finally stops, the air smells of wet earth, and the children run out to jump in every puddle in the garden. The birds start singing again, the sun slowly comes back between the clouds, and the grown-ups open the windows to let in some fresh air."),
 ];
 
-/** Formulaire d'une voix : son nom, son enregistrement, ce qu'il dit, et le modèle qui la fait parler. */
-export function voiceKind(models: { value: string; label: Text }[]): ItemKind {
+/** Phrase d'essai proposée dans le formulaire d'une voix. */
+const TRIAL = T("Bonjour ! Je suis Floppy. Tu veux que je lise tes mails du jour ?", "Hello! I'm Floppy. Do you want me to read today's emails?");
+
+/**
+ * Formulaire d'une voix : son nom, son enregistrement, ce qu'il dit, et le modèle qui la fait parler.
+ * lang : langue de la fenêtre (la phrase d'essai est déjà écrite, dans cette langue).
+ */
+export function voiceKind(models: { value: string; label: Text }[], lang: "fr" | "en" = "fr"): ItemKind {
   return {
     id: "voice",
     label: T("Nouvelle voix", "New voice"),
@@ -262,8 +281,8 @@ export function voiceKind(models: { value: string; label: Text }[]): ItemKind {
       { key: "refText", label: T("Ce que dit l'enregistrement", "What the recording says"), type: "textarea",
         hint: T("La phrase lue. Si tu as dit autre chose, corrige-la ici. Vide : seul le timbre est copié.", "The sentence read. If you said something else, fix it here. Empty: only the timbre is copied.") },
       { key: "model", label: T("Modèle qui la fait parler", "Model that speaks it"), type: "select", required: true, options: models,
-        hint: T("Qwen3 TTS : plus fidèle, carte graphique. Pocket TTS : plus rapide, processeur.", "Qwen3 TTS: more faithful, graphics card. Pocket TTS: faster, processor.") },
-      { key: "essai", label: T("Phrase d'essai", "Test sentence"), type: "text", placeholder: T("Bonjour ! Je suis Floppy.", "Hello! I'm Floppy.") },
+        hint: T("Qwen3 TTS Base : plus fidèle, carte graphique. Pocket TTS : plus rapide, processeur. (Qwen3 CustomVoice ne sait pas cloner.)", "Qwen3 TTS Base: more faithful, graphics card. Pocket TTS: faster, processor. (Qwen3 CustomVoice cannot clone.)") },
+      { key: "essai", label: T("Phrase d'essai", "Test sentence"), type: "text", default: TRIAL[lang] },
     ],
   };
 }
@@ -360,6 +379,12 @@ return definePlugin<Config>({
     };
     /** audiocpp_server à lancer : réglage, config, celui de Floppy, sinon celui du PATH. */
     const exePath = (): string | undefined => exeSetting || cfg.exe || program.path() || findExe("audiocpp_server");
+    /** Voix clonée posée sur un modèle qui ne sait pas cloner (ex. Qwen3 CustomVoice). */
+    const noClone = (file: string): Text => {
+      const name = basename(file.replace(/\\/g, "/"));
+      return T(`${name} ne sait pas cloner une voix. L'enregistrement est gardé : change seulement « Modèle qui la fait parler » (Qwen3 TTS Base ou Pocket TTS).`,
+        `${name} cannot clone a voice. The recording is kept: just change “Model that speaks it” (Qwen3 TTS Base or Pocket TTS).`);
+    };
     const missingExe = T("audio.cpp introuvable : installe audiocpp_server et ajoute-le au PATH, ou indique son chemin dans Réglages → Voix → Programme audio.cpp.",
       "audio.cpp not found: install audiocpp_server and add it to the PATH, or give its path in Settings → Voice → audio.cpp program.");
     /** Moteur d'audio.cpp : celui de la config, ou (auto) cuda si la machine a une carte NVIDIA. */
@@ -378,6 +403,7 @@ return definePlugin<Config>({
       if (!existsSync(e.model)) throw new TextError(T(`fichier du modèle introuvable : ${e.model}`, `model file not found: ${e.model}`));
       if (e.voix === "clone" && !e.refWav) throw new TextError(T("voix clonée : choisis l'enregistrement de la voix (WAV) dans les réglages", "cloned voice: pick the voice recording (WAV) in the settings"));
       if (e.voix === "clone" && !existsSync(e.refWav)) throw new TextError(T(`enregistrement de la voix introuvable : ${e.refWav}`, `voice recording not found: ${e.refWav}`));
+      if (e.voix === "clone" && !clones(e)) throw new TextError(noClone(e.model));
       if (await httpHealthy(base)) throw new TextError(T(`le port ${cfg.port} est déjà pris par un autre serveur : arrête-le d'abord (ou change le port)`, `port ${cfg.port} is already taken by another server: stop it first (or change the port)`));
       const dir = join(f.home, "tts-audiocpp", e.id);
       mkdirSync(dir, { recursive: true });
@@ -499,6 +525,7 @@ return definePlugin<Config>({
       const on = store.isEnabled(m.id);
       const clone = m.voix === "clone";
       const noRef = clone && !m.refWav;
+      const cantClone = clone && !clones(m);
       const secs = clone && m.refWav ? secondsOf(m.refWav) : undefined;
       const ml = modelLabel(m.model);
       const mlFr = typeof ml === "string" ? ml : ml.fr, mlEn = typeof ml === "string" ? ml : ml.en;
@@ -508,14 +535,15 @@ return definePlugin<Config>({
       return {
         id: m.id, label: m.label, enabled: on, active, kind: clone ? "voice" : "gguf",
         detail: size === undefined ? T(`fichier du modèle introuvable · ${detail.fr}`, `model file not found · ${detail.en}`) : detail,
-        status: size === undefined ? "error" : !on ? "off" : active ? (ready ? "ok" : "loading") : noRef ? "warn" : undefined,
+        status: size === undefined || cantClone ? "error" : !on ? "off" : active ? (ready ? "ok" : "loading") : noRef ? "warn" : undefined,
         statusText: size === undefined ? T("fichier introuvable", "file not found")
+          : cantClone ? noClone(m.model)
           : !on ? T("désactivé : Floppy ne le voit plus", "disabled: Floppy no longer sees it")
           : active ? (ready ? T("chargé", "loaded") : T("chargement…", "loading…"))
           : noRef ? T("voix clonée sans enregistrement : enregistre-la", "cloned voice without a recording: record it") : undefined,
         // sample : l'enregistrement, pour le formulaire d'une voix (son chemin ; un nouvel enregistrement le remplace).
         values: { ...m, ...(clone ? { sample: m.refWav } : {}) } as unknown as Record<string, unknown>,
-        editable: true, removable: !active, toggleable: !active || !on,
+        editable: true, removable: true, toggleable: !active || !on,
         ...(clone && secs !== undefined ? { actions: [{ id: "listen", label: T("Écouter", "Listen"), play: true }] } : {}),
         ...groupOf(m),
       };
@@ -526,7 +554,7 @@ return definePlugin<Config>({
     /** Modèles qui savent cloner, un par fichier : les choix du formulaire d'une voix. */
     const cloneModels = (): { value: string; label: Text }[] => {
       const out: { value: string; label: Text }[] = [];
-      for (const m of all()) if (CLONERS.includes(familyOf(m)) && m.model && !out.some((o) => samePath(o.value, m.model))) out.push({ value: m.model, label: modelLabel(m.model) });
+      for (const m of all()) if (clones(m) && m.model && !out.some((o) => samePath(o.value, m.model))) out.push({ value: m.model, label: modelLabel(m.model) });
       return out;
     };
     /** Valeurs d'une voix (formulaire) -> entrée : le modèle choisi garde sa famille et son mode. */
@@ -552,6 +580,7 @@ return definePlugin<Config>({
       if (!v.label) return T("Donne un nom à la voix.", "Give the voice a name.");
       if (!v.model) return T("Choisis le modèle qui la fait parler. Aucun ? Télécharge d'abord Qwen3 TTS ou Pocket TTS.", "Choose the model that speaks it. None? Download Qwen3 TTS or Pocket TTS first.");
       if (!existsSync(v.model)) return T(`Fichier du modèle introuvable : ${v.model}`, `Model file not found: ${v.model}`);
+      if (!clones(v)) return noClone(v.model);
       if (!wav && !v.refWav) return T("Enregistre la voix, ou importe un fichier.", "Record the voice, or import a file.");
       if (!wav && !existsSync(v.refWav)) return T(`Enregistrement introuvable : ${v.refWav}`, `Recording not found: ${v.refWav}`);
       return undefined;
@@ -571,10 +600,10 @@ return definePlugin<Config>({
       const fam = familyOf(loaded);
       const name = modelLabel(loaded.model);
       const nameFr = typeof name === "string" ? name : name.fr, nameEn = typeof name === "string" ? name : name.en;
-      if (!CLONERS.includes(fam)) return { ok: true, text: T(`Le modèle chargé (${nameFr}) ne sait pas cloner une voix. Choisis d'abord une voix de Qwen3 TTS ou de Pocket TTS.`, `The loaded model (${nameEn}) cannot clone a voice. First choose a Qwen3 TTS or Pocket TTS voice.`) };
+      if (!clones(loaded)) return { ok: true, text: T(`Le modèle chargé (${nameFr}) ne sait pas cloner une voix, donc l'essai est impossible maintenant. Garde la voix puis choisis-la : Floppy charge son modèle, et tu l'entends.`, `The loaded model (${nameEn}) cannot clone a voice, so a trial is not possible right now. Keep the voice and choose it: Floppy loads its model, and you hear it.`) };
       let ref = v.refWav;
       if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "essai.wav"); writeFileSync(ref, wav); }
-      const text = str(values.essai) || (ctx.uiLang() === "en" ? "Hello! I'm Floppy. Do you want me to read today's emails?" : "Bonjour ! Je suis Floppy. Tu veux que je lise tes mails du jour ?");
+      const text = str(values.essai) || TRIAL[ctx.uiLang() === "en" ? "en" : "fr"];
       const streaming = loaded.mode === "streaming";
       const r = await fetch(`${base}/v1/audio/speech`, {
         method: "POST", signal: AbortSignal.timeout(120_000), headers: { "content-type": "application/json" },
@@ -615,7 +644,7 @@ return definePlugin<Config>({
       description: T("Modèles de voix GGUF lancés par audio.cpp sur ce PC, seulement quand ils servent. Un seul chargé à la fois.", "GGUF voice models run by audio.cpp on this PC, only while in use. Only one loaded at a time."),
       addLabel: T("Ajouter un modèle local", "Add a local model"),
       // Relus à chaque fois : les modèles qui clonent changent quand on en télécharge un.
-      get kinds() { return [voiceKind(cloneModels()), KIND]; },
+      get kinds() { return [voiceKind(cloneModels(), ctx.uiLang() === "en" ? "en" : "fr"), KIND]; },
       list: () => all().map(info),
       add: async (kind, values) => {
         if (kind === "voice") {

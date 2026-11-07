@@ -2,7 +2,7 @@
 // (ajouter un élément) et le formulaire en place les dessinent. La fenêtre donne ce qui lui appartient (configureFields).
 import { h, nextId } from "./dom.js";
 import { audioField } from "./voice-recorder.js";
-import { listAdd } from "./form-rules.js";
+import { goneOption, listAdd } from "./form-rules.js";
 
 /** Valeur montrée pour un secret déjà rangé dans le coffre (le noyau ne le renvoie jamais). */
 export const SECRET_SET = "__secret_set__";
@@ -59,6 +59,10 @@ export function fieldControl(f, values, onChange, opts = {}) {
     }
     case "select": {
       ctl = h("select", { id });
+      // Valeur gardée qui n'est plus proposée (ex. un modèle qui ne sait plus faire l'affaire) : montrée telle quelle,
+      // marquée, plutôt qu'une liste vide qui laisse croire que rien n'est choisi.
+      const gone = goneOption(f.options, v);
+      if (gone) ctl.append(h("option", { value: String(v), text: `${gone} (${t("optGone")})` }));
       for (const o of f.options ?? []) ctl.append(h("option", { value: o.value, text: tr(o.label) }));
       if (v === undefined && f.options?.length) values[f.key] = f.options[0].value;
       ctl.value = String(values[f.key] ?? "");

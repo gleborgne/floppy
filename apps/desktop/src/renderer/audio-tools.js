@@ -83,3 +83,25 @@ export function waveBars(samples, n = 96) {
   return lv.map((x) => x / max);
 }
 
+
+/**
+ * Micros de l'ordinateur (navigator.mediaDevices.enumerateDevices) -> choix de la liste. Le système en ajoute un
+ * « par défaut » (deviceId « default ») qui suit le micro choisi dans ses réglages ; « communications » (Windows) est
+ * un doublon. Un micro sans nom (pas encore autorisé) devient « Micro 2 » (fallback).
+ */
+export function micChoices(devices, fallback = (n) => `Micro ${n}`) {
+  return (devices ?? [])
+    .filter((d) => d.kind === "audioinput" && d.deviceId !== "communications")
+    .map((d, i) => ({ value: d.deviceId, label: d.label || fallback(i + 1) }));
+}
+
+/**
+ * Réglages du micro pour enregistrer une voix. denoise : la réduction de bruit du navigateur (souffle, ventilateur) ;
+ * le clone copie tout ce qu'il entend, bruit de fond compris. Pas d'annulation d'écho : elle abîme le timbre.
+ */
+export function micConstraints(deviceId, denoise) {
+  return {
+    channelCount: 1, echoCancellation: false, noiseSuppression: !!denoise, autoGainControl: true,
+    ...(deviceId && deviceId !== "default" ? { deviceId: { exact: deviceId } } : {}),
+  };
+}

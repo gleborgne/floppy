@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { wavPcm, wavFromDataUrl } from "@floppy/core";
 // @ts-expect-error module .js sans types
-import { analyze, encodeWav, RATE, trimSilence, waveBars, wavDataUrl } from "../src/renderer/audio-tools.js";
+import { analyze, encodeWav, RATE, trimSilence, waveBars, wavDataUrl, micChoices, micConstraints } from "../src/renderer/audio-tools.js";
 
 /** Une « voix » : un son de 200 Hz, entre deux silences. */
 function voice(silence: number, speech: number, amp = 0.5, noise = 0): Float32Array {
@@ -45,5 +45,27 @@ describe("audio-tools : l'enregistrement d'une voix", () => {
     expect(bars).toHaveLength(40);
     expect(Math.max(...bars)).toBe(1);
     expect(bars[0]).toBe(0);
+  });
+});
+
+describe("choix du micro", () => {
+  it("garde les micros, sans le doublon « communications », et nomme ceux qui n'ont pas de nom", () => {
+    const devices = [
+      { kind: "audioinput", deviceId: "default", label: "Par défaut - Micro USB" },
+      { kind: "audioinput", deviceId: "communications", label: "Communications - Micro USB" },
+      { kind: "audiooutput", deviceId: "hp", label: "Haut-parleurs" },
+      { kind: "audioinput", deviceId: "a1", label: "Micro USB" },
+      { kind: "audioinput", deviceId: "b2", label: "" },
+    ];
+    expect(micChoices(devices, (n: number) => `Micro ${n}`)).toEqual([
+      { value: "default", label: "Par défaut - Micro USB" },
+      { value: "a1", label: "Micro USB" },
+      { value: "b2", label: "Micro 3" },
+    ]);
+  });
+  it("un micro choisi est exigé ; « par défaut » laisse le système choisir ; le bruit se réduit à la demande", () => {
+    expect(micConstraints("a1", true)).toMatchObject({ deviceId: { exact: "a1" }, noiseSuppression: true, echoCancellation: false });
+    expect(micConstraints("default", false)).not.toHaveProperty("deviceId");
+    expect(micConstraints("", false).noiseSuppression).toBe(false);
   });
 });

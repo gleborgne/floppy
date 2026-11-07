@@ -24,7 +24,7 @@ function desktop(argv: string[] = []) {
     // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
     ...texts, ...trayIcon, ...placement, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
   context.globalShortcut = shortcut;
-  runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};}};',context);
+  runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};},pending:()=>pending};',context);
   return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
 
@@ -86,6 +86,18 @@ it('ignore les messages du noyau après le début de la fermeture',()=>{
   expect(()=>d.child.emit('message',{type:'display',settings:{avatar_visible:true}})).not.toThrow();
   d.child.emit('exit',0);
   expect(d.app.quit).toHaveBeenCalledOnce();
+});
+
+it("la réponse d'une opération des réglages garde son son (data:audio), et rien d'autre",()=>{
+  const d=desktop();
+  d.api.startKernel();
+  const got: unknown[] = [];
+  d.api.pending().set(1,(r: unknown)=>got.push(r));
+  d.api.pending().set(2,(r: unknown)=>got.push(r));
+  d.child.emit('message',{type:'items.result',reqId:1,ok:true,text:'ok',audio:'data:audio/wav;base64,AA=='});
+  d.child.emit('message',{type:'items.result',reqId:2,ok:true,text:'ok',audio:'javascript:alert(1)'});
+  expect(got[0]).toMatchObject({ok:true,audio:'data:audio/wav;base64,AA=='});
+  expect(got[1]).not.toHaveProperty('audio');
 });
 
 it('--dev-plugin : passe les dossiers de debug au noyau (FLOPPY_DEV_PLUGINS)',()=>{

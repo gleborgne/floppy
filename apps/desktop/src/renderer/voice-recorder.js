@@ -1,10 +1,26 @@
 // Champ « audio » de la fenêtre des réglages : enregistrer une voix au micro, ou importer un fichier.
 // La phrase à lire est affichée ; à la fin, le son est nettoyé (silence aux bords), vérifié (durée, saturation, bruit),
 // encodé en WAV 24 kHz et donné au formulaire en adresse data:audio/wav. Rien ne quitte l'ordinateur.
-import { analyze, encodeWav, RATE, trimSilence, waveBars, wavDataUrl } from "./audio-tools.js";
+import { analyze, encodeWav, micChoices, micConstraints, RATE, trimSilence, waveBars, wavDataUrl } from "./audio-tools.js";
 
 /** Au-delà, l'enregistrement s'arrête tout seul (s). */
 const HARD_MAX = 30;
+
+// Micro choisi et réduction du bruit : un confort de cet ordinateur, gardé par la fenêtre (perdu sans gravité).
+const PREFS = "floppy.voiceRecorder";
+const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREFS) ?? "{}") ?? {}; } catch { return {}; } };
+const savePrefs = (p) => { try { localStorage.setItem(PREFS, JSON.stringify({ mic: p.mic, denoise: p.denoise })); } catch { /* rien */ } };
+
+/** Relit la liste des micros (au premier dessin, après un enregistrement, quand on branche ou débranche un micro). */
+async function refreshMics(st, t, redraw) {
+  st.mics = null; // lecture en cours
+  try {
+    const list = await navigator.mediaDevices.enumerateDevices();
+    st.mics = micChoices(list, (n) => t("recMicN").replace("{n}", n));
+  } catch { st.mics = []; }
+  navigator.mediaDevices.ondevicechange = () => { if (st.phase !== "rec") void refreshMics(st, t, redraw); };
+  if (st.phase !== "rec") redraw();
+}
 
 /** Un fichier audio (n'importe quel format lu par la fenêtre) -> échantillons mono à 24 kHz. */
 async function decode(arrayBuffer) {
@@ -97,7 +113,23 @@ export function audioField({ f, st, value, set, setText, deps }) {
       h("button", { type: "button", class: "btn", disabled: st.phase === "busy", onclick: () => input.click() }, icon("upload"), st.phase === "busy" ? t("recReading") : t("recPickFile")),
       h("span", { class: "hint", text: t("recFileHint").replace("{min}", aim.min).replace("{max}", aim.max) }), input));
   } else {
-    // 2a. M'enregistrer : la phrase à lire, puis le gros bouton.
+    // 2a. M'enregistrer : le micro, la phrase à lire, puis le gros bouton.
+    st.prefs ??= { mic: "default", denoise: true, ...loadPrefs() };
+    if (st.mics === undefined) void refreshMics(st, t, redraw);
+    const mics = st.mics ?? [];
+    // Micro gardé mais débranché : on prend le premier de la liste (le « par défaut » du système).
+    const mic = mics.some((m) => m.value === st.prefs.mic) ? st.prefs.mic : mics[0]?.value ?? "default";
+    const idle = st.phase === "idle";
+    const sel = h("select", { "aria-label": t("recMic"), disabled: !idle || !mics.length });
+    for (const m of mics) sel.append(h("option", { value: m.value, text: m.label }));
+    if (!mics.length) sel.append(h("option", { value: "", text: st.mics === null ? t("recMicLoading") : t("recNoMic") }));
+    sel.value = mics.length ? mic : "";
+    // « change » ne remonte pas : le formulaire en place enregistrerait la voix à chaque choix.
+    sel.addEventListener("change", (e) => { e.stopPropagation(); st.prefs.mic = sel.value; savePrefs(st.prefs); });
+    const dn = h("input", { type: "checkbox", checked: st.prefs.denoise !== false, disabled: !idle });
+    dn.addEventListener("change", (e) => { e.stopPropagation(); st.prefs.denoise = dn.checked; savePrefs(st.prefs); });
+    box.append(h("div", { class: "vmic" }, icon("mic"), sel,
+      h("label", { class: "vdenoise", title: t("recDenoiseHint") }, dn, h("span", { text: t("recDenoise") }))));
     if (prompts.length) {
       box.append(h("div", { class: "vprompt-h" },
         h("span", { class: "vlabel", text: t("recRead") }),
@@ -114,7 +146,7 @@ export function audioField({ f, st, value, set, setText, deps }) {
     const btn = h("button", {
       type: "button", class: `vbig${recording ? " on" : ""}`, disabled: st.phase === "busy",
       "aria-label": recording ? t("recStop") : t("recStart"),
-      onclick: () => (recording ? stop(st) : start(st, { t, redraw, finish, max: Math.max(HARD_MAX, aim.max + 10) })),
+      onclick: () => (recording ? stop(st) : start(st, { t, redraw, finish, max: Math.max(HARD_MAX, aim.max + 10), audio: micConstraints(mic, st.prefs.denoise !== false) })),
     }, icon(recording ? "square" : "mic"));
     box.append(h("div", { class: "vpanel" }, btn,
       h("div", { class: "vlive" },
@@ -136,11 +168,13 @@ function bars(h, list, cls) {
 }
 
 /** Démarre le micro : niveau, minuteur et forme d'onde en direct, sans redessiner le formulaire. */
-async function start(st, { t, redraw, finish, max }) {
+async function start(st, { t, redraw, finish, max, audio }) {
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
+    stream = await navigator.mediaDevices.getUserMedia({ audio });
   } catch (e) {
+    // Micro choisi introuvable (débranché entre-temps) : on relit la liste.
+    if (e?.name === "OverconstrainedError") { st.mics = undefined; st.error = t("recMicGone"); redraw(); return; }
     st.error = e?.name === "NotFoundError" ? t("recNoMic") : t("recDenied");
     redraw();
     return;
@@ -162,6 +196,7 @@ async function start(st, { t, redraw, finish, max }) {
     void ac.close();
     st.live = null;
     st.phase = "busy";
+    st.mics = undefined; // le micro est autorisé maintenant : les noms des micros sont connus
     redraw();
     try { await finish(await decode(await new Blob(chunks).arrayBuffer()), true); }
     catch { st.phase = "idle"; st.error = t("recBadFile"); redraw(); }
