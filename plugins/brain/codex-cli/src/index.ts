@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun, createModelCatalog, discoverCodexModels } from "@floppy/agent-cli";
+import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun, createModelCatalog, discoverCodexModels, CliConversation } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `codex` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -66,7 +66,7 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
   const pending = new Map<number, { ok: (v: any) => void; err: (e: Error) => void }>();
   /** Abonnés aux notifications (un par tour en cours). */
   const listeners = new Set<(n: Notif) => void>();
-  const threads = new Map<string, string>();
+  const threads = new Map<string, { id: string; conversation: CliConversation }>();
   let stderr = "";
 
   const write = (obj: object) => { p?.stdin.write(JSON.stringify(obj) + "\n"); };
@@ -142,6 +142,7 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
     get name() { return `codex:${pick().id}`; },
     get label() { return pick().label; },
     get aliases() { return ["codex", "openai", "gpt", pick().id, pick().label.toLowerCase()]; },
+    keepsHistory: true,
     reset: (session) => { threads.delete(session); },
     /** Modèle changé : les fils suivants partent avec le nouveau. */
     renew: () => { threads.clear(); },
@@ -162,17 +163,18 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
       let full = "", lastItem: string | undefined;
       try {
         await boot();
-        threadId = threads.get(input.session);
-        if (!threadId) {
+        let thread = threads.get(input.session);
+        if (!thread) {
           const r = await request("thread/start", {
             model: pick().id, cwd, approvalPolicy: "never", sandbox: "read-only", ephemeral: true, approvalsReviewer: "user",
             baseInstructions: agentPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language),
           });
-          threadId = String(r.thread.id);
-          threads.set(input.session, threadId);
+          thread = { id: String(r.thread.id), conversation: new CliConversation() };
+          threads.set(input.session, thread);
         }
+        threadId = thread.id;
         const r = await request("turn/start", {
-          threadId, input: [{ type: "text", text: input.text, text_elements: [] }], ...(cfg.effort ? { effort: cfg.effort } : {}),
+          threadId, input: [{ type: "text", text: thread.conversation.prepare(input, ctx.assistant.language), text_elements: [] }], ...(cfg.effort ? { effort: cfg.effort } : {}),
         });
         turnId = r?.turn?.id;
         for (;;) {
@@ -201,7 +203,11 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
             break;
           }
         }
+      } catch (error) {
+        if (threads.get(input.session)?.id === threadId) threads.delete(input.session);
+        throw error;
       } finally {
+        if (info.error && threads.get(input.session)?.id === threadId) threads.delete(input.session);
         clearTimeout(timer);
         listeners.delete(listener);
         input.signal?.removeEventListener("abort", interrupt);

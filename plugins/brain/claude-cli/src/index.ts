@@ -13,7 +13,7 @@ import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@flo
 import type { BrainEvent, BrainService, CompletionService } from "@floppy/contracts";
 import type { McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, parseModelJson, offerAgent, scopedAgentRun, createModelCatalog, discoverClaudeModels } from "@floppy/agent-cli";
+import { agentEnv, parseModelJson, offerAgent, scopedAgentRun, createModelCatalog, discoverClaudeModels, CliConversation } from "@floppy/agent-cli";
 const Config = z.object({
   exe: z.string().default(() => process.env.CLAUDE_EXE ?? findExe("claude") ?? "claude"),
   /** Arguments ajoutés avant les autres (pour les tests : un script devant un faux CLI). */
@@ -126,9 +126,14 @@ class LineQueue {
     if (this.closed) return Promise.resolve(null);
     return new Promise((ok) => this.waiters.push(ok));
   }
+  close() {
+    this.closed = true;
+    this.buf.length = 0;
+    for (const w of this.waiters.splice(0)) w(null);
+  }
 }
 
-type Proc = { p: ChildProcessWithoutNullStreams; q: LineQueue };
+type Proc = { p: ChildProcessWithoutNullStreams; q: LineQueue; conversation: CliConversation; busy: boolean };
 
 /** Modèle choisi, relu à chaque lancement d'un processus (le changer ne redémarre rien). */
 type Pick = () => { id: string; label: string };
@@ -153,29 +158,38 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
   ];
   let spare: Proc | undefined;
   const live = new Set<Proc>();
+  const sessions = new Map<string, Proc>();
+  let generation = 0;
+  const discard = (proc: Proc) => {
+    for (const [id, current] of sessions) if (current === proc) sessions.delete(id);
+    if (spare === proc) spare = undefined;
+    proc.q.close();
+    proc.p.stdin.end();
+    void killTree(proc.p);
+  };
   const spawnProc = (): Proc => {
     const p = ctx.spawn(cfg.exe, [...cfg.exeArgs, ...buildArgs()], {
       cwd, windowsHide: true,
       env: cleanEnv({ FLOPPY_MCP_TOKEN: mcp.token, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", DISABLE_AUTOUPDATER: "1" }),
     }) as ChildProcessWithoutNullStreams;
     p.stderr.on("data", (d) => ctx.log("debug", `claude : ${String(d).slice(0, 300)}`));
+    p.stdin.on("error", () => { proc.q.close(); });
     p.on("error", (e) => ctx.log("error", `claude : ${e.message}`));
-    const proc = { p, q: new LineQueue(p.stdout) };
+    const proc: Proc = { p, q: new LineQueue(p.stdout), conversation: new CliConversation(), busy: false };
     live.add(proc);
     p.on("exit", () => {
       live.delete(proc);
       if (spare === proc) spare = undefined; // la réserve est morte : la demande suivante en relance une
+      for (const [id, current] of sessions) if (current === proc) sessions.delete(id);
     });
     return proc;
   };
   spare = spawnProc(); // réchauffé dès le démarrage : la 1re délégation n'est pas « à froid »
-  /** La réserve a été lancée avec l'ancien prompt ou l'ancien modèle : on la relance. */
+  /** Les tours actifs finissent avec leur configuration ; les suivants prennent la nouvelle. */
   const renew = () => {
-    const old = spare;
-    if (!old || !ctx.alive) return;
-    spare = undefined;
-    void killTree(old.p);
-    spare = spawnProc();
+    generation++;
+    if (spare) discard(spare);
+    for (const proc of sessions.values()) if (!proc.busy) discard(proc);
   };
   // Outils ajoutés ou retirés : au démarrage ils arrivent un par un, on attend que ça se calme avant de relancer la réserve.
   let refresh: NodeJS.Timeout | undefined;
@@ -188,20 +202,31 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
     get name() { return `claude:${pick().id}`; },
     get label() { return pick().label; },
     get aliases() { return ["claude", "claude code", pick().id, pick().label.toLowerCase(), "anthropic"]; },
+    keepsHistory: true,
     renew,
-    reset: () => {},
+    reset: (session) => { const proc = sessions.get(session); if (proc) discard(proc); },
     async *run(input) {
-      const proc = spare ?? spawnProc();
-      spare = undefined;
-      const kill = () => { void killTree(proc.p); };
+      if (input.signal?.aborted) { yield { type: "done", text: "", info: { aborted: true } }; return; }
+      // Une reprise peut commencer avant que le générateur interrompu ait fini son nettoyage.
+      const previous = sessions.get(input.session);
+      if (previous?.busy || previous?.q.closed) discard(previous);
+      const proc = sessions.get(input.session) ?? spare ?? spawnProc();
+      if (spare === proc) spare = undefined;
+      sessions.set(input.session, proc);
+      proc.busy = true;
+      const startedGeneration = generation;
+      const kill = () => discard(proc);
       input.signal?.addEventListener("abort", kill, { once: true });
       const t0 = Date.now();
       let timedOut = false, tools = 0;
       const timer = setTimeout(() => { timedOut = true; ctx.log("warn", `claude : délai de ${cfg.timeout_s} s dépassé, processus coupé`); kill(); }, cfg.timeout_s * 1000);
-      proc.p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: input.text }] } }) + "\n");
+      const clearTimer = ctx.effect(() => { clearTimeout(timer); });
+      const text = proc.conversation.prepare(input, ctx.assistant.language);
       let lastWasText = false, sawText = false, full = "";
+      let completed = false;
       const info: Record<string, unknown> = {};
       try {
+        proc.p.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } }) + "\n");
         for (;;) {
           const ev = await proc.q.next();
           if (ev === null) { info.error = "processus terminé"; break; }
@@ -227,24 +252,27 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
           } else if (ev.type === "assistant") {
             for (const c of ev.message?.content ?? []) if (c.type === "tool_use") { tools++; yield { type: "tool", name: String(c.name).replace(/^mcp__floppy__/, ""), args: c.input }; }
           } else if (ev.type === "result") {
+            completed = !ev.is_error;
             Object.assign(info, { subtype: ev.subtype, is_error: ev.is_error, duration_ms: ev.duration_ms, num_turns: ev.num_turns });
             break;
           }
         }
       } finally {
-        clearTimeout(timer);
+        await clearTimer();
         input.signal?.removeEventListener("abort", kill);
-        proc.p.stdin.end();
-        kill();
+        proc.busy = false;
+        if (!completed || input.signal?.aborted || timedOut || proc.q.closed || startedGeneration !== generation) kill();
         // Trace de fin : distingue une vraie fin (« result »), un délai dépassé, un processus mort ou une annulation.
         if (timedOut) info.timeout = true;
         ctx.audit.write({ kind: "brain.cli", cli: "claude", model: pick().id, ms: Date.now() - t0, chars: full.length, tools, aborted: !!input.signal?.aborted, ...info });
-        // Processus de réserve, déjà connecté au MCP, pour la demande suivante.
-        if (!spare && ctx.alive) spare = spawnProc();
       }
       yield { type: "done", text: full.trim(), info };
     },
-    stop: async () => { clearTimeout(refresh); spare = undefined; await Promise.all([...live].map((p) => killTree(p.p))); },
+    stop: async () => {
+      clearTimeout(refresh); spare = undefined; sessions.clear();
+      for (const proc of live) proc.q.close();
+      await Promise.all([...live].map((p) => killTree(p.p)));
+    },
   };
 }
 

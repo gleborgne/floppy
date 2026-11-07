@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Kernel, definePlugin } from "@floppy/core";
-import type { BrainService, BrainEvent } from "@floppy/contracts";
+import type { BrainService, BrainEvent, BrainRunInput } from "@floppy/contracts";
 import llamacpp from "../../../llm/llamacpp/src/index.ts";
 import aisdk, { WAIT_PHRASES } from "../src/index.ts";
 
@@ -26,11 +26,13 @@ let server: Server, k: Kernel;
 let brain: BrainService | undefined;
 let delegated = 0;
 const agentInputs: string[] = [];
+const requests: BrainRunInput[] = [];
+const resets: string[] = [];
 const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["brain"] }, apply(ctx) { brain = ctx.get("brain"); } });
 const bigModel: BrainService = {
   name: "gros", label: "Gros Modèle", aliases: ["gros"],
-  reset() {},
-  async *run(input) { delegated++; agentInputs.push(input.text); yield { type: "text", delta: "Réponse du grand modèle." } as BrainEvent; yield { type: "done", text: "" } as BrainEvent; },
+  reset(session) { resets.push(session); },
+  async *run(input) { delegated++; agentInputs.push(input.text); requests.push(input); yield { type: "text", delta: "Réponse du grand modèle." } as BrainEvent; yield { type: "done", text: "" } as BrainEvent; },
 };
 // Offert comme délégué (slot brain.delegate) et comme modèle-agent (slot brain.main), comme Claude Code.
 const fakeDelegate = definePlugin({
@@ -89,13 +91,16 @@ describe("relance après fausse action", () => {
   });
   it("si la relance délègue : phrase d'attente, réponse du grand modèle, puis arrêt", async () => {
     const evs: BrainEvent[] = [];
-    for await (const ev of brain!.run({ text: "écris-moi un script", session: "s", mode: "text" })) evs.push(ev);
+    for await (const ev of brain!.run({ text: "écris-moi un script", session: "s", mode: "text", tone: "joueur" })) evs.push(ev);
     const text = evs.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("");
     expect(WAIT_PHRASES.some((p) => text.includes(p))).toBe(true);
     expect(text).toContain("Réponse du grand modèle.");
     expect(text).not.toContain("C'est fait");
     expect(evs.some((e) => e.type === "delegate")).toBe(true);
     expect(delegated).toBe(1);
+    expect(requests.at(-1)?.tone).toBe("joueur");
+    brain!.reset("s");
+    expect(resets).toContain("s:delegate");
     expect(calls).toBe(2); // pas de 3e appel : la boucle s'arrête après la délégation
   });
   it("retient aussi une promesse d'ouverture précédée d'une formule polie", async () => {
@@ -121,15 +126,34 @@ describe("modèle-agent (llm.agent)", () => {
     expect(text).toContain("Réponse du grand modèle.");
     expect(delegated).toBe(before + 1);
     expect(agentInputs.at(-1)).toBe("Bonjour"); // 1re demande : rien à redonner
-    // Le CLI ne garde rien d'une demande à l'autre : la suivante porte les échanges précédents.
+    // Un agent sans historique reçoit toujours les échanges précédents.
     for await (const _ of brain!.run({ text: "Elle est pourrie ta blague", session: "agent", mode: "text" })) { /* vide */ }
     expect(agentInputs.at(-1)).toMatch(/Utilisateur : Bonjour\nToi : Réponse du grand modèle\.[\s\S]*Demande courante : Elle est pourrie ta blague$/);
     // Une autre conversation (autre corps) ne voit pas ces échanges ; reset les oublie.
     for await (const _ of brain!.run({ text: "Salut", session: "autre", mode: "text" })) { /* vide */ }
     expect(agentInputs.at(-1)).toBe("Salut");
     brain!.reset("agent");
+    expect(resets).toContain("agent");
     for await (const _ of brain!.run({ text: "Et maintenant ?", session: "agent", mode: "text" })) { /* vide */ }
     expect(agentInputs.at(-1)).toBe("Et maintenant ?");
     expect((await k.settings.change("slot.brain.main", "llm/gemma", "cli")).ok).toBe(true);
+  });
+  it("n'envoie pas l'historique en double à un agent persistant ; fournit un secours et relaie reset", async () => {
+    bigModel.keepsHistory = true;
+    try {
+      expect((await k.settings.change("slot.brain.main", "fd/gros", "cli")).ok).toBe(true);
+      for await (const _ of brain!.run({ text: "Bonjour", session: "persistant", mode: "text", tone: "joueur" })) { /* vide */ }
+      for await (const _ of brain!.run({ text: "Suite", session: "persistant", mode: "text", tone: "joueur" })) { /* vide */ }
+      expect(requests.at(-1)).toMatchObject({ text: "Suite", tone: "joueur", history: [
+        { role: "user", text: "Bonjour" }, { role: "assistant", text: "Réponse du grand modèle." },
+      ] });
+      brain!.reset("persistant");
+      expect(resets).toContain("persistant");
+      for await (const _ of brain!.run({ text: "Neuf", session: "persistant", mode: "text" })) { /* vide */ }
+      expect(requests.at(-1)).toMatchObject({ text: "Neuf", history: [] });
+    } finally {
+      bigModel.keepsHistory = false;
+      await k.settings.change("slot.brain.main", "llm/gemma", "cli");
+    }
   });
 });

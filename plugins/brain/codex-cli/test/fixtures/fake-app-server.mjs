@@ -16,6 +16,7 @@ createInterface({ input: process.stdin }).on("line", (l) => {
   else if (m.method === "turn/start") {
     const th = threads.get(m.params.threadId);
     const text = m.params.input[0].text;
+    if (text.includes("échec simulé")) { send({ id: m.id, error: { message: "échec simulé" } }); return; }
     send({ id: m.id, result: { turn: { id: "u1" } } });
     if (text === "outil") {
       send({ method: "item/started", params: { threadId: m.params.threadId, item: { type: "mcpToolCall", tool: "agenda_du_jour", arguments: {} } } });
@@ -28,7 +29,7 @@ createInterface({ input: process.stdin }).on("line", (l) => {
       send({ method: "item/agentMessage/delta", params: { threadId: m.params.threadId, itemId: "a", delta: "Je cherche" } });
       return;
     }
-    const reply = JSON.stringify({ model: th.model, thread: m.params.threadId, sandbox: th.sandbox, policy: th.approvalPolicy, hasPrompt: th.baseInstructions.includes("Floppy"), args });
+    const reply = JSON.stringify({ model: th.model, thread: m.params.threadId, sandbox: th.sandbox, policy: th.approvalPolicy, hasPrompt: th.baseInstructions.includes("Floppy"), args, text });
     send({ method: "item/agentMessage/delta", params: { threadId: m.params.threadId, itemId: "a", delta: reply } });
     send({ method: "turn/completed", params: { threadId: m.params.threadId, turn: { status: "completed" } } });
   } else if (m.id === 99) {

@@ -186,7 +186,7 @@ export default definePlugin<Config>({
 
     const brain: BrainService = {
       name: `aisdk:${agent?.name ?? llm?.model ?? "non configuré"}${dlg && !agent ? ` → ${dlg.name}` : ""}`,
-      reset: (session) => { sessions.delete(session); },
+      reset: (session) => { sessions.delete(session); agent?.reset(session); dlg?.reset(`${session}:delegate`); },
       async *run(input: BrainRunInput) {
         // Cerveau agent (Claude Code) : toute la demande lui va (mêmes outils par le serveur MCP Floppy, même accord).
         if (agent) {
@@ -195,8 +195,11 @@ export default definePlugin<Config>({
           let s = sessions.get(input.session);
           if (!s) { s = { messages: [] }; sessions.set(input.session, s); }
           const turns = (s.turns ??= []);
-          const text = turns.length ? say_.recent(recentLines(turns, lang), input.text) : input.text;
-          for await (const ev of agent.run({ ...input, text })) {
+          const text = !agent.keepsHistory && turns.length ? say_.recent(recentLines(turns, lang), input.text) : input.text;
+          const history: BrainRunInput["history"] = turns.flatMap((t) => [
+            { role: "user" as const, text: t.user }, { role: "assistant" as const, text: t.assistant },
+          ]);
+          for await (const ev of agent.run({ ...input, text, ...(agent.keepsHistory ? { history } : {}) })) {
             if (ev.type === "text") {
               for (const o of f.push(ev.delta)) {
                 if (o.emotion) yield { type: "emotion", emotion: o.emotion, ...(o.intensity === undefined ? {} : { intensity: o.intensity }) };
@@ -288,6 +291,7 @@ export default definePlugin<Config>({
               try {
                 for await (const ev of dlg.run({
                   text: String((args as { tache?: string }).tache ?? input.text), session: sub, mode: input.mode,
+                  ...(input.tone === undefined ? {} : { tone: input.tone }),
                   ...(input.origin ? { origin: input.origin } : {}), ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
                 })) {
                   if (ev.type === "text") {

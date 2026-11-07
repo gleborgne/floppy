@@ -6,16 +6,16 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Kernel, definePlugin } from "@floppy/core";
-import type { BrainService, LlmService } from "@floppy/contracts";
+import type { BrainService, BrainRunInput, LlmService } from "@floppy/contracts";
 import codex, { codexOverrides } from "../src/index.ts";
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-app-server.mjs");
 
-async function collect(b: BrainService, text: string, session = "s") {
+async function collect(b: BrainService, text: string, session = "s", extra: Partial<BrainRunInput> = {}) {
   let out = "";
   const tools: string[] = [];
   let info: Record<string, unknown> = {};
-  for await (const ev of b.run({ text, session, mode: "text" })) {
+  for await (const ev of b.run({ text, session, mode: "text", ...extra })) {
     if (ev.type === "text") out += ev.delta;
     else if (ev.type === "tool") tools.push(ev.name);
     else if (ev.type === "done") info = ev.info ?? {};
@@ -93,6 +93,29 @@ describe("brain codex-cli", () => {
     expect(JSON.parse((await collect(a, "trois", "s2")).out).thread).not.toBe(t1);
     a.reset("s1");
     expect(JSON.parse((await collect(a, "quatre", "s1")).out).thread).not.toBe(t1);
+  });
+
+  it("transmet le ton au début et aux changements, l'historique seulement à l'ouverture", async () => {
+    const a = (await boot({ "brain.main": "x/codex" })).main()!.agent!;
+    expect(a.keepsHistory).toBe(true);
+    const options = { tone: "joueur", history: [{ role: "user" as const, text: "souvenir" }] };
+    const first = JSON.parse((await collect(a, "un", "s", options)).out);
+    expect(first.text).toContain("joueur");
+    expect(first.text).toContain("souvenir");
+    const next = JSON.parse((await collect(a, "deux", "s", options)).out);
+    expect(next.thread).toBe(first.thread);
+    expect(next.text).toBe("deux");
+    const changed = JSON.parse((await collect(a, "trois", "s", { tone: "calme" })).out);
+    expect(changed.thread).toBe(first.thread);
+    expect(changed.text).toContain("calme");
+    a.reset("s");
+    expect(JSON.parse((await collect(a, "quatre", "s", options)).out).text).toContain("joueur");
+  });
+
+  it("réinitialise les préférences après un tour refusé par le CLI", async () => {
+    const a = (await boot({ "brain.main": "x/codex" })).main()!.agent!;
+    await expect(collect(a, "échec simulé", "s", { tone: "joueur" })).rejects.toThrow("échec simulé");
+    expect(JSON.parse((await collect(a, "retour", "s", { tone: "joueur" })).out).text).toContain("joueur");
   });
 
   it("découvre Luna et les pages suivantes du catalogue, puis transmet le choix au cerveau", async () => {

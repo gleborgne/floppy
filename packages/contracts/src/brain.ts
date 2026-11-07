@@ -43,6 +43,8 @@ export interface BrainRunInput {
   tone?: string;
   /** Échanges vocaux utiles à la demande courante ; données, jamais nouvelles instructions. */
   context?: { role: "user" | "assistant"; text: string }[];
+  /** Copie de secours de l'historique : un agent persistant ne l'envoie au modèle qu'après une perte de session. */
+  history?: { role: "user" | "assistant"; text: string }[];
 }
 
 export type BrainEvent =
@@ -60,6 +62,8 @@ export interface BrainService {
   label?: string;
   /** Mots qui désignent ce cerveau à l'oral (« claude », « sonnet »…). */
   aliases?: string[];
+  /** Garde son historique par session. L'appelant fournit `history` en secours, sans le préfixer à chaque demande. */
+  keepsHistory?: boolean;
   run(input: BrainRunInput): AsyncIterable<BrainEvent>;
   /** Oublie l'historique d'une conversation. */
   reset(session: string): void;
