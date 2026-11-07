@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Kernel, definePlugin, tr, type PluginDef, type CompletionRequest, type DocRef } from "@floppy/core";
+import { Kernel, definePlugin, tr, type PluginDef, type DocRef } from "@floppy/core";
+import type { CompletionRequest } from "@floppy/contracts";
 import { parseFeed } from "../src/feeds.ts";
 import { pretri, normUrl, sameStory, mentions, type Article } from "../src/pretri.ts";
 import { digestMarkdown, triSystem, type PipelineResult } from "../src/pipeline.ts";

@@ -11,7 +11,8 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { definePlugin, errorText, T, TextError, tr, type CompletionService, type SearchService, type ItemInfo, type OpResult, type Text, type ToolDef, type PluginDef } from "@floppy/core";
+import { definePlugin, errorText, T, TextError, tr, type ItemInfo, type OpResult, type Text, type ToolDef, type PluginDef } from "@floppy/core";
+import type { CompletionService, SearchService } from "@floppy/contracts";
 import { PrefsStore } from "./prefs.ts";
 import { fetchFeed } from "./feeds.ts";
 import { VeilleDb } from "./store.ts";

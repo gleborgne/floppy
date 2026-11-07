@@ -2,7 +2,7 @@
 
 [← Retour à la spec](README.md)
 
-État : **fait** le 6 novembre 2026. Code : contrat `notify` (`assistant\packages\core\src\services.ts`), canaux `assistant\plugins\notify\telegram` et `assistant\plugins\notify\mail`, envoi des résultats dans `assistant\plugins\tasks\scheduler`.
+État : **fait** le 6 novembre 2026. Code : contrat `notify` (`assistant\packages\contracts\src\notify.ts`), canaux `assistant\plugins\notify\telegram` et `assistant\plugins\notify\mail`, envoi des résultats dans `assistant\plugins\tasks\scheduler`.
 
 ## L'idée
 

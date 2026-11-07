@@ -3,9 +3,8 @@
 // - Le jeton va dans le coffre des secrets (ctx.secrets), jamais dans un fichier, ni dans un log, ni dans un message d'erreur.
 // - Chaque destination active est offerte comme service `notify` : un plugin (ex. le planificateur) en emprunte une pour envoyer.
 import { z } from "zod";
-import {
-  definePlugin, errorText, SECRET_SET, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type NotifyMessage, type Text,
-} from "@floppy/core";
+import { definePlugin, errorText, SECRET_SET, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text } from "@floppy/core";
+import type { NotifyMessage } from "@floppy/contracts";
 import { telegramMessages } from "./markdown.ts";
 
 export { toTelegramHtml, toTelegramBlocks, telegramMessages } from "./markdown.ts";

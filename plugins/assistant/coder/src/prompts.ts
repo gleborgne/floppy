@@ -1,6 +1,6 @@
 // Consignes données à l'agent (en français, phrases simples). Seule la langue de ses réponses suit la langue de
 // l'assistant (français ou anglais).
-import type { CoderMode } from "@floppy/core";
+import type { CoderMode } from "@floppy/contracts";
 
 export function systemPrompt(mode: CoderMode, name: string, pluginsDir: string, web = false, lang = "fr"): string {
   const reply = lang === "en" ? "Réponds en anglais (English)" : "Réponds en français";

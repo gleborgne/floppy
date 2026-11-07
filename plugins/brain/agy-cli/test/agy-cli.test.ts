@@ -5,7 +5,8 @@ import { mkdtempSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, MemoryAudit, definePlugin, type BrainService, type LlmService } from "@floppy/core";
+import { Kernel, MemoryAudit, definePlugin } from "@floppy/core";
+import type { BrainService, LlmService } from "@floppy/contracts";
 import agy, { agyAgentFile, agySettings } from "../src/index.ts";
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-agy.mjs");

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { Kernel, definePlugin, AudioHistory, type Context, type BodyHub, type LiveService, type LiveSession, type LiveEvent, type BrainRunInput } from "@floppy/core";
+import { Kernel, definePlugin, AudioHistory, type Context } from "@floppy/core";
+import type { BodyHub, LiveService, LiveSession, LiveEvent, BrainRunInput } from "@floppy/contracts";
 import type { KernelToBody } from "@floppy/protocol";
 import { LiveConversation } from "../src/live.ts";
 

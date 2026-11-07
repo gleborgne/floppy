@@ -4,7 +4,8 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, pcmWav, wavDataUrl, wavPcm, type TtsService } from "@floppy/core";
+import { Kernel, definePlugin, pcmWav, wavDataUrl, wavPcm } from "@floppy/core";
+import type { TtsService } from "@floppy/contracts";
 import tts from "../src/index.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "tts-studio-files-"));

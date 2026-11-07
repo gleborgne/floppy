@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { definePlugin, providerConfig, Pcm16Decoder, T, TextError, type TtsService } from "@floppy/core";
+import { definePlugin, providerConfig, Pcm16Decoder, T, TextError } from "@floppy/core";
+import type { TtsService } from "@floppy/contracts";
 
 const Config = z.object({
   model: z.string().min(1).default("eleven_flash_v2_5"),

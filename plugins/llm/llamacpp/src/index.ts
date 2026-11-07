@@ -11,7 +11,8 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, killTree, watchHealth, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, killTree, watchHealth, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult } from "@floppy/core";
+import type { CompletionService, LlmService } from "@floppy/contracts";
 
 import { LLAMA_BUILDS, LLAMA_VERSION } from "./known-builds.ts";
 import { KNOWN_MODELS } from "./known-models.ts";

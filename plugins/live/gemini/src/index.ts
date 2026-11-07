@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { definePlugin, providerConfig, connectJsonSocket, floatToPcm16, Pcm16Decoder, T, TextError, tr, type LiveService, type LiveSession } from "@floppy/core";
+import { definePlugin, providerConfig, connectJsonSocket, floatToPcm16, Pcm16Decoder, T, TextError, tr } from "@floppy/core";
+import type { LiveService, LiveSession } from "@floppy/contracts";
 
 const Config = z.object({ model: z.string().regex(/^[\w.-]+$/).default("gemini-3.8-live"), voice: z.string().min(1).default("Kore") });
 

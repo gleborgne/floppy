@@ -5,7 +5,8 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Kernel, definePlugin, type LlmService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { LlmService } from "@floppy/contracts";
 import llm, { DEFAULT_SCAN_DIRS, serial, startOrRestore } from "../src/index.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "llm-local-"));

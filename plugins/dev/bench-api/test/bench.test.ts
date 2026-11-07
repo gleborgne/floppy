@@ -3,7 +3,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, type BrainService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { BrainService } from "@floppy/contracts";
 import bench from "../src/index.ts";
 
 let k: Kernel | undefined;

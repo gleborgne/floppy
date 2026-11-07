@@ -28,7 +28,7 @@ modifient dans son onglet ; « Dernier réveil » montre la phrase qui a réveil
 La conversation ne change pas : elle parle toujours au contrat `voice`. Le service Python reste un autre fournisseur
 du même contrat le temps de la transition. Les deux ne doivent pas être configurés ensemble (le premier actif gagne).
 
-## Contrats (packages/core/src/services.ts)
+## Contrats (packages/contracts/src/voice.ts)
 
 Tout le son est en float32 mono 16 kHz.
 

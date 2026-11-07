@@ -3,7 +3,8 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, type TtsService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { TtsService } from "@floppy/contracts";
 import tts, { alias, chunks, itemId, parseEspeakVoices, parseSayVoices, parseWindowsVoices, pickVoices } from "../src/index.ts";
 
 describe("lecture des listes de voix", () => {

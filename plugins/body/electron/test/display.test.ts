@@ -1,6 +1,7 @@
 // Réglages d'affichage : déclarés par le plugin, envoyés au processus principal à chaque changement.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { Kernel, type BodyHub } from "@floppy/core";
+import { Kernel } from "@floppy/core";
+import type { BodyHub } from "@floppy/contracts";
 import type { BodyToKernel, KernelToBody } from "@floppy/protocol";
 import conversation from "@floppy/plugin-conversation";
 import { EventEmitter } from "node:events";

@@ -6,7 +6,7 @@
 // Langue : le prompt existe en français (défaut, inchangé) et en anglais (même structure, mêmes règles),
 // choisi par la langue de l'assistant (ctx.assistant.language). Les noms d'outils restent ceux du registre.
 import { PROMPT_EMOTIONS_FR } from "@floppy/protocol";
-import type { MemorySnapshot, TurnMode } from "@floppy/core";
+import type { MemorySnapshot, TurnMode } from "@floppy/contracts";
 
 /** Langue du prompt et des phrases dites : « en » pour l'anglais, sinon français. */
 export type PromptLang = "fr" | "en";

@@ -8,7 +8,8 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { Kernel, MemoryAudit, type McpEndpoint } from "@floppy/core";
+import { Kernel, MemoryAudit } from "@floppy/core";
+import type { McpEndpoint } from "@floppy/contracts";
 import tools from "../src/index.ts";
 import { parseAzToken, azTokenProvider } from "../src/azcli.ts";
 

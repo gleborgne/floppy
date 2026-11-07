@@ -10,7 +10,8 @@
 //   elle change) ; les erreurs montrées dans les fenêtres suivent la langue de l'interface (ctx.uiLang()).
 // - Interruption : si l'utilisateur parle pendant la voix, tout s'arrête (cerveau, synthèse, lecture).
 import { z } from "zod";
-import { definePlugin, type BrainService, type LiveService, type TtsService, type WakewordService, type BrainEvent, type VoiceStream, type TurnMode, type VoiceEvent, type ConversationCommand, type ConversationCommandInput, type WakewordStream, type WakewordDetection, type Text, AudioHistory, T, tr, errorText } from "@floppy/core";
+import { definePlugin, type Text, AudioHistory, T, tr, errorText } from "@floppy/core";
+import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, VoiceStream, TurnMode, VoiceEvent, ConversationCommand, ConversationCommandInput, WakewordStream, WakewordDetection } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { encodeAudioOut } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, SentenceSplitter, matchQuickSetting } from "./text.ts";

@@ -12,7 +12,8 @@ import { createInterface } from "node:readline";
 import { mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { agentPrompt, definePlugin, findExe, killTree, type BrainEvent, type BrainService, type Context, type McpEndpoint } from "@floppy/core";
+import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
+import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
 import { agentEnv, codexMcpOverrides, userCodexMcpNames } from "@floppy/agent-cli";
 const Config = z.object({

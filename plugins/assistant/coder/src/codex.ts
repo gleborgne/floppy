@@ -6,7 +6,8 @@ import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { killTree, type CoderMode } from "@floppy/core";
+import { killTree } from "@floppy/core";
+import type { CoderMode } from "@floppy/contracts";
 import { cleanEnv, isInside, say, short, signInMessage, SIGN_IN_RE, type Runner, type RunnerDeps } from "./common.ts";
 
 import { codexMcpOverrides, userCodexMcpNames } from "@floppy/agent-cli";

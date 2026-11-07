@@ -6,7 +6,6 @@ import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { CatalogOp, ItemInfo, ModelNeeds, OpReply, ProviderSnapshot } from "./catalog.ts";
 import { GIB, gbText, machineSummary, type MachineInfo } from "./machine.ts";
 import { T, tr, type Text } from "./i18n.ts";
-import type { LlmService } from "./services.ts";
 import type { SettingInfo } from "./settings.ts";
 import type { Kernel } from "./plugin/kernel.ts";
 import { findExe } from "./util/process.ts";
@@ -333,6 +332,9 @@ export function withManualMemory(m: MachineInfo, bytes: number): MachineInfo {
 
 // ------------------------------------------------------------------ installation
 
+/** Ce que la mesure de vitesse lit d'un modèle en service (contrat complet : `llm` de @floppy/contracts). */
+export interface MeasuredLlm { baseURL?: string; model: string }
+
 export interface OnboardingDeps {
   home: string;
   snapshot(): Promise<ProviderSnapshot[]>;
@@ -344,7 +346,7 @@ export interface OnboardingDeps {
   change(key: string, value: unknown): Promise<{ ok: boolean; text: Text }>;
   onItems(fn: () => void): () => void;
   machine(fresh?: boolean): Promise<MachineInfo>;
-  borrowLlm(value: string): Promise<{ service: LlmService; release(): void } | undefined>;
+  borrowLlm(value: string): Promise<{ service: MeasuredLlm; release(): void } | undefined>;
   /** Attend que le noyau ait fini ses changements (éléments ajoutés → slots recalculés). */
   idle(): Promise<void>;
   fetch?: typeof fetch;
@@ -681,7 +683,7 @@ export function onboardingFor(kernel: Kernel): Onboarding {
     change: (key, value) => kernel.settings.change(key, value, "ui"),
     onItems: (fn) => kernel.items.onChange(fn),
     machine: (fresh) => kernel.machine(fresh),
-    borrowLlm: (value) => kernel.borrowItem<LlmService>("llm", value),
+    borrowLlm: (value) => kernel.borrowItem<MeasuredLlm>("llm", value),
     idle: () => kernel.idle(),
   });
 }

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@floppy/agent-cli": "0.1.0",
+    "@floppy/contracts": "0.1.0",
     "@floppy/core": "0.1.0",
     "@floppy/sdk": "0.1.0",
     "zod": "4.6.7"

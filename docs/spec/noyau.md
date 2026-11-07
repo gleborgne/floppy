@@ -38,7 +38,7 @@ assistant/plugins/
   avatar/tv  avatar/pixel           assistant/coder   dev/bench-api
 ```
 
-**Règle de frontière** : un plugin ne parle aux autres que par les contrats de `packages/core`. Il n'importe **jamais** un autre paquet de plugin (ni par son nom, ni par un chemin relatif, pas même un type). Testé : `packages/core/test/boundaries.test.ts`. C'est pourquoi les contrats `mcp`, `body` et `avatars` (et `defineAvatar`) vivent dans le noyau (`services.ts`, `avatars.ts`).
+**Règle de frontière** : un plugin ne parle aux autres que par les contrats de services (`@floppy/contracts`, et `@floppy/core` pour ceux du noyau). Il n'importe **jamais** un autre paquet de plugin (ni par son nom, ni par un chemin relatif, pas même un type). Testé : `packages/core/test/boundaries.test.ts`. C'est pourquoi les contrats `mcp`, `body` et `avatars` (et `defineAvatar`) vivent dans `packages/contracts`, et pas dans le plugin qui les fournit.
 
 Le nom du paquet ne dépend pas du dossier (`@floppy/plugin-brain-aisdk`…). Une entrée de la config choisit un plugin par l'id de son manifeste (`plugin: brain-aisdk`). La liste des plugins connus : `apps/cli/src/catalog.ts` (`PACKAGES`). Chaque paquet est chargé à part (`loadCatalog`) : un module qui plante au chargement ne bloque pas le démarrage, il est écrit au journal et rappelé dans l'erreur des entrées dont le plugin manque. Les plugins de développement (`DEV_PACKAGES` : `bench-api`) ne sont chargés qu'avec `FLOPPY_DEV=1`.
 
@@ -48,7 +48,11 @@ Depuis le 6 novembre 2026 : `tasks/scheduler`, `display/documents`, `veille/dige
 
 ## Les services (contrats)
 
-Les contrats sont dans `packages/core/src/services.ts`. Un plugin fournit ou utilise un service par son nom ; il ne connaît jamais le plugin d'en face.
+Un plugin fournit ou utilise un service par son nom ; il ne connaît jamais le plugin d'en face. Les contrats sont rangés par domaine, comme dans Cordis :
+
+- **Le noyau** (`packages/core/src/services.ts`) ne garde que les siens : `task` et `documents` (il lance les tâches et montre leur document), et l'interface `Services` elle-même.
+- **Les domaines** (`packages/contracts/src/` : `brain.ts`, `voice.ts`, `body.ts`, `coder.ts`, `mcp.ts`, `search.ts`, `notify.ts`) ajoutent chacun leurs services à `Services` par une augmentation de module (`declare module "@floppy/core" { interface Services { … } }`). Un plugin importe les types d'ici (`import type { BrainService } from "@floppy/contracts"`).
+- Ajouter un service ne touche donc pas au noyau : on complète le fichier du domaine, ou un plugin déclare le sien de la même façon. Le test des frontières vérifie que le noyau n'importe aucun contrat de domaine.
 
 | Service | Contrat | Fournisseurs |
 |---|---|---|
@@ -334,7 +338,6 @@ Un seul dossier pour tout ce que Floppy garde : la config `floppy.yml`, les rég
 
 Ce qui reste de la revue d'architecture, par ordre d'intérêt :
 
-1. **Contrats hors du noyau.** `services.ts` porte encore tous les contrats (environ 55 interfaces, dont des contrats propres à un plugin : `CoderService`, `BodyHub`…). Cible : chaque domaine dans son paquet, qui complète l'interface `Services` par une augmentation de module (comme Cordis), le noyau ne gardant que ses propres contrats.
 2. **Code produit hors du noyau.** Premier lancement, lecture de la machine, bibliothèques de modèles et de programmes vivent dans `packages/core` ; cible : un paquet à part, ou des plugins.
 3. **Découper `kernel.ts`** (environ 1 550 lignes) : la fabrique du `ctx` et les réglages du noyau (langues, dossiers) en modules à part, ou en plugins internes posés au démarrage. Les pièces sans état sont déjà dans `plugin/lifecycle-util.ts`.
 4. **Fichiers trop gros côté app** : `apps/desktop/src/main.mjs`, `renderer/settings.js`, `plugins/conversation/default/src/index.ts`.

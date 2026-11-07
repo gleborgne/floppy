@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Kernel, MemorySecrets, SECRET_SET, definePlugin, type LlmService } from "@floppy/core";
+import { Kernel, MemorySecrets, SECRET_SET, definePlugin } from "@floppy/core";
+import type { LlmService } from "@floppy/contracts";
 import openai from "../src/index.ts";
 
 const KEY = "sk-secret-123";

@@ -125,7 +125,7 @@ export interface BusEvents {
 }
 
 // ------------------------------------------------------------------ services de Floppy (plugin personnel seulement)
-// Contrats copiés du noyau (packages/core/src/services.ts) ; packages/sdk/test/types.test.ts vérifie qu'ils suivent.
+// Contrats copiés du code (packages/core/src/services.ts, packages/contracts/src) ; packages/sdk/test/types.test.ts vérifie qu'ils suivent.
 
 /** Message envoyé sur un canal (Telegram, mail…) : le canal met le Markdown en forme. */
 export interface NotifyMessage {

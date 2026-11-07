@@ -1,6 +1,6 @@
 // Flux d'écoute d'un corps : règles reprises du service Python (services/voice/server.py), à l'identique.
 // Le détecteur de parole (VadStream) et la transcription (fonction `transcribe`) sont fournis de l'extérieur.
-import type { VadStream, VoiceEvent, VoiceStream } from "@floppy/core";
+import type { VadStream, VoiceEvent, VoiceStream } from "@floppy/contracts";
 
 export const SR = 16000;
 /** Trame du détecteur : 512 échantillons = 32 ms. */

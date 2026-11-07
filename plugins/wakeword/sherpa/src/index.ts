@@ -1,6 +1,7 @@
 import { statSync } from "node:fs";
 import { z } from "zod";
-import { definePlugin, providerConfig, T, TextError, tr, type WakewordService, type WakewordStream } from "@floppy/core";
+import { definePlugin, providerConfig, T, TextError, tr } from "@floppy/core";
+import type { WakewordService, WakewordStream } from "@floppy/contracts";
 import { createSpotter, type SherpaStream, type SherpaSpotter } from "./native.ts";
 
 const Config = z.object({

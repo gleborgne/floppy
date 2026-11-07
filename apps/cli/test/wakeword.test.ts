@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, MemorySecrets, definePlugin, type WakewordService, type WakewordDetection } from "@floppy/core";
+import { Kernel, MemorySecrets, definePlugin } from "@floppy/core";
+import type { WakewordService, WakewordDetection } from "@floppy/contracts";
 import sherpa from "@floppy/plugin-wakeword-sherpa";
 import porcupine from "@floppy/plugin-wakeword-porcupine";
 

@@ -1,6 +1,7 @@
 // Envoi des résultats des tâches sur les canaux « notify » (Telegram, mail…) : réglage « Envoyer à » et outil « envoyer ».
 import { describe, it, expect, afterEach } from "vitest";
-import { Kernel, definePlugin, type PluginDef, type NotifyMessage, type DocRef } from "@floppy/core";
+import { Kernel, definePlugin, type PluginDef, type DocRef } from "@floppy/core";
+import type { NotifyMessage } from "@floppy/contracts";
 import { createSchedulerPlugin } from "../src/index.ts";
 
 let k: Kernel | undefined;

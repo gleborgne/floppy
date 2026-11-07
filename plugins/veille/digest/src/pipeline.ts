@@ -1,6 +1,7 @@
 // Un passage de veille : collecter → pré-trier en code → noter avec le modèle (par lots) → synthèse → document Markdown.
 // Ne connaît ni l'horloge (le Planificateur la lance) ni les corps (le noyau montre le document).
-import { T, TextError, errorText, tr, type CompletionService, type SearchService } from "@floppy/core";
+import { T, TextError, errorText, tr } from "@floppy/core";
+import type { CompletionService, SearchService } from "@floppy/contracts";
 import { fetchFeed, hostOf, clean } from "./feeds.ts";
 import { pretri, normUrl, type Article } from "./pretri.ts";
 import type { Prefs } from "./prefs.ts";

@@ -12,7 +12,8 @@
 // - Les tâches se lancent l'une après l'autre. Une tâche qui échoue n'est pas relancée avant 30 minutes.
 // - Politesse (attendre la fin d'un tour de conversation) : pas de signal propre côté plugin aujourd'hui, donc pas faite.
 import { z } from "zod";
-import { definePlugin, errorText, T, TextError, tr, type ItemInfo, type NotifyService, type OpResult, type TaskInfo, type TaskResult, type TaskSchedule, type Text } from "@floppy/core";
+import { definePlugin, errorText, T, TextError, tr, type ItemInfo, type OpResult, type TaskInfo, type TaskResult, type TaskSchedule, type Text } from "@floppy/core";
+import type { NotifyService } from "@floppy/contracts";
 
 const t = T;
 

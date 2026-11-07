@@ -1,6 +1,7 @@
 import { statSync } from "node:fs";
 import { z } from "zod";
-import { definePlugin, providerConfig, T, TextError, tr, type WakewordService, type WakewordStream } from "@floppy/core";
+import { definePlugin, providerConfig, T, TextError, tr } from "@floppy/core";
+import type { WakewordService, WakewordStream } from "@floppy/contracts";
 
 const Config = z.object({
   name: z.string().trim().min(1).default("Porcupine"),

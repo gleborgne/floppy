@@ -1,7 +1,8 @@
 // Entrée du noyau dans l'app : tourne dans un utilityProcess d'Electron (Node 24 inclus dans Electron 45).
 // Même démarrage que `floppy start` (boot.ts). Le plugin body-electron reçoit ici les MessagePort de l'avatar.
 import { boot } from "@floppy/cli/boot";
-import { T, tr, errorText, type CoderService, type HostChannel } from "@floppy/core";
+import { T, tr, errorText, type HostChannel } from "@floppy/core";
+import type { CoderService } from "@floppy/contracts";
 
 interface ParentPort {
   on(ev: "message", fn: (e: { data: unknown }) => void): void;

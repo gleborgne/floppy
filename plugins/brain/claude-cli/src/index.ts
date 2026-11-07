@@ -9,8 +9,9 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { agentPrompt, definePlugin, killTree, type BrainEvent, type BrainService, type CompletionService, type Context } from "@floppy/core";
-import type { McpEndpoint } from "@floppy/core";
+import { agentPrompt, definePlugin, killTree, type Context } from "@floppy/core";
+import type { BrainEvent, BrainService, CompletionService } from "@floppy/contracts";
+import type { McpEndpoint } from "@floppy/contracts";
 
 import { agentEnv, parseModelJson } from "@floppy/agent-cli";
 const Config = z.object({

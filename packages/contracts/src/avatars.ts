@@ -7,9 +7,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { definePlugin, type PluginDef } from "./plugin/manifest.ts";
-import type { AvatarEntry, AvatarInfo } from "./services.ts";
-import { tr } from "./i18n.ts";
+import { definePlugin, tr, type PluginDef } from "@floppy/core";
+import type { AvatarEntry, AvatarInfo } from "./body.ts";
 
 /** Lit avatar.json à la racine du plugin et trouve renderer/index.js. */
 export function readAvatarDir(root: string): AvatarEntry {

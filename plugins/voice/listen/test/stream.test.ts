@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, type SttService, type VadEvent, type VadService, type VadStream, type VoiceEvent, type VoiceService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { SttService, VadEvent, VadService, VadStream, VoiceEvent, VoiceService } from "@floppy/contracts";
 import listen, { ListenStream } from "../src/index.ts";
 
 const FRAME = 512;

@@ -1,6 +1,7 @@
 // Un robot actif : surveille le daemon (toutes les 10 s), se branche comme corps dans le hub quand il répond,
 // se débranche quand il ne répond plus, traduit états / émotions / outils corps en mouvements.
-import { T, TextError, tr, type BodyHub, type Text } from "@floppy/core";
+import { T, TextError, tr, type Text } from "@floppy/core";
+import type { BodyHub } from "@floppy/contracts";
 import type { BodyToKernel, BodyToolDecl, BodyTransport, Capability, KernelToBody } from "@floppy/protocol";
 import { DaemonClient, type DaemonStatus } from "./daemon.ts";
 import { DIRECTIONS, EMOTION_GESTURE, GESTURES, STATE_GESTURE, toGoto } from "./gestures.ts";

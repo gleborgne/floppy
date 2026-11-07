@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, type WakewordService, type WakewordDetection } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { WakewordService, WakewordDetection } from "@floppy/contracts";
 import stt from "../src/index.ts";
 
 async function fixture(legacy?: string, voiceEnabled = true) {

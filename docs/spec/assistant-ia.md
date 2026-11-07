@@ -78,7 +78,7 @@ L'agent qui écrit un plugin ne voit que le dossier `<home>\plugins`. Pour qu'il
 | Pages | Source |
 |---|---|
 | `basics`, `tools`, `settings`, `languages`, `events`, `services`, `security`, `testing` | écrites à la main, en anglais : `packages/sdk/wiki/*.md` (une ligne `# titre`, une ligne `> résumé`) |
-| `contract-notify`, `contract-completion`, `contract-search`, `contract-documents` | lues dans `packages/core/src/services.ts` à chaque appel : jamais en retard sur le noyau |
+| `contract-notify`, `contract-completion`, `contract-search`, `contract-documents` | lues dans `packages/core/src/services.ts` et `packages/contracts/src/` à chaque appel : jamais en retard sur le code |
 | `active-services` | calculée : qui fournit chaque service maintenant (manifestes livrés + état des entrées) |
 | `existing-tools` | calculée : noms et niveaux des outils déjà enregistrés |
 | `example-<nom>` | le code complet des exemples du SDK (`packages/sdk/examples`) |

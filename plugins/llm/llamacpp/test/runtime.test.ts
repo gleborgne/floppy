@@ -2,7 +2,8 @@
 // exe donné dans la config : le test ne dépend pas d'un llama-server installé sur la machine (CI).
 import { it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { Kernel, definePlugin, type LlmService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { LlmService } from "@floppy/contracts";
 import llm from "../src/index.ts";
 
 it("lance llama-server pour le modèle du slot, tue l'ancien avant le nouveau (max 1), l'arrête quand plus personne ne s'en sert", async () => {
@@ -88,7 +89,7 @@ it("le tri (completion « cerveau ») partage le serveur du cerveau : jamais un 
   try {
     await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }], slots: { "brain.main": "llm/a", "veille.tri": "llm/cerveau" } });
     // Le cerveau dort : le tri charge le modèle du cerveau, puis le libère.
-    const b1 = await brainCtx!.borrow<import("@floppy/core").CompletionService>("veille.tri");
+    const b1 = await brainCtx!.borrow<import("@floppy/contracts").CompletionService>("veille.tri");
     expect(spawned).toEqual(["a"]);
     const r = await b1!.service.complete({ system: "s", prompt: "p", schema: { type: "object" } });
     expect(r.json).toEqual({ ok: true });
@@ -99,7 +100,7 @@ it("le tri (completion « cerveau ») partage le serveur du cerveau : jamais un 
     // Le cerveau tourne : le tri réutilise son serveur (pas de 2e lancement), et le serveur reste après le tri.
     await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }, { id: "brain", plugin: "brain" }], slots: { "brain.main": "llm/a", "veille.tri": "llm/cerveau" } });
     expect(spawned).toEqual(["a", "a"]);
-    const b2 = await brainCtx!.borrow<import("@floppy/core").CompletionService>("veille.tri");
+    const b2 = await brainCtx!.borrow<import("@floppy/contracts").CompletionService>("veille.tri");
     expect(spawned).toEqual(["a", "a"]);
     b2!.release();
     await k.idle(); await k.idle();

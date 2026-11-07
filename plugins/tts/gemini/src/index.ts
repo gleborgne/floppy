@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { definePlugin, providerConfig, readSse, Pcm16Decoder, T, TextError, type TtsService } from "@floppy/core";
+import { definePlugin, providerConfig, readSse, Pcm16Decoder, T, TextError } from "@floppy/core";
+import type { TtsService } from "@floppy/contracts";
 
 const Config = z.object({
   model: z.string().regex(/^[\w.-]+$/).default("gemini-3.1-flash-tts-preview"),

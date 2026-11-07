@@ -1,5 +1,6 @@
 import { encodeAudioOut, type BodyState } from "@floppy/protocol";
-import { T, tr, TextError, type AudioHistory, type BrainService, type Context, type LiveEvent, type LiveService, type LiveSession, type Text } from "@floppy/core";
+import { T, tr, TextError, type AudioHistory, type Context, type Text } from "@floppy/core";
+import type { BrainService, LiveEvent, LiveService, LiveSession } from "@floppy/contracts";
 import { tokens, yesNo } from "./text.ts";
 
 interface Options {

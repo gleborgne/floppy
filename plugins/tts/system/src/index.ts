@@ -3,7 +3,8 @@
 // - La voix choisie tourne dans un fork : sous Windows, un PowerShell gardé ouvert, fermé avec le fork.
 // - Le système rend une phrase entière en WAV (pas de flux) : on la découpe en morceaux de 100 ms pour la lecture.
 import { z } from "zod";
-import { definePlugin, T, TextError, wavPcm, type OfferItem, type TtsChunk, type TtsService } from "@floppy/core";
+import { definePlugin, T, TextError, wavPcm, type OfferItem } from "@floppy/core";
+import type { TtsChunk, TtsService } from "@floppy/contracts";
 import { engineFor, type SystemVoice } from "./engines.ts";
 
 export { engineFor, parseEspeakVoices, parseSayVoices, parseWindowsVoices } from "./engines.ts";

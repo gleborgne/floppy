@@ -177,7 +177,7 @@ Famille `plugins/avatar/<id>/` (comme `plugins/brain/`, `plugins/voice/`…) :
 | Fichier | Contenu |
 |---|---|
 | `avatar.json` | id, nom (fr/en), description (fr/en), émotions dessinées |
-| `src/index.ts` | le plugin du noyau : `export default defineAvatar(import.meta.url)` (de `@floppy/core`, `packages/core/src/avatars.ts`) |
+| `src/index.ts` | le plugin du noyau : `export default defineAvatar(import.meta.url)` (de `@floppy/contracts`, `packages/contracts/src/avatars.ts`) |
 | `renderer/index.js` | le dessin : `export function create(container, { reducedMotion })` → `{ setState, setEmotion(name, intensity, ms), setLevel, destroy }`, et en option `setMood(valence, energy)`, `lookAt(x, y)` (-1..1), `setHearing(niveau)`, `cue(nom)` (`nod`, `perk`, `startle`, `wake`, `poke`), `resize` |
 
 ```mermaid

@@ -3,7 +3,8 @@
 // - Les modèles sont empruntés (ctx.borrow) à l'ouverture du premier flux et rendus à la fermeture du dernier.
 // - Un flux par corps (son propre détecteur) ; la transcription est partagée, une demande à la fois.
 // - Les règles d'écoute (interruption, recollage, bouton, dictée) sont dans stream.ts, reprises du service Python.
-import { definePlugin, T, TextError, type Borrowed, type SttService, type VadService, type VadStream, type VoiceService } from "@floppy/core";
+import { definePlugin, T, TextError, type Borrowed } from "@floppy/core";
+import type { SttService, VadService, VadStream, VoiceService } from "@floppy/contracts";
 import { ListenStream } from "./stream.ts";
 
 export { ListenStream } from "./stream.ts";

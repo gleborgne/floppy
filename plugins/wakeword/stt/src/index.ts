@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { definePlugin, providerConfig, T, TextError, tr, type WakewordService, type WakewordStream } from "@floppy/core";
+import { definePlugin, providerConfig, T, TextError, tr } from "@floppy/core";
+import type { WakewordService, WakewordStream } from "@floppy/contracts";
 
 const tokens = (text: string) => text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) ?? [];
 const Words = z.array(z.string().trim().min(1)).min(1).refine(words => words.some(word => tokens(word).join("").length >= 3), "Il faut au moins un mot d'au moins 3 lettres.");

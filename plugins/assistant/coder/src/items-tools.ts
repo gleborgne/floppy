@@ -7,7 +7,7 @@
 // - Les secrets (clés, jetons) ne passent jamais par la conversation : l'utilisateur les tape lui-même dans le
 //   formulaire « Modifier » de l'élément.
 import { tr, type Context, type CatalogOp, type FieldDef, type ProviderSnapshot } from "@floppy/core";
-import type { ExtraTool } from "@floppy/core";
+import type { ExtraTool } from "@floppy/contracts";
 import { say, type RunnerDeps } from "./common.ts";
 
 type Ask = RunnerDeps["ask"];

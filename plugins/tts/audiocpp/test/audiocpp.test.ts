@@ -4,7 +4,8 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, type TtsService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { TtsService } from "@floppy/contracts";
 import tts, { clean, prepareDir, rateOf, scanGguf, serverConfig, speechRequest, ssePcm, wavPcm } from "../src/index.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "tts-audiocpp-"));

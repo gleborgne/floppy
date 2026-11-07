@@ -7,7 +7,8 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
-import type { Context, ExtraTool, McpEndpoint, ScopedEndpoint, ScopedOptions } from "@floppy/core";
+import type { Context } from "@floppy/core";
+import type { ExtraTool, McpEndpoint, ScopedEndpoint, ScopedOptions } from "@floppy/contracts";
 
 interface Scope { tools: Set<string>; extra: Map<string, ExtraTool> }
 

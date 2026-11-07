@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, MemorySecrets, TextError, definePlugin, type Context, type NotifyService } from "@floppy/core";
+import { Kernel, MemorySecrets, TextError, definePlugin, type Context } from "@floppy/core";
+import type { NotifyService } from "@floppy/contracts";
 import { createTelegramPlugin, toTelegramHtml, telegramMessages } from "../src/index.ts";
 
 describe("toTelegramHtml", () => {

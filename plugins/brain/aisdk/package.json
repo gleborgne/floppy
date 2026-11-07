@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.84",
+    "@floppy/contracts": "0.1.0",
     "@floppy/core": "0.1.0",
     "@floppy/protocol": "0.1.0",
     "ai": "7.0.162",

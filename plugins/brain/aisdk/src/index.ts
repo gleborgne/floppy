@@ -8,7 +8,8 @@
 import { z } from "zod";
 import { streamText, isStepCount, hasToolCall, dynamicTool, jsonSchema, ToolChoiceViolationError, type ModelMessage, type ToolSet } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { definePlugin, type BrainEvent, type BrainRunInput, type BrainService, type LlmService, type MemorySnapshot } from "@floppy/core";
+import { definePlugin } from "@floppy/core";
+import type { BrainEvent, BrainRunInput, BrainService, LlmService, MemorySnapshot } from "@floppy/contracts";
 import { buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases, type PromptLang } from "./prompt.ts";
 import { EmotionTagFilter, type FilterOut } from "./emotion-filter.ts";
 

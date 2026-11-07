@@ -9,7 +9,7 @@ import { definePlugin, Level } from "@floppy/core";
 import { declareConnectors } from "./connectors.ts";
 import { startFloppyMcp } from "./floppy-mcp.ts";
 
-export type { McpEndpoint, ScopedEndpoint, ScopedOptions, ExtraTool } from "@floppy/core";
+export type { McpEndpoint, ScopedEndpoint, ScopedOptions, ExtraTool } from "@floppy/contracts";
 export { resolveLevel, levelFromConfig } from "./levels.ts";
 
 

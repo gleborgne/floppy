@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, type BodyHub, type DocumentsService, type HubEvent } from "@floppy/core";
+import { Kernel, definePlugin, type DocumentsService } from "@floppy/core";
+import type { BodyHub, HubEvent } from "@floppy/contracts";
 import type { Capability, KernelToBody } from "@floppy/protocol";
 import { createDocumentsPlugin, parse, serialize, slug, isDocId } from "../src/index.ts";
 

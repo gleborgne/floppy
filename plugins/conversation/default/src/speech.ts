@@ -1,4 +1,5 @@
-import { T, tr, errorText, type Text, type TtsService, type VoiceEvent, type VoiceStream } from "@floppy/core";
+import { T, tr, errorText, type Text } from "@floppy/core";
+import type { TtsService, VoiceEvent, VoiceStream } from "@floppy/contracts";
 import { encodeAudioOut } from "@floppy/protocol";
 
 interface Options {

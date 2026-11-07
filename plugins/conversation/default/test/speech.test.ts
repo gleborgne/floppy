@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { VoiceEvent, VoiceStream, TtsService } from "@floppy/core";
+import type { VoiceEvent, VoiceStream, TtsService } from "@floppy/contracts";
 import { SpeechQueue } from "../src/speech.ts";
 
 describe("file TTS distante", () => {

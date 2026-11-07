@@ -1,4 +1,4 @@
-// Règle d'architecture : un plugin ne parle aux autres que par les contrats du noyau (@floppy/core).
+// Règle d'architecture : un plugin ne parle aux autres que par les contrats de services (@floppy/contracts, @floppy/core).
 // Il n'importe jamais un autre paquet de plugin, ni par son nom, ni par un chemin relatif, pas même pour un type.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -60,6 +60,17 @@ describe("frontières entre plugins", () => {
       if (valueImport.test(src) || dynamic.test(src)) bad.push(relative(ROOT, f));
     }
     expect(bad).toEqual([]);
+  });
+
+  it("le noyau ne connaît aucun contrat de domaine : ils vivent dans @floppy/contracts et s'ajoutent à Services", () => {
+    const bad: string[] = [];
+    for (const f of walk(join(ROOT, "packages", "core", "src"), /\.(ts|js|mjs)$/)) {
+      for (const s of specifiers(f)) if (s.startsWith("@floppy/") && s !== "@floppy/protocol") bad.push(`${relative(ROOT, f)} → ${s}`);
+    }
+    expect(bad).toEqual([]);
+    const services = readFileSync(join(ROOT, "packages", "core", "src", "services.ts"), "utf8");
+    const keys = [...(/export interface Services \{([^}]*)\}/.exec(services)?.[1] ?? "").matchAll(/^\s+(\w+):/gm)].map((m) => m[1]);
+    expect(keys).toEqual(["documents", "task"]);
   });
 
   it("l'app de bureau n'importe pas les plugins par chemin relatif (hors assemblage)", () => {

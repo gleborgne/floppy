@@ -4,7 +4,8 @@ import { mkdtempSync, writeFileSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, definePlugin, type BrainService, type Context, type LlmService } from "@floppy/core";
+import { Kernel, definePlugin, type Context } from "@floppy/core";
+import type { BrainService, LlmService } from "@floppy/contracts";
 import claude, { cliPrompt } from "../src/index.ts";
 
 describe("cliPrompt", () => {

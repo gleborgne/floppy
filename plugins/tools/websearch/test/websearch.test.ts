@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Kernel, definePlugin, type Context, type SearchService } from "@floppy/core";
+import { Kernel, definePlugin, type Context } from "@floppy/core";
+import type { SearchService } from "@floppy/contracts";
 import { createWebsearchPlugin, parseResult, resultsA2ui, type SearchResult } from "../src/index.ts";
 
 let kernels: Kernel[] = [];

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@floppy/cli": "0.1.0",
+    "@floppy/contracts": "0.1.0",
     "@floppy/protocol": "0.1.0",
     "koffi": "3.3.7",
     "markdown-it": "14.3.3"

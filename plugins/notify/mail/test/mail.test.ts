@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { Kernel, SECRET_SET, definePlugin, type NotifyService } from "@floppy/core";
+import { Kernel, SECRET_SET, definePlugin } from "@floppy/core";
+import type { NotifyService } from "@floppy/contracts";
 import { createMailPlugin, mailError, mailHtml, type Transport, type TransportOptions } from "../src/index.ts";
 
 describe("mailHtml", () => {

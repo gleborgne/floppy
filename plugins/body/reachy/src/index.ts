@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   definePlugin, T, TextError, tr, type ItemChild, type ItemInfo, type ItemKind, type OpResult, type Text,
 } from "@floppy/core";
-import type { BodyHub } from "@floppy/core";
+import type { BodyHub } from "@floppy/contracts";
 import type { Capability } from "@floppy/protocol";
 import { DaemonClient, DEFAULT_URL, normUrl, type DaemonStatus } from "./daemon.ts";
 import { capabilitiesFor, RobotLink, type RobotValues } from "./link.ts";

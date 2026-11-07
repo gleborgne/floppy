@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Kernel, MemorySecrets, connectJsonSocket, definePlugin, type LiveService, type TtsService, type LiveEvent } from "@floppy/core";
+import { Kernel, MemorySecrets, connectJsonSocket, definePlugin } from "@floppy/core";
+import type { LiveService, TtsService, LiveEvent } from "@floppy/contracts";
 import elevenlabs from "@floppy/plugin-tts-elevenlabs";
 import geminiTts from "@floppy/plugin-tts-gemini";
 import geminiLive from "@floppy/plugin-live-gemini";

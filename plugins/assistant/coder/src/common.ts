@@ -2,7 +2,8 @@
 import { existsSync, realpathSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
-import { findExe, type CoderEvent, type Context } from "@floppy/core";
+import { findExe, type Context } from "@floppy/core";
+import type { CoderEvent } from "@floppy/contracts";
 
 import { agentEnv } from "@floppy/agent-cli";
 /** Événement sans l'id de session : la session l'ajoute. */

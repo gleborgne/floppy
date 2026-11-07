@@ -14,7 +14,8 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentPrompt, definePlugin, findExe, killTree, type BrainEvent, type BrainService, type Context, type McpEndpoint } from "@floppy/core";
+import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
+import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
 import { agentEnv } from "@floppy/agent-cli";
 const Config = z.object({

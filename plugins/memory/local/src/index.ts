@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { definePlugin, T, writeFileAtomic, type MemoryService } from "@floppy/core";
+import { definePlugin, T, writeFileAtomic } from "@floppy/core";
+import type { MemoryService } from "@floppy/contracts";
 
 const Config = z.object({
   dir: z.string().optional(),

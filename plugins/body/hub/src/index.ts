@@ -7,10 +7,11 @@
 //   sinon au premier corps qui l'a.
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { definePlugin, T, type AttachOpts, type BodyHub, type BodySessionInfo, type HubEvent, type ItemInfo, type Text, type ToolDef } from "@floppy/core";
+import { definePlugin, T, type ItemInfo, type Text, type ToolDef } from "@floppy/core";
+import type { AttachOpts, BodyHub, BodySessionInfo, HubEvent } from "@floppy/contracts";
 
 // Types du service body : définis dans @floppy/core (contrat du noyau).
-export type { AttachOpts, BodyHub, BodySessionInfo, HubEvent } from "@floppy/core";
+export type { AttachOpts, BodyHub, BodySessionInfo, HubEvent } from "@floppy/contracts";
 import {
   CAPABILITIES, PROTOCOL_VERSION, type BodyToKernel, type BodyTransport, type Capability, type KernelToBody, type BodyToolDecl,
 } from "@floppy/protocol";

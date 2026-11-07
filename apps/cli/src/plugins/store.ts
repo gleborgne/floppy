@@ -8,7 +8,8 @@
 // 3. L'activation est le réglage habituel `plugin_<id>` (user-plugins.ts). Le plugin tourne isolé (sandbox.ts).
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { T, TextError, tr, type CoderService, type Kernel, type Logger, type SettingDef, type ToolDef } from "@floppy/core";
+import { T, TextError, tr, type Kernel, type Logger, type SettingDef, type ToolDef } from "@floppy/core";
+import type { CoderService } from "@floppy/contracts";
 import { checkPlugin, formatFindings, hashFiles, type CheckReport } from "./check.ts";
 import { ID_RE } from "./format.ts";
 import { readLock, writeLock, type LockEntry } from "./lock.ts";

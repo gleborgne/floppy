@@ -4,7 +4,8 @@
 // inactif (état « avertissement », pas une erreur) ; le registre d'avatars existe quand même, sans affichage.
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { definePlugin, T, TextError, tr, type AvatarEntry, type ItemInfo, type Text, type ConversationCommandInput, type ConversationCommand } from "@floppy/core";
+import { definePlugin, T, TextError, tr, type ItemInfo, type Text } from "@floppy/core";
+import type { AvatarEntry, ConversationCommandInput, ConversationCommand } from "@floppy/contracts";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
 import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, type ShortcutAction } from "./shortcuts.ts";
 import type { BodyToKernel, BodyTransport, KernelToBody } from "@floppy/protocol";
@@ -84,7 +85,7 @@ export interface DisplaySettings {
 }
 
 export { normalizeShortcut, SHORTCUT_DEFAULTS, type ShortcutAction } from "./shortcuts.ts";
-export { defineAvatar, readAvatarDir, type AvatarInfo, type AvatarEntry, type AvatarRegistry } from "@floppy/core";
+export { defineAvatar, readAvatarDir, type AvatarInfo, type AvatarEntry, type AvatarRegistry } from "@floppy/contracts";
 
 const Config = z.object({
   /** Avatar affiché au départ si l'utilisateur n'en a pas choisi (id). Absent : le premier par id. */

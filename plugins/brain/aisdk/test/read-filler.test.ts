@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Kernel, definePlugin, type BrainService } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { BrainService } from "@floppy/contracts";
 import llamacpp from "../../../llm/llamacpp/src/index.ts";
 import aisdk, { READ_PHRASES, pickPhrase } from "../src/index.ts";
 

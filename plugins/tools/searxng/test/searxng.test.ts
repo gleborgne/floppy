@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Kernel, definePlugin, type Context, type SearchService } from "@floppy/core";
+import { Kernel, definePlugin, type Context } from "@floppy/core";
+import type { SearchService } from "@floppy/contracts";
 import { createSearxngPlugin, timeRange } from "../src/index.ts";
 
 let kernels: Kernel[] = [];

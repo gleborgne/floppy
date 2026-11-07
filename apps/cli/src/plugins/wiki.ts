@@ -2,7 +2,7 @@
 // pour écrire un plugin, servi par un outil de lecture (`doc_plugins`). Pourquoi un outil plutôt que des fichiers copiés :
 // - les pages suivent la version de Floppy (le kit copié dans <home>/plugins n'est jamais écrasé) ;
 // - certaines pages sont calculées maintenant : services qui tournent, outils existants ;
-// - les contrats des services sont lus dans le code du noyau (packages/core/src/services.ts) : jamais en retard ;
+// - les contrats des services sont lus dans leur code (packages/core/src/services.ts, packages/contracts/src) : jamais en retard ;
 // - le même outil marche pour Claude Code et Codex (serveur MCP de Floppy).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,7 +12,10 @@ import type { Kernel, Manifest, ToolDef } from "@floppy/core";
 /** Pages écrites à la main (packages/sdk/wiki/*.md), dans l'ordre de lecture conseillé. */
 export const WIKI_DIR = dirname(fileURLToPath(import.meta.resolve("@floppy/sdk/wiki/basics.md")));
 const EXAMPLES_DIR = dirname(dirname(fileURLToPath(import.meta.resolve("@floppy/sdk/examples/minuteur/index.ts"))));
-const SERVICES_SRC = fileURLToPath(new URL("./services.ts", import.meta.resolve("@floppy/core")));
+/** Sources des contrats : ceux du noyau (tâches, documents) et ceux des domaines (@floppy/contracts). */
+const CONTRACTS_DIR = dirname(fileURLToPath(import.meta.resolve("@floppy/contracts")));
+const SERVICES_SRC = [fileURLToPath(new URL("./services.ts", import.meta.resolve("@floppy/core"))),
+  ...readdirSync(CONTRACTS_DIR).filter((f) => f.endsWith(".ts")).map((f) => join(CONTRACTS_DIR, f))];
 const ORDER = ["basics", "tools", "settings", "languages", "events", "services", "security", "testing"];
 
 /** Services qu'un plugin personnel peut utiliser, et les interfaces du noyau qui forment leur contrat. */
@@ -36,7 +39,7 @@ export interface WikiOptions {
   /** Tests : autres dossiers. */
   wikiDir?: string;
   examplesDir?: string;
-  servicesSrc?: string;
+  servicesSrc?: string[];
 }
 
 /** Bloc `export interface <name> {…}` du source, avec le commentaire juste au-dessus. undefined : absent. */
@@ -90,7 +93,7 @@ export function createWiki(o: WikiOptions) {
   const contract = (service: string): string | undefined => {
     const names = CONTRACTS[service];
     if (!names) return undefined;
-    const src = readFileSync(servicesSrc, "utf8");
+    const src = servicesSrc.map((f) => readFileSync(f, "utf8")).join("\n");
     const blocks = names.map((n) => extractInterface(src, n) ?? `// ${n}: not found in the kernel`);
     return [
       `# Contract of the ${service} service`,

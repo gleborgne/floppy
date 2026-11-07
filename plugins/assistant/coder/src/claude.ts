@@ -2,7 +2,8 @@
 // Après un arrêt (stop), le tour suivant relance un processus avec --resume <session_id>.
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { killTree, type CoderMode } from "@floppy/core";
+import { killTree } from "@floppy/core";
+import type { CoderMode } from "@floppy/contracts";
 import { cleanEnv, say, short, signInMessage, SIGN_IN_RE, type Runner, type RunnerDeps } from "./common.ts";
 
 export const PLUGIN_BUILTIN = ["Read", "Edit", "Write", "Glob", "Grep"];

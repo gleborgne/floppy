@@ -6,7 +6,8 @@
 // - Un seul code pour les deux. Rien n'est « cloud » : les requêtes ne partent que vers l'adresse donnée.
 // - SearXNG doit accepter le format JSON : dans son settings.yml, `search.formats: [html, json]`.
 import { z } from "zod";
-import { definePlugin, T, TextError, type SearchHit, type SearchService, type Text } from "@floppy/core";
+import { definePlugin, T, TextError, type Text } from "@floppy/core";
+import type { SearchHit, SearchService } from "@floppy/contracts";
 import { SEARXNG } from "./logo.ts";
 
 const t = (fr: string, en: string): Text => ({ fr, en });

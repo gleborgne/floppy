@@ -1,0 +1,14 @@
+{
+  "name": "@floppy/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@floppy/core": "0.1.0",
+    "@floppy/protocol": "0.1.0"
+  }
+}

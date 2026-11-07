@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, MemoryAudit, type CoderEvent, type CoderService, type CoderAgent, type CoderMode } from "@floppy/core";
+import { Kernel, MemoryAudit } from "@floppy/core";
+import type { CoderEvent, CoderService, CoderAgent, CoderMode } from "@floppy/contracts";
 import tools from "@floppy/plugin-tools";
 import realCoder, { copyKit } from "../src/index.ts";
 import { systemPrompt } from "../src/prompts.ts";

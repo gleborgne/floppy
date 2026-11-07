@@ -3,7 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Kernel, definePlugin, type BrainService, type VoiceEvent, type VoiceService, type VoiceStream, type LiveService, type LiveEvent, type WakewordService, type WakewordDetection } from "@floppy/core";
+import { Kernel, definePlugin } from "@floppy/core";
+import type { BrainService, VoiceEvent, VoiceService, VoiceStream, LiveService, LiveEvent, WakewordService, WakewordDetection } from "@floppy/contracts";
 import type { BodyToKernel, BodyTransport, KernelToBody, Capability, BodyToolDecl } from "@floppy/protocol";
 import bodyHub from "@floppy/plugin-body-hub";
 import wakewordStt from "@floppy/plugin-wakeword-stt";
@@ -64,7 +65,7 @@ describe("contrat wakeword dans la conversation", () => {
       ...(opts.voice ? [{ id: "voice", plugin: "fake-voice" }] : []), { id: "conv", plugin: "conversation" },
     ] });
     const avatar = new FakeBody("wake-avatar", ["voice", "display", "emotion"]);
-    k.service<import("@floppy/core").BodyHub>("body")!.attach(avatar.transport, { id: avatar.id }); avatar.hello();
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(avatar.transport, { id: avatar.id }); avatar.hello();
     await vi.waitFor(() => expect(opts.missing ? avatar.of("error").length : detectors.length).toBeGreaterThan(0));
     return { k, avatar, detectors, changes, open, pushed };
   }
@@ -229,7 +230,7 @@ describe("Live dans l'orchestrateur, sans cerveau", () => {
         { id: "body", plugin: "body-hub" }, { id: "voice", plugin: "fake-voice" }, { id: "l", plugin: "fake-live" }, { id: "conv", plugin: "conversation" },
       ] });
       const avatar = new FakeBody("avatar", ["voice", "display", "emotion", "approval"]);
-      k.service<import("@floppy/core").BodyHub>("body")!.attach(avatar.transport, { id: "avatar" }); avatar.hello();
+      k.service<import("@floppy/contracts").BodyHub>("body")!.attach(avatar.transport, { id: "avatar" }); avatar.hello();
       await vi.waitFor(() => expect(streams.has("avatar")).toBe(true));
       await new Promise<void>((resolve) => setImmediate(resolve)); // fin de l'initialisation du flux local
       avatar.feed(new Float32Array([1, 2, 3, 4]));
@@ -262,7 +263,7 @@ describe("Live dans l'orchestrateur, sans cerveau", () => {
     try {
       await k.applyConfig({ slots: { "listen.wakeword": "stt/account", "conversation.live": "missing/x" }, plugins: [{ id: "stt", plugin: "wakeword-stt" }, { id: "body", plugin: "body-hub" }, { id: "voice", plugin: "fake-voice" }, { id: "conv", plugin: "conversation" }] });
       const avatar = new FakeBody("avatar", ["voice", "display"]);
-      k.service<import("@floppy/core").BodyHub>("body")!.attach(avatar.transport, { id: "avatar" }); avatar.hello();
+      k.service<import("@floppy/contracts").BodyHub>("body")!.attach(avatar.transport, { id: "avatar" }); avatar.hello();
       await vi.waitFor(() => expect(streams.has("avatar")).toBe(true));
       await new Promise<void>((r) => setImmediate(r));
       const st = streams.get("avatar")!;
