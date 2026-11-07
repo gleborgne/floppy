@@ -221,6 +221,47 @@ describe("plugin veille (avec le noyau)", () => {
     expect(tr(r.text, "fr")).toMatch(/aucun cerveau choisi pour le tri/);
     expect(tr(r.text, "en")).toMatch(/no brain chosen for sorting/);
   });
+
+  it("à la voix : jamais de centre d'intérêt vide (le nom sert de recherche) ; modifier ajoute, retire, renomme", async () => {
+    const kn = new Kernel({ logger: () => {}, plugins: [createVeillePlugin()] });
+    k = kn;
+    await kn.applyConfig({ plugins: [{ id: "veille", plugin: "veille" }], approvals: { write: "always" } });
+    const list = async () => (await kn.items.snapshot()).find((p) => p.id === "veille-interets")!.items.map((i) => ({ nom: i.label, ...(i.values as object) }));
+
+    // « Ajoute un centre d'intérêt sur l'IA locale » : pas de source → le nom devient la recherche.
+    const add = await kn.tools.call("veille_modifier_interet", { action: "ajouter", nom: "IA locale" });
+    expect(add.status).toBe("done");
+    expect(add.text).toMatch(/je cherch.* « IA locale » sur le web/);
+    expect(await list()).toMatchObject([{ nom: "IA locale", flux: [], requetes: ["IA locale"] }]);
+
+    // Modifier : ajoute une recherche et un flux, change la description ; l'accord dit ce qui change.
+    const asked: string[] = [];
+    kn.bus.on("approval.request", (r) => { asked.push(String(r.summary)); });
+    const mod = await kn.tools.call("veille_modifier_interet", {
+      action: "modifier", nom: "ia locale", requetes: ["llama.cpp"], flux: ["https://www.reddit.com/r/LocalLLaMA/.rss"], description: "modèles open weights",
+    });
+    expect(mod.status).toBe("done");
+    expect(await list()).toMatchObject([{ nom: "IA locale", description: "modèles open weights", flux: ["https://www.reddit.com/r/LocalLLaMA/.rss"], requetes: ["IA locale", "llama.cpp"] }]);
+
+    // Retire le flux (morceau d'adresse) et une recherche, renomme.
+    await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "IA locale", retirer_flux: ["reddit"], retirer_requetes: ["ia locale"], nouveau_nom: "LLM locaux" });
+    expect(await list()).toMatchObject([{ nom: "LLM locaux", flux: [], requetes: ["llama.cpp"] }]);
+
+    // Tout retirer : le centre d'intérêt ne devient pas vide, son nom redevient la recherche.
+    const vide = await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "LLM locaux", retirer_requetes: ["llama.cpp"] });
+    expect(vide.text).toMatch(/« LLM locaux » sur le web/);
+    expect(await list()).toMatchObject([{ requetes: ["LLM locaux"] }]);
+
+    expect((await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "Bretagne" })).status).toBe("failed");
+
+    // La demande d'accord dit ce qui change (règle « write: ask »).
+    await kn.applyConfig({ plugins: [{ id: "veille", plugin: "veille" }], approvals: { write: "ask" } });
+    kn.bus.on("approval.request", (r) => { kn.approvals.respond(r.id, false, "test"); });
+    const no = await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "LLM locaux", requetes: ["gguf"] });
+    expect(no.status).toBe("refused");
+    expect(asked.at(-1)).toBe("Modifier le centre d'intérêt « LLM locaux » (+ recherches : gguf)");
+
+  });
 });
 
 describe("réglages de la veille", () => {

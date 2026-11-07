@@ -55,7 +55,7 @@ const KIND = {
       hint: T("Une adresse par ligne. « Essayer » lit chaque flux et dit combien d'articles il donne.", "One address per line. “Try” reads each feed and tells how many articles it gives.") },
     { key: "requetes", label: T("Recherches web", "Web searches"), type: "list" as const,
       placeholder: T("llama.cpp nouvelle version\nmodèle open weights", "llama.cpp new release\nopen weights model"),
-      hint: T("Une recherche par ligne, faite par le moteur de recherche choisi dans cette rubrique.", "One search per line, run by the search engine chosen in this section.") },
+      hint: T("Une recherche par ligne, faite par le moteur de recherche choisi dans cette rubrique. Sans flux ni recherche, le nom sert de recherche.", "One search per line, run by the search engine chosen in this section. With no feed and no search, the name is used as the search.") },
     { key: "max", label: T("Articles au plus par veille", "Max articles per run"), type: "number" as const, default: 8, min: 1, max: 30, advanced: true },
   ],
 };
@@ -67,6 +67,35 @@ function cleanInteret(v: Record<string, unknown>): Omit<Interet, "id"> {
     nom: String(v.nom ?? "").trim(), description: String(v.description ?? "").trim(),
     flux: list(v.flux), requetes: list(v.requetes), max: Number.isFinite(max) && max >= 1 ? Math.min(30, Math.round(max)) : 8,
   };
+}
+
+const strList = (x: unknown): string[] => (Array.isArray(x) ? x : typeof x === "string" ? [x] : []).map((v) => String(v).trim()).filter(Boolean);
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** Valeurs d'un centre d'intérêt après « modifier » à la voix : ajoute, retire, remplace la description ou le nom. */
+function modified(cur: Omit<Interet, "id">, a: Record<string, unknown>): Record<string, unknown> {
+  const outFlux = strList(a.retirer_flux).map((x) => x.toLowerCase());
+  const outReq = strList(a.retirer_requetes);
+  const flux = cur.flux.filter((u) => !outFlux.some((x) => u.toLowerCase().includes(x)));
+  const requetes = cur.requetes.filter((q) => !outReq.some((x) => same(q, x)));
+  for (const u of strList(a.flux)) if (!flux.some((x) => same(x, u))) flux.push(u);
+  for (const q of strList(a.requetes)) if (!requetes.some((x) => same(x, q))) requetes.push(q);
+  const nom = strList(a.nouveau_nom)[0] ?? cur.nom;
+  const description = typeof a.description === "string" && a.description.trim() ? a.description.trim() : cur.description;
+  return { nom, description, flux, requetes, max: cur.max };
+}
+
+/** Ce que change « modifier », pour la demande d'accord. */
+function changes(a: Record<string, unknown>, l: "fr" | "en"): string {
+  const en = l === "en";
+  const list = (k: string, fr: string, eng: string) => (strList(a[k]).length ? `${en ? eng : fr}${en ? ": " : " : "}${strList(a[k]).join(", ")}` : "");
+  const parts = [
+    strList(a.nouveau_nom)[0] ? (en ? `rename to “${strList(a.nouveau_nom)[0]}”` : `renommer en « ${strList(a.nouveau_nom)[0]} »`) : "",
+    typeof a.description === "string" && a.description.trim() ? (en ? "new description" : "nouvelle description") : "",
+    list("requetes", "+ recherches", "+ searches"), list("flux", "+ flux", "+ feeds"),
+    list("retirer_requetes", "− recherches", "− searches"), list("retirer_flux", "− flux", "− feeds"),
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join(en ? "; " : " ; ")})` : "";
 }
 
 export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> {
@@ -174,13 +203,34 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
         if (bad) return T(`Adresse de flux invalide : ${bad}`, `Invalid feed address: ${bad}`);
         return undefined;
       };
+      /** Jamais de centre d'intérêt vide : sans flux ni recherche, le nom devient la recherche web. */
+      const sourced = (v: Omit<Interet, "id">): { v: Omit<Interet, "id">; note: Text } => {
+        if (v.flux.length || v.requetes.length || !v.nom) return { v, note: "" };
+        const noEngine = ctx.settings.value("slot.veille.recherche") === "@none";
+        return {
+          v: { ...v, requetes: [v.nom] },
+          note: noEngine
+            ? T(` Pas de source donnée : je chercherai « ${v.nom} » sur le web, mais aucun moteur de recherche n'est choisi (Réglages, rubrique Veille).`, ` No source given: I will search the web for “${v.nom}”, but no search engine is chosen (Settings, News watch section).`)
+            : T(` Pas de source donnée : je cherche « ${v.nom} » sur le web.`, ` No source given: I search the web for “${v.nom}”.`),
+        };
+      };
       const add = (values: Record<string, unknown>): OpResult => {
-        const v = cleanInteret(values);
+        const { v, note } = sourced(cleanInteret(values));
         const bad = check(v);
         if (bad) return { ok: false, text: bad };
         const id = store.add("interet", v as unknown as Record<string, unknown>, v.nom, Object.keys(base));
         ctx.items.changed();
-        return { ok: true, id, text: T(`« ${v.nom} » ajouté à la veille.`, `“${v.nom}” added to the news watch.`) };
+        return { ok: true, id, text: T(`« ${v.nom} » ajouté à la veille.${tr(note, "fr")}`, `“${v.nom}” added to the news watch.${tr(note, "en")}`) };
+      };
+      const update = (id: string, values: Record<string, unknown>): OpResult => {
+        const cur = all().find((i) => i.id === id);
+        if (!cur) return { ok: false, text: T(`Centre d'intérêt inconnu : ${id}`, `Unknown interest: ${id}`) };
+        const { v, note } = sourced(cleanInteret({ ...cur, ...values }));
+        const bad = check(v);
+        if (bad) return { ok: false, text: bad };
+        store.update(id, v as unknown as Record<string, unknown>);
+        ctx.items.changed();
+        return { ok: true, id, text: T(`« ${v.nom} » modifié.${tr(note, "fr")}`, `“${v.nom}” updated.${tr(note, "en")}`) };
       };
       const remove = (id: string): OpResult => {
         const cur = all().find((i) => i.id === id);
@@ -197,16 +247,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
         kinds: [KIND],
         list: () => all().map(info),
         add: async (kind, values) => (kind === "interet" ? add(values) : { ok: false, text: T(`Type inconnu : ${kind}.`, `Unknown type: ${kind}.`) }),
-        update: async (id, values) => {
-          const cur = all().find((i) => i.id === id);
-          if (!cur) return { ok: false, text: T(`Centre d'intérêt inconnu : ${id}`, `Unknown interest: ${id}`) };
-          const v = cleanInteret({ ...cur, ...values });
-          const bad = check(v);
-          if (bad) return { ok: false, text: bad };
-          store.update(id, v as unknown as Record<string, unknown>);
-          ctx.items.changed();
-          return { ok: true, id, text: T(`« ${v.nom} » modifié.`, `“${v.nom}” updated.`) };
-        },
+        update: async (id, values) => update(id, values),
         remove: async (id) => remove(id),
         setChild: async (id, child, on) => {
           const cur = all().find((i) => i.id === id);
@@ -224,7 +265,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           if (!v.flux.length) {
             return { ok: true, text: v.requetes.length
               ? T("Pas de flux à lire. Les recherches seront faites par le moteur choisi dans la rubrique.", "No feed to read. Searches will be run by the engine chosen in this section.")
-              : T("Ajoute au moins un flux ou une recherche.", "Add at least one feed or one search.") };
+              : T("Pas de flux ni de recherche : le nom servira de recherche web.", "No feed and no search: the name will be used as the web search.") };
           }
           const results = await Promise.all(v.flux.map(async (u) => {
             try {
@@ -392,27 +433,37 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
         },
         {
           name: "veille_modifier_interet",
-          description: "Ajoute ou retire un centre d'intérêt de la veille, quand l'utilisateur le demande (« ajoute un sujet sur la Bretagne avec la recherche … »).",
+          description: "Ajoute, modifie ou retire un centre d'intérêt de la veille, quand l'utilisateur le demande. « ajoute un centre d'intérêt sur l'IA locale » → action: ajouter, nom: « IA locale » (donne aussi description et requetes si tu sais ; sans source, le nom sert de recherche web). « ajoute la recherche llama.cpp à mon IA locale » → action: modifier, nom, requetes. « retire le flux de Reddit » → action: modifier, retirer_flux. « supprime ma veille sur la Bretagne » → action: retirer. Le noyau demande l'accord : appelle-le directement.",
           inputSchema: {
             type: "object",
             properties: {
-              action: { type: "string", enum: ["ajouter", "retirer"] },
-              nom: { type: "string" },
-              description: { type: "string" },
-              flux: { type: "array", items: { type: "string" } },
-              requetes: { type: "array", items: { type: "string" } },
+              action: { type: "string", enum: ["ajouter", "modifier", "retirer"] },
+              nom: { type: "string", description: "Nom du centre d'intérêt à créer, à modifier ou à retirer." },
+              nouveau_nom: { type: "string", description: "modifier : nouveau nom." },
+              description: { type: "string", description: "Ce qui intéresse l'utilisateur, pour le modèle qui trie. modifier : remplace l'ancienne." },
+              flux: { type: "array", items: { type: "string" }, description: "Adresses de flux RSS ou Atom à ajouter." },
+              requetes: { type: "array", items: { type: "string" }, description: "Recherches web à ajouter." },
+              retirer_flux: { type: "array", items: { type: "string" }, description: "modifier : flux à retirer (adresse ou morceau d'adresse)." },
+              retirer_requetes: { type: "array", items: { type: "string" }, description: "modifier : recherches à retirer." },
             },
             required: ["action", "nom"],
           },
           level: "write",
-          summary: (a) => (a.action === "retirer" ? T(`Retirer le centre d'intérêt « ${String(a.nom ?? "")} »`, `Remove the interest “${String(a.nom ?? "")}”`) : T(`Ajouter le centre d'intérêt « ${String(a.nom ?? "")} »`, `Add the interest “${String(a.nom ?? "")}”`)),
+          summary: (a) => {
+            const nom = String(a.nom ?? "");
+            if (a.action === "retirer") return T(`Retirer le centre d'intérêt « ${nom} »`, `Remove the interest “${nom}”`);
+            if (a.action === "modifier") return T(`Modifier le centre d'intérêt « ${nom} »${changes(a, "fr")}`, `Change the interest “${nom}”${changes(a, "en")}`);
+            return T(`Ajouter le centre d'intérêt « ${nom} »`, `Add the interest “${nom}”`);
+          },
           handler: async (a) => {
-            if (a.action === "retirer") {
-              const cur = findInteret(String(a.nom ?? ""));
-              const r: OpResult = cur ? remove(cur.id) : { ok: false, text: T(`Je ne trouve pas « ${String(a.nom ?? "")} ».`, `I can't find “${String(a.nom ?? "")}”.`) };
+            const nom = String(a.nom ?? "");
+            if (a.action === "retirer" || a.action === "modifier") {
+              const cur = findInteret(nom);
+              if (!cur) return { status: "failed", text: T(`Je ne trouve pas « ${nom} ». Utilise veille_interets.`, `I can't find “${nom}”. Use veille_interets.`) };
+              const r: OpResult = a.action === "retirer" ? remove(cur.id) : update(cur.id, modified(cur, a));
               return { status: r.ok ? "done" : "failed", text: r.text };
             }
-            const r = add({ nom: a.nom, description: a.description ?? "", flux: a.flux ?? [], requetes: a.requetes ?? [] });
+            const r = add({ nom, description: a.description ?? "", flux: a.flux ?? [], requetes: a.requetes ?? [] });
             return { status: r.ok ? "done" : "failed", text: r.text };
           },
         },
