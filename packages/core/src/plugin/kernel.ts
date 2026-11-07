@@ -12,7 +12,7 @@
 // - Un slot (manifest.slots) choisit un élément. Le fork de l'élément choisi démarre quand son consommateur démarre (ctx.slot),
 //   et s'arrête quand plus personne ne s'en sert. Changer le choix redémarre le consommateur sur le nouvel élément.
 // - Aucun plugin n'allume ni n'éteint un autre plugin : seul le noyau le fait, d'après les besoins déclarés.
-import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
+import { spawn as nodeSpawn, execFile, type SpawnOptions } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -1430,16 +1430,49 @@ export class Kernel {
       emit: (event, payload) => { if (!closed(`emit(${event})`)) this.bus.emit(event, payload); },
       hook: (name, mw) => { scope.add(this.hooks.add(name, as(mw), e.cfg.id)); },
       runHook: (name, input, final) => closed(`runHook(${name})`) ? Promise.reject(stoppedError()) : this.hooks.run(name, input, final),
-      spawn: (command: string, args: string[], options: SpawnOptions = {}) => {
+      spawn: (command: string, args: string[], options: SpawnOptions & { keep?: boolean } = {}) => {
         if (!execAllowed(def.manifest.permissions, command)) {
           throw new Error(`${e.cfg.id} : lancer « ${programName(command)} » demande permissions.exec dans le manifeste (exec: ["${programName(command)}"])`);
         }
-        const child = nodeSpawn(command, args, { windowsHide: true, detached: process.platform !== "win32", ...options });
+        if (closed(`spawn(${programName(command)})`)) throw stoppedError();
+        const { keep, ...opts } = options;
+        if (keep) {
+          // Lancé pour l'utilisateur (navigateur, terminal) : détaché, il reste ouvert après Floppy.
+          const child = nodeSpawn(command, args, { detached: true, stdio: "ignore", ...opts });
+          child.on("error", (err) => this.log("warn", e.cfg.id, `${programName(command)} : ${err.message}`));
+          child.unref();
+          return child;
+        }
+        const child = nodeSpawn(command, args, { windowsHide: true, detached: process.platform !== "win32", ...opts });
         const close = scope.add(() => killTree(child));
         this.children.track(child, command, e.cfg.id);
         // Programme fini tout seul : sa fermeture est retirée (un plugin qui lance un programme par demande ne grossit pas).
         child.once("exit", () => { void close(); });
         return child;
+      },
+      exec: (command, args, options = {}) => {
+        if (!execAllowed(def.manifest.permissions, command)) {
+          return Promise.reject(new Error(`${e.cfg.id} : lancer « ${programName(command)} » demande permissions.exec dans le manifeste (exec: ["${programName(command)}"])`));
+        }
+        if (closed(`exec(${programName(command)})`)) return Promise.reject(stoppedError());
+        const timeoutMs = options.timeoutMs ?? 30_000;
+        return new Promise((resolve, reject) => {
+          const child = execFile(command, args, {
+            timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: options.maxBuffer ?? 16 * 1024 * 1024, windowsHide: true, encoding: "utf8",
+            ...(options.cwd ? { cwd: options.cwd } : {}), ...(options.env ? { env: options.env } : {}),
+            ...(options.verbatim ? { windowsVerbatimArguments: true } : {}), ...(options.signal ? { signal: options.signal } : {}),
+          }, (err, stdout, stderr) => {
+            void close();
+            const code = typeof (err as { code?: unknown } | null)?.code === "number" ? (err as { code: number }).code : err ? -1 : 0;
+            if (err && (!options.allowFailure || code === -1 || (err as { killed?: boolean }).killed)) {
+              const why = (err as { killed?: boolean }).killed ? `délai dépassé (${Math.round(timeoutMs / 1000)} s)` : String(stderr || err.message).trim().slice(0, 500);
+              reject(new Error(`${programName(command)} : ${why}`));
+              return;
+            }
+            resolve({ stdout: String(stdout), stderr: String(stderr), code });
+          });
+          const close = scope.add(() => killTree(child));
+        });
       },
       interval: (fn, ms) => { const t = setInterval(guarded(fn, "minuterie"), ms); scope.add(() => clearInterval(t)); },
       timeout: (fn, ms) => { const t = setTimeout(guarded(fn, "minuterie"), ms); scope.add(() => clearTimeout(t)); },

@@ -1,11 +1,12 @@
 // Relecture des plugins tiers : un tour unique, sans outil, avec de faux CLI.
+import { spawn } from "node:child_process";
 import { describe, it, expect } from "vitest";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { reviewArgs, runReview } from "../src/review.ts";
 
 const fake = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-review.mjs");
-const run = (agent: "claude" | "codex" | "agy", prompt: string) => runReview({ agent, exe: process.execPath, exeArgs: [fake], prompt, timeoutMs: 10_000 });
+const run = (agent: "claude" | "codex" | "agy", prompt: string) => runReview({ agent, exe: process.execPath, exeArgs: [fake], prompt, timeoutMs: 10_000, spawn: (c, a, o) => spawn(c, a, o ?? {}) });
 
 describe("relecture d'un plugin tiers", () => {
   it("Claude : aucun outil, aucune config MCP de l'utilisateur", async () => {

@@ -126,6 +126,22 @@ export interface OfferDef<T = unknown> {
   startTimeout_s?: number;
 }
 
+export interface ExecOptions {
+  /** Délai (défaut : 30 000 ms). */
+  timeoutMs?: number;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  /** Taille maximale de la sortie (défaut : 16 Mo). */
+  maxBuffer?: number;
+  /** Arguments passés tels quels (Windows : commandes cmd avec guillemets). */
+  verbatim?: boolean;
+  /** Une sortie en erreur (code ≠ 0) ne rejette pas : le code est rendu. */
+  allowFailure?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface ExecResult { stdout: string; stderr: string; code: number }
+
 /** Un élément emprunté (ctx.borrow, ctx.borrowItem). */
 export interface Borrowed<T> {
   service: T;
@@ -211,8 +227,17 @@ export interface Context {
   /** Lance la chaîne d'un hook (ex. tools lance `tool.before`). */
   runHook<I, O>(name: string, input: I, final: (input: I) => Promise<O>): Promise<O>;
 
-  /** Lance un processus enfant ; il est tué (avec ses enfants) au déchargement. */
-  spawn(command: string, args: string[], options?: SpawnOptions): ChildProcess;
+  /**
+   * Lance un processus enfant (programme permis par permissions.exec) ; il est tué (avec ses enfants) au déchargement.
+   * `keep: true` : un programme lancé pour l'utilisateur (navigateur, terminal) qui doit rester ouvert, détaché.
+   */
+  spawn(command: string, args: string[], options?: SpawnOptions & { keep?: boolean }): ChildProcess;
+  /**
+   * Lance une commande courte et rend sa sortie (programme permis par permissions.exec). Toujours un délai
+   * (défaut : 30 s) ; arrêtée au déchargement. Rejette si le programme manque, dépasse le délai ou sort en erreur
+   * (le code et la sortie d'erreur sont dans le message).
+   */
+  exec(command: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
   interval(fn: () => void, ms: number): void;
   timeout(fn: () => void, ms: number): void;
 

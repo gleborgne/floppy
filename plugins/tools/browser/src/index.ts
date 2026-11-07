@@ -5,9 +5,8 @@
 // - Par défaut, chaque ouverture demande l'accord (niveau write). L'utilisateur peut l'enlever dans le formulaire.
 // - Navigateur : celui de Windows par défaut, ou un programme choisi (Edge, Chrome, Firefox…).
 // - Lancé sans shell : l'adresse ne peut pas devenir une commande.
-import { spawn } from "node:child_process";
 import { z } from "zod";
-import { definePlugin, type Text } from "@floppy/core";
+import { definePlugin, type Text, type Context } from "@floppy/core";
 
 const t = (fr: string, en: string): Text => ({ fr, en });
 
@@ -19,15 +18,15 @@ export const Config = z.object({
 });
 type Config = z.infer<typeof Config>;
 
-export type Opener = (url: string, program: string) => Promise<void>;
+export type Opener = (url: string, program: string, spawn: Context["spawn"]) => Promise<void>;
 
-/** Ouvre sans shell. Windows : rundll32 url.dll (navigateur par défaut) ; ailleurs : open / xdg-open. */
-export const defaultOpener: Opener = (url, program) => new Promise((ok, ko) => {
+/** Ouvre sans shell, par ctx.spawn (gardé ouvert). Windows : rundll32 url.dll (navigateur par défaut) ; ailleurs : open / xdg-open. */
+export const defaultOpener: Opener = (url, program, spawn) => new Promise((ok, ko) => {
   const [cmd, args] = program
     ? [program, [url]]
     : process.platform === "win32" ? ["rundll32.exe", ["url.dll,FileProtocolHandler", url]]
     : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
-  const p = spawn(cmd, args, { detached: true, stdio: "ignore", windowsHide: true });
+  const p = spawn(cmd, args, { keep: true, windowsHide: true });
   p.once("error", ko);
   p.once("spawn", () => { p.unref(); ok(); });
 });
@@ -51,7 +50,8 @@ export function createBrowserPlugin(opener: Opener = defaultOpener) {
       ],
       description: "Ouvre une adresse web dans le navigateur.",
       // Navigateur par défaut seulement ; un programme choisi dans le formulaire demanderait "*" (spawn brut, non contrôlé).
-      permissions: { exec: ["rundll32", "open", "xdg-open"] },
+      // Le navigateur par défaut, ou le programme que l'utilisateur a choisi dans la config (n'importe lequel).
+      permissions: { exec: ["*"] },
       addable: {
         section: "connecteurs",
         single: true,
@@ -81,7 +81,7 @@ export function createBrowserPlugin(opener: Opener = defaultOpener) {
           let u: URL;
           try { u = checkUrl(a.url); } catch (e) { return { status: "failed", text: `Pas ouvert : ${(e as Error).message}.` }; }
           try {
-            await opener(u.href, cfg.program);
+            await opener(u.href, cfg.program, ctx.spawn);
           } catch (e) {
             return { status: "failed", text: `Le navigateur ne s'est pas ouvert : ${e instanceof Error ? e.message : String(e)}` };
           }

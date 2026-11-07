@@ -144,7 +144,9 @@ Le `ctx` est la seule porte vers le noyau :
 | `home` | dossier de données (`%LOCALAPPDATA%assistant`) |
 | `approvals` | `check` pour tous ; `respond` et `pending` seulement avec `permissions.approvals: "respond"` |
 | `audit` | journal |
-| `spawn` | refuse un programme absent de `permissions.exec` |
+| `spawn` | refuse un programme absent de `permissions.exec` ; `keep: true` : programme ouvert pour l'utilisateur (navigateur, terminal), détaché, laissé ouvert |
+| `exec` | commande courte (`permissions.exec`), délai de 30 s par défaut, arrêtée avec le plugin ; rend `{ stdout, stderr, code }` |
+| `workspace(nom)` | espace de travail du plugin dans le répertoire de travail (voir plus bas) |
 | `fail(raison)` | panne : le plugin s'arrête et passe en erreur visible (une seule erreur, même pendant `apply`) |
 
 ## Cycle de vie

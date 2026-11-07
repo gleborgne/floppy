@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, killTree, type BrainEvent, type BrainService, type CompletionService, type Context } from "@floppy/core";
 import type { McpEndpoint } from "@floppy/core";
 
+import { agentEnv, parseModelJson } from "@floppy/agent-cli";
 const Config = z.object({
   exe: z.string().default(process.env.CLAUDE_EXE ?? join(process.env.USERPROFILE ?? "", ".local", "bin", "claude.exe")),
   /** Arguments ajoutés avant les autres (pour les tests : un script devant un faux CLI). */
@@ -43,22 +44,14 @@ export const cliPrompt = agentPrompt;
 
 /** Environnement propre : pas de variables d'une session Claude parente ni d'Orca. */
 function cleanEnv(extra: Record<string, string>): Record<string, string> {
-  const keep = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|USERPROFILE|USERNAME|USERDOMAIN|HOMEDRIVE|HOMEPATH|APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|COMMONPROGRAMFILES|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|COMPUTERNAME|LANG|HTTP_PROXY|HTTPS_PROXY|NO_PROXY)$/i;
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && keep.test(k)) env[k] = v;
-  return { ...env, ...extra };
+  return agentEnv(extra);
 }
 
 /** Trouve le JSON dans une réponse (avec ou sans ```json, avec ou sans texte autour). */
 export function extractJson(text: string): unknown {
-  const s = text.replace(/```(?:json)?/gi, "").trim();
-  try { return JSON.parse(s); } catch { /* texte autour : on cherche plus loin */ }
-  const a = s.search(/[{[]/);
-  if (a < 0) throw new Error("réponse sans JSON");
-  const close = s[a] === "{" ? "}" : "]";
-  const b = s.lastIndexOf(close);
-  if (b <= a) throw new Error("JSON incomplet");
-  return JSON.parse(s.slice(a, b + 1));
+  const v = parseModelJson(text);
+  if (v === undefined) throw new Error("réponse sans JSON");
+  return v;
 }
 
 /** Un appel ponctuel au CLI : aucun outil, aucun MCP, aucune mémoire. Le prompt passe par l'entrée standard. */

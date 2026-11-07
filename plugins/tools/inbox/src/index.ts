@@ -9,10 +9,9 @@
 // - Mode : l'app choisit `voix` (lu à voix haute) ou `info` (affiché) ; l'utilisateur garde le dernier mot.
 // - Outils : annonces_recentes (lecture), ouvrir_annonce (write : accord avant d'ouvrir le lien).
 // - Les liens s'ouvrent sans shell, et seulement avec un schéma déclaré par l'app (vu par l'utilisateur) ou https.
-import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { z } from "zod";
-import { definePlugin, readJsonFile, T, tr, writeJsonAtomic, type SettingDef, type Text, type ToolOutput } from "@floppy/core";
+import { definePlugin, readJsonFile, T, tr, writeJsonAtomic, type SettingDef, type Text, type ToolOutput, type Context } from "@floppy/core";
 import { checkActionUrl, parseHello, parseMessage, type Message } from "./protocol.ts";
 import { startInbox } from "./server.ts";
 
@@ -28,13 +27,13 @@ interface AppsFile { apps: Record<string, KnownApp> }
 /** Une annonce gardée pour « ouvre-la ». */
 export interface Recent { app: string; name: string; text: Text; label: Text; url: string; at: number }
 
-export type Opener = (url: string) => Promise<void>;
+export type Opener = (url: string, spawn: Context["spawn"]) => Promise<void>;
 
-/** Ouvre sans shell : le lien ne peut pas devenir une commande. Windows : rundll32 url.dll ; ailleurs : open / xdg-open. */
-export const defaultOpener: Opener = (url) => new Promise((ok, ko) => {
+/** Ouvre sans shell, par ctx.spawn (gardé ouvert) : le lien ne peut pas devenir une commande. Windows : rundll32 url.dll ; ailleurs : open / xdg-open. */
+export const defaultOpener: Opener = (url, spawn) => new Promise((ok, ko) => {
   const [cmd, args] = process.platform === "win32" ? ["rundll32.exe", ["url.dll,FileProtocolHandler", url]]
     : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
-  const p = spawn(cmd, args, { detached: true, stdio: "ignore", windowsHide: true });
+  const p = spawn(cmd, args, { keep: true, windowsHide: true });
   p.once("error", ko);
   p.once("spawn", () => { p.unref(); ok(); });
 });
@@ -263,7 +262,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
             if (!r) return { status: "failed", text: T("Je n'ai pas d'annonce à ouvrir.", "I have no announcement to open.") };
             const url = usable(r);
             if (!url) return { status: "failed", text: T(`${r.name} n'est plus autorisée à faire ouvrir des liens.`, `${r.name} is no longer allowed to open links.`) };
-            try { await opener(url); } catch (e) {
+            try { await opener(url, ctx.spawn); } catch (e) {
               const m = e instanceof Error ? e.message : String(e);
               return { status: "failed", text: T(`Le lien ne s'est pas ouvert : ${m}`, `The link did not open: ${m}`) };
             }

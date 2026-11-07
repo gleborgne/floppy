@@ -1,23 +1,24 @@
 // Jeton d'accès Azure via la CLI `az`, gardé en mémoire et renouvelé 5 minutes avant la fin.
 // Le jeton n'est jamais écrit dans les journaux.
-import { execFile } from "node:child_process";
-import { T, TextError } from "@floppy/core";
+import { T, TextError, type Context } from "@floppy/core";
 
 const MARGE_MS = 5 * 60_000;
 
-/** Lance `az account get-access-token`. Arguments fixes : seule la ressource vient de la config (déjà validée). */
-function runAz(resource: string): Promise<string> {
-  const win = process.platform === "win32";
-  return new Promise((ok, ko) => {
-    execFile(win ? "az.cmd" : "az", ["account", "get-access-token", "--resource", resource, "-o", "json"],
-      { shell: win, windowsHide: true, timeout: 60_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-        if (err) {
-          const why = String(stderr || err.message).trim().split("\n").pop();
-          ko(new TextError(T(`az a échoué : ${why}`, `az failed: ${why}`)));
-        }
-        else ok(stdout);
-      });
-  });
+/**
+ * Lance `az account get-access-token` par ctx.exec. Arguments fixes : seule la ressource vient de la config (déjà validée).
+ * Windows : az est un script .cmd, lancé par cmd.exe (Node refuse un .cmd sans shell).
+ */
+export async function runAz(resource: string, exec: Context["exec"]): Promise<string> {
+  const args = ["account", "get-access-token", "--resource", resource, "-o", "json"];
+  try {
+    const r = process.platform === "win32"
+      ? await exec("cmd.exe", ["/d", "/s", "/c", `"az ${args.map((a) => `"${a.replace(/"/g, "")}"`).join(" ")}"`], { verbatim: true, timeoutMs: 60_000, maxBuffer: 1024 * 1024 })
+      : await exec("az", args, { timeoutMs: 60_000, maxBuffer: 1024 * 1024 });
+    return r.stdout;
+  } catch (e) {
+    const why = String(e instanceof Error ? e.message : e).trim().split("\n").pop();
+    throw new TextError(T(`az a échoué : ${why}`, `az failed: ${why}`));
+  }
 }
 
 export function parseAzToken(json: string): { token: string; expiresAt: number } {
@@ -31,7 +32,7 @@ export function parseAzToken(json: string): { token: string; expiresAt: number }
 }
 
 /** Renvoie une fonction qui donne un jeton valide (en le renouvelant au besoin). */
-export function azTokenProvider(resource: string, run: (r: string) => Promise<string> = runAz): () => Promise<string> {
+export function azTokenProvider(resource: string, run: (r: string) => Promise<string>): () => Promise<string> {
   let cache: { token: string; expiresAt: number } | undefined;
   let pending: Promise<string> | undefined;
   return async () => {

@@ -2,12 +2,11 @@
 // dans <home>/orca-plugin, puis le charge dans Orca comme dossier de développement.
 // Orca demande un accord avant de lancer du code. Le clic de l'utilisateur sur le bouton est cet accord : on le donne
 // seulement si Orca décrit exactement l'accès prévu (lire l'état des agents), sinon on s'arrête et on explique.
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { T, type OpResult } from "@floppy/core";
+import { T, type Context, type OpResult } from "@floppy/core";
 import { resolveExe, spawnSpec } from "./index.ts";
 
 /** Le plugin Orca livré avec Floppy. */
@@ -18,16 +17,15 @@ export const ORCA_PLUGIN_KEY = "local.floppy";
 export interface OrcaReply { code: number; json?: { ok?: boolean; result?: unknown; error?: { code?: string; message?: string; data?: unknown } } }
 export type OrcaRawCli = (args: string[]) => Promise<OrcaReply>;
 
-export const rawCli = (command: string): OrcaRawCli => (args) =>
-  new Promise((resolve) => {
-    const spec = spawnSpec(resolveExe(command), [...args, "--json"]);
-    execFile(spec.file, spec.args, { timeout: 30000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, windowsVerbatimArguments: spec.verbatim }, (err, stdout) => {
-      const code = err ? (typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : -1) : 0;
-      let json: OrcaReply["json"];
-      try { json = JSON.parse(stdout) as OrcaReply["json"]; } catch { /* pas de JSON : Orca absent ou fermé */ }
-      resolve({ code, json });
-    });
-  });
+export const rawCli = (command: string, exec: Context["exec"]): OrcaRawCli => async (args) => {
+  const spec = spawnSpec(resolveExe(command), [...args, "--json"]);
+  let r: { stdout: string; code: number };
+  try { r = await exec(spec.file, spec.args, { timeoutMs: 30000, maxBuffer: 4 * 1024 * 1024, verbatim: spec.verbatim, allowFailure: true }); }
+  catch { return { code: -1 }; } // Orca absent, ou délai dépassé
+  let json: OrcaReply["json"];
+  try { json = JSON.parse(r.stdout) as OrcaReply["json"]; } catch { /* pas de JSON : Orca absent ou fermé */ }
+  return { code: r.code, json };
+};
 
 /** Empreinte du contenu d'un dossier (fichiers et chemins), pour savoir si la copie est à jour. */
 export function folderHash(dir: string): string | undefined {

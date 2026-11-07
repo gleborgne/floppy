@@ -181,6 +181,7 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
         audit: (r) => ctx.audit.write({ ...r, session: id }),
         ask: (req) => ask(s, req),
         lang: lang(),
+        spawn: ctx.spawn,
       };
       const useWeb = agent === "claude" && mode === "reglages" && web();
       const system = systemPrompt(mode, ctx.assistant.name, pluginsDir, useWeb, lang());
@@ -243,7 +244,7 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
       }
       const exeArgs = pick === "claude" ? cfg.claudeExeArgs : pick === "codex" ? cfg.codexExeArgs : cfg.agyExeArgs;
       ctx.audit.write({ kind: "coder.review", agent: pick, chars: prompt.length });
-      const text = await runReview({ agent: pick, exe: e[pick]!, exeArgs, prompt, workdir: ctx.workspace("revues"), ...(pick === "claude" ? { model: model() } : {}), timeoutMs: cfg.review_timeout_s * 1000, ...(signal ? { signal } : {}) });
+      const text = await runReview({ agent: pick, exe: e[pick]!, exeArgs, prompt, workdir: ctx.workspace("revues"), spawn: ctx.spawn, ...(pick === "claude" ? { model: model() } : {}), timeoutMs: cfg.review_timeout_s * 1000, ...(signal ? { signal } : {}) });
       return { agent: pick, text };
     },
 

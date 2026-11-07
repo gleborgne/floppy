@@ -48,6 +48,20 @@ describe("frontières entre plugins", () => {
     expect(bad).toEqual([]);
   });
 
+  it("un plugin lance ses programmes par ctx.spawn / ctx.exec, jamais par node:child_process (src/)", () => {
+    // ctx vérifie permissions.exec, ferme le programme avec le plugin et le note pour l'arrêt forcé.
+    // Un import de type seulement (`import type { ChildProcess }`) est permis.
+    const bad: string[] = [];
+    const valueImport = /^[ \t]*(?:import|export)[ \t]+(?!type\b)[^;]*?\bfrom[ \t]*["'](?:node:)?child_process["']/m;
+    // Chargement à l'exécution (`await import(…)`, `require(…)`) ; `import("node:child_process").ChildProcess` est un type.
+    const dynamic = /\b(?:await\s+import|require)\s*\(\s*["'](?:node:)?child_process["']/;
+    for (const f of walk(PLUGINS, /\.(ts|js|mjs)$/).filter((f) => relative(PLUGINS, f).split(sep)[2] === "src")) {
+      const src = readFileSync(f, "utf8");
+      if (valueImport.test(src) || dynamic.test(src)) bad.push(relative(ROOT, f));
+    }
+    expect(bad).toEqual([]);
+  });
+
   it("l'app de bureau n'importe pas les plugins par chemin relatif (hors assemblage)", () => {
     const EXEMPT = new Set([join(ROOT, "apps", "desktop", "src", "kernel.ts")]);
     const bad: string[] = [];

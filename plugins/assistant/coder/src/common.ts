@@ -2,8 +2,9 @@
 import { existsSync, realpathSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
-import { findExe, type CoderEvent } from "@floppy/core";
+import { findExe, type CoderEvent, type Context } from "@floppy/core";
 
+import { agentEnv } from "@floppy/agent-cli";
 /** Événement sans l'id de session : la session l'ajoute. */
 export type RunnerEvent = CoderEvent extends infer E ? (E extends unknown ? Omit<E, "sessionId"> : never) : never;
 
@@ -16,6 +17,8 @@ export interface RunnerDeps {
   ask(req: { tool: string; description: string; input?: unknown; diff?: { path: string; before?: string; after?: string } }): Promise<boolean>;
   /** Langue des messages montrés à l'utilisateur (langue de l'assistant ; défaut : français). */
   lang?: string;
+  /** ctx.spawn du plugin : programme permis par le manifeste, tué à l'arrêt du plugin. */
+  spawn: Context["spawn"];
 }
 
 /** Texte dans la langue demandée (français par défaut). */
@@ -23,12 +26,9 @@ export function say(lang: string | undefined, fr: string, en: string): string {
   return lang === "en" ? en : fr;
 }
 
-/** Environnement propre : pas de variables d'une session Claude parente ni d'Orca. */
+/** Environnement propre : pas de variables d'une session Claude parente ni d'Orca (voir @floppy/agent-cli). */
 export function cleanEnv(extra: Record<string, string>): Record<string, string> {
-  const keep = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|USERPROFILE|USERNAME|USERDOMAIN|HOMEDRIVE|HOMEPATH|APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|COMMONPROGRAMFILES|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|COMPUTERNAME|LANG|HTTP_PROXY|HTTPS_PROXY|NO_PROXY)$/i;
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && keep.test(k)) env[k] = v;
-  return { ...env, ...extra };
+  return agentEnv(extra);
 }
 
 export { findExe };

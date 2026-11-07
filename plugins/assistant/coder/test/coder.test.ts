@@ -6,7 +6,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Kernel, MemoryAudit, type CoderEvent, type CoderService, type CoderAgent, type CoderMode } from "@floppy/core";
 import tools from "@floppy/plugin-tools";
-import coder, { copyKit } from "../src/index.ts";
+import realCoder, { copyKit } from "../src/index.ts";
 import { systemPrompt } from "../src/prompts.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -16,6 +16,8 @@ const fakeCodex = join(here, "fixtures", "fake-codex.mjs");
 const home = mkdtempSync(join(tmpdir(), "coder-"));
 const pluginsDir = join(home, "plugins");
 const audit = new MemoryAudit();
+// Les faux agents sont des scripts Node : on permet « node » à ce plugin, le temps des tests (ctx.spawn le vérifie).
+const coder = { ...realCoder, manifest: { ...realCoder.manifest, permissions: { ...realCoder.manifest.permissions, exec: [...(realCoder.manifest.permissions?.exec ?? []), "node"] } } };
 const k = new Kernel({ logger: () => {}, audit, plugins: [tools, coder], home });
 const events: CoderEvent[] = [];
 let coderSvc: CoderService;

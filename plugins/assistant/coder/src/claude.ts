@@ -1,6 +1,6 @@
 // Agent Claude Code : un processus par conversation (stream-json en entrée et en sortie), gardé pour plusieurs tours.
 // Après un arrêt (stop), le tour suivant relance un processus avec --resume <session_id>.
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { killTree, type CoderMode } from "@floppy/core";
 import { cleanEnv, say, short, signInMessage, SIGN_IN_RE, type Runner, type RunnerDeps } from "./common.ts";
@@ -70,10 +70,10 @@ export class ClaudeRunner implements Runner {
 
   private spawnProc(): Proc {
     const args = claudeArgs(this.o, this.claudeSession);
-    const p = spawn(this.o.exe, [...(this.o.exeArgs ?? []), ...args], {
+    const p = this.d.spawn(this.o.exe, [...(this.o.exeArgs ?? []), ...args], {
       cwd: this.o.cwd, windowsHide: true,
       env: cleanEnv({ FLOPPY_MCP_TOKEN: this.o.mcpToken, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", DISABLE_AUTOUPDATER: "1" }),
-    });
+    }) as ChildProcessWithoutNullStreams;
     const proc: Proc = { p, stderr: "" };
     this.proc = proc;
     p.stdin.on("error", () => {});

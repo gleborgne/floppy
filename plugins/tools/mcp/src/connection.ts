@@ -1,13 +1,12 @@
 // Une connexion = un connecteur ouvert : serveur MCP (stdio ou HTTP) ou commande transformée en outil.
 // Ouvrir, fermer et filtrer les outils se font à chaud, pour un seul connecteur à la fois.
-import { execFile } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { errorText, imageLogo, T, TextError, tr, type Context, type Level, type Rule, type Text, type ToolDef, type ToolResult } from "@floppy/core";
 import { resolveLevel, type LevelSetting } from "./levels.ts";
-import { azTokenProvider, bearerFetch } from "./azcli.ts";
+import { azTokenProvider, bearerFetch, runAz } from "./azcli.ts";
 
 /** Ce qu'un connecteur est, une fois les valeurs de la config et de l'utilisateur fusionnées. */
 export interface Spec {
@@ -87,7 +86,7 @@ export function fillArgs(args: string[], texte: string): string[] {
   return args.map((a) => a.split("{texte}").join(texte));
 }
 
-function commandTool(spec: Spec, id: string): { tool: RawTool; run: Opened["call"] } {
+function commandTool(spec: Spec, id: string, exec: Context["exec"] | undefined): { tool: RawTool; run: Opened["call"] } {
   const name = toolNameOf(spec.label ?? id);
   const takesText = spec.args.some((a) => a.includes("{texte}"));
   const timeout = Math.max(1, spec.timeoutS ?? 30) * 1000;
@@ -103,23 +102,27 @@ function commandTool(spec: Spec, id: string): { tool: RawTool; run: Opened["call
     const texte = typeof args.texte === "string" ? args.texte : "";
     const bad = texteError(spec.args, texte);
     if (bad) return ok({ status: "failed", text: bad });
-    execFile(spec.command!, fillArgs(spec.args, texte), {
-      timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true, shell: false,
-      ...(spec.cwd ? { cwd: spec.cwd } : {}), ...(signal ? { signal } : {}), encoding: "utf8",
-    }, (err, stdout, stderr) => {
-      const out = clipOut(`${stdout}${stderr ? `${stdout ? "\n" : ""}${stderr}` : ""}`);
-      if (!err) return ok({ status: "done", text: out || "(pas de sortie)" });
-      const e = err as NodeJS.ErrnoException & { killed?: boolean };
-      if (e.killed) return ok({ status: "failed", text: `Délai dépassé (${timeout / 1000} s).${out ? `\n${out}` : ""}` });
-      ok({ status: "failed", text: out || `La commande a échoué : ${e.message}` });
+    if (!exec) return ok({ status: "failed", text: "Commande indisponible (plugin arrêté)." });
+    // Par ctx.exec : sans shell, avec un délai, arrêtée avec le plugin.
+    exec(spec.command!, fillArgs(spec.args, texte), {
+      timeoutMs: timeout, maxBuffer: 4 * 1024 * 1024, allowFailure: true,
+      ...(spec.cwd ? { cwd: spec.cwd } : {}), ...(signal ? { signal } : {}),
+    }).then((r) => {
+      const out = clipOut(`${r.stdout}${r.stderr ? `${r.stdout ? "\n" : ""}${r.stderr}` : ""}`);
+      if (r.code === 0) return ok({ status: "done", text: out || "(pas de sortie)" });
+      ok({ status: "failed", text: out || `La commande a échoué (code ${r.code}).` });
+    }, (e: unknown) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      ok({ status: "failed", text: /délai dépassé/.test(msg) ? `Délai dépassé (${timeout / 1000} s).` : `La commande a échoué : ${msg}` });
     });
   });
   return { tool, run };
 }
 
-function makeTransport(spec: Spec, secret: string | undefined, onStderr: (s: string) => void): Transport {
+function makeTransport(spec: Spec, secret: string | undefined, onStderr: (s: string) => void, exec: Context["exec"] | undefined): Transport {
   if (spec.url) {
-    const fetch = spec.auth?.type === "azcli" ? bearerFetch(azTokenProvider(spec.auth.resource)) : undefined;
+    const az = (r: string) => (exec ? runAz(r, exec) : Promise.reject(new TextError(T("az indisponible (plugin arrêté)", "az unavailable (plugin stopped)"))));
+    const fetch = spec.auth?.type === "azcli" ? bearerFetch(azTokenProvider(spec.auth.resource, az)) : undefined;
     const headers = { ...spec.headers, ...(spec.auth?.type === "token" && secret ? { Authorization: `Bearer ${secret}` } : {}) };
     return new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers }, ...(fetch ? { fetch } : {}) });
   }
@@ -140,17 +143,17 @@ export const CONNECT_TIMEOUT_MS = 30_000;
 /** Ouvre un connecteur (sans rien enregistrer dans le registre d'outils). */
 export async function open(
   id: string, spec: Spec, secret: string | undefined,
-  hooks: { onStderr?: (s: string) => void; onClose?: () => void; timeoutMs?: number } = {},
+  hooks: { onStderr?: (s: string) => void; onClose?: () => void; timeoutMs?: number; exec?: Context["exec"] } = {},
 ): Promise<Opened> {
   if (spec.kind === "command") {
     if (!spec.command) throw new TextError(T("commande manquante", "missing command"));
-    const { tool, run } = commandTool(spec, id);
+    const { tool, run } = commandTool(spec, id, hooks.exec);
     return { tools: [tool], call: run, close: async () => {} };
   }
   if (spec.auth?.type === "token" && !secret) throw new TextError(T("jeton manquant", "missing token"));
   const c = new Client({ name: "floppy", version: "0.1.0" });
   let closing = false;
-  const transport = makeTransport(spec, secret, hooks.onStderr ?? (() => {}));
+  const transport = makeTransport(spec, secret, hooks.onStderr ?? (() => {}), hooks.exec);
   c.onclose = () => { if (!closing) hooks.onClose?.(); };
   const ms = hooks.timeoutMs ?? CONNECT_TIMEOUT_MS;
   let timer: NodeJS.Timeout | undefined;
@@ -274,6 +277,7 @@ Note : ${note}` : t.description,
       const spec = get.spec();
       let o: Opened | undefined;
       o = await open(id, spec, secretFor(ctx, id, spec), {
+        exec: ctx.exec,
         onStderr: (s) => { stderrTail = (stderrTail + s).slice(-2000); },
         onClose: () => {
           if (!o || opened !== o) return;

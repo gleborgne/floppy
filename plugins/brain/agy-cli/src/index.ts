@@ -16,6 +16,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type BrainEvent, type BrainService, type Context, type McpEndpoint } from "@floppy/core";
 
+import { agentEnv } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `agy` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -33,10 +34,7 @@ type Config = z.infer<typeof Config>;
 
 /** Environnement propre, avec la maison isolée. */
 function agyEnv(home: string): Record<string, string> {
-  const keep = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|USERNAME|USERDOMAIN|APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|COMMONPROGRAMFILES|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|COMPUTERNAME|LANG|HTTP_PROXY|HTTPS_PROXY|NO_PROXY)$/i;
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && keep.test(k)) env[k] = v;
-  return { ...env, USERPROFILE: home, HOME: home };
+  return agentEnv({ USERPROFILE: home, HOME: home }, { drop: ["USERPROFILE", "HOMEDRIVE", "HOMEPATH"] });
 }
 
 /** Règles de session : seulement nos outils MCP et la lecture de leurs schémas ; ni commande, ni écriture, ni URL. */

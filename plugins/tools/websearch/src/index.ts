@@ -9,15 +9,15 @@
 //   en ouvrir une (capacité `panel`).
 // - Le contenu du web est une donnée, pas une consigne : le CLI le reçoit avec cette règle, et le cerveau ne reçoit
 //   qu'un résumé et une liste de liens.
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { definePlugin, findExe, killTree, tr, type Text } from "@floppy/core";
+import { definePlugin, findExe, tr, type Text, type Context } from "@floppy/core";
 import { CLAUDE } from "./logo.ts";
 
+import { parseModelJson } from "@floppy/agent-cli";
 const t = (fr: string, en: string): Text => ({ fr, en });
 
 export const Config = z.object({
@@ -40,7 +40,7 @@ export interface SearchResult {
 }
 
 /** `lang` : langue de l'assistant (langue de la réponse et des résumés). */
-export type Searcher = (question: string, cfg: Config, workdir: string, signal?: AbortSignal, lang?: string) => Promise<SearchResult>;
+export type Searcher = (question: string, cfg: Config, workdir: string, signal: AbortSignal | undefined, lang: string, exec: Context["exec"]) => Promise<SearchResult>;
 
 export const SYSTEM = [
   "Tu es un outil de recherche web pour un assistant vocal francophone.",
@@ -84,10 +84,9 @@ function cleanEnv(): Record<string, string> {
 
 /** Trouve l'objet JSON dans une réponse (avec ou sans ```json). */
 export function parseResult(text: string): SearchResult {
-  const s = text.replace(/```(json)?/g, "");
-  const a = s.indexOf("{"), b = s.lastIndexOf("}");
-  if (a < 0 || b <= a) throw new Error("réponse sans JSON");
-  const j = JSON.parse(s.slice(a, b + 1)) as Partial<SearchResult>;
+  const v = parseModelJson(text);
+  if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("réponse sans JSON");
+  const j = v as Partial<SearchResult>;
   const resultats = (Array.isArray(j.resultats) ? j.resultats : [])
     .filter((r) => r && typeof r.url === "string" && /^https?:\/\//i.test(r.url))
     .slice(0, 5)
@@ -95,22 +94,9 @@ export function parseResult(text: string): SearchResult {
   return { reponse: String(j.reponse ?? "").slice(0, 600), resultats };
 }
 
-function run(exe: string, args: string[], cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
-  return new Promise((ok, ko) => {
-    const p = spawn(exe, args, { cwd, windowsHide: true, env: cleanEnv(), stdio: ["ignore", "pipe", "pipe"] });
-    let out = "", err = "";
-    p.stdout.on("data", (d) => { out += d; });
-    p.stderr.on("data", (d) => { err += d; });
-    const stop = () => { void killTree(p); };
-    const timer = setTimeout(() => { stop(); ko(new Error("délai dépassé")); }, timeoutMs);
-    signal?.addEventListener("abort", () => { stop(); ko(new Error("annulé")); }, { once: true });
-    p.once("error", (e) => { clearTimeout(timer); ko(e); });
-    p.once("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) ok(out);
-      else ko(new Error(`${exe.split(/[\\/]/).pop()} s'est arrêté (code ${code}) : ${err.trim().split("\n").slice(-2).join(" ").slice(0, 300)}`));
-    });
-  });
+/** Lance le CLI par ctx.exec : environnement réduit, délai, arrêté avec le plugin ou à l'annulation. */
+async function run(exec: Context["exec"], exe: string, args: string[], cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+  return (await exec(exe, args, { cwd, env: cleanEnv(), timeoutMs, ...(signal ? { signal } : {}) })).stdout;
 }
 
 /** Consignes + date du jour (sinon le modèle se trompe de jour : « demain », « ce week-end »). */
@@ -125,7 +111,7 @@ Today is ${d}.`;
 Nous sommes le ${d}.`;
 }
 
-export const cliSearcher: Searcher = async (question, cfg, workdir, signal, lang = "fr") => {
+export const cliSearcher: Searcher = async (question, cfg, workdir, signal, lang = "fr", exec) => {
   mkdirSync(workdir, { recursive: true });
   const sys = systemFor(new Date(), lang);
   const q = lang === "en" ? `Question: ${question}` : `Question : ${question}`;
@@ -133,7 +119,7 @@ export const cliSearcher: Searcher = async (question, cfg, workdir, signal, lang
     const exe = cfg.claudeExe ?? findExe("claude");
     if (!exe) throw new Error("Claude Code n'est pas installé");
     const tools = cfg.readPages ? "WebSearch,WebFetch" : "WebSearch";
-    const out = await run(exe, [
+    const out = await run(exec, exe, [
       "-p", q, "--output-format", "json", "--model", cfg.claudeModel,
       "--tools", tools, "--allowedTools", tools, "--permission-mode", "dontAsk",
       "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "project",
@@ -149,7 +135,7 @@ export const cliSearcher: Searcher = async (question, cfg, workdir, signal, lang
   const schema = join(workdir, `schema-${id}.json`), outFile = join(workdir, `out-${id}.txt`);
   writeFileSync(schema, JSON.stringify(SCHEMA));
   try {
-    await run(exe, [
+    await run(exec, exe, [
       "--search", "exec", "--ephemeral", "-s", "read-only", "--skip-git-repo-check",
       // « read-only » laisse lancer des commandes de lecture : on retire le shell (mêmes surcharges que l'assistant des réglages).
       "-c", "features.shell_tool=false", "-c", "features.unified_exec=false",
@@ -238,7 +224,7 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
           f.provide("search", {
             label: cfg.engine === "codex" ? "Recherche Codex" : "Recherche Claude", cloud: true,
             async search(q, opts) {
-              const r = await searcher(q, cfg, workdir, opts?.signal, ctx.assistant.language);
+              const r = await searcher(q, cfg, workdir, opts?.signal, ctx.assistant.language, ctx.exec);
               const hits = r.resultats.map((x) => ({ titre: x.titre, url: x.url, resume: x.resume || undefined, source: x.source || undefined }));
               return opts?.max ? hits.slice(0, opts.max) : hits;
             },
@@ -257,7 +243,7 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
           const t0 = Date.now();
           let r: SearchResult;
           try {
-            r = await searcher(question, cfg, workdir, meta.signal, ctx.assistant.language);
+            r = await searcher(question, cfg, workdir, meta.signal, ctx.assistant.language, ctx.exec);
           } catch (e) {
             return { status: "failed", text: `La recherche n'a pas marché : ${e instanceof Error ? e.message : String(e)}` };
           }

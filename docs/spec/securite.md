@@ -71,7 +71,7 @@ flowchart LR
 | Garde-fou | Règle |
 |---|---|
 | Manifeste | Validé par un schéma zod (`manifestError`). Invalide : l'entrée démarre en **erreur visible**. Un champ inconnu dans `permissions` est refusé. |
-| `permissions.exec` | `ctx.spawn` lance seulement un programme listé (nom sans dossier ni extension, ou `"*"`). Listes actuelles : `coder` et `websearch` (claude, codex), `brain-claude-cli` (claude), `llm-llamacpp` (llama-server), `tts-audiocpp` (audiocpp_server), `tts-system` (powershell, say, espeak-ng), `orca` (orca), `browser` (rundll32, open, xdg-open), `tools` (`*` : les commandes de l'utilisateur). |
+| `permissions.exec` | `ctx.spawn` lance seulement un programme listé (nom sans dossier ni extension, ou `"*"`). Listes actuelles : `coder` et `websearch` (claude, codex), `brain-claude-cli` (claude), `llm-llamacpp` (llama-server), `tts-audiocpp` (audiocpp_server), `tts-system` (powershell, say, espeak-ng), `orca` (orca, cmd pour son script `.cmd`), `browser` (`*` : le navigateur par défaut, ou celui choisi dans la config), `inbox` (rundll32, open, xdg-open), `sessions` (wt, cmd, osascript, x-terminal-emulator), `tools` (`*` : les commandes de l'utilisateur). |
 | Réglages à la voix | `change` et `undo` suivent les mêmes règles de risque : `cli` refusé à la voix, `ask` = accord (toujours demandé). Annuler un réglage `ask` redemande l'accord. |
 | Identité d'un corps | Donnée par le **transport** : `attach(transport, { id, name, managed })`. Le `hello` du client ne choisit ni l'id ni `managed` (sans id de confiance : id aléatoire). |
 | Outils corps | L'id d'un appel (`callId`) est un UUID aléatoire. Un `tool.result` est accepté seulement du corps à qui l'appel a été envoyé. |
@@ -91,6 +91,6 @@ Un plugin écrit par quelqu'un d'autre (dossier avec `floppy-plugin.json`) n'est
 - Exécution : processus Node à part, `--permission` (lecture de son seul dossier, ni écriture ni programme), aucun module importable, aucune variable d'environnement, `fetch` fait par le noyau vers les seuls hôtes de `permissions.net`. Chaque message du processus est vérifié par le noyau.
 - Limite : Node 24 ne bride pas le réseau par `--permission` ; il est fermé par le retrait des modules, le remplacement de `fetch` et les contrôles.
 
-### Limite connue : lancements directs
+### Tous les lancements passent par le noyau
 
-`ctx.spawn` applique `permissions.exec`, mais **plusieurs plugins lancent encore un processus directement** (`spawn` ou `execFile` de Node), sans passer par lui : `coder` (CLI Claude et Codex), `browser`, `websearch`, `orca`, et dans `tools` le connecteur « commande » et la connexion Azure CLI (`azcli`). Pour ces plugins, la liste `permissions.exec` est **déclarative** : rien ne l'impose. À corriger plus tard : faire passer ces lancements par `ctx.spawn`.
+Un plugin du dépôt lance un programme seulement par `ctx.spawn` (processus qui dure, fermé avec le plugin ; `keep: true` pour un programme ouvert pour l'utilisateur, comme un navigateur ou un terminal, qui reste après Floppy) ou par `ctx.exec` (commande courte, toujours avec un délai, 30 s par défaut). Les deux appliquent `permissions.exec`. Le test `packages/core/test/boundaries.test.ts` refuse tout import de `node:child_process` dans `plugins/*/*/src` (un import de type seulement reste permis). `permissions.exec` est donc **imposé** pour tous les plugins du dépôt.

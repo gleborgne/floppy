@@ -1,7 +1,7 @@
 // Agent Codex : `codex app-server` (JSON-RPC sur stdin/stdout), un fil (thread) par conversation.
 // Les demandes d'accord de Codex (modifier un fichier, lancer une commande) deviennent des demandes à l'utilisateur.
 // Port de CodexBrain (prototypes/cli-brain/src/brains.ts).
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { killTree, type CoderMode } from "@floppy/core";
 import { cleanEnv, isInside, say, short, signInMessage, SIGN_IN_RE, type Runner, type RunnerDeps } from "./common.ts";
 
+import { codexMcpOverrides, userCodexMcpNames } from "@floppy/agent-cli";
 export interface CodexOptions {
   exe: string;
   exeArgs?: string[];
@@ -22,26 +23,10 @@ export interface CodexOptions {
   pluginsDir: string;
 }
 
-/** Serveurs MCP déclarés dans ~/.codex/config.toml (lu seulement) : on les coupe par des surcharges -c. */
-function userCodexMcpNames(): string[] {
-  try {
-    const toml = readFileSync(join(homedir(), ".codex", "config.toml"), "utf8");
-    return [...toml.matchAll(/^\[mcp_servers\.([^.\]\s]+)\]/gm)].map((m) => m[1]!.replace(/^["']|["']$/g, ""));
-  } catch { return []; }
-}
-
 export function codexOverrides(o: Pick<CodexOptions, "mode" | "mcpUrl" | "mcpTools">, userMcp: string[] = userCodexMcpNames()): string[] {
-  const off = ["plugins", "apps", "hooks", "browser_use", "browser_use_external", "computer_use",
-    "image_generation", "multi_agent", "view_image", "goals", "tool_suggest", "skill_search", "sleep_tool", "memories",
-    "in_app_browser", "skill_mcp_dependency_install", "workspace_dependencies", "remote_plugin"];
   // Mode réglages : pas de shell du tout. Mode plugin : le shell reste, mais chaque commande demande l'accord.
-  if (o.mode === "reglages") off.push("shell_tool", "unified_exec");
-  const c: string[] = [];
-  for (const f of off) c.push("-c", `features.${f}=false`);
-  for (const n of userMcp) c.push("-c", `mcp_servers.${n}.enabled=false`);
   // Nos outils passent sans question côté Codex : le noyau tient lui-même l'accord (réglages) ou l'outil est sans risque.
-  const approve = o.mcpTools.map((t) => `${t}={approval_mode="approve"}`).join(",");
-  c.push("-c", `mcp_servers.floppy={url="${o.mcpUrl}",bearer_token_env_var="FLOPPY_MCP_TOKEN",tools={${approve}}}`);
+  const c = codexMcpOverrides({ mcpUrl: o.mcpUrl, tools: o.mcpTools, userMcp, alsoOff: o.mode === "reglages" ? ["shell_tool", "unified_exec"] : [] });
   c.push("-c", 'web_search="disabled"',
     "-c", "skills.include_instructions=false", "-c", "tools.update_plan.enabled=false",
     "-c", "tools.experimental_request_user_input.enabled=false", "-c", "features.multi_agent_v2=false", "-c", "project_doc_max_bytes=32768",
@@ -84,9 +69,9 @@ export class CodexRunner implements Runner {
 
   private async boot(): Promise<string> {
     const o = this.o;
-    const p = spawn(o.exe, [...(o.exeArgs ?? []), "app-server", ...codexOverrides(o)], {
+    const p = this.d.spawn(o.exe, [...(o.exeArgs ?? []), "app-server", ...codexOverrides(o)], {
       cwd: o.cwd, windowsHide: true, env: cleanEnv({ FLOPPY_MCP_TOKEN: o.mcpToken, RUST_LOG: "warn" }),
-    });
+    }) as ChildProcessWithoutNullStreams;
     this.p = p;
     p.stdin.on("error", () => {});
     p.stderr.on("data", (b) => { this.stderr = (this.stderr + String(b)).slice(-2000); this.d.log("debug", `codex : ${String(b).slice(0, 300)}`); });

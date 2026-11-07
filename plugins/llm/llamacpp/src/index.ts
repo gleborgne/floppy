@@ -18,6 +18,7 @@ import { KNOWN_MODELS } from "./known-models.ts";
 import { searchHf, ggufNeeds } from "./hf.ts";
 import { scanGguf, scanFolders, scanOllama, ollamaDir, type FoundModel } from "./found.ts";
 
+import { parseModelJson } from "@floppy/agent-cli";
 const DEFAULT_ARGS = ["-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "--fit", "off", "-ngl", "99", "-np", "1"];
 
 /** Dossiers de modèles connus (LM Studio). Ceux de l'utilisateur s'ajoutent par le réglage « llm_local_dossiers ». */
@@ -708,9 +709,5 @@ export async function localComplete(baseURL: string, model: string, req: { syste
 
 /** JSON d'une réponse, même entouré de ``` ou de texte. */
 export function parseJsonLoose(text: string): unknown {
-  const t = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-  try { return JSON.parse(t); } catch { /* on cherche le premier bloc */ }
-  const m = t.match(/[\[{][\s\S]*[\]}]/);
-  if (!m) return undefined;
-  try { return JSON.parse(m[0]); } catch { return undefined; }
+  return parseModelJson(text);
 }

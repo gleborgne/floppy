@@ -8,12 +8,11 @@
 //   une phrase fixe qui désigne ce fichier : ce que l'utilisateur dit ne devient jamais une ligne de commande.
 //   Le nom du modèle est vérifié (lettres, chiffres, . _ : -). Le dossier donné doit exister.
 // - Le terminal est lancé détaché, sans shell quand c'est possible : il reste ouvert si Floppy s'arrête.
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
-import { definePlugin, findExe, type Text } from "@floppy/core";
+import { definePlugin, findExe, type Context, type Text } from "@floppy/core";
 
 const t = (fr: string, en: string): Text => ({ fr, en });
 
@@ -31,24 +30,25 @@ export type Agent = "claude" | "codex" | "antigravity";
 const NAMES: Record<Agent, string> = { claude: "Claude Code", codex: "Codex", antigravity: "Antigravity" };
 
 /** Lance `cmd args` dans un nouveau terminal, dans `dir`. Injecté dans les tests. */
-export type Launcher = (dir: string, title: string, cmd: string, args: string[]) => Promise<void>;
+export type Launcher = (dir: string, title: string, cmd: string, args: string[], spawn: Context["spawn"]) => Promise<void>;
 
 /** Citation pour un shell POSIX (macOS, Linux) : tout entre apostrophes. */
 const sh = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
-export const defaultLauncher: Launcher = (dir, title, cmd, args) => new Promise((ok, ko) => {
+/** Le terminal s'ouvre par ctx.spawn (gardé ouvert après Floppy, programme permis par le manifeste). */
+export const defaultLauncher: Launcher = (dir, title, cmd, args, spawn) => new Promise((ok, ko) => {
   let p;
   if (process.platform === "win32") {
     const wt = findExe("wt");
     // Windows Terminal : -d dossier, puis la commande (wt découpe sur « ; » : la phrase fixe n'en contient pas).
     p = wt
-      ? spawn(wt, ["-w", "new", "-d", dir, "--title", title, cmd, ...args], { detached: true, stdio: "ignore", windowsHide: false })
-      : spawn("cmd.exe", ["/c", "start", title, "/D", dir, cmd, ...args], { detached: true, stdio: "ignore", windowsHide: true });
+      ? spawn(wt, ["-w", "new", "-d", dir, "--title", title, cmd, ...args], { keep: true, windowsHide: false })
+      : spawn("cmd.exe", ["/c", "start", title, "/D", dir, cmd, ...args], { keep: true, windowsHide: true });
   } else if (process.platform === "darwin") {
     const line = `cd ${sh(dir)} && ${[cmd, ...args].map(sh).join(" ")}`;
-    p = spawn("osascript", ["-e", `tell application "Terminal" to do script ${JSON.stringify(line)}`, "-e", 'tell application "Terminal" to activate'], { detached: true, stdio: "ignore" });
+    p = spawn("osascript", ["-e", `tell application "Terminal" to do script ${JSON.stringify(line)}`, "-e", 'tell application "Terminal" to activate'], { keep: true });
   } else {
-    p = spawn("x-terminal-emulator", ["-e", cmd, ...args], { cwd: dir, detached: true, stdio: "ignore" });
+    p = spawn("x-terminal-emulator", ["-e", cmd, ...args], { cwd: dir, keep: true });
   }
   p.once("error", ko);
   p.once("spawn", () => { p.unref(); ok(); });
@@ -82,7 +82,7 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
       version: "0.1.0",
       licence: "MIT",
       description: "Ouvre une session Claude Code, Codex ou Antigravity dans un terminal, sur une consigne dictée.",
-      permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["sessions", "Documents/Floppy"] },
+      permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["workspaces/sessions"] },
       addable: {
         section: "cerveau",
         label: t("Sessions d'agent", "Agent sessions"),
@@ -155,7 +155,7 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
           writeFileSync(file, `${consigne}\n`, "utf8");
           const prompt = startPrompt(file, ctx.assistant.language);
           try {
-            await launcher(dir, `Floppy · ${NAMES[agent]}`, exe, cliArgs(agent, model, prompt));
+            await launcher(dir, `Floppy · ${NAMES[agent]}`, exe, cliArgs(agent, model, prompt), ctx.spawn);
           } catch (e) {
             return { status: "failed", text: `Le terminal ne s'est pas ouvert : ${e instanceof Error ? e.message : String(e)}` };
           }

@@ -5,6 +5,7 @@
 // - Les modèles de floppy.yml (`models`) sont la base ; l'utilisateur en ajoute, modifie, désactive, supprime
 //   (gardé dans <home>/items/<id>.json).
 import { z } from "zod";
+import { parseModelJson } from "@floppy/agent-cli";
 import {
   definePlugin, SECRET_SET, T, TextError, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text,
 } from "@floppy/core";
@@ -66,12 +67,9 @@ function clean(v: Record<string, unknown>): Values {
 
 /** Trouve le JSON dans un texte (avec ou sans ```json, avec ou sans texte autour). */
 function parseJson(text: string): unknown {
-  const s = text.replace(/```(?:json)?/gi, "").trim();
-  try { return JSON.parse(s); } catch { /* texte autour */ }
-  const a = s.search(/[{[]/);
-  const b = Math.max(s.lastIndexOf("}"), s.lastIndexOf("]"));
-  if (a < 0 || b <= a) throw new Error("pas de JSON");
-  return JSON.parse(s.slice(a, b + 1));
+  const v = parseModelJson(text);
+  if (v === undefined) throw new Error("pas de JSON");
+  return v;
 }
 
 function hostOf(url: string): string {

@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type BrainEvent, type BrainService, type Context, type McpEndpoint } from "@floppy/core";
 
+import { agentEnv, codexMcpOverrides, userCodexMcpNames } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `codex` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -35,31 +36,13 @@ type Config = z.infer<typeof Config>;
 
 /** Environnement propre : pas de variables d'une session parente. */
 function cleanEnv(extra: Record<string, string>): Record<string, string> {
-  const keep = /^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|TEMP|TMP|HOME|USERPROFILE|USERNAME|USERDOMAIN|HOMEDRIVE|HOMEPATH|APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432|COMMONPROGRAMFILES|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|COMPUTERNAME|LANG|CODEX_HOME|HTTP_PROXY|HTTPS_PROXY|NO_PROXY)$/i;
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && keep.test(k)) env[k] = v;
-  return { ...env, ...extra };
-}
-
-/** Serveurs MCP déclarés dans ~/.codex/config.toml (lu seulement) : on les coupe par des surcharges -c. */
-function userCodexMcpNames(): string[] {
-  try {
-    const toml = readFileSync(join(homedir(), ".codex", "config.toml"), "utf8");
-    return [...toml.matchAll(/^\[mcp_servers\.([^.\]\s]+)\]/gm)].map((m) => m[1]!.replace(/^["']|["']$/g, ""));
-  } catch { return []; }
+  return agentEnv(extra, { also: ["HOME", "CODEX_HOME"] });
 }
 
 /** Surcharges -c : rien d'autre que le serveur MCP Floppy (pas de shell, de web, de plugins, de mémoire…). */
 export function codexOverrides(mcpUrl: string, tools: string[], userMcp: string[] = []): string[] {
-  const off = ["plugins", "apps", "hooks", "shell_tool", "unified_exec", "browser_use", "browser_use_external", "computer_use",
-    "image_generation", "multi_agent", "view_image", "goals", "tool_suggest", "skill_search", "sleep_tool", "memories",
-    "in_app_browser", "skill_mcp_dependency_install", "workspace_dependencies", "remote_plugin"];
-  const c: string[] = [];
-  for (const f of off) c.push("-c", `features.${f}=false`);
-  for (const n of userMcp) c.push("-c", `mcp_servers.${n}.enabled=false`);
-  // Nos outils passent sans question côté Codex : l'accord est tenu par le noyau (serveur MCP Floppy).
-  const approve = tools.map((t) => `${t}={approval_mode="approve"}`).join(",");
-  c.push("-c", `mcp_servers.floppy={url="${mcpUrl}",bearer_token_env_var="FLOPPY_MCP_TOKEN",tools={${approve}}}`);
+  // Pas de shell. Nos outils passent sans question côté Codex : l'accord est tenu par le noyau (serveur MCP Floppy).
+  const c = codexMcpOverrides({ mcpUrl, tools, userMcp, alsoOff: ["shell_tool", "unified_exec"] });
   c.push("-c", 'web_search="disabled"', "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
     "-c", "skills.include_instructions=false", "-c", "tools.update_plan.enabled=false",
     "-c", "tools.experimental_request_user_input.enabled=false", "-c", "features.multi_agent_v2=false", "-c", "project_doc_max_bytes=0",
