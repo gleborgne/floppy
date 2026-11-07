@@ -3,8 +3,9 @@
 // Générique : aucune app n'est connue d'avance (voir docs/spec/boite-aux-lettres.md).
 //
 // - Porte : HTTP sur 127.0.0.1, jeton aléatoire, port et jeton dans <home>/inbox.json (server.ts).
-// - Confiance : une app se présente (`hello`) ; elle reste « pas autorisée » tant que l'utilisateur ne l'a pas
-//   autorisée dans les Réglages (jamais à la voix : réglage de risque « cli »). Avant, ses messages sont refusés (403).
+// - Confiance : une app se présente (`hello`) ; Floppy montre une carte de confirmation (« J'ai reçu un message de X.
+//   Autoriser ses annonces ? »). Elle reste « pas autorisée » tant que l'utilisateur n'a pas cliqué Oui sur la carte
+//   ou choisi dans les Réglages (jamais à la voix). Avant, ses messages sont refusés (403).
 // - Mode : l'app choisit `voix` (lu à voix haute) ou `info` (affiché) ; l'utilisateur garde le dernier mot.
 // - Outils : annonces_recentes (lecture), ouvrir_annonce (write : accord avant d'ouvrir le lien).
 // - Les liens s'ouvrent sans shell, et seulement avec un schéma déclaré par l'app (vu par l'utilisateur) ou https.
@@ -20,7 +21,8 @@ type Config = z.infer<typeof Config>;
 
 /** Choix de l'utilisateur pour une app. */
 export type Trust = "non" | "info" | "app";
-export interface KnownApp { name: string; schemes: string[]; seen: string }
+/** `trust` : choix de l'utilisateur (gardé ici, la carte d'accord ne passe pas par les réglages) ; `asked` : carte déjà montrée. */
+export interface KnownApp { name: string; schemes: string[]; seen: string; trust?: Trust; asked?: boolean }
 interface AppsFile { apps: Record<string, KnownApp> }
 
 /** Une annonce gardée pour « ouvre-la ». */
@@ -91,7 +93,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
       const declareApp = (id: string): void => {
         const a = known[id]!;
         const key = settingKey(id);
-        const saved = ctx.settings.saved<Trust>(key);
+        const saved = a.trust ?? ctx.settings.saved<Trust>(key);
         trust.set(id, saved === "info" || saved === "app" ? saved : "non");
         const links = a.schemes.length ? a.schemes.map((s) => `${s}://`).join(", ") : "";
         const def: SettingDef = {
@@ -103,9 +105,48 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
             `“${a.name}” (${id}) can send announcements to Floppy.${links ? ` Links it can open: ${links} and https.` : ""} As the app asks: it chooses what is said aloud. Show only: nothing is said. Not allowed: its messages are ignored.`),
           options,
           get: () => trust.get(id) ?? "non",
-          set: (v) => { trust.set(id, v === "info" || v === "app" ? v : "non"); showStatus(); },
+          set: (v) => setTrust(id, v === "info" || v === "app" ? v : "non"),
         };
         ctx.settings.declare([def]);
+      };
+
+      const setTrust = (id: string, v: Trust): void => {
+        trust.set(id, v);
+        const a = known[id];
+        if (a && a.trust !== v) { a.trust = v; save(); }
+        showStatus();
+      };
+
+      /**
+       * Carte de confirmation (celle des accords, dans le chat et sur les corps) : « J'ai reçu un message de X.
+       * Autoriser ses annonces ? ». Une fois par app (et de nouveau si ses liens changent). Seul un clic autorise :
+       * un « oui » à la voix ne suffit pas (une app ne s'autorise pas par une phrase mal entendue). Pas de réponse : rien
+       * ne change, le réglage reste dans Connecteurs.
+       */
+      const ask = async (id: string): Promise<void> => {
+        const a = known[id];
+        if (!a || a.asked) return;
+        a.asked = true;
+        save();
+        const links = a.schemes.map((s) => `${s}://`).join(", ");
+        const d = await ctx.approvals.check({
+          tool: "inbox_autoriser", args: { app: id, schemes: a.schemes }, level: "write", override: "ask",
+          summary: T(
+            `J'ai reçu un message de ${a.name}. Autoriser ses annonces ?${links ? ` Elle pourra faire ouvrir ${links} et https.` : ""}`,
+            `I got a message from ${a.name}. Allow its announcements?${links ? ` It will be able to open ${links} and https.` : ""}`),
+        });
+        if (!ctx.alive || !known[id]) return;
+        const byVoice = (d.by ?? "").endsWith(":voix");
+        if (d.ok && !byVoice) {
+          setTrust(id, "app");
+          ctx.log("info", "Boîte aux lettres : application autorisée depuis la carte.", { app: id, par: d.by });
+          ctx.emit("initiative", { source: "inbox", text: tr(T(`${a.name} est autorisée.`, `${a.name} is allowed.`), ctx.assistant.language), importance: "normal", key: `inbox:autorisee:${id}` });
+        } else if (d.ok) {
+          ctx.emit("initiative", {
+            source: "inbox", importance: "important", key: `inbox:clic:${id}`,
+            text: tr(T(`Pour autoriser ${a.name}, il faut un clic : dans les réglages, Connecteurs, Annonces des applications.`, `To allow ${a.name}, a click is needed: in settings, Connectors, App announcements.`), ctx.assistant.language),
+          });
+        }
       };
 
       const showStatus = (): void => {
@@ -131,19 +172,19 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
           declareApp(h.app);
           ctx.log("info", "Boîte aux lettres : nouvelle application, en attente d'accord.", { app: h.app, nom: h.name, schemas: h.schemes });
           showStatus();
+          void ask(h.app);
           return 403;
         }
         const sameSchemes = cur.schemes.length === h.schemes.length && cur.schemes.every((s) => h.schemes.includes(s));
         if (!sameSchemes) {
           // De nouveaux liens n'ont pas été vus par l'utilisateur : l'accord est à redonner.
           cur.schemes = h.schemes;
-          if ((trust.get(h.app) ?? "non") !== "non") {
-            void ctx.settings.change(settingKey(h.app), "non", "inbox");
-            trust.set(h.app, "non");
-          }
+          cur.asked = false;
+          setTrust(h.app, "non");
           ctx.log("warn", "Boîte aux lettres : l'application a changé ses liens, accord à redonner.", { app: h.app, schemas: h.schemes });
         }
         if (cur.name !== h.name || !sameSchemes) { cur.name = h.name; save(); showStatus(); }
+        if (!sameSchemes) void ask(h.app);
         return (trust.get(h.app) ?? "non") === "non" ? 403 : 204;
       };
 

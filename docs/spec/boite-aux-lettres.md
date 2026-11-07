@@ -76,8 +76,19 @@ Elle est éteinte par défaut.
   - « Pas autorisée » : les messages sont refusés (403).
   - « Afficher seulement » : tout est affiché, rien n'est dit.
   - « Comme l'app le demande » : l'app choisit `voix` ou `info`.
-- Autoriser une app se fait dans la fenêtre ou par la CLI, jamais à la voix (risque `cli`). La couper à la voix est
-  permis.
+- **Carte de confirmation.** Au premier `hello`, Floppy montre la carte des accords, dans le chat et sur les corps :
+  « J'ai reçu un message de X. Autoriser ses annonces ? Elle pourra faire ouvrir x:// et https. »
+  - La carte passe par `ctx.approvals.check`, avec le niveau `write` et `override: "ask"`. Elle est donc toujours
+    montrée, même si les écritures sont acceptées d'office.
+  - Un clic sur Oui donne « Comme l'app le demande ».
+  - Un « oui » dit à la voix n'autorise pas. L'accord vient d'un corps `…:voix`. Floppy dit alors qu'il faut un clic,
+    et où le faire.
+  - Non, ou pas de réponse : rien ne change, et le réglage reste dans Connecteurs.
+  - La carte n'est montrée qu'une fois par app (`asked` dans `inbox-apps.json`). Elle revient si l'app change ses
+    liens.
+- Autoriser une app se fait d'un clic sur la carte, dans la fenêtre ou par la CLI. Ça ne se fait jamais à la voix
+  (risque `cli`). La couper à la voix est permis.
+- Le choix est gardé dans `inbox-apps.json` (`trust`), car la carte ne passe pas par les réglages.
 - Une app qui annonce d'autres schémas que ceux déjà vus repasse à « Pas autorisée ». L'utilisateur doit voir les
   nouveaux liens avant de l'autoriser de nouveau.
 - 20 applications au plus sont connues. Au-delà, un `hello` nouveau est ignoré.

@@ -60,6 +60,31 @@ describe("boîte aux lettres", () => {
     expect(opened).toEqual([msg().action.url]);
   });
 
+  it("carte de confirmation : un clic sur Oui autorise l'app ; elle n'est montrée qu'une fois", async () => {
+    const { k, got, post } = await start();
+    const asked: string[] = [];
+    k.bus.on("approval.request", (r) => { asked.push(r.summary); k.approvals.respond(r.id, true, "hub:fenetre"); });
+    expect(await post(hello)).toBe(403);
+    await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("app"));
+    expect(asked).toEqual(["J'ai reçu un message de Differendum. Autoriser ses annonces ? Elle pourra faire ouvrir inwink-differendum:// et https."]);
+    expect(got.at(-1)).toMatchObject({ text: "Differendum est autorisée.", importance: "normal" });
+    expect(await post(hello)).toBe(204);
+    expect(await post(msg())).toBe(204);
+    expect(asked).toHaveLength(1);
+  });
+
+  it("carte de confirmation : un « oui » à la voix n'autorise pas ; un refus ne repose pas la question", async () => {
+    const { k, got, post } = await start();
+    let n = 0;
+    k.bus.on("approval.request", (r) => { n++; k.approvals.respond(r.id, true, "conv:voix"); });
+    await post(hello);
+    await vi.waitFor(() => expect(got.some((g) => g.key === `inbox:clic:${APP}`)).toBe(true));
+    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non");
+    expect(await post(hello)).toBe(403);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(n).toBe(1);
+  });
+
   it("autoriser une app ne se fait jamais à la voix ; la couper, si", async () => {
     const { k, post } = await start();
     await post(hello);
