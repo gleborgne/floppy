@@ -239,7 +239,9 @@ de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partag�
   fenêtre ; le processus principal laisse passer le son (`audio`, adresse `data:audio/…`) jusqu'à la fenêtre.
 - **Essayer** : la phrase d'essai (déjà écrite dans la langue de la fenêtre, modifiable) est dite par le modèle
   **chargé en ce moment** (le serveur n'en garde qu'un), l'enregistrement partant en `voice_ref` avec `reference_text`
-  (Qwen3-TTS, VoxCPM2) : pas de redémarrage du serveur. Rien de chargé, ou un modèle qui ne clone pas (Supertonic,
+  (Qwen3-TTS, VoxCPM2) : pas de redémarrage du serveur. Le fichier chargé doit être celui choisi dans le formulaire :
+  sinon, aucun essai n'est envoyé au mauvais modèle et un message nomme les deux modèles et explique comment charger
+  celui choisi (garder la voix, la choisir). Rien de chargé, ou un modèle qui ne clone pas (Supertonic,
   Qwen3 CustomVoice) : un message dit comment l'entendre (garder la voix, la choisir).
 - Pas encore : **décrire** une voix (modèle Qwen3-TTS VoiceDesign) ; transcrire seul un fichier importé (on écrit la
   phrase à la main).

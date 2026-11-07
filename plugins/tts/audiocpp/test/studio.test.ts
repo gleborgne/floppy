@@ -11,6 +11,7 @@ import tts, { clones, PROMPTS } from "../src/index.ts";
 const dir = mkdtempSync(join(tmpdir(), "tts-studio-files-"));
 const file = (name: string, bytes = 2048) => { const p = join(dir, name); writeFileSync(p, Buffer.alloc(bytes)); return p; };
 const model = file("qwen3-tts-base.gguf");
+const pocket = file("pocket-tts-french-q8_0.gguf");
 const wav = file("ref.wav");
 const b64 = (...samples: number[]) => Buffer.from(new Int16Array(samples).buffer).toString("base64");
 const sse = (d: unknown) => `data: ${JSON.stringify(d)}\n\n`;
@@ -122,7 +123,10 @@ describe("studio de voix", () => {
     } finally { await k.stopAll(); }
   });
 
-  it("essayer avec le modèle chargé : l'enregistrement part en voice_ref avec son texte, le son revient en WAV", async () => {
+  it.each([
+    { loadedModel: model, famille: "qwen3_tts", name: "qwen3-tts-base.gguf", otherModel: pocket, otherName: "pocket-tts-french-q8_0.gguf" },
+    { loadedModel: pocket, famille: "pocket_tts", name: "pocket-tts-french-q8_0.gguf", otherModel: model, otherName: "qwen3-tts-base.gguf" },
+  ])("essayer avec $famille chargé : utilise ce modèle seulement, rend le son en WAV", async ({ loadedModel, famille, name, otherModel, otherName }) => {
     const state = { running: false, bodies: [] as Record<string, unknown>[] };
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: { body?: string }) => {
       if (String(url).endsWith("/health")) { if (!state.running) throw new Error("stopped"); return new Response("{}"); }
@@ -148,19 +152,35 @@ describe("studio de voix", () => {
     });
     const home = mkdtempSync(join(tmpdir(), "tts-trial-"));
     const k = new Kernel({ logger: () => {}, home, plugins: [wrapped, consumer] });
-    const base = { id: "tts", plugin: "tts-audiocpp", config: { exe: file("fake-trial.exe"), port: 8096, backend: "cpu", scanDirs: [], models: { q: { label: "Qwen", model, voix: "clone", refWav: wav, refText: "Bonjour" } } } };
+    const base = { id: "tts", plugin: "tts-audiocpp", config: { exe: file("fake-trial.exe"), port: 8096, backend: "cpu", scanDirs: [], models: { q: { label: name, model: loadedModel, famille, voix: "clone", refWav: wav, refText: "Bonjour" } } } };
     try {
       await k.applyConfig({ plugins: [base, { id: "c", plugin: "consumer" }], slots: { "voice.tts": "tts/q" } });
-      const t = await k.items.run({ provider: "voix-locale", op: "test", kind: "voice", values: { label: "x", sample: recording(), refText: "Le matin\nau soleil", model, essai: "Salut" } } as never, "ui") as Reply;
+      const t = await k.items.run({ provider: "voix-locale", op: "test", kind: "voice", values: { label: "x", sample: recording(), refText: "Le matin\nau soleil", model: loadedModel, essai: "Salut" } } as never, "ui") as Reply;
       expect(t.ok).toBe(true);
-      expect(t.text).toMatch(/Essai avec qwen3-tts-base\.gguf/);
+      expect(t.text).toContain(`Essai avec ${name}`);
       const body = state.bodies.at(-1)!;
-      expect(body).toMatchObject({ model: "modele", input: "Salut", reference_text: "Le matin au soleil", stream_format: "sse" });
+      expect(body).toMatchObject({ model: "modele", input: "Salut", stream_format: "sse" });
+      if (famille === "qwen3_tts") expect(body.reference_text).toBe("Le matin au soleil");
+      else {
+        expect(body).not.toHaveProperty("reference_text");
+        expect(body).not.toHaveProperty("options");
+      }
       expect(String(body.voice_ref)).toBe(join(home, "tts-audiocpp", "essai.wav").replace(/\\/g, "/"));
       expect(body).not.toHaveProperty("voice");
       const back = wavPcm(new Uint8Array(Buffer.from(t.audio!.split(",")[1]!, "base64")));
       expect([...back.pcm]).toEqual([5, 6, 7]);
       expect(back.rate).toBe(24000);
+      // Changer de modèle dans le formulaire ne doit jamais utiliser celui encore chargé.
+      const before = state.bodies.length;
+      const other = await k.items.run({ provider: "voix-locale", op: "test", kind: "voice", values: {
+        label: "x", sample: recording(), model: otherModel, essai: "Salut",
+      } } as never, "ui") as Reply;
+      expect(state.bodies).toHaveLength(before);
+      expect(other.ok).toBe(true);
+      expect(other.audio).toBeUndefined();
+      expect(other.text).toContain(otherName);
+      expect(other.text).toContain(name);
+      expect(other.text).toMatch(/Garde la voix puis choisis-la/);
       // La voix en service garde « Supprimer » ; le clic explique quoi faire au lieu de rien montrer.
       const q = (await k.items.snapshot()).find((x) => x.id === "voix-locale")!.items.find((i) => i.id === "q")!;
       expect(q.removable).toBe(true);

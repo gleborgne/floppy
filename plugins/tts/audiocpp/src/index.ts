@@ -588,7 +588,7 @@ return definePlugin<Config>({
 
     /**
      * Essai d'une voix avec le modèle chargé en ce moment (le serveur ne garde qu'un modèle). L'enregistrement part en
-     * voice_ref : pas besoin de relancer le serveur. Rien de chargé : on explique comment l'entendre.
+     * voice_ref : pas besoin de relancer le serveur. Modèle absent ou différent : on explique comment l'entendre.
      */
     const trialVoice = async (values: Record<string, unknown>, id?: string): Promise<OpResult> => {
       const cur = id ? all().find((m) => m.id === id) : undefined;
@@ -600,6 +600,13 @@ return definePlugin<Config>({
       const fam = familyOf(loaded);
       const name = modelLabel(loaded.model);
       const nameFr = typeof name === "string" ? name : name.fr, nameEn = typeof name === "string" ? name : name.en;
+      if (!samePath(loaded.model, v.model)) {
+        const selected = modelLabel(v.model);
+        const selectedFr = typeof selected === "string" ? selected : selected.fr, selectedEn = typeof selected === "string" ? selected : selected.en;
+        return { ok: true, text: T(
+          `Tu as choisi ${selectedFr}, mais le modèle chargé est ${nameFr}. Garde la voix puis choisis-la comme voix de Floppy pour charger le modèle choisi et l'entendre.`,
+          `You chose ${selectedEn}, but the loaded model is ${nameEn}. Keep the voice, then choose it as Floppy's voice to load the chosen model and hear it.`) };
+      }
       if (!clones(loaded)) return { ok: true, text: T(`Le modèle chargé (${nameFr}) ne sait pas cloner une voix, donc l'essai est impossible maintenant. Garde la voix puis choisis-la : Floppy charge son modèle, et tu l'entends.`, `The loaded model (${nameEn}) cannot clone a voice, so a trial is not possible right now. Keep the voice and choose it: Floppy loads its model, and you hear it.`) };
       let ref = v.refWav;
       if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "essai.wav"); writeFileSync(ref, wav); }
