@@ -11,7 +11,7 @@ const HF_EXTENDED = "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/73c
 export interface KnownVoiceModel extends LibraryEntry {
   /** Fichier GGUF, relatif au dossier des téléchargements. */
   model: string;
-  famille: "pocket_tts" | "qwen3_tts" | "supertonic" | "voxcpm2" | "chatterbox" | "voxtral_tts" | "fish_audio";
+  famille: "pocket_tts" | "qwen3_tts" | "supertonic" | "voxcpm2" | "chatterbox" | "voxtral_tts" | "fish_audio" | "omnivoice";
   /** Sans voix intégrées : crée une fiche à personnaliser avec un enregistrement. */
   clone?: boolean;
   mode?: "streaming" | "offline";

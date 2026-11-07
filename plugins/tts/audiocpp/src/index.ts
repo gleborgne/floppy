@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, httpHealthy, startLocalServer, scanGguf as scanAll, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
 import { speechInstructions, type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
+import { dynamicCatalogue } from "./catalogue.ts";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -60,7 +61,7 @@ export interface ModelValues {
 }
 export type Entry = ModelValues & { id: string };
 
-const FAMILLES = ["qwen3_tts", "voxcpm2", "pocket_tts", "supertonic", "chatterbox", "voxtral_tts", "fish_audio"];
+const FAMILLES = ["qwen3_tts", "voxcpm2", "pocket_tts", "supertonic", "chatterbox", "voxtral_tts", "fish_audio", "omnivoice"];
 
 /** Fréquence de sortie par famille (Hz). Absente : 24000. */
 const RATES: Record<string, number> = { voxcpm2: 48000, supertonic: 44100, fish_audio: 44100 };
@@ -199,6 +200,7 @@ const FIELDS: FieldDef[] = [
     { value: "chatterbox", label: "Chatterbox" },
     { value: "voxtral_tts", label: "Voxtral TTS" },
     { value: "fish_audio", label: "Fish Audio S2 Pro" },
+    { value: "omnivoice", label: "OmniVoice" },
     { value: "pocket_tts", label: T("Pocket TTS (processeur, voix clonée)", "Pocket TTS (CPU, cloned voice)") },
     { value: "supertonic", label: T("Supertonic (processeur, voix F1…F5, M1…M5)", "Supertonic (CPU, voices F1…F5, M1…M5)") },
     { value: "autre", label: T("Autre (je donne le nom)", "Other (I give the name)") },
@@ -236,7 +238,7 @@ const KIND: ItemKind = {
 };
 
 /** Familles qui savent cloner une voix à partir d'un enregistrement. */
-export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts", "chatterbox", "fish_audio"];
+export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts", "chatterbox", "fish_audio", "omnivoice"];
 
 /**
  * Le modèle sait cloner une voix. Chez Qwen3-TTS, seule la variante « Base » clone : « CustomVoice » n'a que ses voix
@@ -248,7 +250,13 @@ export function clones(m: Pick<ModelValues, "famille" | "familleAutre" | "model"
   return !/custom[-_ ]?voice|voice[-_ ]?design/i.test(basename(m.model.replace(/\\/g, "/")));
 }
 /** Familles qui lisent le texte de l'enregistrement (sinon : seulement le timbre, x_vector_only_mode). */
-const WITH_TEXT = ["qwen3_tts", "voxcpm2", "fish_audio"];
+const WITH_TEXT = ["qwen3_tts", "voxcpm2", "fish_audio", "omnivoice"];
+/** Référence envoyée pour l'essai direct (hors bibliothèque de voix du serveur). */
+export function trialReference(m: ModelValues): Record<string, unknown> {
+  const fam = familyOf(m);
+  if (WITH_TEXT.includes(fam) && m.refText) return { reference_text: m.refText.replace(/\s*[\r\n]+\s*/g, " ") };
+  return !m.refText && (fam === "qwen3_tts" || fam === "voxcpm2") ? { options: { x_vector_only_mode: true } } : {};
+}
 const missingReferenceText = (m: ModelValues): Text | undefined => m.voix === "clone" && familyOf(m) === "fish_audio" && !m.refText.trim()
   ? T("Fish Audio : renseigne le texte prononcé dans l'enregistrement.", "Fish Audio: enter the words spoken in the recording.") : undefined;
 
@@ -320,11 +328,11 @@ const samePath = (a: string, b: string): boolean => {
  * Ce que demande un modèle de voix : Pocket TTS et Supertonic parlent en temps réel sur le processeur ;
  * Qwen3-TTS demande une carte NVIDIA (~4,5 Go mesurés pour la 1.7B).
  */
-export function voiceNeeds(k: Pick<KnownVoiceModel, "famille">): ModelNeeds {
-  if (!["qwen3_tts", "voxcpm2", "chatterbox", "voxtral_tts", "fish_audio"].includes(k.famille)) return { memory: 0.8 * 1024 ** 3, device: "cpu" };
+export function voiceNeeds(k: Pick<KnownVoiceModel, "famille"> & Partial<Pick<KnownVoiceModel, "files">>): ModelNeeds {
+  if (!["qwen3_tts", "voxcpm2", "chatterbox", "voxtral_tts", "fish_audio", "omnivoice"].includes(k.famille)) return { memory: 0.8 * 1024 ** 3, device: "cpu" };
   // Budget indicatif : taille des poids du catalogue + marge de travail ; ce n'est pas une mesure de VRAM.
-  const bytes = KNOWN_VOICE_MODELS.find(m => m.famille === k.famille)?.files.reduce((n, f) => n + (f.size ?? 0), 0) ?? 0;
-  return { memory: k.famille === "qwen3_tts" ? 4.5 * 1024 ** 3 : bytes + 1.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] };
+  const bytes = (k.files ?? KNOWN_VOICE_MODELS.find(m => m.famille === k.famille)?.files)?.reduce((n, f) => n + (f.size ?? 0), 0) ?? 0;
+  return { memory: k.famille === "qwen3_tts" ? Math.max(4.5 * 1024 ** 3, bytes + 1.5 * 1024 ** 3) : bytes + 1.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] };
 }
 
 /** `builds` : archives d'audio.cpp (remplaçables pour les tests). */
@@ -338,11 +346,12 @@ return definePlugin<Config>({
     description: "Voix locales (audio.cpp) : un modèle de synthèse vocale à la fois, lancé seulement quand il sert.",
     provides: ["tts"],
     // net : téléchargement des modèles connus (voir known-voices.ts).
-    permissions: { exec: ["audiocpp_server"], net: ["huggingface.co", "github.com"] },
+    permissions: { exec: ["audiocpp_server"], net: ["huggingface.co", "github.com", "raw.githubusercontent.com"] },
     addable: { section: "voix", label: "audio.cpp", description: { fr: "Modèles de voix GGUF sur ce PC (voix clonée ou intégrée), lancés seulement quand ils servent.", en: "GGUF voice models on this PC (cloned or built-in voice), run only while in use." }, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
+    const catalogue = dynamicCatalogue(ctx, known);
     const base = `http://127.0.0.1:${cfg.port}`;
     const store = ctx.items.store();
     const baseList: Record<string, ModelValues> = {};
@@ -501,7 +510,7 @@ return definePlugin<Config>({
     const knownFile = (k: KnownVoiceModel) => resolve(ctx.downloads.dir, k.model);
     // CustomVoice contient ses locuteurs dans le GGUF, même importé hors de la bibliothèque.
     // Pocket utilise des fichiers d'empreinte séparés : on ne lui applique pas cette règle.
-    const builtins = (m: ModelValues) => known.find(k => samePath(knownFile(k), m.model))?.voices
+    const builtins = (m: ModelValues) => catalogue().find(k => samePath(knownFile(k), m.model))?.voices
       ?? (familyOf(m) === "qwen3_tts" && /customvoice/i.test(basename(m.model)) ? known.find(k => k.id === "qwen3-tts-customvoice")?.voices ?? []
         : familyOf(m) === "voxtral_tts" ? known.find(k => k.id === "voxtral-tts")?.voices ?? [] : []);
     const missingBuiltins = (m: ModelValues) => builtins(m).filter(v => !all().some(other =>
@@ -511,7 +520,7 @@ return definePlugin<Config>({
      * choisir le modèle, puis la voix. Un fichier qui n'a qu'une voix reste une ligne simple.
      */
     /** Nom d'un fichier de modèle : celui du catalogue des modèles connus, sinon le nom du fichier. */
-    const modelLabel = (file: string): Text => known.find((x) => samePath(knownFile(x), file))?.label ?? basename(file);
+    const modelLabel = (file: string): Text => catalogue().find((x) => samePath(knownFile(x), file))?.label ?? basename(file);
     /**
      * Chaque voix est rangée sous son modèle (le fichier GGUF) : la fenêtre montre les voix, puis les modèles avec leur
      * taille. La taille est celle du modèle, partagée par ses voix : elle n'apparaît que sur le modèle.
@@ -640,7 +649,7 @@ return definePlugin<Config>({
         method: "POST", signal: AbortSignal.timeout(120_000), headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: MODEL_ID, input: text, voice_ref: slash(ref), language: loaded.langue || ctx.assistant.language,
-          ...(WITH_TEXT.includes(fam) ? (v.refText ? { reference_text: v.refText.replace(/\s*[\r\n]+\s*/g, " ") } : { options: { x_vector_only_mode: true } }) : {}),
+          ...trialReference(v),
           ...(streaming ? { stream_format: "sse" } : { response_format: "wav" }),
         }),
       });
@@ -794,7 +803,12 @@ return definePlugin<Config>({
     modelLibrary(ctx, {
       id: "voix-locale-library", section: "voix", order: 21, offers: "tts",
       label: T("Modèles de voix audio.cpp", "audio.cpp voice models"),
-      entries: () => known.map((k) => ({ ...k, needs: voiceNeeds(k) })),
+      entries: () => catalogue().map((k) => ({ ...k, needs: voiceNeeds(k) })),
+      searchHint: T("Filtrer les modèles du catalogue (nom, famille…)", "Filter catalogue models (name, family…)"),
+      search: async (query) => {
+        const q = query.trim().toLocaleLowerCase();
+        return catalogue().filter(k => `${ui(k.label)} ${k.famille} ${(k.tags ?? []).map(ui).join(" ")}`.toLocaleLowerCase().includes(q)).map(k => ({ ...k, needs: voiceNeeds(k) }));
+      },
       has: (e) => mine(e as KnownVoiceModel).length > 0,
       itemOf: (e) => mine(e as KnownVoiceModel).find(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m)))?.id,
       description: T("compatibles audio.cpp · qualité à évaluer sur ta machine", "audio.cpp compatible · quality to evaluate on your machine"),

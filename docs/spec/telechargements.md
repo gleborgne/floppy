@@ -8,8 +8,9 @@ une fois sur le disque, ils rejoignent la liste du rôle, prêts à activer. Rie
 
 - **Sous la liste d'un rôle** : « Télécharger des modèles ». Pendant un téléchargement, le bouton le dit
   (« · 1 en cours · 42 % »), même fenêtre fermée.
-- **La fenêtre « Modèles à télécharger »** : les modèles choisis par Floppy (testés), et pour le cerveau une case de
-  recherche sur Hugging Face. Chaque ligne : nom, une phrase, étiquettes (taille, licence, langues, mémoire
+- **La fenêtre « Modèles à télécharger »** : les modèles choisis par Floppy, et pour le cerveau une case de
+  recherche sur Hugging Face. Pour audio.cpp, un bouton d'actualisation du catalogue et un filtre local complètent
+  la liste (compatibilité vérifiée, qualité sonore à évaluer). Chaque ligne : nom, une phrase, étiquettes (taille, licence, langues, mémoire
   estimée), et ses boutons :
   - **Télécharger** (avec son icône) ; **Écouter** (un extrait, s'il existe) et **Licence** s'ouvrent dans le navigateur ;
   - pendant le téléchargement : une barre d'avancement, « 42 % · 1,2 / 2,9 Go », **Annuler** ;
@@ -18,6 +19,8 @@ une fois sur le disque, ils rejoignent la liste du rôle, prêts à activer. Rie
     le modèle de la liste ; un modèle en service est refusé (« choisis d'abord un autre … »).
 - **Fin d'un téléchargement** : une carte « Gemma 4 12B est téléchargé. » (sans voix), même fenêtre fermée.
 - **Licence** : le pied de la fenêtre dit que télécharger un modèle, c'est accepter sa licence.
+- **Défilement** : les cartes de chaque section conservent leur hauteur dans la liste. Le conteneur central
+  défile jusqu'au dernier modèle ; les lignes ne sont pas comprimées et masquées quand plusieurs catalogues sont présents.
 - **Dossier** : toujours `models` dans le répertoire de travail de Floppy (pas de réglage à part :
   changer le répertoire de travail déplace aussi les modèles). Chaque entrée de la config range ses fichiers dans `<dossier>/<entrée>/`.
 
@@ -105,6 +108,44 @@ moteurs déjà adaptés ; l'ajout au catalogue ne prétend pas piloter le style 
 
 Parler-TTS n'a pas de famille dans audio.cpp v0.9.4 et n'est pas ajouté à cette bibliothèque. Kokoro nécessite
 en plus les ressources eSpeak pour le français ; son téléchargement guidé reste à intégrer.
+
+### Actualisation du catalogue audio.cpp
+
+Dans **Voix → Télécharger des modèles**, **Actualiser le catalogue** consulte les `model_specs` GitHub à la
+version `AUDIOCPP_VERSION` du programme proposé par Floppy, puis les métadonnées Hugging Face. Ni l'ouverture
+de la fenêtre ni le démarrage du plugin ne font de requête. L'action ne télécharge aucun poids et ne change
+ni le moteur, ni la voix active. Un filtre par nom, famille ou étiquette fonctionne sur la liste locale.
+
+`plugins/tts/audiocpp/src/catalogue.ts` complète les fiches amont avec les profils Floppy : Pocket FR/EN et
+toutes leurs empreintes vocales, Qwen CustomVoice 1.7B, **Qwen Base 0.6B/1.7B**, Supertonic 3, VoxCPM2,
+Chatterbox multilingue, Voxtral, Fish S2 Pro et **OmniVoice**. Les variantes GGUF sont découvertes dans les
+fiches, sans coder chaque quantification, taille ou empreinte dans Floppy. OmniVoice crée une voix à
+enregistrer/importer ; sa transcription est facultative et le flux PCM est à 24 kHz. Son flux est produit
+par morceaux de texte générés entièrement, sans promesse de latence ni de pilotage expressif automatique.
+
+Le périmètre reste explicite : seuls les paquets du dépôt `audio-cpp/audio.cpp-gguf` avec profil reconnu sont
+proposés. Les fine-tunes, VoiceDesign, les ressources NPU et les formats non GGUF ne sont pas déduits d'un tag.
+VoxCPM2 Q8 reste exclu pour sa dérive sonore documentée. Kokoro apparaît avec une explication et un lien de
+documentation, sans bouton Télécharger : les fiches amont ne décrivent pas complètement sa dépendance eSpeak.
+Une nouvelle famille nécessite donc toujours de vérifier ses contraintes avant de l'activer dans Floppy.
+
+Les métadonnées sont lues à un commit Hugging Face précis ; tous les fichiers d'un paquet doivent avoir
+une taille et une empreinte LFS SHA-256 valides. Les chemins sont relatifs et validés. Pocket ne devient
+disponible que si toutes les empreintes des voix offertes existent. Les licences sont celles du profil
+du modèle, jamais la licence globale « other » du dépôt de conversions.
+
+Le cache `tts-audiocpp/catalogue-<version>.json` dans `ctx.home` est écrit atomiquement et relu hors connexion.
+Un échec laisse le catalogue précédent intact ; un JSON abîmé est mis de côté et signalé par le lecteur commun.
+Les requêtes ont une limite globale de 45 s, partagent une seule actualisation simultanée et sont annulées à
+l'arrêt du plugin. Un cache d'une autre version n'est pas réutilisé.
+
+Chaque version de paquet a un identifiant et un sous-dossier dérivés des empreintes de ses fichiers. Les
+réactualisations identiques sont idempotentes, les paquets identiques au catalogue livré ne sont pas dupliqués,
+et les révisions précédentes restent dans la liste : aucune voix ou tâche de téléchargement en cours ne
+change silencieusement de poids. L'étiquette de révision distingue les versions ; les estimations mémoire
+des variantes GPU tiennent compte de leur taille réelle. Les anciens fichiers ne sont pas supprimés par
+l'actualisation. Le cache est limité à 500 révisions ; atteindre cette limite conserve l'ancien catalogue
+et signale l'échec d'actualisation.
 
 Sources : [paquets et empreintes](https://huggingface.co/audio-cpp/audio.cpp-gguf/tree/73ce4162f6cce370dd533c6782b772135c1b2a8e),
 [Voxtral](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/docs/models/voxtral_tts.md),
