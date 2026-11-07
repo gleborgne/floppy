@@ -102,6 +102,7 @@ L'assistant de la fenêtre peut aussi gérer les **éléments** (voir [elements.
 |---|---|---|
 | `lister_elements`, `types_elements` | voir les éléments, les types qu'on peut ajouter et les champs de chaque formulaire | non (lecture) |
 | `activer_element` | activer / désactiver | comme à la voix (accord si cloud) |
+| `ajouter_application` | ajouter une application livrée avec Floppy (Orca…) | toujours un accord ; valeurs par défaut |
 | `essayer_element` | se connecter et lister les outils (peut lancer une commande) | **oui** |
 | `ajouter_element`, `modifier_element`, `supprimer_element` | ajouter, modifier, supprimer | **oui** |
 

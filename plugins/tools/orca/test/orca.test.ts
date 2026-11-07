@@ -174,8 +174,13 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     }
   });
 
-  it("ajouter une application est refusé à la voix", async () => {
+  it("ajouter à la voix demande l'accord ; « installe Orca » quand Orca est déjà là ne l'ajoute pas deux fois", async () => {
     const { k } = await start({ calls: 0, v: [] }, { surveillance: false });
+    const asked: string[] = [];
+    k.bus.on("approval.request", (r) => { asked.push(String(r.summary)); k.approvals.respond(r.id, false, "test"); });
     expect((await k.items.run({ op: "add", provider: P, kind: "orca", values: {} }, "voice")).ok).toBe(false);
+    expect(asked).toEqual(["Ajouter Orca"]);
+    expect((await k.tools.call("ajouter_application", { nom: "orca" })).text).toMatch(/déjà ajouté/);
+    expect(asked.length).toBe(1);
   });
 });

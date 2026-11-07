@@ -67,6 +67,10 @@ export interface ItemKind {
   cloud?: boolean;
   /** Services que le plugin ajouté fournit (ex. « wakeword ») : le catalogue ouvert depuis un rôle ne montre que ceux-là. */
   provides?: string[];
+  /** Mots qui désignent ce type à l'oral (« ajoute Orca »). */
+  aliases?: string[];
+  /** Un seul élément de ce type à la fois. */
+  single?: boolean;
 }
 
 /** Sous-élément activable (ex. un outil d'un connecteur, une voix d'un moteur). */
@@ -194,6 +198,11 @@ export interface ProviderDef {
   searchHint?: Text;
   /** Ce qui manque pour que ces éléments tournent (ex. « llama-server est introuvable »). Absent : rien ne manque. */
   missing?(): Text | undefined;
+  /**
+   * Ajout permis à la voix, toujours après un accord (Oui / Non). Seulement pour du code livré avec Floppy dont le
+   * formulaire n'a pas de champ obligatoire sans défaut (ex. les applications). Jamais pour un MCP (commande choisie).
+   */
+  voiceAdd?: boolean;
 }
 
 export interface ProviderSnapshot {
@@ -313,7 +322,7 @@ export class CatalogRegistry {
     const entry = this.defs.get(o.provider);
     if (!entry) return { ok: false, text: T(`Fournisseur inconnu : ${o.provider}.`, `Unknown provider: ${o.provider}.`) };
     const { def } = entry;
-    if (via === "voice" && o.op !== "enable") {
+    if (via === "voice" && !(o.op === "enable" || (o.op === "add" && def.voiceAdd))) {
       this.audit.write({ kind: "catalog.refused", op: o.op, provider: o.provider, why: "pas à la voix" });
       return { ok: false, text: T("Ça ne se fait pas à la voix, pour ta sécurité : utilise la fenêtre des réglages.", "This can't be done by voice, for your safety: use the Settings window.") };
     }
@@ -324,9 +333,23 @@ export class CatalogRegistry {
           if (!def.add) return { ok: false, text: T("Ce fournisseur ne permet pas d'ajouter.", "This provider does not allow adding.") };
           const kind = def.kinds?.find((k) => k.id === o.kind);
           if (!kind) return { ok: false, text: T(`Type inconnu : ${o.kind}.`, `Unknown type: ${o.kind}.`) };
-          const miss = missing(kind.fields, o.values);
-          if (miss.length) return { ok: false, text: T(`À remplir : ${miss.join(", ")}.`, `Required: ${miss.join(", ")}.`) };
-          r = await def.add(o.kind, o.values);
+          // À la voix : seulement les valeurs par défaut (le modèle ne remplit pas le formulaire).
+          const values = via === "voice" ? defaults(kind.fields) : o.values;
+          const miss = missing(kind.fields, values);
+          if (miss.length) {
+            return via === "voice"
+              ? { ok: false, text: T(`${tr(kind.label, "fr")} demande des réglages (${miss.join(", ")}) : ajoute-le dans la fenêtre des réglages. Rien n'a changé.`, `${tr(kind.label, "en")} needs settings (${miss.join(", ")}): add it in the Settings window. Nothing changed.`) }
+              : { ok: false, text: T(`À remplir : ${miss.join(", ")}.`, `Required: ${miss.join(", ")}.`) };
+          }
+          if (via === "voice") {
+            const cloud = kind.cloud ? T(" (données dans le cloud)", " (data goes to the cloud)") : undefined;
+            const d = await this.approvals.check({
+              tool: "ajouter_application", args: { fournisseur: o.provider, type: o.kind }, level: "write", override: "ask",
+              summary: T(`Ajouter ${tr(kind.label, "fr")}${cloud ? tr(cloud, "fr") : ""}`, `Add ${tr(kind.label, "en")}${cloud ? tr(cloud, "en") : ""}`), ...(origin ? { origin } : {}),
+            });
+            if (!d.ok) return { ok: false, text: T("Refusé par l'utilisateur. Rien n'a changé. Ne le retente pas.", "Refused by the user. Nothing changed. Do not try again.") };
+          }
+          r = await def.add(o.kind, values);
           break;
         }
         case "update":
@@ -392,6 +415,21 @@ export class CatalogRegistry {
     return r;
   }
 
+  /** Trouve un type qu'on peut ajouter à la voix (fournisseurs `voiceAdd`), par son nom dit à l'oral (« Orca »). */
+  findKind(name: string): { provider: string; kind: ItemKind }[] {
+    const n = norm(name);
+    const out: { provider: string; kind: ItemKind; score: number }[] = [];
+    for (const { def } of this.defs.values()) {
+      if (!def.voiceAdd || !def.add) continue;
+      for (const kind of def.kinds ?? []) {
+        const score = matchScore(n, [kind.id, ...allTexts(kind.label), ...(kind.aliases ?? [])]);
+        if (score) out.push({ provider: def.id, kind, score });
+      }
+    }
+    const best = Math.max(0, ...out.map((o) => o.score));
+    return out.filter((o) => o.score === best).map(({ provider, kind }) => ({ provider, kind }));
+  }
+
   /** Trouve un élément par son nom dit à l'oral (« Qwen », « Azure DevOps »). */
   async find(name: string, section?: string): Promise<{ provider: string; item: ItemInfo }[]> {
     const n = norm(name);
@@ -401,8 +439,7 @@ export class CatalogRegistry {
       let items: ItemInfo[];
       try { items = await def.list(); } catch { continue; }
       for (const item of items) {
-        const names = [item.id, ...allTexts(item.label), ...(item.aliases ?? [])].map(norm);
-        const score = names.includes(n) ? 2 : names.some((x) => x.includes(n) || (x.length > 2 && n.includes(x))) ? 1 : 0;
+        const score = matchScore(n, [item.id, ...allTexts(item.label), ...(item.aliases ?? [])]);
         if (score) out.push({ provider: def.id, item, score });
       }
     }
@@ -419,6 +456,17 @@ export class CatalogRegistry {
   changed(): void {
     for (const fn of [...this.listeners]) { try { fn(); } catch { /* rien */ } }
   }
+}
+
+/** 2 : nom exact ; 1 : l'un contient l'autre ; 0 : rien. `n` est déjà normalisé. */
+function matchScore(n: string, names: string[]): number {
+  const all = names.map(norm);
+  return all.includes(n) ? 2 : all.some((x) => x.includes(n) || (x.length > 2 && n.includes(x))) ? 1 : 0;
+}
+
+/** Valeurs par défaut d'un formulaire. */
+function defaults(fields: FieldDef[]): Record<string, unknown> {
+  return Object.fromEntries(fields.filter((f) => f.default !== undefined).map((f) => [f.key, f.default]));
 }
 
 function missing(fields: FieldDef[], values: Record<string, unknown>): string[] {

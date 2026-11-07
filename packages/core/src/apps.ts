@@ -162,6 +162,8 @@ export class Apps {
       label: t("Applications", "Applications"),
       description: t("Plugins que tu ajoutes ou retires toi-même.", "Plugins you add or remove yourself."),
       order: 60,
+      // Code livré avec Floppy : « ajoute Orca » marche à la voix, après un accord (voir CatalogRegistry.run).
+      voiceAdd: true,
       childrenLabel: t("Outils donnés au cerveau", "Tools given to the brain"),
       get kinds() {
         return self.kinds(section);
@@ -222,6 +224,8 @@ export class Apps {
       fields: m.addable!.fields ?? [],
       ...(m.addable!.cloud ? { cloud: true } : {}),
       ...(m.provides?.length ? { provides: [...m.provides] } : {}),
+      ...(m.addable!.aliases?.length ? { aliases: [...m.addable!.aliases] } : {}),
+      ...(m.addable!.single ? { single: true } : {}),
     }));
   }
 }

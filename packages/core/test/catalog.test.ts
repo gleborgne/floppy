@@ -83,4 +83,52 @@ describe("catalogue des applications", () => {
     expect(kinds.find((x) => x.id === "stt-x")?.provides).toEqual(["vad", "stt"]);
     expect(kinds.find((x) => x.id === "rien")?.provides).toBeUndefined();
   });
+
+  it("« installe Orca » à la voix : listée à ajouter, accord demandé, valeurs par défaut, une seule fois", async () => {
+    const app = (id: string, addable: Record<string, unknown>) => definePlugin({
+      manifest: { id, version: "0.0.1", licence: "MIT", addable: { section: "connecteurs", ...addable } as never },
+      apply(ctx) { ctx.tools.register([{ name: `${id}_outil`, description: "x", inputSchema: { type: "object" }, level: "read", handler: async () => ({ status: "done", text: "ok" }) }]); },
+    });
+    const k = new Kernel({
+      logger: () => {}, home: mkdtempSync(join(tmpdir(), "apps-")),
+      plugins: [
+        app("orca-x", { label: "Orca", single: true, aliases: ["orque"], fields: [{ key: "pollSeconds", label: "Délai", type: "number", default: 15 }] }),
+        app("cle-x", { label: "Service à clé", fields: [{ key: "url", label: "Adresse", type: "text", required: true }] }),
+      ],
+    });
+    await k.applyConfig({ plugins: [] });
+    let answer = false;
+    const asked: string[] = [];
+    k.bus.on("approval.request", (r) => { asked.push(String(r.summary)); k.approvals.respond(r.id, answer, "test"); });
+
+    // « Tu sais te connecter à Orca ? » : Floppy la voit parmi ce qu'il peut ajouter.
+    expect((await k.tools.call("lister_elements", {})).text).toMatch(/À ajouter \(connecteurs[\s\S]*- Orca/);
+
+    // Refusé : rien n'est ajouté.
+    expect((await k.tools.call("ajouter_application", { nom: "orque" })).status).toBe("refused");
+    expect(asked).toEqual(["Ajouter Orca"]);
+    expect(await k.items.provider("apps-connecteurs")!.list()).toEqual([]);
+
+    // Accepté : ajouté avec les valeurs par défaut, ses outils arrivent.
+    answer = true;
+    expect((await k.tools.call("ajouter_application", { nom: "Orca" })).status).toBe("done");
+    const items = await k.items.provider("apps-connecteurs")!.list();
+    expect(items.map((i) => [i.kind, i.values])).toEqual([["orca-x", { pollSeconds: 15 }]]);
+    expect(k.tools.list().some((t) => t.name === "orca-x_outil")).toBe(true);
+    expect((await k.tools.call("lister_elements", {})).text).not.toMatch(/- Orca :/);
+
+    // Une seule permise : pas de second ajout, pas de nouvelle question.
+    expect((await k.tools.call("ajouter_application", { nom: "orca" })).text).toMatch(/déjà ajouté et allumé/);
+    expect(asked.length).toBe(2);
+
+    // Champ obligatoire sans défaut : renvoyé vers la fenêtre, sans question.
+    const r = await k.tools.call("ajouter_application", { nom: "service à clé" });
+    expect(r.status).toBe("failed");
+    expect(r.text).toMatch(/fenêtre des réglages/);
+    expect(asked.length).toBe(2);
+
+    // Inconnu.
+    expect((await k.tools.call("ajouter_application", { nom: "Photoshop" })).status).toBe("failed");
+    await k.stopAll();
+  });
 });

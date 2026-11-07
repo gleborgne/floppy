@@ -69,7 +69,7 @@ flowchart LR
     X["Secrets<br/>Gestionnaire d'identification Windows"]
   end
   W["Fenêtre des réglages<br/>(formulaires générés)"]
-  F["Floppy à la voix<br/>lister_elements · activer_element"]
+  F["Floppy à la voix<br/>lister_elements · activer_element · ajouter_application"]
   L & O & T & V & R & E -- "ctx.items.declare(fournisseur)" --> C
   L & O & T & V & R & E -. "ajouts, modifs, désactivés" .-> S
   O & T -. "clés, jetons" .-> X
@@ -108,9 +108,24 @@ On ne peut pas désactiver l'élément en service sans remplaçant (le modèle c
 |---|---|---|---|
 | Lister | oui | `GET /items` | `lister_elements` |
 | Activer / désactiver | oui | `POST /items` | `activer_element` ; activer un élément **cloud** = demande d'accord |
-| Ajouter, modifier, supprimer | oui | `POST /items` | **jamais** (un MCP local lance une commande sur le PC) |
+| Ajouter une **application** livrée avec Floppy (Orca, navigateur…) | oui | `POST /items` | `ajouter_application` : **toujours** une demande d'accord, valeurs par défaut seulement |
+| Ajouter un autre élément (MCP, commande…), modifier, supprimer | oui | `POST /items` | **jamais** (un MCP local lance une commande sur le PC) |
 
 Le contrôle est fait dans `CatalogRegistry.run` : le modèle ne peut pas le contourner. Chaque opération va au journal.
+
+### Installer une application à la voix
+
+« Floppy, tu sais te connecter à Orca ? » → `lister_elements` montre, sous « À ajouter », les applications pas encore
+ajoutées (plugins `manifest.addable`). « Oui, j'ai un plugin pour ça. » → « Alors installe-le. » → `ajouter_application`.
+
+- Seuls les fournisseurs marqués `voiceAdd` l'acceptent (les « Applications » du noyau) : c'est du code livré avec Floppy.
+  Un MCP ou une commande ne s'ajoutent jamais à la voix.
+- Le noyau demande **toujours** l'accord (« Ajouter Orca », avec « données dans le cloud » si besoin), même si la règle
+  `write` est « always ».
+- Le formulaire prend ses **valeurs par défaut**. S'il a un champ obligatoire sans défaut (adresse, clé), Floppy répond
+  d'ajouter l'application dans la fenêtre des réglages, sans rien demander.
+- Une application « une seule à la fois » déjà ajoutée n'est pas ajoutée deux fois : éteinte, elle se rallume avec
+  `activer_element`.
 
 ## Où sont gardées les choses
 
