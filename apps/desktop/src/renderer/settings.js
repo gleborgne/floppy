@@ -5,120 +5,17 @@
 import { initAssistant } from "./assistant.js";
 import { entryOf, offersOf, slotSources } from "./slot-sources.js";
 import { isLight } from "./tab-rules.js";
-import { abortRecording, audioField } from "./voice-recorder.js";
-import { listAdd, missingFields as missingOf, chainOf } from "./form-rules.js";
+import { abortRecording } from "./voice-recorder.js";
+import { missingFields as missingOf, chainOf } from "./form-rules.js";
 import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "./library.js";
 import { installSummary, rowStatus } from "./onboarding-view.js";
+import { I } from "./settings-texts.js";
+import { h, nextId } from "./dom.js";
+import { configureFields, formNode, visible } from "./fields.js";
 
 const api = window.floppySettings;
-const SECRET_SET = "__secret_set__";
 const $ = (id) => document.getElementById(id);
 
-// ------------------------------------------------------------------ textes de la fenêtre (fr / en)
-const I = {
-  fr: {
-    title: "Réglages", firstSetup: "Refaire le réglage de départ",
-    onbTitle: "Installation de départ", onbRunning: "en cours", onbDone: "terminée", onbFailed: "un morceau a échoué",
-    onbOf: "prêts sur", onbDownloading: "téléchargement…", onbReady: "Prêt", onbWaiting: "En attente", onbFailedRow: "Échec",
-    onbRoles: { vad: "Détecteur de parole", stt: "Transcription", tts: "Voix", llm: "Cerveau", program: "Programme" }, search: "Chercher un réglage, un plugin, un outil…", searchLabel: "Chercher un réglage",
-    undo: "Annuler le dernier changement", assistant: "Assistant IA", navLabel: "Rubriques",
-    navNote: "Chaque rubrique se construit avec les plugins installés. Un nouveau plugin y ajoute ses options.",
-    add: "Ajouter", addIn: "Ajouter", addTitle: "Ajouter", editTitle: "Modifier", cancel: "Annuler", close: "Fermer", save: "Enregistrer",
-    addAndGo: "Ajouter", configure: "Configurer", listLabel: "Éléments", edit: "Modifier", remove: "Supprimer", removeSure: "Confirmer la suppression", on: "actif", off: "inactif",
-    onTip: "Visible pour Floppy", offTip: "Invisible pour Floppy : gardé dans la liste", active: "en service", cloud: "cloud",
-    stepType: "Quel type ?", stepConfig: "Configuration", stepTry: "Vérifier avant d'enregistrer", tryBtn: "Essayer", trying: "Essai en cours…", tryNone: "Pas de test pour ce type.",
-    required: "obligatoire", saved: "enregistré", pick: "Parcourir…", advanced: "Avancé", listHint: "un par ligne", addRow: "+ Ajouter une ligne",
-    key: "clé", value: "valeur", noKinds: "Rien à ajouter ici.", noItems: "Rien pour l'instant.", noMatch: "Aucun résultat.", waiting: "En attente du noyau…",
-    done: "C'est fait.", refused: "Refusé.", undone: "Annulé.", demoNote: "(démonstration) ",
-    engines: "Moteurs disponibles", enginesNote: "fournis par les plugins installés", mode: "Mode",
-    modeNeed: "Aucun moteur disponible : ajoute-en un ou rends-en un disponible.",
-    activate: "Activer", activateAs: "Activer comme", remove1: "Retirer", removePlugin: "Retirer", removePluginSure: "Retirer ?", removePluginTip: "Retire ce plugin de Floppy. Rien n'est effacé : il revient par « + Ajouter un plugin ».", inUse: "En service", loading: "chargement…",
-    idle: "en veille", failed: "en panne", noneChosen: "aucun",
-    available: "Disponible", availTip: "Floppy le voit et peut l'utiliser", hiddenTip: "Masqué : Floppy ne le voit plus (rien n'est supprimé)",
-    hidden: "masqué", makeAvail: "Rends-le disponible pour pouvoir l'activer.", provIdle: "En veille : rien ne s'en sert dans ce mode.",
-    inUseShort: "en service", turnOffTip: "Éteindre : plus rien dans ce rôle", inUseTip: "En service. Pour changer, allume un autre élément.", activateTip: "Mettre en service (l'élément actuel s'arrête)", noMore: "Rien d'autre à régler ici.", openDetail: "ouvrir le détail", settingsTab: "Réglages", back: "Retour", crumbs: "Chemin", settingsBtn: "Réglages", onShort: "Actif", builtin: "intégré", addPlugin: "Ajouter un plugin",
-    pluginsNote: "ils apportent les éléments ci-dessus", pluginsOf: "Plugins", needsSetup: "à configurer",
-    stepModelNote: "un seul chargé à la fois",
-    groupsTitle: "Modèles", itemsNote: "celle qui est allumée sert ; les autres attendent", foldMore: "{n} autres dans {g}", foldLess: "Replier",
-    recHow: "Comment créer la voix", recMe: "M'enregistrer", recImport: "Importer un fichier", recRead: "Lis cette phrase à voix haute", recOther: "Autre phrase",
-    recKnown: "Floppy connaît déjà ce texte : tu n'as rien à taper.", recStart: "Enregistrer", recStop: "Arrêter l'enregistrement", recOn: "enregistrement…",
-    recAim: "vise {min} à {max} secondes", recLevel: "Niveau du micro", recReading: "Lecture du son…", recAgain: "Recommencer", recReplay: "Réécouter l'enregistrement",
-    recChecks: "Vérifications", recLenOk: "Durée : {n} s", recShort: "Un peu court ({n} s) : vise {min} s ou plus.", recLong: "Long ({n} s) : {max} s suffisent.",
-    recClipped: "Son saturé : éloigne-toi un peu du micro.", recNotClipped: "Pas de son saturé", recQuiet: "Très faible : rapproche-toi du micro.",
-    recNoisy: "Un peu de bruit de fond : une pièce plus calme donnera un meilleur clone.", recClean: "Peu de bruit de fond",
-    recTip1: "Une pièce calme : pas de musique, pas de télé.", recTip2: "À une main du micro : ni trop près, ni trop loin.", recTip3: "Ton naturel : Floppy copie aussi ta façon de parler.",
-    recLocal: "L'enregistrement reste sur cet ordinateur.", recEmpty: "On n'entend rien : vérifie le micro, puis recommence.", recBadFile: "Ce son est illisible : essaie un autre fichier.",
-    recDenied: "Micro refusé : autorise le micro pour Floppy, puis recommence.", recNoMic: "Aucun micro trouvé.", recPickFile: "Choisir un fichier audio",
-    recFileHint: "WAV, MP3, M4A, OGG… {min} à {max} secondes de voix claire. Écris ensuite ce que dit le fichier.", recCurrent: "Enregistrement actuel",
-    recReplaceHint: "Un nouvel enregistrement le remplace.", recListenCurrent: "Écouter l'enregistrement actuel", trialAudio: "Essai",
-    loadedShort: "chargé", idleShort: "en veille", seeItems: "Voir",
-    modeOff: "Ce mode n'est pas en service. « Activer » un moteur ci-dessous y passe Floppy.",
-    modeOffLocal: "Floppy est en mode Live. « Activer » un élément ici le repasse dans ce mode.",
-    categories: "Catégories", all: "Tous", source: "Source", builtinMany: "Intégrés", marketSoon: "Marketplace · bientôt",
-    installed: "Installé", installedOff: "Installé · éteint", create: "Créer", createOwn: "Créer le tien", forRole: "Pour", forRoleTip: "Seuls les plugins compatibles sont montrés. Clique pour voir tout le catalogue.", noneCompatible: "Aucun plugin compatible pour l'instant.",
-    hideIt: "Masquer", showIt: "Rendre disponible", settingsOf: "Réglages", engineOf: "Moteur", engineNote: "écoute, réfléchit et parle ; un seul à la fois",
-    plugState: { active: "actif", error: "erreur", waiting: "en attente", loaded: "chargé", stopped: "arrêté", starting: "démarrage" },
-    waitsFor: "attend", askVoice: "accord à la voix", cliOnly: "clic seulement", apply: "Appliquer", provError: "Erreur", childrenDef: "Éléments",
-    statusOk: "ok", noPlugins: "Aucun plugin.", results: "Résultats", search0: "Recherche",
-    getModels: "Télécharger des modèles", libTitle: "Modèles à télécharger", libFor: "Pour", dlRunning: "en cours",
-    libKnown: "Choisis par Floppy", libKnownNote: "testés avec Floppy", libResults: "Résultats de la recherche", libSearching: "Recherche…",
-    libNoResult: "Aucun modèle trouvé.", libSearchLabel: "Chercher un modèle", libConfirm: "Confirmer ?",
-    libNote: "Télécharger un modèle, c'est accepter sa licence. Les fichiers vont dans le dossier des modèles (rubrique Général). Le téléchargement continue si tu fermes cette fenêtre.",
-    libReady: "Prêt : active-le dans la liste.",
-    savedOk: "Enregistré", saving: "Enregistrement…", listAddHint: "Ajouter, puis Entrée", removeWord: "Retirer", steps: "Étapes", tryNow: "Vérifier que ça marche",
-  },
-  en: {
-    firstSetup: "Run the first setup again",
-    onbTitle: "First setup", onbRunning: "running", onbDone: "finished", onbFailed: "a part failed",
-    onbOf: "ready out of", onbDownloading: "downloading…", onbReady: "Ready", onbWaiting: "Waiting", onbFailedRow: "Failed",
-    onbRoles: { vad: "Speech detector", stt: "Transcription", tts: "Voice", llm: "Brain", program: "Program" }, title: "Settings", search: "Search a setting, a plugin, a tool…", searchLabel: "Search a setting",
-    undo: "Undo last change", assistant: "AI assistant", navLabel: "Sections",
-    navNote: "Each section is built from the installed plugins. A new plugin adds its options here.",
-    add: "Add", addIn: "Add", addTitle: "Add", editTitle: "Edit", cancel: "Cancel", close: "Close", save: "Save",
-    addAndGo: "Add", configure: "Configure", listLabel: "Items", edit: "Edit", remove: "Delete", removeSure: "Confirm deletion", on: "on", off: "off",
-    onTip: "Visible to Floppy", offTip: "Invisible to Floppy: kept in the list", active: "in use", cloud: "cloud",
-    stepType: "Which type?", stepConfig: "Configuration", stepTry: "Check before saving", tryBtn: "Try", trying: "Trying…", tryNone: "No test for this type.",
-    required: "required", saved: "saved", pick: "Browse…", advanced: "Advanced", listHint: "one per line", addRow: "+ Add a row",
-    key: "key", value: "value", noKinds: "Nothing to add here.", noItems: "Nothing yet.", noMatch: "No result.", waiting: "Waiting for the kernel…",
-    done: "Done.", refused: "Refused.", undone: "Undone.", demoNote: "(demo) ",
-    engines: "Available engines", enginesNote: "provided by installed plugins", mode: "Mode",
-    modeNeed: "No engine available: add one or make one available.",
-    activate: "Activate", activateAs: "Activate as", remove1: "Remove", removePlugin: "Remove", removePluginSure: "Remove?", removePluginTip: "Removes this plugin from Floppy. Nothing is deleted: add it back with “+ Add a plugin”.", inUse: "In use", loading: "loading…",
-    idle: "idle", failed: "failed", noneChosen: "none",
-    available: "Available", availTip: "Floppy sees it and can use it", hiddenTip: "Hidden: Floppy no longer sees it (nothing is deleted)",
-    hidden: "hidden", makeAvail: "Make it available to activate it.", provIdle: "Idle: nothing uses it in this mode.",
-    inUseShort: "in use", turnOffTip: "Turn off: nothing in this role", inUseTip: "In use. To change, turn on another item.", activateTip: "Put in use (the current one stops)", noMore: "Nothing else to set here.", openDetail: "open details", settingsTab: "Settings", back: "Back", crumbs: "Path", settingsBtn: "Settings", onShort: "On", builtin: "built-in", addPlugin: "Add a plugin",
-    pluginsNote: "they provide the items above", pluginsOf: "Plugins", needsSetup: "needs setup",
-    stepModelNote: "one loaded at a time",
-    groupsTitle: "Models", itemsNote: "the one switched on is used; the others wait", foldMore: "{n} more in {g}", foldLess: "Collapse",
-    recHow: "How to create the voice", recMe: "Record myself", recImport: "Import a file", recRead: "Read this sentence aloud", recOther: "Another sentence",
-    recKnown: "Floppy already knows this text: nothing to type.", recStart: "Record", recStop: "Stop recording", recOn: "recording…",
-    recAim: "aim for {min} to {max} seconds", recLevel: "Microphone level", recReading: "Reading the sound…", recAgain: "Start over", recReplay: "Play the recording again",
-    recChecks: "Checks", recLenOk: "Length: {n} s", recShort: "A bit short ({n} s): aim for {min} s or more.", recLong: "Long ({n} s): {max} s is enough.",
-    recClipped: "Distorted sound: move a little away from the microphone.", recNotClipped: "No distortion", recQuiet: "Very quiet: move closer to the microphone.",
-    recNoisy: "Some background noise: a quieter room will give a better clone.", recClean: "Little background noise",
-    recTip1: "A quiet room: no music, no TV.", recTip2: "A hand's width from the microphone: not too close, not too far.", recTip3: "Natural tone: Floppy also copies the way you speak.",
-    recLocal: "The recording stays on this computer.", recEmpty: "Nothing can be heard: check the microphone, then start over.", recBadFile: "This sound cannot be read: try another file.",
-    recDenied: "Microphone refused: allow the microphone for Floppy, then start over.", recNoMic: "No microphone found.", recPickFile: "Choose an audio file",
-    recFileHint: "WAV, MP3, M4A, OGG… {min} to {max} seconds of clear voice. Then write what the file says.", recCurrent: "Current recording",
-    recReplaceHint: "A new recording replaces it.", recListenCurrent: "Listen to the current recording", trialAudio: "Trial",
-    loadedShort: "loaded", idleShort: "idle", seeItems: "See",
-    modeOff: "This mode is not in use. “Activate” an engine below to switch Floppy to it.",
-    modeOffLocal: "Floppy is in Live mode. “Activate” an item here to switch back to this mode.",
-    categories: "Categories", all: "All", source: "Source", builtinMany: "Built-in", marketSoon: "Marketplace · soon",
-    installed: "Installed", installedOff: "Installed · off", create: "Create", createOwn: "Create your own", forRole: "For", forRoleTip: "Only compatible plugins are shown. Click to see the whole catalogue.", noneCompatible: "No compatible plugin yet.",
-    hideIt: "Hide", showIt: "Make available", settingsOf: "Settings", engineOf: "Engine:", engineNote: "listens, thinks and speaks; one at a time",
-    plugState: { active: "active", error: "error", waiting: "waiting", loaded: "loaded", stopped: "stopped", starting: "starting" },
-    waitsFor: "waiting for", askVoice: "voice approval", cliOnly: "click only", apply: "Apply", provError: "Error", childrenDef: "Items",
-    statusOk: "ok", noPlugins: "No plugin.", results: "Results", search0: "Search",
-    getModels: "Download models", libTitle: "Models to download", libFor: "For", dlRunning: "in progress",
-    libKnown: "Picked by Floppy", libKnownNote: "tested with Floppy", libResults: "Search results", libSearching: "Searching…",
-    libNoResult: "No model found.", libSearchLabel: "Search a model", libConfirm: "Confirm?",
-    libNote: "Downloading a model means accepting its licence. Files go to the models folder (General section). The download goes on if you close this window.",
-    libReady: "Ready: turn it on in the list.",
-    savedOk: "Saved", saving: "Saving…", listAddHint: "Add, then Enter", removeWord: "Remove", steps: "Steps", tryNow: "Check that it works",
-  },
-};
 let lang = "fr";
 const t = (k) => I[lang]?.[k] ?? I.fr[k] ?? k;
 /** Texte du noyau : chaîne simple, ou { fr, en }. */
@@ -173,22 +70,6 @@ async function setSlot(slot, value) {
 }
 
 // ------------------------------------------------------------------ petits outils DOM
-function h(tag, props, ...kids) {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(props ?? {})) {
-    if (v === undefined || v === null || v === false) continue;
-    if (k === "class") e.className = v;
-    else if (k === "text") e.textContent = v;
-    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
-    else if (k === "value") e.value = v;
-    else if (k === "checked") e.checked = !!v;
-    else e.setAttribute(k, v === true ? "" : String(v));
-  }
-  for (const c of kids.flat()) if (c !== undefined && c !== null && c !== false) e.append(c);
-  return e;
-}
-let uid = 0;
-const nextId = () => `f${++uid}`;
 
 let toastTimer = 0;
 function toast(text, bad) {
@@ -1548,164 +1429,7 @@ function closeEditor() { if (dlg.open) dlg.close(); ed = null; resetEditorAudio(
 dlg.addEventListener("close", () => { resetEditorAudio(); ed = null; catalog = null; library = null; dlg.classList.remove("catalog", "library"); if (deferred) render(); });
 dlg.addEventListener("cancel", () => { ed = null; });
 
-const visible = (f, values) => !f.showIf || (f.showIf.values ?? []).some((v) => String(v) === String(values[f.showIf.key]));
-
-/**
- * Le contrôle d'un champ déclaré. values : les valeurs du formulaire (modifiées en place). Chaque changement « fini »
- * (champ quitté, Entrée, case cochée, pastille ajoutée ou retirée) émet un événement « change » qui remonte : le
- * formulaire en place l'enregistre.
- */
-function fieldControl(f, values, onChange, opts = {}) {
-  const id = nextId();
-  const v = values[f.key];
-  const set = (x) => { values[f.key] = x; onChange(); };
-  let ctl;
-  switch (f.type) {
-    case "audio": {
-      // L'état de l'enregistreur survit aux dessins de la page (un enregistrement peut être en cours).
-      const sk = `${opts.stateKey ?? "ed"}/${f.key}`;
-      const st = audioStates.get(sk) ?? {};
-      audioStates.set(sk, st);
-      const box = audioField({
-        f, st, value: v, set,
-        // La phrase lue remplit le champ texte, sauf si l'utilisateur y a écrit autre chose.
-        setText: (text, prompts) => { if (f.textKey && (!values[f.textKey] || prompts.includes(values[f.textKey]))) values[f.textKey] = text; },
-        deps: {
-          h, t, tr, icon: window.lucideIcon,
-          // Fin d'un enregistrement : le formulaire en place l'enregistre tout de suite, puis on redessine.
-          // (Pas d'événement « change » : la case a pu être redessinée pendant l'enregistrement.)
-          redraw: () => { if (st.phase === "done" && st.committed !== st.url) { st.committed = st.url; opts.commit?.(); } if (opts.stateKey) render(); else drawEditor(); },
-          ...(opts.listen ? { listenCurrent: opts.listen } : {}),
-        },
-      });
-      box.id = id;
-      return { id, ctl: box, wide: true };
-    }
-    case "boolean": {
-      ctl = h("input", { type: "checkbox", id, checked: v === true });
-      ctl.addEventListener("change", () => set(ctl.checked));
-      return { id, ctl, inline: true };
-    }
-    case "number": {
-      ctl = h("input", { type: "number", id, min: f.min, max: f.max, step: "any" });
-      ctl.value = v === undefined || v === null ? "" : String(v);
-      ctl.addEventListener("input", () => set(ctl.value === "" ? undefined : Number(ctl.value)));
-      break;
-    }
-    case "select": {
-      ctl = h("select", { id });
-      for (const o of f.options ?? []) ctl.append(h("option", { value: o.value, text: tr(o.label) }));
-      if (v === undefined && f.options?.length) values[f.key] = f.options[0].value;
-      ctl.value = String(values[f.key] ?? "");
-      ctl.addEventListener("change", () => set(ctl.value));
-      break;
-    }
-    case "secret": {
-      const was = v === SECRET_SET;
-      ctl = h("input", { type: "password", id, autocomplete: "new-password", placeholder: was ? t("saved") : tr(f.placeholder) });
-      ctl.addEventListener("input", () => set(ctl.value || (was ? SECRET_SET : "")));
-      break;
-    }
-    case "path": {
-      const input = h("input", { type: "text", id, placeholder: tr(f.placeholder) });
-      input.value = v ?? "";
-      input.addEventListener("input", () => set(input.value));
-      const pick = h("button", { type: "button", class: "btn small", text: t("pick"), disabled: !api?.pickPath, onclick: async () => {
-        const p = await api.pickPath({ directory: !!f.directory, filters: f.filters ?? [] });
-        if (p) { input.value = p; set(p); input.dispatchEvent(new Event("change", { bubbles: true })); }
-      } });
-      ctl = h("div", { class: "pathrow" }, input, pick);
-      ctl.labelTarget = input;
-      break;
-    }
-    case "list": {
-      // Pastilles : × retire, Entrée (ou virgule) ajoute ; un collage de plusieurs lignes donne plusieurs pastilles.
-      const input = h("input", { type: "text", id, placeholder: tr(f.placeholder) || t("listAddHint") });
-      const box = h("div", { class: "lchips", role: "group", onclick: (e) => { if (e.target === box) input.focus(); } }, input);
-      const now = () => (Array.isArray(values[f.key]) ? values[f.key] : []);
-      const changed = () => box.dispatchEvent(new Event("change", { bubbles: true }));
-      const draw = () => {
-        for (const n of box.querySelectorAll(".lchip")) n.remove();
-        for (const x of now()) box.insertBefore(h("span", { class: "lchip" }, h("span", { text: x }),
-          h("button", { type: "button", "aria-label": `${t("removeWord")} ${x}`, onclick: () => { set(now().filter((y) => y !== x)); draw(); input.focus(); changed(); } }, "×")), input);
-      };
-      const take = (text) => {
-        const next = listAdd(now(), text);
-        input.value = "";
-        if (next.length === now().length) return;
-        set(next); draw(); changed();
-      };
-      input.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === ",") && input.value.trim()) { e.preventDefault(); take(input.value); } });
-      input.addEventListener("paste", (e) => { const text = e.clipboardData?.getData("text") ?? ""; if (/[\n,;]/.test(text)) { e.preventDefault(); take(text); } });
-      // Texte tapé puis champ quitté : il compte aussi (rien ne se perd). Son propre « change » ne remonte pas.
-      input.addEventListener("change", (e) => { e.stopPropagation(); if (input.value.trim()) take(input.value); });
-      draw();
-      ctl = box;
-      ctl.labelTarget = input;
-      break;
-    }
-    case "textarea": {
-      ctl = h("textarea", { id, placeholder: tr(f.placeholder) });
-      ctl.value = v ?? "";
-      ctl.addEventListener("input", () => set(ctl.value));
-      break;
-    }
-    case "keyvalue": {
-      const rows = Object.entries(v && typeof v === "object" ? v : {});
-      const box = h("div", { class: "kv", id, role: "group" });
-      const sync = () => {
-        const o = {};
-        for (const r of box.querySelectorAll(".r")) { const [k, val] = r.querySelectorAll("input"); if (k.value.trim()) o[k.value.trim()] = val.value; }
-        set(o);
-      };
-      const addRow = (k = "", val = "") => {
-        const ki = h("input", { type: "text", "aria-label": t("key"), placeholder: t("key") });
-        const vi = h("input", { type: "text", "aria-label": t("value"), placeholder: t("value") });
-        ki.value = k; vi.value = val;
-        ki.addEventListener("input", sync); vi.addEventListener("input", sync);
-        const del = h("button", { type: "button", class: "btn small", "aria-label": t("remove"), text: "×", onclick: () => { r.remove(); sync(); box.dispatchEvent(new Event("change", { bubbles: true })); } });
-        const r = h("div", { class: "r" }, ki, vi, del);
-        box.insertBefore(r, add);
-      };
-      const add = h("button", { type: "button", class: "btn small", text: t("addRow"), onclick: () => addRow() });
-      box.append(add);
-      for (const [k, val] of rows) addRow(k, String(val));
-      ctl = box;
-      break;
-    }
-    default: {
-      ctl = h("input", { type: "text", id, placeholder: tr(f.placeholder) });
-      ctl.value = v ?? "";
-      ctl.addEventListener("input", () => set(ctl.value));
-    }
-  }
-  return { id, ctl };
-}
-
-/** opts.stateKey : formulaire en place d'un élément (« fournisseur/élément ») ; opts.listen : écouter l'enregistrement gardé. */
-function formNode(kind, values, opts = {}) {
-  const form = h("div", { class: "form" });
-  const adv = h("div", { class: "form" });
-  const wraps = [];
-  const refresh = () => { for (const [f, w] of wraps) w.hidden = !visible(f, values); };
-  for (const f of kind.fields) {
-    const { id, ctl, inline, wide: wideCtl } = fieldControl(f, values, refresh, opts);
-    // Un enregistreur n'est pas un champ de saisie : son nom est un titre de groupe, pas une étiquette « for ».
-    const lab = f.type === "audio"
-      ? h("span", { class: "flabel", id: `${id}-l` }, tr(f.label), f.required ? h("span", { class: "req", "aria-hidden": "true", text: " *" }) : null)
-      : h("label", { for: ctl.labelTarget ? ctl.labelTarget.id : id }, tr(f.label), f.required ? h("span", { class: "req", "aria-hidden": "true", text: " *" }) : null);
-    if (f.type === "audio") ctl.setAttribute("aria-labelledby", `${id}-l`);
-    if (f.required) (ctl.labelTarget ?? ctl).setAttribute("aria-required", "true");
-    const hint = f.hint ? h("span", { class: "hint", text: tr(f.hint) }) : null;
-    const wide = wideCtl || f.type === "textarea" || f.type === "list" || f.type === "keyvalue";
-    const w = inline ? h("div", { class: "field check" }, ctl, lab, hint) : h("div", { class: wide ? "field wide" : "field" }, lab, ctl, hint);
-    wraps.push([f, w]);
-    (f.advanced ? adv : form).append(w);
-  }
-  refresh();
-  if (adv.childElementCount) form.append(h("details", { class: "adv" }, h("summary", { text: t("advanced") }), adv));
-  return form;
-}
+configureFields({ t, tr, api, audioStates, render: () => render(), drawEditor: () => drawEditor() });
 
 function missingFields() {
   return missingOf(ed.kind.fields, ed.values, visible);
