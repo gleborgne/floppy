@@ -9,11 +9,9 @@
 // - Langues : ce que Floppy dit suit la langue de l'assistant (ctx.assistant.language, le plugin redémarre quand
 //   elle change) ; les erreurs montrées dans les fenêtres suivent la langue de l'interface (ctx.uiLang()).
 // - Interruption : si l'utilisateur parle pendant la voix, tout s'arrête (cerveau, synthèse, lecture).
-import { z } from "zod";
 import { definePlugin, type Text, AudioHistory, T, tr, errorText } from "@floppy/core";
-import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, VoiceStream, TurnMode, VoiceEvent, ConversationCommand, ConversationCommandInput, WakewordStream, WakewordDetection } from "@floppy/contracts";
+import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, TurnMode, ConversationCommand, ConversationCommandInput } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
-import { encodeAudioOut } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, SentenceSplitter, matchQuickSetting } from "./text.ts";
 
 import { SpeechQueue } from "./speech.ts";
@@ -21,106 +19,17 @@ import { LiveConversation } from "./live.ts";
 import { MoodTracker } from "./mood.ts";
 import { guessEmotion, ReplyFeeler } from "./feel.ts";
 import { Dictation } from "./dictation.ts";
-import { isEcho } from "./echo.ts";
 import { withIdleTimeout } from "./idle.ts";
+import { Config, PHRASES, ECHO_TAIL_MS, type Body, type Turn } from "./model.ts";
+import { createInitiatives } from "./initiatives.ts";
+import { voiceHandler } from "./voice-events.ts";
+
+export { PHRASES };
 
 export * from "./text.ts";
 export { liveInstructions } from "./live.ts";
 export { MoodTracker, AFFECT } from "./mood.ts";
 export { guessEmotion, ReplyFeeler } from "./feel.ts";
-
-const Config = z.object({
-  free_listen_s: z.number().default(8),
-  idle_reset_s: z.number().default(300),
-  neutral_after_ms: z.number().default(5000),
-  /** Phrase dite quand un outil attend l'accord (corps vocal d'origine). Vide : phrase par défaut, dans la langue de l'assistant. */
-  approval_prompt: z.string().optional(),
-  error_reply: z.string().optional(),
-  /** Silence du cerveau (aucun texte, outil ou émotion) au-delà duquel le tour échoue et Floppy le dit. */
-  turn_idle_s: z.number().positive().default(300),
-});
-
-/** Phrases dites par défaut, par langue de l'assistant. */
-export const PHRASES = {
-  approval_prompt: T("J'ai besoin de ton accord.", "I need your approval."),
-  error_reply: T("Désolé, je n'arrive pas à réfléchir pour l'instant.", "Sorry, I can't think right now."),
-  /** Ton par défaut tant que l'utilisateur n'en a pas choisi un. */
-  tone: T("cordial et chaleureux", "friendly and warm"),
-};
-type Config = z.infer<typeof Config>;
-
-interface Turn {
-  n: number;
-  abort: AbortController;
-  mode: TurnMode;
-  pending: Set<string>;      // phrases envoyées à la synthèse, pas encore finies
-  brainDone: boolean;
-  spoke: boolean;
-  t0: number;
-  marks: Record<string, number>;
-  /** Émotions placées au milieu de la réponse : montrées quand leur phrase commence à être dite (id de phrase). */
-  cues: Map<string, { emotion: Emotion; intensity?: number }>;
-  /** Phrases qui ouvrent un paragraphe : un silence est joué juste avant elles (id de phrase). */
-  pauses?: Set<string>;
-}
-
-/** Silence entre deux paragraphes, comme une respiration. */
-const PARAGRAPH_PAUSE_MS = 450;
-/** Coupure de parole : volume baissé le temps de savoir si c'est l'utilisateur ou l'écho de Floppy. */
-const DUCK_MAX_MS = 8000;
-/** Après la fin de la parole entendue, attente du texte reconnu avant de remonter le son. */
-const DUCK_WAIT_TRANSCRIPT_MS = 2500;
-/** Après la fin de la voix de Floppy, l'écho peut encore arriver (traîne de la pièce + délai du STT). */
-const ECHO_TAIL_MS = 2500;
-/** Silence PCM au même débit que le morceau audio qui suit (les 4 premiers octets donnent le débit). */
-function silenceLike(data: Uint8Array, ms: number): Uint8Array {
-  const rate = data.byteLength >= 4 ? new DataView(data.buffer, data.byteOffset, 4).getUint32(0, true) : 24000;
-  return encodeAudioOut(new Int16Array(Math.round((rate || 24000) * ms / 1000)), rate || 24000);
-}
-
-interface Body {
-  id: string;
-  voice: boolean;
-  text: boolean;
-  stream?: VoiceStream;
-  output?: SpeechQueue;
-  history?: AudioHistory;
-  live?: LiveConversation;
-  wakeStream?: WakewordStream;
-  wakeAbort?: AbortController;
-  wakeActivation?: WakewordDetection & { expires: number };
-  voiceOffset?: number;
-  ptt?: boolean;
-  /** Dictée en cours : le texte est tapé chez le corps, Floppy ne répond pas. */
-  dictation?: Dictation;
-  off?: () => void;
-  muted: boolean;
-  awakeUntil: number;
-  lastTurnAt: number;
-  turn?: Turn;
-  playing: boolean;
-  state: BodyState;
-  /** Demandes d'accord en cours venant d'un tour de ce corps : parler ne doit pas annuler le tour. */
-  awaiting: Set<string>;
-  /** Initiative en cours de lecture sur ce corps (hors tour). */
-  init?: { id: string; done: boolean };
-  /** Réglage en voie rapide en cours (sans tour) : sa demande d'accord doit être dite elle aussi. */
-  quick?: boolean;
-  /** Début de la parole entendue (VAD) : un hochement de tête quand l'utilisateur fait une pause. */
-  speechAt?: number;
-  /** La parole en cours a commencé pendant l'écoute libre : sa phrase compte même si elle arrive après la fin de la fenêtre. */
-  speechOpen?: boolean;
-  /** Phrases envoyées à la voix (récentes) : pour reconnaître leur écho dans le micro. */
-  spoken?: { text: string; at: number }[];
-  /** Fin de la dernière lecture (message playback:false du corps). */
-  playEndAt?: number;
-  /** Voix baissée après une possible coupure de parole, en attendant de savoir qui parle. */
-  duck?: { timer: NodeJS.Timeout };
-  /** Mode Live : émotion devinée dans ce que dit le modèle. */
-  feeler?: ReplyFeeler;
-}
-
-interface Initiative { source: string; text: string; key?: string }
 
 export default definePlugin<Config>({
   manifest: {
@@ -296,82 +205,9 @@ export default definePlugin<Config>({
     };
 
     // ------------------------------------------------------------ initiatives (annonces venant d'autres plugins)
-    const queue: Initiative[] = [];
-    const recent: { text: string; at: number }[] = [];
-    const primary = () => [...bodies.values()].find((b) => b.voice && b.stream);
-    const idle = (b: Body) => !b.muted && !b.turn && !b.init && !b.playing;
-
-    /** Dit une phrase hors tour (réponse de la voie rapide). Une 2e phrase prend le relais de la 1re. */
-    const sayDirect = (b: Body, text: string) => {
-      if (b.init) b.output?.cancel();
-      const id = `i${++turnSeq}`;
-      b.init = { id, done: false };
-      setState(b, "speaking");
-      speakOut(b, id, text);
-    };
-    const speakInitiative = (b: Body, it: Initiative) => {
-      const id = `i${++turnSeq}`;
-      b.init = { id, done: false };
-      recent.push({ text: it.text, at: Date.now() });
-      if (recent.length > 5) recent.shift();
-      setEmotion("curious");
-      setState(b, "speaking");
-      speakOut(b, id, it.text);
-      ctx.audit.write({ kind: "initiative", source: it.source, importance: "important", spoken: true });
-    };
-    const finishInit = (b: Body) => {
-      if (!b.init) return;
-      b.init = undefined;
-      b.playing = false;
-      b.stream?.setSpeaking(false);
-      b.awakeUntil = Date.now() + freeListen * 1000; // écoute libre : on peut répondre sans le mot
-      setState(b, b.muted ? "sleep" : "listening");
-      ctx.timeout(() => { if (!b.turn && !b.init && b.state === "listening" && Date.now() >= b.awakeUntil) setState(b, "idle"); }, freeListen * 1000 + 50);
-      neutralSoon();
-      drain();
-    };
-    const abortInit = (b: Body) => {
-      if (!b.init) return;
-      endDuck(b, false);
-      b.output?.cancel();
-      hub.send(b.id, { type: "interrupt" });
-      b.init = undefined;
-      b.playing = false;
-      b.stream?.setSpeaking(false);
-    };
-    /** Dit la prochaine initiative en attente, si le corps vocal principal est libre. */
-    function drain() {
-      if (live) {
-        const b = [...bodies.values()].find((b) => b.live?.active && !b.muted && !b.live.busy && !b.live.awaitingApproval);
-        if (b) for (const item of queue.splice(0)) { b.live!.say(item.text); ctx.audit.write({ kind: "initiative", source: item.source, importance: "important", spoken: true }); }
-        return;
-      }
-      const b = primary();
-      if (!b || !idle(b) || !queue.length) return;
-      speakInitiative(b, queue.shift()!);
-    }
-    // Anti-doublon : une même annonce (même clé, ou même texte) n'est pas répétée pendant 10 minutes.
-    const lastSeen = new Map<string, number>();
-    ctx.on("initiative", (e) => {
-      const dedupe = e.key ?? e.text;
-      const seen = lastSeen.get(dedupe) ?? lastSeen.get(e.text);
-      if (seen && Date.now() - seen < 10 * 60_000) return;
-      lastSeen.set(dedupe, Date.now());
-      lastSeen.set(e.text, Date.now());
-      if (lastSeen.size > 200) lastSeen.clear();
-      const important = e.importance === "important";
-      for (const id of bodies.keys()) {
-        if (hub.has(id, "display") || hub.has(id, "text")) hub.send(id, { type: "notify", text: e.text, important });
-      }
-      if (!important) { ctx.audit.write({ kind: "initiative", source: e.source, importance: e.importance, spoken: false }); return; }
-      const b = primary();
-      if (live && b?.live?.active && !b.muted && !b.live.busy && !b.live.awaitingApproval) { b.live.say(e.text); ctx.audit.write({ kind: "initiative", source: e.source, importance: e.importance, spoken: true }); return; }
-      if (!live && b && idle(b) && !queue.length) { speakInitiative(b, e); return; }
-      // Occupé, muet ou en veille : en file (FIFO, sans doublon de clé, 5 au plus).
-      if (e.key && queue.some((q) => q.key === e.key)) return;
-      queue.push({ source: e.source, text: e.text, ...(e.key ? { key: e.key } : {}) });
-      if (queue.length > 5) queue.shift();
-      ctx.audit.write({ kind: "initiative", source: e.source, importance: e.importance, spoken: false });
+    const { sayDirect, finishInit, abortInit, drain, recent } = createInitiatives({
+      ctx, hub, live, bodies, freeListen: () => freeListen, nextSeq: () => ++turnSeq,
+      setState, setEmotion, neutralSoon, speakOut, endDuck,
     });
 
     // ------------------------------------------------------------ un tour
@@ -569,139 +405,10 @@ ${text}` : text;
     ctx.on("approval.closed", (c) => { for (const b of bodies.values()) { b.awaiting.delete(c.id); b.live?.touch(); } });
 
     // ------------------------------------------------------------ corps
-    const onVoice = (b: Body, ev: VoiceEvent) => {
-        switch (ev.type) {
-          case "vad":
-            if (ev.state === "speech" && !b.turn && !b.muted && Date.now() < b.awakeUntil) setState(b, "listening");
-            if (b.duck) duckFor(b, ev.state === "speech" ? DUCK_MAX_MS : DUCK_WAIT_TRANSCRIPT_MS);
-            // La phrase arrive après la fin de la parole + le silence + la transcription : on retient
-            // qu'elle a commencé dans la fenêtre, sinon une phrase de 3 s dite à la fin est jetée.
-            if (ev.state === "speech") { b.speechAt = Date.now(); b.speechOpen = !b.muted && Date.now() < b.awakeUntil; }
-            // Pause après au moins une demi-seconde de parole, pendant qu'il écoute : petit hochement (« je t'entends »).
-            else if (b.speechAt && Date.now() - b.speechAt > 500 && !b.muted && b.state === "listening" && !b.playing) { b.speechAt = undefined; cue("nod"); }
-            break;
-          case "dictation": {
-            const edit = ev.final ? b.dictation?.final(ev.seg, ev.text) : b.dictation?.partial(ev.seg, ev.text);
-            if (edit) hub.send(b.id, { type: "dictation", ...edit });
-            break;
-          }
-          case "merge":
-            if (!b.live?.active && b.turn && !b.turn.spoke) interrupt(b, "phrase reprise");
-            break;
-          case "transcript": {
-            // Le STT possède une horloge commençant à l'ouverture de son flux.
-            if (b.voiceOffset) ev = { ...ev, ...(ev.start_sample === undefined ? {} : { start_sample: ev.start_sample + b.voiceOffset }), ...(ev.end_sample === undefined ? {} : { end_sample: ev.end_sample + b.voiceOffset }) };
-            // Écho de la voix de Floppy : ni une demande, ni une coupure. La voix reprend son volume.
-            if (!b.live?.active && !b.ptt && mayEcho(b) && isEcho(ev.text, (b.spoken ?? []).map((x) => x.text))) {
-              ctx.audit.write({ kind: "transcript.echo", body: b.id, chars: ev.text.length, ducked: !!b.duck });
-              endDuck(b, true);
-              break;
-            }
-            // Parole de l'utilisateur pendant que la voix était baissée : il coupe vraiment la parole.
-            if (b.duck) userBargeIn(b);
-            if (answerApproval(b, ev.text)) break;
-            b.wakeStream?.pushTranscript?.({ text: ev.text, startSample: ev.start_sample, endSample: ev.end_sample });
-            const activation = b.wakeActivation;
-            const activated = !b.live?.active && !!activation && Date.now() <= activation.expires && (activation.endSample === undefined || (ev.end_sample !== undefined && ev.end_sample >= activation.endSample));
-            const startedOpen = !!b.speechOpen;
-            b.speechOpen = false;
-            if (startedOpen && !b.muted && Date.now() > b.awakeUntil) b.awakeUntil = Date.now() + 1000; // la fenêtre couvre cette phrase
-            if (!b.live?.active && !b.ptt && (b.muted || Date.now() > b.awakeUntil) && !activated) {
-              // Trace sans le texte (parole non adressée à Floppy) : assez pour voir qu'une phrase a été jetée.
-              ctx.audit.write({ kind: "transcript.ignored", body: b.id, why: b.muted ? "veille" : "pas de mot d'activation", chars: ev.text.length, state: b.state, late_ms: b.muted ? undefined : Date.now() - b.awakeUntil });
-              break;
-            }
-            if (activation && (activated || b.live?.active || b.ptt || Date.now() > activation.expires)) b.wakeActivation = undefined;
-            if (activated && activation) {
-              b.wakeActivation = undefined;
-              b.muted = false;
-              if (!live && !liveUnavailable) {
-                const request = stripWakeWord(ev.text, [activation.word, ...wake]);
-                if (!request) { b.awakeUntil = Date.now() + freeListen * 1000; setState(b, "listening"); break; }
-                const acceptedTranscript = ev;
-                onUtterance(b, request, "ptt", performance.now() - ev.stt_ms - (ev.silence_ms ?? 0), () => {
-                  ctx.audit.write({ kind: "transcript", body: b.id, text: acceptedTranscript.text, stt_ms: acceptedTranscript.stt_ms, silence_ms: acceptedTranscript.silence_ms, audio_s: acceptedTranscript.audio_s, merged: acceptedTranscript.merged });
-                });
-                break;
-              }
-            }
-            if (liveUnavailable) { if (activated || b.ptt || (!b.muted && Date.now() < b.awakeUntil)) hub.send(b.id, { type: "error", text: shown(T("Le moteur Live choisi est indisponible. Vérifie-le, ou repasse en mode Séparé dans les réglages.", "The chosen Live engine is unavailable. Check it, or switch back to Separate mode in the settings.")) }); break; }
-            if (live && !b.live) break; // initialisation de l'écoute locale encore en cours
-            if (b.live) {
-              if (b.live.active) { if (!b.playing || b.live.awaitingApproval) b.live.localTranscript(ev.text); break; }
-              if (isSleepCommand(ev.text, wake)) { b.muted = true; b.history?.clear(); setState(b, "sleep"); break; }
-              if (b.muted && !b.ptt && !activated) break;
-              if (!b.ptt && !activated && Date.now() > b.awakeUntil) break;
-              if (b.playing) break;
-              b.muted = false;
-              const other = [...bodies.values()].find((x) => x !== b && x.live?.active);
-              if (other) { hub.send(b.id, { type: "error", text: shown(T("Une conversation Live est déjà ouverte sur un autre corps.", "A Live conversation is already open on another body.")) }); break; }
-              const quick = matchQuickSetting(ev.text, wake, ctx.settings.list(), lang);
-              if (quick) { void quickSetting(b, quick, "text", ev.text); break; }
-              void (async () => {
-                const command = await ctx.runHook<ConversationCommandInput, ConversationCommand | undefined>("conversation.command", { text: stripWakeWord(ev.text, wake), origin: b.id }, async () => undefined);
-                if (!ctx.alive || b.muted) return;
-                if (command && ctx.tools.list().some(tool => tool.name === command.name)) { await runTurn(b, ev.text, "text", performance.now()); return; }
-                await b.live!.start(ev.start_sample, ev.end_sample, ev.text);
-              })().catch((e) => hub.send(b.id, { type: "error", text: shown(errorText(e)) }));
-              break;
-            }
-            // Audit : seulement ce qui est retenu (ni parole ignorée sans mot d'activation, ni parole en veille).
-            const transcript = ev;
-            onUtterance(b, ev.text, activated ? "ptt" : "voice", performance.now() - ev.stt_ms - (ev.silence_ms ?? 0), () => {
-              ctx.audit.write({ kind: "transcript", body: b.id, text: transcript.text, stt_ms: transcript.stt_ms, silence_ms: transcript.silence_ms, audio_s: transcript.audio_s, merged: transcript.merged });
-            });
-            break;
-          }
-          case "barge_in":
-            if (b.live?.active) { b.live.bargeIn(); break; }
-            if (b.awaiting.size && b.turn) {
-              // L'utilisateur répond à la demande d'accord : on coupe le son, pas le tour (il attend l'outil).
-              b.output?.cancel();
-              hub.send(b.id, { type: "interrupt" });
-              b.turn.pending.clear();
-              b.playing = false;
-              b.stream?.setSpeaking(false);
-              setState(b, "listening");
-            } else if (b.ptt) userBargeIn(b); // bouton parler : coupure tout de suite
-            else if (b.init || b.turn?.spoke || b.playing) {
-              // Voix entendue pendant que Floppy parle : l'utilisateur, ou l'écho de Floppy dans le micro ?
-              // On baisse la voix sans la couper, et le texte reconnu tranche (voir « transcript »).
-              if (!b.duck) {
-                b.duck = { timer: setTimeout(() => {}, 0) };
-                duckFor(b, DUCK_MAX_MS);
-                hub.send(b.id, { type: "duck", on: true });
-                ctx.audit.write({ kind: "barge_in.duck", body: b.id, turn: b.turn?.n, init: !!b.init });
-              }
-            } else ctx.audit.write({ kind: "barge_in.ignored", body: b.id, state: b.state, turn: !!b.turn });
-            break;
-          case "audio": {
-            const t = b.turn;
-            if (!(b.init?.id === ev.id || (t && !t.abort.signal.aborted && t.pending.has(ev.id)))) break;
-            if (b.init?.id === ev.id) {
-              if (b.state !== "speaking" || !b.playing) { setState(b, "speaking"); b.stream?.setSpeaking(true); }
-              b.playing = true;
-            } else if (t && !t.abort.signal.aborted) {
-              if (!t.spoke) { t.spoke = true; t.marks.first_audio ??= Math.round(performance.now() - t.t0); }
-              const c = t.cues.get(ev.id);
-              if (c) { t.cues.delete(ev.id); setEmotion(c.emotion, undefined, c.intensity); }
-              if (!b.playing || b.state !== "speaking") { setState(b, "speaking"); b.stream?.setSpeaking(true); }
-              b.playing = true;
-              if (t.pauses?.delete(ev.id)) hub.sendAudio(b.id, silenceLike(ev.data, PARAGRAPH_PAUSE_MS));
-            }
-            hub.sendAudio(b.id, ev.data);
-            break;
-          }
-          case "speak_done":
-            if (ev.error && (b.init?.id === ev.id || b.turn?.pending.has(ev.id))) hub.send(b.id, { type: "error", text: ev.error });
-            if (b.init?.id === ev.id) { b.init.done = true; if (!b.playing) finishInit(b); }
-            else if (b.turn?.pending.has(ev.id)) { b.turn.pending.delete(ev.id); maybeFinish(b, b.turn); }
-            break;
-          case "closed":
-            b.stream = undefined;
-            break;
-        }
-    };
+    const onVoice = voiceHandler({
+      ctx, hub, lang, shown, live, liveUnavailable, wake, freeListen: () => freeListen, bodies,
+      setState, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerApproval, onUtterance, quickSetting,
+    });
     const attachWakeword = async (b: Body) => {
       b.wakeAbort?.abort(); b.wakeStream?.close(); b.wakeStream = undefined; b.wakeActivation = undefined;
       if (!wakeword) {
