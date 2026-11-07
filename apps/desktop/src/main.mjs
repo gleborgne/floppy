@@ -196,8 +196,15 @@ function startKernel() {
     else if (m?.type === "display") applyDisplay(m.settings);
     else if (m?.type === "settings.open") {
       const source = kernel;
+      // Page demandée (« ouvre les réglages d'Orca ») : rubrique + élément, des textes courts seulement.
+      const t = m.target;
+      const ok = (x) => typeof x === "string" && x.length > 0 && x.length <= 200;
+      const target = t && ok(t.section) && ok(t.provider) && ok(t.id) ? { section: t.section, provider: t.provider, id: t.id } : null;
       void showSettingsConfirmed().then(
-        () => source?.postMessage({ type: "settings.open.result", reqId: m.reqId, ok: true }),
+        () => {
+          if (target) settingsWin?.webContents.send("settings:focus", target);
+          source?.postMessage({ type: "settings.open.result", reqId: m.reqId, ok: true });
+        },
         (e) => {
           // Texte { fr, en } : le noyau le dit dans la langue de l'assistant.
           const why = e?.text ?? { fr: String(e?.message ?? e), en: String(e?.message ?? e) };

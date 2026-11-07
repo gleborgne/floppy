@@ -138,6 +138,16 @@ flowchart LR
   Bouton « Parcourir » pour les fichiers (dialogue de Windows).
 - Français et anglais (réglage `langue_interface`), menus de l'icône compris.
 - Mise à jour en direct : un réglage changé à la voix se voit tout de suite dans la fenêtre.
+- **Ouvrir sur un élément** : `ouvrir_reglages` accepte `element`, le nom entendu (« ouvre les réglages d'Orca »).
+  Le corps cherche l'élément dans le catalogue (`plugins/body/electron/src/settings-target.ts`) : nom exact, nom contenu,
+  puis nom proche (fautes de dictée) ; les bibliothèques de modèles sont ignorées (trop d'homonymes). Le message
+  `settings.open` porte alors `target: { section, provider, id }` ; le processus principal le vérifie (textes courts) et
+  l'envoie à la fenêtre (`settings:focus`), qui ouvre la page de l'élément dès que le catalogue la connaît (10 s au plus).
+  La réponse cite les boutons de l'élément (« Boutons : « Installer dans Orca » »). Élément introuvable : la fenêtre s'ouvre
+  quand même et la réponse le dit.
+- **Boutons à la voix** : un bouton d'élément (installer le plugin Orca, se connecter à Microsoft 365…) ne se lance pas à
+  la voix (le catalogue refuse `via: "voice"`). La description de `ouvrir_reglages` dit au cerveau d'ouvrir les réglages
+  sur l'élément et de dire sur quel bouton cliquer. Vérifié dans l'app (7 novembre 2026) : « orka » ouvre la page Orca.
 - Un clic dans la fenêtre compte comme un geste de confiance (`via: "ui"`) : pas de demande d'accord, même pour les réglages `cli`.
 - « Annuler le dernier changement ».
 - Maquette : [maquette-reglages/](maquette-reglages/).

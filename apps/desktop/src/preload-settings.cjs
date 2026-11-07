@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld("floppySettings", {
     ipcRenderer.on("items:update", fn);
     return () => ipcRenderer.removeListener("items:update", fn);
   },
+  // « Ouvre les réglages d'Orca » : la page d'un élément à montrer ({ section, provider, id }).
+  onFocus: (cb) => {
+    const fn = (_e, target) => cb(target);
+    ipcRenderer.on("settings:focus", fn);
+    return () => ipcRenderer.removeListener("settings:focus", fn);
+  },
   onUpdate: (cb) => {
     const fn = (_e, data) => cb(data);
     ipcRenderer.on("settings:update", fn);

@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { definePlugin, T, TextError, tr, type AvatarEntry, type ItemInfo, type Text, type ConversationCommandInput, type ConversationCommand } from "@floppy/core";
+import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
 import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, type ShortcutAction } from "./shortcuts.ts";
 import type { BodyToKernel, BodyTransport, KernelToBody } from "@floppy/protocol";
 
@@ -135,26 +136,48 @@ export default definePlugin<Config>({
     parent.on("message", onSettingsResult);
     ctx.tools.register([{
       name: "ouvrir_reglages",
-      description: "Ouvre et affiche à l'écran la fenêtre des réglages de Floppy. Appelle cet outil quand l'utilisateur demande d'ouvrir les réglages ou les paramètres de Floppy.",
-      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      description: "Ouvre et affiche à l'écran la fenêtre des réglages de Floppy. Appelle cet outil quand l'utilisateur demande d'ouvrir les réglages ou les paramètres de Floppy. "
+        + "Avec `element`, ouvre directement la page de cet élément (un connecteur, une voix, un modèle…). "
+        + "Une action qui se fait par un bouton des réglages (installer le plugin Orca, se connecter à Microsoft 365, envoyer un mail de test…) ne se fait pas à la voix : "
+        + "ouvre les réglages sur l'élément concerné et dis à l'utilisateur sur quel bouton cliquer.",
+      inputSchema: {
+        type: "object",
+        properties: { element: { type: "string", description: "Nom de l'élément tel qu'entendu (ex. « Orca », « Microsoft 365 »). Facultatif." } },
+        additionalProperties: false,
+      },
       level: "read",
-      handler: async (_args, meta) => new Promise((resolve) => {
+      handler: async (args, meta) => {
+        const heard = typeof (args as { element?: unknown }).element === "string" ? (args as { element: string }).element.trim().slice(0, 100) : "";
+        let found: FoundTarget | undefined;
+        if (heard) { try { found = findSettingsTarget(await ctx.items.snapshot(), heard); } catch { /* réglages ouverts sans page précise */ } }
+        return openWindow(meta, heard, found);
+      },
+    }]);
+    const openWindow = (meta: { signal?: AbortSignal }, heard: string, found: FoundTarget | undefined) => new Promise<{ status: "done" | "failed"; text: Text }>((resolve) => {
         const reqId = randomUUID();
+        const shown = (): Text => {
+          if (!heard) return T("La fenêtre des réglages est affichée.", "The settings window is shown.");
+          if (!found) return T(`La fenêtre des réglages est affichée. Je n'ai pas trouvé « ${heard} » dans les réglages.`, `The settings window is shown. I did not find "${heard}" in the settings.`);
+          const name = (l: "fr" | "en") => tr(found.label, l);
+          const btn = (l: "fr" | "en") => found.actions.map((a) => `« ${tr(a, l)} »`).join(", ");
+          return found.actions.length
+            ? T(`Les réglages sont ouverts sur ${name("fr")}. Boutons : ${btn("fr")}.`, `Settings are open on ${name("en")}. Buttons: ${btn("en")}.`)
+            : T(`Les réglages sont ouverts sur ${name("fr")}.`, `Settings are open on ${name("en")}.`);
+        };
         const finish = (ok: boolean, text?: Text) => {
           if (!pendingOpen.delete(reqId)) return;
           clearTimeout(timer);
           meta.signal?.removeEventListener("abort", abort);
-          resolve({ status: ok ? "done" : "failed", text: text ?? (ok ? T("La fenêtre des réglages est affichée.", "The settings window is shown.") : T("La fenêtre des réglages n'a pas pu être affichée.", "The settings window could not be shown.")) });
+          resolve({ status: ok ? "done" : "failed", text: text ?? (ok ? shown() : T("La fenêtre des réglages n'a pas pu être affichée.", "The settings window could not be shown.")) });
         };
         const abort = () => finish(false, T("Ouverture annulée.", "Opening cancelled."));
         const timer = setTimeout(() => finish(false, T("L'application n'a pas confirmé l'ouverture des réglages.", "The app did not confirm that the settings opened.")), 10_000);
         pendingOpen.set(reqId, finish);
         meta.signal?.addEventListener("abort", abort, { once: true });
         if (meta.signal?.aborted) return abort();
-        try { parent.postMessage({ type: "settings.open", reqId }); }
+        try { parent.postMessage({ type: "settings.open", reqId, ...(found ? { target: found.target } : {}) }); }
         catch { finish(false, T("L'application ne répond pas.", "The app does not answer.")); }
-      }),
-    }]);
+      });
     ctx.effect(() => {
       (parent.off ?? parent.removeListener)?.call(parent, "message", onSettingsResult);
       for (const finish of pendingOpen.values()) finish(false, T("Plugin arrêté.", "Plugin stopped."));

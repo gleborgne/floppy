@@ -27,6 +27,8 @@ Ensuite :
 - Le plugin démarre au **premier changement d'état d'un agent**, pas avant.
 - Dès qu'il parle à Floppy, l'état d'Orca dans les Réglages devient **« surveillance en direct »**.
 
+À la voix, dis **« Installe le plugin Orca »** ou **« Ouvre les réglages d'Orca »**. Floppy n'installe rien lui-même : il ouvre la bonne page des réglages et te dit sur quel bouton cliquer.
+
 ### Après une mise à jour de Floppy
 
 Si le plugin a changé, le bouton devient **« Mettre à jour dans Orca »**. Clique dessus.

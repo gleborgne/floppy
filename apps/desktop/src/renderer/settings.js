@@ -1620,6 +1620,27 @@ function updateSettings(d) {
   sections = d.sections ?? [];
   render();
 }
+/** « Ouvre les réglages d'Orca » : page demandée, montrée dès que l'élément est connu (10 s au plus). */
+let pendingFocus = null;
+function focusOn(target) {
+  pendingFocus = target;
+  setTimeout(() => { if (pendingFocus === target) pendingFocus = null; }, 10_000);
+  if (applyFocus()) render();
+}
+function applyFocus() {
+  const f = pendingFocus;
+  const p = f && items.providers.find((x) => x.id === f.provider);
+  const it = p?.items.find((x) => x.id === f.id);
+  if (!it) return false;
+  pendingFocus = null;
+  section = f.section;
+  detailStack = [{ pid: p.id, iid: it.id }];
+  query = "";
+  $("search").value = "";
+  navAnim = "fwd";
+  return true;
+}
+
 function updateItems(d) {
   if (!d) return;
   if (d.lang) setLang(d.lang);
@@ -1631,7 +1652,8 @@ function updateItems(d) {
   items = { providers: others };
   libraries = libs;
   itemsKey = key; libShape = shape;
-  if (onlyProgress) { patchLibraries(); return; }
+  const focused = applyFocus();
+  if (onlyProgress && !focused) { patchLibraries(); return; }
   render();
   if (library) drawLibrary();
 }
@@ -1657,6 +1679,7 @@ applyStaticTexts();
 if (api) {
   api.onUpdate(updateSettings);
   api.onItems?.(updateItems);
+  api.onFocus?.(focusOn);
   api.onOnboarding?.(updateOnboarding);
   api.onboardingState?.().then(updateOnboarding);
   api.get().then(updateSettings);
