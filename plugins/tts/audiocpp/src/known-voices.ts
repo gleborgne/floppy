@@ -6,11 +6,15 @@ import type { LibraryEntry, Text } from "@floppy/core";
 
 const T = (fr: string, en: string) => ({ fr, en });
 const HF = "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/fd2fe4c3195bc410f8b817bf7c7519fd822686fb";
+const HF_EXTENDED = "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/73ce4162f6cce370dd533c6782b772135c1b2a8e";
 
 export interface KnownVoiceModel extends LibraryEntry {
   /** Fichier GGUF, relatif au dossier des téléchargements. */
   model: string;
-  famille: "pocket_tts" | "qwen3_tts" | "supertonic";
+  famille: "pocket_tts" | "qwen3_tts" | "supertonic" | "voxcpm2" | "chatterbox" | "voxtral_tts" | "fish_audio";
+  /** Sans voix intégrées : crée une fiche à personnaliser avec un enregistrement. */
+  clone?: boolean;
+  mode?: "streaming" | "offline";
   /** Code de langue imposé au modèle (vide : la langue de l'assistant). */
   langue: string;
   /** Voix intégrées : une par élément créé. */
@@ -169,6 +173,55 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     model: "Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf",
     voices: [{ id: "Vivian", label: "Vivian" }, { id: "Serena", label: "Serena" }, { id: "Uncle_Fu", label: "Uncle Fu" }, { id: "Dylan", label: "Dylan" }, { id: "Eric", label: "Eric" }, { id: "Ryan", label: "Ryan" }, { id: "Aiden", label: "Aiden" }, { id: "Ono_Anna", label: "Ono Anna" }, { id: "Sohee", label: "Sohee" }],
     files: [{ url: `${HF}/Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf`, path: "Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf", size: 2817055200, sha256: "c8ac3f94b6e73f137c0e7ecc9270bc8faec7a476ff799b87e48844d1d0987ac3" }],
+  },
+  {
+    id: "voxcpm2", famille: "voxcpm2", langue: "", clone: true,
+    label: "VoxCPM2 2B · BF16",
+    description: T("Multilingue, dont le français. Après téléchargement, enregistre ou importe une voix dans sa fiche. Qualité à évaluer sur ta machine.", "Multilingual, including French. After downloading, record or import a voice in its details. Quality to evaluate on your machine."),
+    licence: { name: "Apache-2.0", url: "https://huggingface.co/openbmb/VoxCPM2" },
+    tags: [T("français", "French"), T("carte graphique", "graphics card"), T("voix à créer", "create a voice")],
+    model: "VoxCPM2-GGUF/voxcpm2-bf16.gguf", voices: [],
+    files: [{ url: `${HF_EXTENDED}/VoxCPM2-GGUF/voxcpm2-bf16.gguf`, path: "VoxCPM2-GGUF/voxcpm2-bf16.gguf", size: 4772295296, sha256: "dc48028ebf08b9fd2456cbf5fa1ab52568d16660e34d0fa418c35e251ca1ecab" }],
+  },
+  {
+    id: "chatterbox", famille: "chatterbox", langue: "", clone: true, mode: "offline",
+    label: T("Chatterbox multilingue · Q8", "Chatterbox Multilingual · Q8"),
+    description: T("Français et clonage de voix. Enregistre ou importe une voix après téléchargement. Produit chaque phrase entière avant de la lire ; qualité à évaluer.", "French and voice cloning. Record or import a voice after downloading. Generates each complete sentence before playback; quality to evaluate."),
+    licence: { name: "MIT", url: "https://huggingface.co/ResembleAI/chatterbox" },
+    tags: [T("français", "French"), T("carte graphique", "graphics card"), T("voix à créer", "create a voice")],
+    model: "Chatterbox-GGUF/chatterbox-q8_0.gguf", voices: [],
+    files: [{ url: `${HF_EXTENDED}/Chatterbox-GGUF/chatterbox-q8_0.gguf`, path: "Chatterbox-GGUF/chatterbox-q8_0.gguf", size: 2088399204, sha256: "45d71d8d248ba831014813bbbbba74c7d786dd9447c02090fe05c44344f69453" }],
+  },
+  {
+    id: "voxtral-tts", famille: "voxtral_tts", langue: "",
+    label: "Voxtral 4B TTS · Q8",
+    description: T("20 voix intégrées, dont une femme et un homme français. Pas de clonage. Licence non commerciale ; qualité à évaluer sur ta machine.", "20 built-in voices, including a French woman and man. No cloning. Non-commercial licence; quality to evaluate on your machine."),
+    licence: { name: "CC-BY-NC-4.0", url: "https://creativecommons.org/licenses/by-nc/4.0/" },
+    tags: [T("français", "French"), T("carte graphique", "graphics card"), T("20 voix", "20 voices"), T("non commercial", "non-commercial")],
+    model: "Voxtral-4B-TTS-2603-GGUF/voxtral-4b-tts-2603-q8_0.gguf",
+    voices: [
+      { id: "fr_female", label: T("Français · femme", "French · female") }, { id: "fr_male", label: T("Français · homme", "French · male") },
+      { id: "casual_female", label: T("Décontractée · femme", "Casual · female") }, { id: "casual_male", label: T("Décontracté · homme", "Casual · male") },
+      { id: "cheerful_female", label: T("Enjouée · femme", "Cheerful · female") },
+      { id: "neutral_female", label: T("Neutre · femme", "Neutral · female") }, { id: "neutral_male", label: T("Neutre · homme", "Neutral · male") },
+      { id: "pt_female", label: T("Portugais · femme", "Portuguese · female") }, { id: "pt_male", label: T("Portugais · homme", "Portuguese · male") },
+      { id: "nl_female", label: T("Néerlandais · femme", "Dutch · female") }, { id: "nl_male", label: T("Néerlandais · homme", "Dutch · male") },
+      { id: "it_female", label: T("Italien · femme", "Italian · female") }, { id: "it_male", label: T("Italien · homme", "Italian · male") },
+      { id: "es_female", label: T("Espagnol · femme", "Spanish · female") }, { id: "es_male", label: T("Espagnol · homme", "Spanish · male") },
+      { id: "de_female", label: T("Allemand · femme", "German · female") }, { id: "de_male", label: T("Allemand · homme", "German · male") },
+      { id: "ar_male", label: T("Arabe · homme", "Arabic · male") },
+      { id: "hi_female", label: T("Hindi · femme", "Hindi · female") }, { id: "hi_male", label: T("Hindi · homme", "Hindi · male") },
+    ],
+    files: [{ url: `${HF_EXTENDED}/Voxtral-4B-TTS-2603-GGUF/voxtral-4b-tts-2603-q8_0.gguf`, path: "Voxtral-4B-TTS-2603-GGUF/voxtral-4b-tts-2603-q8_0.gguf", size: 4722918208, sha256: "46eca2bfc66c89c415b66995d3544e91dea3320c93765ec0596f5c616354972d" }],
+  },
+  {
+    id: "fish-audio-s2-pro", famille: "fish_audio", langue: "", clone: true,
+    label: "Fish Audio S2 Pro · Q8",
+    description: T("Multilingue, dont le français. Enregistre ou importe une voix et sa transcription après téléchargement. Licence de recherche non commerciale ; qualité à évaluer.", "Multilingual, including French. Record or import a voice and its transcript after downloading. Non-commercial research licence; quality to evaluate."),
+    licence: { name: "Fish Audio Research License", url: "https://huggingface.co/fishaudio/s2-pro/blob/main/LICENSE.md" },
+    tags: [T("français", "French"), T("carte graphique", "graphics card"), T("voix à créer", "create a voice"), T("non commercial", "non-commercial")],
+    model: "Fish-Audio-S2-Pro-GGUF/fish-audio-s2-pro-q8_0.gguf", voices: [],
+    files: [{ url: `${HF_EXTENDED}/Fish-Audio-S2-Pro-GGUF/fish-audio-s2-pro-q8_0.gguf`, path: "Fish-Audio-S2-Pro-GGUF/fish-audio-s2-pro-q8_0.gguf", size: 6317915552, sha256: "4f051347079cfb61f9ef2996f67057229e486fefce31374721b5690940dfc34a" }],
   },
 ];
 

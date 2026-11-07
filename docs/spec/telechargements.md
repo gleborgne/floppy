@@ -62,7 +62,7 @@ Catalogue : `ItemInfo.progress`, `ProviderDef.search` + `searchHint`, opération
 | Plugin | Modèles choisis | Après le téléchargement |
 |---|---|---|
 | `stt-sherpa` (Écoute) | Silero VAD (GitHub sherpa-onnx), Parakeet TDT v3 int8 (miroir Hugging Face, fichier par fichier : pas d'archive à décompresser) | un élément : le fichier (détecteur) ou le dossier (transcription) |
-| `tts-audiocpp` (Voix) | Pocket TTS français et anglais (avec toutes leurs voix, `embeddings/` à côté du GGUF), Supertonic 3, Qwen3-TTS 1.7B CustomVoice | **une voix intégrée par élément**, groupées sous le modèle : la page Voix fait choisir le modèle, puis la voix |
+| `tts-audiocpp` (Voix) | Pocket TTS français et anglais (avec leurs `embeddings/`), Supertonic 3, Qwen3-TTS 1.7B CustomVoice, VoxCPM2 BF16, Chatterbox multilingue Q8, Voxtral 4B TTS Q8, Fish Audio S2 Pro Q8 | **une voix intégrée par élément** ; pour les trois modèles proposés en clonage, une fiche de voix à personnaliser |
 | `llm-llamacpp` (Cerveau) | Qwen3.5 4B et 9B, Gemma 4 E4B et 12B (QAT), Mistral Small 3.2 24B | un modèle du cerveau, prêt à activer |
 
 **Recherche Hugging Face** (cerveau, `plugins/llm/llamacpp/src/hf.ts`) : les 8 dépôts GGUF les plus téléchargés pour
@@ -74,6 +74,43 @@ sans empreinte, `mmproj`. Chaque fichier est figé au commit lu. Étiquette « �
 Chaque entrée dit aussi ce qu'elle demande (`needs` : mémoire, processeur ou puce graphique, moteurs), le service
 qu'elle rend (`service`) et, une fois installée, l'élément qu'elle donne (`itemOf` → `ItemInfo.uses`). Le premier
 lancement s'en sert pour choisir les modèles qui tiennent dans la machine : voir [Premier lancement](premier-lancement.md).
+
+### Catalogue audio.cpp étendu (7 novembre 2026)
+
+Les quatre nouveaux paquets viennent du dépôt `audio-cpp/audio.cpp-gguf`, figé au commit
+`73ce4162f6cce370dd533c6782b772135c1b2a8e`, avec taille et SHA-256 des objets LFS. Les familles et modes sont
+vérifiés contre les `model_specs` d'audio.cpp **v0.9.4**. La mention du catalogue est désormais
+« compatibles audio.cpp · qualité à évaluer sur ta machine » : aucune audition locale n'est revendiquée.
+
+- **VoxCPM2 2B BF16** (4,77 Go, Apache-2.0) : une fiche de voix clonée à enregistrer/importer. BF16 est retenu
+  pour ce premier essai ; le guide GGUF amont signale une dérive sonore du Q8 sur son cas de validation.
+- **Chatterbox multilingue Q8** (2,09 Go, MIT) : une fiche de voix clonée. Le mode est `offline`, seul mode
+  annoncé par ce port ; chaque phrase est générée entièrement, puis reçue en WAV. Le catalogue n'affirme pas
+  utiliser spécifiquement la variante V3 (le paquet contient plusieurs variantes).
+- **Voxtral 4B TTS Q8** (4,72 Go, CC-BY-NC-4.0) : 20 fiches de voix intégrées, dont `fr_female` et `fr_male`
+  en premier. Le checkpoint ne fournit pas l'encodeur nécessaire au clonage. Le flux PCM est à 24 kHz.
+- **Fish Audio S2 Pro Q8** (6,32 Go, Fish Audio Research License) : une fiche de voix clonée, avec transcription
+  obligatoire de l'enregistrement, transmise par la bibliothèque audio.cpp. Le flux PCM est à **44,1 kHz**.
+
+Les fiches de clonage sans enregistrement (ou sans texte pour Fish) restent visibles, à compléter, mais ne sont
+pas offertes comme voix activables et n'ont pas de bouton « Utiliser » dans la bibliothèque. Enregistrer la voix
+les rend disponibles ; télécharger à nouveau ne les duplique pas. Supprimer le modèle retire les fiches associées.
+L'action « Ajouter les autres voix intégrées » reconnaît également les modèles du catalogue et Voxtral ajouté
+manuellement ; elle garde les identifiants natifs, notamment la casse des voix Supertonic.
+
+Les restrictions non commerciales de Voxtral et Fish sont visibles avant téléchargement (description, étiquette
+et lien de licence). Ces poids ne sont pas livrés avec Floppy. Les budgets mémoire des nouvelles familles sont
+indicatifs (poids + marge), pas des mesures de performance. Le profil expressif automatique reste réservé aux
+moteurs déjà adaptés ; l'ajout au catalogue ne prétend pas piloter le style de ces nouvelles voix.
+
+Parler-TTS n'a pas de famille dans audio.cpp v0.9.4 et n'est pas ajouté à cette bibliothèque. Kokoro nécessite
+en plus les ressources eSpeak pour le français ; son téléchargement guidé reste à intégrer.
+
+Sources : [paquets et empreintes](https://huggingface.co/audio-cpp/audio.cpp-gguf/tree/73ce4162f6cce370dd533c6782b772135c1b2a8e),
+[Voxtral](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/docs/models/voxtral_tts.md),
+[Fish Audio](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/docs/models/fish_audio.md),
+[Chatterbox](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/model_specs/chatterbox.json),
+[VoxCPM2](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/model_specs/voxcpm2.json).
 
 **Programmes** : llama.cpp et audio.cpp se téléchargent aussi, dans la bonne version pour la machine (archives
 décompressées par le noyau, `DownloadFile.extract`) : voir [Premier lancement](premier-lancement.md#télécharger-llamacpp-et-audiocpp-packagescoresrcprogram-libraryts).

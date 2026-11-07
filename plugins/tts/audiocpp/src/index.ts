@@ -60,10 +60,10 @@ export interface ModelValues {
 }
 export type Entry = ModelValues & { id: string };
 
-const FAMILLES = ["qwen3_tts", "voxcpm2", "pocket_tts", "supertonic"];
+const FAMILLES = ["qwen3_tts", "voxcpm2", "pocket_tts", "supertonic", "chatterbox", "voxtral_tts", "fish_audio"];
 
 /** Fréquence de sortie par famille (Hz). Absente : 24000. */
-const RATES: Record<string, number> = { voxcpm2: 48000, supertonic: 44100 };
+const RATES: Record<string, number> = { voxcpm2: 48000, supertonic: 44100, fish_audio: 44100 };
 
 const str = (x: unknown): string => (typeof x === "string" ? x.trim() : "");
 
@@ -81,7 +81,7 @@ export function clean(v: Record<string, unknown>): ModelValues {
     // Langue absente : celle de l'assistant au moment de parler (voir speechRequest).
     instruct: str(v.instruct), langue: typeof v.langue === "string" ? v.langue.trim() : "",
     rate: Number.isFinite(rate) && rate >= 8000 ? Math.round(rate) : 0,
-    mode: v.mode === "offline" ? "offline" : "streaming",
+    mode: fam === "chatterbox" || v.mode === "offline" ? "offline" : "streaming",
   };
 }
 
@@ -120,7 +120,7 @@ export function speechRequest(item: ModelValues, text: string, lang?: string): R
   return {
     model: MODEL_ID, input: text,
     ...(item.voix === "clone" ? { voice: VOICE_NAME } : {}),
-    ...(item.mode === "streaming" ? { stream_format: "sse" } : {}),
+    ...(item.mode === "streaming" ? { stream_format: "sse" } : { response_format: "wav" }),
     ...(language ? { language } : {}),
     ...(item.instruct ? { instructions: item.instruct } : {}),
     ...(Object.keys(options).length ? { options } : {}),
@@ -193,6 +193,9 @@ const FIELDS: FieldDef[] = [
   { key: "famille", label: T("Famille du modèle", "Model family"), type: "select", default: "qwen3_tts", options: [
     { value: "qwen3_tts", label: T("Qwen3 TTS", "Qwen3 TTS") },
     { value: "voxcpm2", label: T("VoxCPM2", "VoxCPM2") },
+    { value: "chatterbox", label: "Chatterbox" },
+    { value: "voxtral_tts", label: "Voxtral TTS" },
+    { value: "fish_audio", label: "Fish Audio S2 Pro" },
     { value: "pocket_tts", label: T("Pocket TTS (processeur, voix clonée)", "Pocket TTS (CPU, cloned voice)") },
     { value: "supertonic", label: T("Supertonic (processeur, voix F1…F5, M1…M5)", "Supertonic (CPU, voices F1…F5, M1…M5)") },
     { value: "autre", label: T("Autre (je donne le nom)", "Other (I give the name)") },
@@ -206,7 +209,7 @@ const FIELDS: FieldDef[] = [
   { key: "refWav", label: T("Enregistrement de la voix (WAV)", "Voice recording (WAV)"), type: "path", filters: [{ name: "WAV", extensions: ["wav"] }],
     hint: T("Quelques secondes de voix claire, sans bruit.", "A few seconds of clear voice, no noise."), showIf: { key: "voix", values: ["clone"] } },
   { key: "refText", label: T("Ce que dit l'enregistrement", "What the recording says"), type: "textarea",
-    hint: T("Obligatoire pour Qwen3 Base. Laisse vide pour copier seulement le timbre (x_vector_only_mode).", "Required for Qwen3 Base. Leave empty to copy only the timbre (x_vector_only_mode)."),
+    hint: T("Obligatoire pour Fish Audio. Qwen3 Base et VoxCPM2 peuvent copier seulement le timbre si ce champ est vide.", "Required for Fish Audio. Qwen3 Base and VoxCPM2 can copy only the timbre when this field is empty."),
     showIf: { key: "voix", values: ["clone"] } },
   { key: "speaker", label: T("Nom de la voix intégrée", "Built-in voice name"), type: "text", placeholder: T("Vivian", "Vivian"), showIf: { key: "voix", values: ["integree"] } },
   { key: "instruct", label: T("Style (facultatif)", "Style (optional)"), type: "text", advanced: true,
@@ -230,7 +233,7 @@ const KIND: ItemKind = {
 };
 
 /** Familles qui savent cloner une voix à partir d'un enregistrement. */
-export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts"];
+export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts", "chatterbox", "fish_audio"];
 
 /**
  * Le modèle sait cloner une voix. Chez Qwen3-TTS, seule la variante « Base » clone : « CustomVoice » n'a que ses voix
@@ -242,7 +245,9 @@ export function clones(m: Pick<ModelValues, "famille" | "familleAutre" | "model"
   return !/custom[-_ ]?voice|voice[-_ ]?design/i.test(basename(m.model.replace(/\\/g, "/")));
 }
 /** Familles qui lisent le texte de l'enregistrement (sinon : seulement le timbre, x_vector_only_mode). */
-const WITH_TEXT = ["qwen3_tts", "voxcpm2"];
+const WITH_TEXT = ["qwen3_tts", "voxcpm2", "fish_audio"];
+const missingReferenceText = (m: ModelValues): Text | undefined => m.voix === "clone" && familyOf(m) === "fish_audio" && !m.refText.trim()
+  ? T("Fish Audio : renseigne le texte prononcé dans l'enregistrement.", "Fish Audio: enter the words spoken in the recording.") : undefined;
 
 /**
  * Phrases à lire au micro : 15 à 20 s à voix normale (une cinquantaine de mots), des sons variés. Plus courtes, une
@@ -279,9 +284,9 @@ export function voiceKind(models: { value: string; label: Text }[], lang: "fr" |
         hint: T("C'est aussi le nom à dire : « Floppy, prends ma voix ».", "It's also the name to say: \"Floppy, use my voice\".") },
       { key: "sample", label: T("Enregistrement", "Recording"), type: "audio", required: true, prompts: PROMPTS, textKey: "refText", seconds: { min: 10, max: 20 } },
       { key: "refText", label: T("Ce que dit l'enregistrement", "What the recording says"), type: "textarea",
-        hint: T("La phrase lue. Si tu as dit autre chose, corrige-la ici. Vide : seul le timbre est copié.", "The sentence read. If you said something else, fix it here. Empty: only the timbre is copied.") },
+        hint: T("La phrase lue. Si tu as dit autre chose, corrige-la ici. Obligatoire pour Fish Audio ; facultatif pour les autres modèles.", "The sentence read. If you said something else, fix it here. Required for Fish Audio; optional for the other models.") },
       { key: "model", label: T("Modèle qui la fait parler", "Model that speaks it"), type: "select", required: true, options: models,
-        hint: T("Qwen3 TTS Base : plus fidèle, carte graphique. Pocket TTS : plus rapide, processeur. (Qwen3 CustomVoice ne sait pas cloner.)", "Qwen3 TTS Base: more faithful, graphics card. Pocket TTS: faster, processor. (Qwen3 CustomVoice cannot clone.)") },
+        hint: T("Choisis parmi les modèles téléchargés qui savent cloner. Chatterbox prépare chaque phrase entière ; Fish Audio demande la transcription. Qwen3 CustomVoice et Voxtral utilisent leurs voix intégrées.", "Choose from downloaded models that support cloning. Chatterbox prepares each complete sentence; Fish Audio needs the transcript. Qwen3 CustomVoice and Voxtral use built-in voices.") },
       { key: "essai", label: T("Phrase d'essai", "Test sentence"), type: "text", default: TRIAL[lang] },
     ],
   };
@@ -313,7 +318,10 @@ const samePath = (a: string, b: string): boolean => {
  * Qwen3-TTS demande une carte NVIDIA (~4,5 Go mesurés pour la 1.7B).
  */
 export function voiceNeeds(k: Pick<KnownVoiceModel, "famille">): ModelNeeds {
-  return k.famille === "qwen3_tts" ? { memory: 4.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] } : { memory: 0.8 * 1024 ** 3, device: "cpu" };
+  if (!["qwen3_tts", "voxcpm2", "chatterbox", "voxtral_tts", "fish_audio"].includes(k.famille)) return { memory: 0.8 * 1024 ** 3, device: "cpu" };
+  // Budget indicatif : taille des poids du catalogue + marge de travail ; ce n'est pas une mesure de VRAM.
+  const bytes = KNOWN_VOICE_MODELS.find(m => m.famille === k.famille)?.files.reduce((n, f) => n + (f.size ?? 0), 0) ?? 0;
+  return { memory: k.famille === "qwen3_tts" ? 4.5 * 1024 ** 3 : bytes + 1.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] };
 }
 
 /** `builds` : archives d'audio.cpp (remplaçables pour les tests). */
@@ -404,6 +412,8 @@ return definePlugin<Config>({
       if (e.voix === "clone" && !e.refWav) throw new TextError(T("voix clonée : choisis l'enregistrement de la voix (WAV) dans les réglages", "cloned voice: pick the voice recording (WAV) in the settings"));
       if (e.voix === "clone" && !existsSync(e.refWav)) throw new TextError(T(`enregistrement de la voix introuvable : ${e.refWav}`, `voice recording not found: ${e.refWav}`));
       if (e.voix === "clone" && !clones(e)) throw new TextError(noClone(e.model));
+      const referenceProblem = missingReferenceText(e);
+      if (referenceProblem) throw new TextError(referenceProblem);
       if (await httpHealthy(base)) throw new TextError(T(`le port ${cfg.port} est déjà pris par un autre serveur : arrête-le d'abord (ou change le port)`, `port ${cfg.port} is already taken by another server: stop it first (or change the port)`));
       const dir = join(f.home, "tts-audiocpp", e.id);
       mkdirSync(dir, { recursive: true });
@@ -457,7 +467,7 @@ return definePlugin<Config>({
 
     ctx.offer("tts", {
       max: 1, // la mémoire du GPU
-      items: () => enabled().map((m) => ({ id: m.id, label: m.label, slow: true })),
+      items: () => enabled().filter(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m))).map((m) => ({ id: m.id, label: m.label, slow: true })),
       startTimeout_s: cfg.startTimeout_s + 60,
       async start(f, id) {
         const e = enabled().find((m) => m.id === id);
@@ -486,6 +496,13 @@ return definePlugin<Config>({
       : T(`voix intégrée${m.speaker ? ` (${m.speaker})` : ""}`, `built-in voice${m.speaker ? ` (${m.speaker})` : ""}`);
     /** Fichier GGUF d'un modèle connu, dans le dossier des téléchargements. */
     const knownFile = (k: KnownVoiceModel) => resolve(ctx.downloads.dir, k.model);
+    // CustomVoice contient ses locuteurs dans le GGUF, même importé hors de la bibliothèque.
+    // Pocket utilise des fichiers d'empreinte séparés : on ne lui applique pas cette règle.
+    const builtins = (m: ModelValues) => known.find(k => samePath(knownFile(k), m.model))?.voices
+      ?? (familyOf(m) === "qwen3_tts" && /customvoice/i.test(basename(m.model)) ? known.find(k => k.id === "qwen3-tts-customvoice")?.voices ?? []
+        : familyOf(m) === "voxtral_tts" ? known.find(k => k.id === "voxtral-tts")?.voices ?? [] : []);
+    const missingBuiltins = (m: ModelValues) => builtins(m).filter(v => !all().some(other =>
+      samePath(other.model, m.model) && other.voix === "integree" && other.speaker.toLowerCase() === v.id.toLowerCase()));
     /**
      * Plusieurs voix d'un même fichier (ex. les voix de Pocket TTS) : groupées sous le modèle. La fenêtre fait alors
      * choisir le modèle, puis la voix. Un fichier qui n'a qu'une voix reste une ligne simple.
@@ -525,6 +542,7 @@ return definePlugin<Config>({
       const on = store.isEnabled(m.id);
       const clone = m.voix === "clone";
       const noRef = clone && !m.refWav;
+      const noText = missingReferenceText(m);
       const cantClone = clone && !clones(m);
       const secs = clone && m.refWav ? secondsOf(m.refWav) : undefined;
       const ml = modelLabel(m.model);
@@ -535,16 +553,17 @@ return definePlugin<Config>({
       return {
         id: m.id, label: m.label, enabled: on, active, kind: clone ? "voice" : "gguf",
         detail: size === undefined ? T(`fichier du modèle introuvable · ${detail.fr}`, `model file not found · ${detail.en}`) : detail,
-        status: size === undefined || cantClone ? "error" : !on ? "off" : active ? (ready ? "ok" : "loading") : noRef ? "warn" : undefined,
+        status: size === undefined || cantClone ? "error" : !on ? "off" : active ? (ready ? "ok" : "loading") : noRef || noText ? "warn" : undefined,
         statusText: size === undefined ? T("fichier introuvable", "file not found")
           : cantClone ? noClone(m.model)
           : !on ? T("désactivé : Floppy ne le voit plus", "disabled: Floppy no longer sees it")
           : active ? (ready ? T("chargé", "loaded") : T("chargement…", "loading…"))
-          : noRef ? T("voix clonée sans enregistrement : enregistre-la", "cloned voice without a recording: record it") : undefined,
+          : noRef ? T("voix clonée sans enregistrement : enregistre-la", "cloned voice without a recording: record it") : noText,
         // sample : l'enregistrement, pour le formulaire d'une voix (son chemin ; un nouvel enregistrement le remplace).
         values: { ...m, ...(clone ? { sample: m.refWav } : {}) } as unknown as Record<string, unknown>,
         editable: true, removable: true, toggleable: !active || !on,
         ...(clone && secs !== undefined ? { actions: [{ id: "listen", label: T("Écouter", "Listen"), play: true }] } : {}),
+        ...(!clone && size !== undefined && missingBuiltins(m).length ? { actions: [{ id: "add-builtins", label: T("Ajouter les autres voix intégrées", "Add the other built-in voices") }] } : {}),
         ...groupOf(m),
       };
     };
@@ -583,7 +602,7 @@ return definePlugin<Config>({
       if (!clones(v)) return noClone(v.model);
       if (!wav && !v.refWav) return T("Enregistre la voix, ou importe un fichier.", "Record the voice, or import a file.");
       if (!wav && !existsSync(v.refWav)) return T(`Enregistrement introuvable : ${v.refWav}`, `Recording not found: ${v.refWav}`);
-      return undefined;
+      return missingReferenceText(v);
     };
 
     /**
@@ -594,6 +613,8 @@ return definePlugin<Config>({
       const cur = id ? all().find((m) => m.id === id) : undefined;
       const { v, wav } = voiceEntry(values, cur);
       if (!wav && !(v.refWav && existsSync(v.refWav))) return { ok: false, text: T("Enregistre la voix d'abord.", "Record the voice first.") };
+      const referenceProblem = missingReferenceText(v);
+      if (referenceProblem) return { ok: false, text: referenceProblem };
       const loadedId = [...running].find(([, ok]) => ok)?.[0];
       const loaded = loadedId ? all().find((m) => m.id === loadedId) : undefined;
       if (!loaded || !(await httpHealthy(base))) return { ok: true, text: T("Aucune voix audio.cpp n'est chargée en ce moment. Garde la voix puis choisis-la : Floppy charge son modèle (environ 20 s), et tu l'entends.", "No audio.cpp voice is loaded right now. Keep the voice and choose it: Floppy loads its model (about 20 s), and you hear it.") };
@@ -736,6 +757,18 @@ return definePlugin<Config>({
           `Estimate: ~${total.toFixed(1)} GB ${cuda ? "on the GPU" : "in memory (CPU)"} (model ${gb(size)} GB).${noText ? " Without the recording's text, only the timbre is copied." : ""}`) };
       },
       action: async (id, action) => {
+        if (action === "add-builtins") {
+          const cur = all().find(m => m.id === id);
+          if (!cur || !builtins(cur).length || !existsSync(cur.model)) return { ok: false, text: T("Aucune voix intégrée connue pour ce modèle local.", "No known built-in voices for this local model.") };
+          const missing = missingBuiltins(cur);
+          for (const v of missing) {
+            const values = clean({ label: ui(v.label), model: cur.model, famille: cur.famille, familleAutre: cur.familleAutre,
+              voix: "integree", speaker: familyOf(cur) === "qwen3_tts" ? v.id.toLowerCase() : v.id, langue: cur.langue, rate: cur.rate, mode: cur.mode });
+            store.add("gguf", values as unknown as Record<string, unknown>, `${id}-${v.id.toLowerCase()}`, Object.keys(baseList));
+          }
+          ctx.items.changed();
+          return { ok: true, text: T(`${missing.length} voix ajoutée(s). Elles utilisent le modèle déjà présent.`, `${missing.length} voice(s) added. They use the model already available.`) };
+        }
         if (action === "listen") {
           const cur = all().find((m) => m.id === id);
           if (!cur?.refWav || !existsSync(cur.refWav)) return { ok: false, text: T("Enregistrement introuvable.", "Recording not found.") };
@@ -760,13 +793,18 @@ return definePlugin<Config>({
       label: T("Modèles de voix audio.cpp", "audio.cpp voice models"),
       entries: () => known.map((k) => ({ ...k, needs: voiceNeeds(k) })),
       has: (e) => mine(e as KnownVoiceModel).length > 0,
-      itemOf: (e) => mine(e as KnownVoiceModel)[0]?.id,
+      itemOf: (e) => mine(e as KnownVoiceModel).find(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m)))?.id,
+      description: T("compatibles audio.cpp · qualité à évaluer sur ta machine", "audio.cpp compatible · quality to evaluate on your machine"),
       missing: () => (exePath() ? undefined : T("Le programme audio.cpp n'est pas encore installé.", "The audio.cpp program is not installed yet.")),
       installed: (e) => {
         const k = e as KnownVoiceModel;
         if (mine(k).length) return;
+        if (k.clone) {
+          const values = clean({ label: ui(k.label), model: knownFile(k), famille: k.famille, voix: "clone", langue: k.langue, mode: k.mode });
+          store.add("voice", values as unknown as Record<string, unknown>, `${k.id}-voice`, Object.keys(baseList));
+        }
         for (const v of k.voices) {
-          const values = clean({ label: ui(v.label), model: knownFile(k), famille: k.famille, voix: "integree", speaker: v.id, langue: k.langue });
+          const values = clean({ label: ui(v.label), model: knownFile(k), famille: k.famille, voix: "integree", speaker: v.id, langue: k.langue, mode: k.mode });
           store.add("gguf", values as unknown as Record<string, unknown>, `${k.id}-${v.id}`, Object.keys(baseList));
         }
         ctx.items.changed();

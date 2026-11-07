@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel, definePlugin } from "@floppy/core";
 import type { TtsService } from "@floppy/contracts";
-import tts, { clean, prepareDir, rateOf, scanGguf, serverConfig, speechRequest, ssePcm, wavPcm } from "../src/index.ts";
+import tts, { clean, clones, prepareDir, rateOf, scanGguf, serverConfig, speechRequest, ssePcm, wavPcm } from "../src/index.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "tts-audiocpp-"));
 const file = (name: string, bytes = 2048) => { const p = join(dir, name); writeFileSync(p, Buffer.alloc(bytes)); return p; };
@@ -209,6 +209,33 @@ describe("noyau : fork, serveur lancé, voix en flux", () => {
 });
 
 describe("catalogue", () => {
+  it("un CustomVoice ajouté à la main propose ses autres voix sans doublon ni téléchargement", async () => {
+    const home = mkdtempSync(join(tmpdir(), "tts-custom-"));
+    const localModel = file("qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf");
+    const k = new Kernel({ logger: () => {}, home, plugins: [tts] });
+    await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { models: {
+      anna: { label: "Anna", model: localModel, voix: "integree", speaker: "Ono_Anna", langue: "fr" },
+      base: { label: "Clone", model, voix: "clone", refWav: wav },
+    } } }] });
+    const list = async () => (await k.items.snapshot()).find(p => p.id === "voix-locale")!.items;
+    try {
+      expect((await list()).find(i => i.id === "anna")!.actions).toContainEqual(expect.objectContaining({ id: "add-builtins" }));
+      expect((await list()).find(i => i.id === "base")!.actions?.some(a => a.id === "add-builtins")).toBeFalsy();
+      const add = () => k.items.run({ op: "action", provider: "voix-locale", id: "anna", action: "add-builtins" }, "ui");
+      expect((await add()).ok).toBe(true);
+      const voices = (await list()).filter(i => i.values?.model === localModel);
+      expect(voices).toHaveLength(9);
+      expect(voices.find(i => i.id === "anna")!.label).toBe("Anna");
+      expect(voices.map(i => String(i.values!.speaker).toLowerCase())).toEqual(expect.arrayContaining(["serena", "ryan", "aiden", "vivian", "sohee", "ono_anna"]));
+      expect(voices.every(i => i.values!.langue === "fr" && i.values!.voix === "integree")).toBe(true);
+      expect(new Set(voices.map(i => i.group!.id)).size).toBe(1);
+      expect((await add()).ok).toBe(true);
+      expect((await list()).filter(i => i.values?.model === localModel)).toHaveLength(9);
+      expect((await list()).find(i => i.id === "anna")!.actions?.some(a => a.id === "add-builtins")).toBeFalsy();
+      expect((await k.items.run({ op: "action", provider: "voix-locale", id: "base", action: "add-builtins" }, "ui")).ok).toBe(false);
+    } finally { await k.stopAll(); }
+  });
+
   it("ajoute, refuse un fichier absent, teste, scanne", async () => {
     const home = mkdtempSync(join(tmpdir(), "tts-home2-"));
     const exe = file("fake2.exe");
@@ -317,7 +344,8 @@ describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simul
     const { KNOWN_VOICE_MODELS } = await import("../src/known-voices.ts");
     for (const m of KNOWN_VOICE_MODELS) {
       expect(m.files.some((f) => f.path === m.model)).toBe(true);
-      expect(m.voices.length).toBeGreaterThan(0);
+      if (m.clone) { expect(m.voices).toEqual([]); expect(clones(clean({ famille: m.famille, model: m.model }))).toBe(true); }
+      else expect(m.voices.length).toBeGreaterThan(0);
       for (const f of m.files) {
         expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
         expect(f.url).toMatch(/\/resolve\/[0-9a-f]{40}\//);
