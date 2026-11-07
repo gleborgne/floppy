@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-// @ts-expect-error module .mjs sans types
-import { renderMarkdown } from "../src/markdown.mjs";
+import { renderMarkdown } from "../src/markdown.ts";
 
 const render = (s: string): string => renderMarkdown(s);
 

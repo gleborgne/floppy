@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import { stripTypeScriptTypes } from 'node:module';
 import { EventEmitter } from 'node:events';
-import * as texts from '../src/main-texts.mjs';
-import * as trayIcon from '../src/tray-icon.mjs';
-import * as placement from '../src/placement.mjs';
+import * as texts from '../src/main-texts.ts';
+import * as trayIcon from '../src/tray-icon.ts';
+import * as placement from '../src/placement.ts';
 
 // Le vrai processus principal, dans un bac sans Electron ni processus/fichiers réels.
 function desktop(argv: string[] = []) {
@@ -15,8 +16,9 @@ function desktop(argv: string[] = []) {
   const forked: (EventEmitter & { postMessage: ReturnType<typeof vi.fn>; kill: ReturnType<typeof vi.fn> })[] = [];
   const fork = () => { const c = Object.assign(new EventEmitter(), { postMessage: vi.fn(), kill: vi.fn() }); forked.push(c); return c; };
   const app = { quit:vi.fn(), requestSingleInstanceLock:()=>true, commandLine:{appendSwitch(){}}, whenReady:()=>new Promise(()=>{}), on:events.on.bind(events), getAppPath:()=>'.', getLoginItemSettings:()=>({executableWillLaunchAtLogin:false}), setLoginItemSettings(){} };
-  const source = readFileSync(new URL('../src/main.mjs', import.meta.url),'utf8')
-    .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.mjs',import.meta.url).href));
+  // main.ts sans ses types (comme Node le lit au lancement), puis sans ses imports : le contexte les fournit.
+  const source = stripTypeScriptTypes(readFileSync(new URL('../src/main.ts', import.meta.url),'utf8'))
+    .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.ts',import.meta.url).href));
   const textWindow = Object.assign(new EventEmitter(), { webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), isDestroyed: () => false });
   Object.assign(app, { isReady: () => true });
   const shortcut = { unregisterAll() {}, register: vi.fn(() => true), unregister: vi.fn() };

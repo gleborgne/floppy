@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "main": "src/main.mjs",
+  "main": "src/main.ts",
   "scripts": {
     "start": "electron .",
     "gallery": "electron scripts/capture.mjs ../../plugins/avatar/tv/gallery/gallery.html ../../docs/spec/img/avatar-emotions.png 1190 610",

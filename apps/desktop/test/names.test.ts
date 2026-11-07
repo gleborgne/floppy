@@ -1,5 +1,6 @@
-// Le JavaScript de l'app (processus principal, fenêtres) n'est pas typé : ce test vérifie au moins que chaque nom
+// Les fenêtres de l'app (renderer/*.js) restent du JavaScript non typé : ce test vérifie au moins que chaque nom
 // utilisé existe (import oublié après un découpage, variable renommée). TypeScript lit les fichiers sans les typer.
+// Le processus principal (src/*.ts) est typé : `npm run typecheck` le vérifie.
 import { it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
@@ -20,11 +21,6 @@ function unknownNames(files: string[], opts: string[]): string[] {
   // TS2304 / TS2552 : nom introuvable ; TS2305 / TS2724 : nom absent du module importé.
   return out.split(/\r?\n/).filter((l) => /error TS(2304|2552|2305|2724)\b/.test(l));
 }
-
-it("processus principal : chaque nom utilisé existe", () => {
-  const files = readdirSync(SRC).filter((f) => f.endsWith(".mjs")).map((f) => join(SRC, f));
-  expect(unknownNames(files, ["--module", "nodenext", "--moduleResolution", "nodenext", "--types", "node", "--lib", "es2023"])).toEqual([]);
-}, 120_000);
 
 it("fenêtre des réglages et ses modules : chaque nom utilisé existe", () => {
   const dir = join(SRC, "renderer");

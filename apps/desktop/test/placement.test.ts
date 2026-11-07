@@ -1,8 +1,8 @@
 // Place de l'avatar (outil « placer_avatar ») et icône de la barre des tâches : calculs purs, sans Electron.
 import { it, expect } from "vitest";
 import { inflateSync } from "node:zlib";
-import { avatarSpot } from "../src/placement.mjs";
-import { dotPng, COLORS } from "../src/tray-icon.mjs";
+import { avatarSpot } from "../src/placement.ts";
+import { dotPng, COLORS } from "../src/tray-icon.ts";
 
 const screens = [{ x: 0, y: 0, width: 1920, height: 1040 }, { x: 1920, y: 0, width: 1280, height: 984 }];
 const size = { W: 200, H: 260 };

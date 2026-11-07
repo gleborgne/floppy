@@ -139,7 +139,7 @@ Une seule app Electron contient le noyau (`utilityProcess`) et l'avatar.
 ```mermaid
 flowchart TB
   subgraph APP["App Electron (apps/desktop)"]
-    MAIN["main.mjs<br/>icône, raccourcis, fenêtre,<br/>relance du noyau"]
+    MAIN["main.ts<br/>icône, raccourcis, fenêtre,<br/>relance du noyau"]
     K["kernel.ts — utilityProcess<br/>le noyau et ses plugins"]
     R["renderer — l'avatar<br/>WebGL, micro, voix, bulle, accords"]
   end
@@ -153,7 +153,7 @@ flowchart TB
 - **Le visage** : un écran noir **4:3 aux bords arrondis**, des yeux et une bouche lumineux, un **halo animé** aux couleurs qui tournent autour de la tête, une **aurore colorée** derrière. Tout est dessiné par un **shader WebGL2** (formes SDF) : bords nets à toute taille, 60 images/s, presque rien pour le processeur. Légère courbure de tube cathodique, lignes de balayage fines, reflet sur la vitre.
 - **Une émotion = un jeu de paramètres** (`plugins/avatar/tv/renderer/face.js`) : taille et coins des yeux, paupières (haut inclinée, bas en arc), bouche (courbe, ouverture, inclinaison), regard, inclinaison de la tête, couleur, joues, halo, et des détails (larmes, sueur, « z », étoiles, « ? », « ! », colère, « … »). L'intensité multiplie l'écart au visage neutre.
 - **Vivant** : chaque paramètre suit sa cible comme un **ressort** un peu souple (il dépasse un peu, puis revient). Une émotion vive commence par un petit **tassement**, puis un saut ; une émotion lourde affaisse le visage. Il **respire** (plus lentement s'il est fatigué), cligne parfois **deux fois**, cligne souvent quand son expression change. En parlant, la tête accompagne la voix et la bouche change de forme.
-- **Il vous regarde** : les yeux suivent la souris, même hors de sa fenêtre (`main.mjs` envoie la position). Il **entend** : en écoute, les yeux et le halo réagissent au volume du micro.
+- **Il vous regarde** : les yeux suivent la souris, même hors de sa fenêtre (`main.ts` envoie la position). Il **entend** : en écoute, les yeux et le halo réagissent au volume du micro.
 - **On peut le toucher** : un clic sur la tête (sans bouger) le fait rire, rougir, faire un clin d'œil… À force, il s'agace, puis se fâche. On le déplace toujours en le faisant glisser (déplacement fait à la main, la tête n'est plus une zone « drag »).
 - **Petites manies au repos** (`app.js`, toutes les 15 à 40 s) : un coup d'œil ailleurs, un air malicieux, il chantonne, il bâille s'il est fatigué, il s'ennuie après 3 minutes seul. Une réaction locale est brève ; l'émotion du noyau revient ensuite.
 - Mouvement réduit (réglage du système) : pas de ressort, pas de respiration ni de rebond.

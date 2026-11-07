@@ -7,15 +7,15 @@ import MarkdownIt from "markdown-it";
 const OK_LINK = /^(https?|mailto):/i;
 
 const md = new MarkdownIt({ html: false, linkify: true, typographer: false });
-md.validateLink = (url) => OK_LINK.test(String(url).trim());
+md.validateLink = (url: string) => OK_LINK.test(String(url).trim());
 
 // Liens : toujours ouverts par l'app (navigateur externe), jamais dans la fenêtre.
 const defaultLink = md.renderer.rules.link_open ?? ((tokens, i, options, _env, self) => self.renderToken(tokens, i, options));
 md.renderer.rules.link_open = (tokens, i, options, env, self) => {
-  tokens[i].attrSet("rel", "noopener noreferrer");
+  tokens[i]!.attrSet("rel", "noopener noreferrer");
   return defaultLink(tokens, i, options, env, self);
 };
 
-export function renderMarkdown(source) {
+export function renderMarkdown(source?: unknown): string {
   return md.render(String(source ?? "").slice(0, 400_000));
 }

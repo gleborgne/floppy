@@ -4,15 +4,31 @@
 // - Relie l'avatar au noyau par un MessagePort (même protocole que le WebSocket des autres corps).
 // - Icône dans la barre des tâches (couleur = état), raccourcis globaux.
 import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, utilityProcess, MessageChannelMain, shell, ipcMain, screen, session, dialog, clipboard } from "electron";
+import type { UtilityProcess, WebContents } from "electron";
 import { fileURLToPath } from "node:url";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { createWriteStream, mkdirSync, existsSync, readFileSync, renameSync, statSync } from "node:fs";
-import { renderMarkdown } from "./markdown.mjs";
-import { Typer, foregroundRect } from "./typer.mjs";
-import { TEXTS, keysForOS } from "./main-texts.mjs";
-import { dotPng, COLORS } from "./tray-icon.mjs";
-import { safeWindow, bringToFront } from "./windows.mjs";
-import { avatarSpot } from "./placement.mjs";
+import type { WriteStream } from "node:fs";
+import { renderMarkdown } from "./markdown.ts";
+import { Typer, foregroundRect } from "./typer.ts";
+import { TEXTS, keysForOS } from "./main-texts.ts";
+import type { Lang, TextKey } from "./main-texts.ts";
+import { dotPng, COLORS } from "./tray-icon.ts";
+import type { Rgb } from "./tray-icon.ts";
+import { safeWindow, bringToFront } from "./windows.ts";
+import { avatarSpot } from "./placement.ts";
+import type { Area, Bilingual } from "./placement.ts";
+
+/**
+ * Message du noyau (utilityProcess) ou demande d'une page : les champs dépendent de `type` et ne sont pas vérifiés
+ * à l'exécution (chaque branche valide ce qu'elle lit). `any` assumé : ce protocole n'a pas de type partagé.
+ */
+interface Msg { type?: string; [key: string]: any }
+/** Texte simple, ou { fr, en } venu du noyau. */
+type Say = string | Bilingual;
+/** Résolution de la réponse du noyau à une demande (la forme dépend de la demande). */
+type Reply = (r: any) => void;
+interface Display { avatar_visible: boolean; masquer_apres: number; bulle: boolean; toujours_devant: boolean; avatar: string; avatarUrl: string; raccourcis?: Record<string, string>; demarrage_windows?: boolean; [key: string]: unknown }
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..", "..");                     // dossier assistant/
@@ -20,39 +36,40 @@ const ROOT = resolve(here, "..", "..", "..");                     // dossier ass
 const CONFIG = process.env.FLOPPY_CONFIG ? resolve(process.env.FLOPPY_CONFIG) : null;
 // Mode debug d'un plugin : `npm start -- --dev-plugin <dossier>` (répétable). Le noyau le charge activé et le relit
 // à chaque sauvegarde (apps/cli/src/boot.ts, variable FLOPPY_DEV_PLUGINS ; le noyau hérite de l'environnement).
-const DEV_PLUGINS = (process.argv ?? []).flatMap((a, i, all) => a === "--dev-plugin" && all[i + 1] ? [resolve(all[i + 1])] : a.startsWith("--dev-plugin=") ? [resolve(a.slice(13))] : []);
+const DEV_PLUGINS = (process.argv ?? []).flatMap((a, i, all) => a === "--dev-plugin" && all[i + 1] ? [resolve(all[i + 1]!)] : a.startsWith("--dev-plugin=") ? [resolve(a.slice(13))] : []);
 if (DEV_PLUGINS.length) process.env.FLOPPY_DEV_PLUGINS = DEV_PLUGINS.join(delimiter);
 const W = 320;
 const H = 560;     // taille fixe : la bulle a toute la place au-dessus de la tête (les zones vides laissent passer les clics)
 
-let kernel = null;
+let kernel: UtilityProcess | null = null;
 let kernelWantsPort = false;
-let win = null;
+let win: BrowserWindow | null = null;
 let winReady = false;
-let tray = null;
+let tray: Tray | null = null;
 let quitting = false;
-let currentPorts = null;
+let currentPorts: MessageChannelMain | null = null;
 let state = "idle";
-let settingsWin = null;
-let onbWin = null;               // fenêtre « Bienvenue » (premier lancement)
-let lastSettings = null;        // dernier { list, sections, plugins, lang } reçu du noyau
-let lastOnb = null;            // dernier état de l'installation de départ (fenêtre « Bienvenue » et réglages)
-let lastItems = null;           // derniers { providers, lang } reçus du noyau (éléments : modèles, voix, connecteurs, corps, avatars)
-let lang = "fr";                // langue de l'interface (réglage « langue_interface » du noyau)
+let settingsWin: BrowserWindow | null = null;
+let onbWin: BrowserWindow | null = null;               // fenêtre « Bienvenue » (premier lancement)
+let lastSettings: Msg | null = null;        // dernier { list, sections, plugins, lang } reçu du noyau
+let lastOnb: unknown = null;            // dernier état de l'installation de départ (fenêtre « Bienvenue » et réglages)
+let lastItems: { providers: Msg[]; lang: Lang } | null = null;           // derniers { providers, lang } reçus du noyau (éléments : modèles, voix, connecteurs, corps, avatars)
+let lang: Lang = "fr";                // langue de l'interface (réglage « langue_interface » du noyau)
 let reqSeq = 0;
-let crashes = [];               // heures des dernières pannes du noyau (relance avec une attente qui grandit)
+let crashes: number[] = [];               // heures des dernières pannes du noyau (relance avec une attente qui grandit)
 let restarting = false;         // relance demandée (menu, réglage) : pas une panne
-let bootFailure = null;         // raison d'un démarrage impossible, envoyée par le noyau avant de s'arrêter
+let bootFailure: Say | null = null;         // raison d'un démarrage impossible, envoyée par le noyau avant de s'arrêter
 // Logos { program } / { handler } des éléments (packages/core/src/logo.ts) : le noyau ne lit pas les icônes du système,
 // l'app les lit ici et les remplace par une adresse data: avant d'envoyer la liste à la fenêtre. Clé → adresse, "" (rien) ou attente.
-const logoCache = new Map();
-function logoKey(l) {
+const logoCache = new Map<string, string | Promise<void>>();
+function logoKey(l: unknown): string | null {
   if (!l || typeof l !== "object") return null;
-  if (typeof l.program === "string") return `p:${l.program}`;
-  if (typeof l.handler === "string") return `h:${l.handler}`;
+  const { program, handler } = l as { program?: unknown; handler?: unknown };
+  if (typeof program === "string") return `p:${program}`;
+  if (typeof handler === "string") return `h:${handler}`;
   return null;
 }
-async function systemLogo(key) {
+async function systemLogo(key: string): Promise<string> {
   try {
     if (key.startsWith("p:")) {
       const file = key.slice(2);
@@ -68,7 +85,7 @@ async function systemLogo(key) {
 }
 /** La liste des éléments pour la fenêtre : logos du système remplacés par leur image (lue une fois, puis gardée). */
 function itemsPayload() {
-  const providers = (lastItems?.providers ?? []).map((p) => ({ ...p, items: (p.items ?? []).map((it) => {
+  const providers = (lastItems?.providers ?? []).map((p) => ({ ...p, items: ((p.items ?? []) as Msg[]).map((it) => {
     const key = logoKey(it.logo);
     if (!key) return it;
     const { logo: _, ...rest } = it;
@@ -80,24 +97,24 @@ function itemsPayload() {
   return { providers, lang: lastItems?.lang ?? lang };
 }
 function sendItems() { if (lastItems) settingsWin?.webContents.send("items:update", itemsPayload()); }
-const coderSessions = new Set(); // conversations de l'assistant ouvertes depuis la fenêtre des réglages
-const pending = new Map();      // reqId → résolution de la réponse du noyau
+const coderSessions = new Set<string>(); // conversations de l'assistant ouvertes depuis la fenêtre des réglages
+const pending = new Map<number, Reply>();      // reqId → résolution de la réponse du noyau
 // Affichage (réglages du plugin body-electron, reçus du noyau).
-let display = { avatar_visible: true, masquer_apres: 0, bulle: true, toujours_devant: true, avatar: "", avatarUrl: "" };
-let idleTimer = null;           // masquage automatique après inactivité
-let tempTimer = null;           // retour au masquage après une apparition temporaire
+let display: Display = { avatar_visible: true, masquer_apres: 0, bulle: true, toujours_devant: true, avatar: "", avatarUrl: "" };
+let idleTimer: NodeJS.Timeout | undefined;           // masquage automatique après inactivité
+let tempTimer: NodeJS.Timeout | undefined;           // retour au masquage après une apparition temporaire
 let tempShown = false;          // fenêtre montrée alors que avatar_visible est faux
-let cursorTimer = null;         // position de la souris envoyée à l'avatar (ses yeux la suivent)
-let drag = null;                // déplacement de la fenêtre à la main : { cx, cy, wx, wy } au début
+let cursorTimer: NodeJS.Timeout | undefined;         // position de la souris envoyée à l'avatar (ses yeux la suivent)
+let drag: { cx: number; cy: number; wx: number; wy: number } | null = null;                // déplacement de la fenêtre à la main : { cx, cy, wx, wy } au début
 const FREE_LISTEN_MS = 10000;
 let pttOn = false;
 let dictating = false;          // dictée en cours (Ctrl+Alt+D) : le texte est tapé dans la fenêtre active
-let typer = null;
-let textWin = null;             // saisie envoyée sur le corps vocal de l'avatar
-let dictWin = null;             // pilule de dictée (en bas de l'écran, ne prend jamais le focus)
-let dictHideTimer = null;               // frappes clavier de la dictée (chargé à la première dictée)
+let typer: Typer | null = null;
+let textWin: BrowserWindow | null = null;             // saisie envoyée sur le corps vocal de l'avatar
+let dictWin: BrowserWindow | null = null;             // pilule de dictée (en bas de l'écran, ne prend jamais le focus)
+let dictHideTimer: NodeJS.Timeout | undefined;               // frappes clavier de la dictée (chargé à la première dictée)
 let muted = false;
-const problems = new Map();
+const problems = new Map<string, Say>();
 
 // Vérification à côté d'un Floppy déjà lancé : FLOPPY_USER_DATA=<dossier> donne une autre instance (verrou à part).
 if (process.env.FLOPPY_USER_DATA) app.setPath("userData", process.env.FLOPPY_USER_DATA);
@@ -113,7 +130,7 @@ const dataParent = process.env.LOCALAPPDATA || process.env.XDG_DATA_HOME || join
  * Répertoire de travail, comme le noyau le trouve (packages/core/src/util/home.ts) : FLOPPY_HOME, sinon le dossier
  * choisi (pointeur <dossier par défaut>/home.json), sinon le dossier par défaut.
  */
-function homeDir() {
+function homeDir(): string {
   if (process.env.FLOPPY_HOME) return process.env.FLOPPY_HOME;
   const base = join(dataParent, "floppy");
   try {
@@ -131,13 +148,13 @@ function homeDir() {
   }
   return base;
 }
-function openLog(dir) {
+function openLog(dir: string): WriteStream {
   try { mkdirSync(dir, { recursive: true }); } catch { /* disque absent : le noyau choisira le dossier par défaut */ }
   // Au-delà de 20 Mo, le journal devient kernel.1.log (l'ancien est remplacé) : il ne grossit jamais sans limite.
   try { if (statSync(join(dir, "kernel.log")).size > 20 * 1024 * 1024) renameSync(join(dir, "kernel.log"), join(dir, "kernel.1.log")); } catch { /* absent */ }
   const stream = createWriteStream(join(dir, "kernel.log"), { flags: "a" });
   // Journal impossible à ouvrir ou à écrire : l'app continue sans lui (jamais une erreur qui l'arrête).
-  stream.on("error", (e) => { try { process.stderr.write(`[app] journal : ${e?.message ?? e}\n`); } catch { /* rien */ } });
+  stream.on("error", (e: Error) => { try { process.stderr.write(`[app] journal : ${e?.message ?? e}\n`); } catch { /* rien */ } });
   return stream;
 }
 let logDir = homeDir();
@@ -146,23 +163,23 @@ let kernelLog = openLog(logDir);
 // ------------------------------------------------------------------ textes du processus principal (fr / en)
 
 // Raccourcis par défaut (les mêmes que plugins/body/electron/src/shortcuts.ts) ; le noyau envoie ceux choisis (display.raccourcis).
-const SHORTCUT_DEFAULTS = { parler: "Ctrl+Alt+F", ecrire: "Ctrl+Alt+T", dicter: "Ctrl+Alt+D", dormir: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
-let shortcuts = { ...SHORTCUT_DEFAULTS };
+const SHORTCUT_DEFAULTS: Record<string, string> = { parler: "Ctrl+Alt+F", ecrire: "Ctrl+Alt+T", dicter: "Ctrl+Alt+D", dormir: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
+const shortcuts: Record<string, string> = { ...SHORTCUT_DEFAULTS };
 /** Remplace « (Ctrl+Alt+F) » des textes par le raccourci choisi pour cette action ; rien s'il est désactivé. */
-const withKeys = (s) => typeof s !== "string" ? s : Object.entries(SHORTCUT_DEFAULTS)
+const withKeys = (s: string): string => Object.entries(SHORTCUT_DEFAULTS)
   .reduce((acc, [a, def]) => acc.replaceAll(` (${def})`, shortcuts[a] ? ` (${shortcuts[a]})` : ""), s);
-const T = (k) => keysForOS(withKeys((TEXTS[lang] ?? TEXTS.fr)[k] ?? TEXTS.fr[k] ?? k));
+const T = (k: TextKey): string => keysForOS(withKeys((TEXTS[lang] ?? TEXTS.fr)[k] ?? TEXTS.fr[k] ?? k));
 /** Le même texte dans les deux langues (pour ce qui repart vers le noyau : il choisit la langue de celui qui lit ou écoute). */
-const both = (k) => ({ fr: TEXTS.fr[k], en: TEXTS.en[k] });
+const both = (k: TextKey): Bilingual => ({ fr: TEXTS.fr[k], en: TEXTS.en[k] });
 /** Texte simple, ou { fr, en } (venu du noyau), dans la langue de l'interface. */
-const trx = (x) => (x && typeof x === "object" ? x[lang] ?? x.fr ?? Object.values(x).find((v) => typeof v === "string") ?? "" : String(x ?? ""));
+const trx = (x: unknown): string => (x && typeof x === "object" ? ((x as Record<string, unknown>)[lang] ?? (x as Record<string, unknown>).fr ?? Object.values(x).find((v) => typeof v === "string") ?? "") : String(x ?? "")) as string;
 /** Nom d'un problème montré dans l'icône (id d'un plugin, ou « dictée », « raccourci »). */
-const problemName = (id) => T("problemNames")[id.startsWith("raccourci_") ? "raccourci" : id] ?? id;
+const problemName = (id: string): string => ((TEXTS[lang] ?? TEXTS.fr).problemNames as Record<string, string>)[id.startsWith("raccourci_") ? "raccourci" : id] ?? id;
 /** Erreur dont le message existe en fr et en en (`text`). */
-const textError = (text) => Object.assign(new Error(text.fr), { text });
-const waitText = (missing) => `${T("waits")} ${(missing ?? []).join(", ")}`;
-function setLang(l) {
-  if (typeof l !== "string" || !TEXTS[l] || l === lang) return;
+const textError = (text: Bilingual): Error & { text: Bilingual } => Object.assign(new Error(text.fr), { text });
+const waitText = (missing?: string[]) => `${T("waits")} ${(missing ?? []).join(", ")}`;
+function setLang(l: unknown): void {
+  if ((l !== "fr" && l !== "en") || l === lang) return;
   lang = l;
   settingsWin?.setTitle(T("settingsTitle"));
   onbWin?.setTitle(T("onboardingTitle"));
@@ -177,14 +194,14 @@ function setLang(l) {
 
 // ------------------------------------------------------------------ icône : un rond de couleur (PNG fait main)
 
-const dotIcon = (rgb) => nativeImage.createFromBuffer(dotPng(rgb));
+const dotIcon = (rgb: Rgb) => nativeImage.createFromBuffer(dotPng(rgb));
 
 function refreshTray() {
   // À la fermeture, l'icône et la fenêtre sont détruites avant la fin du noyau : ne plus y toucher.
   if (quitting || !tray || tray.isDestroyed()) return;
   const shown = problems.size ? "error" : (kernel ? (dictating ? "dictating" : state) : "starting");
-  tray.setImage(dotIcon(COLORS[shown] ?? COLORS.idle));
-  const lines = [`Floppy : ${problems.size ? T("problem") : (["idle", "listening", "thinking", "speaking", "sleep", "starting", "dictating"].includes(shown) ? T(shown) : shown)}`];
+  tray.setImage(dotIcon(COLORS[shown] ?? COLORS.idle!));
+  const lines = [`Floppy : ${problems.size ? T("problem") : (["idle", "listening", "thinking", "speaking", "sleep", "starting", "dictating"].includes(shown) ? T(shown as TextKey) : shown)}`];
   for (const [id, p] of problems) lines.push(`✖ ${problemName(id)} : ${trx(p)}`.slice(0, 120));
   tray.setToolTip(lines.join("\n").slice(0, 127));
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -211,10 +228,10 @@ const RESTART_DELAYS = [2000, 5000, 15000, 60000];
 const CRASH_WINDOW = 120000;
 const CRASH_MAX = 5;
 /** Pannes récentes (la dernière comprise) → attente avant la relance, ou null : trop de pannes, on arrête et on le montre. */
-function restartDelay(times, now) {
+function restartDelay(times: number[], now: number): number | null {
   const recent = times.filter((t) => now - t < CRASH_WINDOW);
   if (recent.length >= CRASH_MAX) return null;
-  return RESTART_DELAYS[Math.min(Math.max(recent.length - 1, 0), RESTART_DELAYS.length - 1)];
+  return RESTART_DELAYS[Math.min(Math.max(recent.length - 1, 0), RESTART_DELAYS.length - 1)]!;
 }
 
 function startKernel() {
@@ -228,10 +245,10 @@ function startKernel() {
   if (dir !== logDir) { kernelLog.end(); logDir = dir; kernelLog = openLog(logDir); }
   kernel = utilityProcess.fork(entry, CONFIG ? [CONFIG] : [], { stdio: "pipe", serviceName: "Floppy - noyau", cwd: ROOT });
   const source = kernel;
-  const forward = (d) => { process.stdout.write(d); kernelLog.write(d); };
+  const forward = (d: Buffer) => { process.stdout.write(d); kernelLog.write(d); };
   kernel.stdout?.on("data", forward);
   kernel.stderr?.on("data", forward);
-  kernel.on("message", (m) => {
+  kernel.on("message", (m: Msg) => {
     if (quitting || kernel !== source) return;
     if (m?.type === "need-body-port") { kernelWantsPort = true; connectBody(); }
     else if (m?.type === "kernel.failed") bootFailure = m.text ?? null;
@@ -241,16 +258,17 @@ function startKernel() {
       const source = kernel;
       // Page demandée (« ouvre les réglages d'Orca ») : rubrique + élément, des textes courts seulement.
       const t = m.target;
-      const ok = (x) => typeof x === "string" && x.length > 0 && x.length <= 200;
+      const ok = (x: unknown): x is string => typeof x === "string" && x.length > 0 && x.length <= 200;
       const target = t && ok(t.section) && ok(t.provider) && ok(t.id) ? { section: t.section, provider: t.provider, id: t.id } : null;
       void showSettingsConfirmed().then(
         () => {
           if (target) settingsWin?.webContents.send("settings:focus", target);
           source?.postMessage({ type: "settings.open.result", reqId: m.reqId, ok: true });
         },
-        (e) => {
+        (error: unknown) => {
+          const e = error as { text?: Bilingual; message?: unknown };
           // Texte { fr, en } : le noyau le dit dans la langue de l'assistant.
-          const why = e?.text ?? { fr: String(e?.message ?? e), en: String(e?.message ?? e) };
+          const why = e?.text ?? { fr: String(e?.message ?? error), en: String(e?.message ?? error) };
           const text = { fr: `${TEXTS.fr.settingsNotOpened} : ${why.fr}`, en: `${TEXTS.en.settingsNotOpened}: ${why.en}` };
           source?.postMessage({ type: "settings.open.result", reqId: m.reqId, ok: false, text });
         },
@@ -287,12 +305,12 @@ function startKernel() {
       refreshTray();
       // Fabricants des puces vues par l'appli : un indice pour la lecture de la machine, si aucune sonde ne répond.
       void app.getGPUInfo("basic").then((info) => {
-        const gpus = (info?.gpuDevice ?? []).map((g) => ({ vendorId: g.vendorId, name: g.deviceString ?? "" }));
+        const gpus = ((info as { gpuDevice?: { vendorId: number; deviceString?: string }[] } | null)?.gpuDevice ?? []).map((g) => ({ vendorId: g.vendorId, name: g.deviceString ?? "" }));
         source.postMessage({ type: "onboarding.hint", gpus });
       }).catch(() => {}).finally(() => { if (m.firstRun) openOnboarding(); });
     }
   });
-  kernel.on("exit", (code) => {
+  kernel.on("exit", (code: number) => {
     if (kernel !== source) return;
     kernel = null;
     currentPorts = null;
@@ -369,9 +387,9 @@ function displaysInOrder() {
  * Placer l'avatar (outil vocal « placer_avatar »). coin : bas_droite, bas_gauche, haut_droite, haut_gauche, centre.
  * ecran : numéro (1 = principal). cible "fenetre" : dans le coin de la fenêtre active (le terminal, le navigateur…).
  */
-function placeAvatar(opts = {}) {
+function placeAvatar(opts: { coin?: string; ecran?: number; cible?: string } = {}): Bilingual {
   if (!win || win.isDestroyed()) throw textError({ fr: "l'avatar n'a pas de fenêtre", en: "the avatar has no window" });
-  let active = null;
+  let active: Area | null = null;
   if (opts.cible === "fenetre") {
     const r = process.platform === "win32" ? foregroundRect() : null;
     const dip = r && r.width > 0 && r.height > 0 ? screen.screenToDipRect(null, r) : null;
@@ -384,7 +402,7 @@ function placeAvatar(opts = {}) {
   }
   let spot;
   try { spot = avatarSpot(opts, { screens: displaysInOrder().map((d) => d.workArea), active, W, H }); }
-  catch (e) { throw e instanceof Error ? e : textError(e); }
+  catch (e) { throw e instanceof Error ? e : textError(e as Bilingual); }
   win.setBounds({ x: spot.x, y: spot.y, width: W, height: H });
   keepOnScreen();
   showWin();
@@ -401,16 +419,17 @@ function createWindow() {
   });
   win.setAlwaysOnTop(true, "floating");
   win.loadFile(join(here, "renderer", "index.html"));
-  win.once("ready-to-show", () => { if (display.avatar_visible) win.showInactive(); });
+  win.once("ready-to-show", () => { if (display.avatar_visible) win?.showInactive(); });
   win.setIgnoreMouseEvents(true, { forward: true }); // clics traversants, sauf sur la tête et la bulle (voir "interactive")
   // Vérification : FLOPPY_SNAPSHOT=<fichier.png> capture la fenêtre de l'avatar toutes les 3 s.
-  if (process.env.FLOPPY_SNAPSHOT) setInterval(async () => {
+  const snapshot = process.env.FLOPPY_SNAPSHOT;
+  if (snapshot) setInterval(async () => {
     // À la fermeture, la fenêtre peut déjà être détruite : on ne capture plus rien.
     if (quitting || !win || win.isDestroyed()) return;
     const fs = await import("node:fs");
     const img = await win.webContents.capturePage().catch(() => null);
     if (!img) return;
-    fs.writeFileSync(process.env.FLOPPY_SNAPSHOT, img.toPNG());
+    fs.writeFileSync(snapshot, img.toPNG());
     // Et la fenêtre des réglages si elle est ouverte : <fichier>-reglages.png
     if (settingsWin && !settingsWin.isDestroyed()) {
       // FLOPPY_SETTINGS_SCROLL=<px> : fait défiler la rubrique avant l'image (vérifier le bas d'une page).
@@ -418,20 +437,20 @@ function createWindow() {
       // FLOPPY_SETTINGS_JS=<code> : action avant l'image (ex. cliquer « Ajouter » pour vérifier un formulaire).
       if (process.env.FLOPPY_SETTINGS_JS) await settingsWin.webContents.executeJavaScript(process.env.FLOPPY_SETTINGS_JS).catch(() => {});
       const s = await settingsWin.webContents.capturePage();
-      fs.writeFileSync(process.env.FLOPPY_SNAPSHOT.replace(/\.png$/i, "-reglages.png"), s.toPNG());
+      fs.writeFileSync(snapshot.replace(/\.png$/i, "-reglages.png"), s.toPNG());
     }
     // Et la fenêtre « Bienvenue » : <fichier>-bienvenue.png (FLOPPY_ONBOARDING_JS=<code> : action avant l'image).
     if (onbWin && !onbWin.isDestroyed()) {
       if (process.env.FLOPPY_ONBOARDING_JS) await onbWin.webContents.executeJavaScript(process.env.FLOPPY_ONBOARDING_JS).catch(() => {});
       const o = await onbWin.webContents.capturePage().catch(() => null);
-      if (o) fs.writeFileSync(process.env.FLOPPY_SNAPSHOT.replace(/\.png$/i, "-bienvenue.png"), o.toPNG());
+      if (o) fs.writeFileSync(snapshot.replace(/\.png$/i, "-bienvenue.png"), o.toPNG());
     }
   }, 3000);
   // Messages de la page de l'avatar → console et journal (état du micro, erreurs).
   win.webContents.on("console-message", (e) => { const line = `[avatar] ${e.message}\n`; process.stdout.write(line); kernelLog.write(line); });
   win.webContents.on("did-start-loading", () => { winReady = false; });
-  win.webContents.on("did-finish-load", () => { winReady = true; connectBody(); win.webContents.send("display", { ...display, lang }); });
-  win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); refreshTray(); } });
+  win.webContents.on("did-finish-load", () => { winReady = true; connectBody(); win?.webContents.send("display", { ...display, lang }); });
+  win.on("close", (e) => { if (!quitting) { e.preventDefault(); win?.hide(); refreshTray(); } });
   win.on("closed", () => { win = null; winReady = false; clearTimeout(idleTimer); clearTimeout(tempTimer); });
   // Comme les autres fenêtres : jamais de navigation ni de nouvelle fenêtre depuis l'avatar.
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -447,7 +466,7 @@ function createWindow() {
     lastCursor = key;
     win.webContents.send("cursor", { x: pt.x - b.x, y: pt.y - b.y });
   }, 50);
-  win.on("closed", () => { clearInterval(cursorTimer); cursorTimer = null; });
+  win.on("closed", () => { clearInterval(cursorTimer); cursorTimer = undefined; });
 }
 
 // ------------------------------------------------------------------ affichage : visible, masquage auto, apparition à la demande
@@ -456,7 +475,7 @@ function showWin() { if (!quitting && win && !win.isDestroyed() && !win.isVisibl
 
 function armIdleTimer() {
   clearTimeout(idleTimer);
-  idleTimer = null;
+  idleTimer = undefined;
   if (quitting || !win || win.isDestroyed() || !display.masquer_apres || !display.avatar_visible || !win.isVisible()) return;
   idleTimer = setTimeout(() => { if (state === "idle" && !approvalOpen) hideWin(); else armIdleTimer(); }, display.masquer_apres * 60000);
 }
@@ -488,7 +507,7 @@ let approvalOpen = false;
  * Démarrage avec Windows (clé « Exécuter » de l'utilisateur, par Electron). En dev, l'exécutable est electron.exe :
  * on lui passe le dossier de l'app. Le noyau garde le réglage ; ici on l'applique seulement s'il change.
  */
-function applyLoginItem(on) {
+function applyLoginItem(on: boolean): void {
   const opts = { name: "Floppy", ...(app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] }) };
   // `openAtLogin` reste à false avec un nom et des arguments : le vrai état est `executableWillLaunchAtLogin`.
   if (app.getLoginItemSettings(opts).executableWillLaunchAtLogin === on) return;
@@ -496,9 +515,9 @@ function applyLoginItem(on) {
   kernelLog.write(`[app] démarrage avec Windows : ${on ? "activé" : "désactivé"}\n`);
 }
 
-function applyDisplay(s) {
+function applyDisplay(s: unknown): void {
   if (quitting || !s || typeof s !== "object") return;
-  display = { ...display, ...s };
+  display = { ...display, ...(s as Partial<Display>) };
   if (typeof display.demarrage_windows === "boolean") applyLoginItem(display.demarrage_windows);
   if (display.raccourcis && typeof display.raccourcis === "object") applyShortcuts(display.raccourcis);
   if (!win || win.isDestroyed()) return;
@@ -519,20 +538,20 @@ function toggleWindow() {
   kernelRequest({ type: "settings.set", key: "avatar_visible", value: show });
 }
 
-function kernelRequest(msg) {
+function kernelRequest(msg: Msg): Promise<any> {
   if (!kernel) return Promise.resolve({ ok: false, text: T("noKernel") });
   const reqId = ++reqSeq;
   return new Promise((res) => {
     const t = setTimeout(() => { pending.delete(reqId); res({ ok: false, text: T("noAnswer") }); }, 60000);
     pending.set(reqId, (r) => { clearTimeout(t); res(r); });
-    kernel.postMessage({ ...msg, reqId });
+    kernel?.postMessage({ ...msg, reqId });
   });
 }
 
 // ------------------------------------------------------------------ fenêtre des réglages
 // ------------------------------------------------------------------ fenêtre de résultats (A2UI)
-let panelWin = null;
-function openPanel(data) {
+let panelWin: BrowserWindow | null = null;
+function openPanel(data: Msg | undefined): void {
   const payload = { title: String(data?.title ?? "").slice(0, 200), a2ui: Array.isArray(data?.a2ui) ? data.a2ui : [], lang };
   if (panelWin && !panelWin.isDestroyed()) {
     panelWin.webContents.send("panel:show", payload);
@@ -547,13 +566,13 @@ function openPanel(data) {
 
 // ------------------------------------------------------------------ fenêtre « Documents » (Markdown)
 // Le Markdown est rendu ici (Node), jamais dans la fenêtre : elle ne reçoit que du HTML nettoyé (voir markdown.mjs).
-let docsWin = null;
+let docsWin: BrowserWindow | null = null;
 const DOC_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,150}$/;
 /** Liste des documents venue de la page de l'avatar : nettoyée avant d'aller dans la fenêtre. */
-const cleanDocList = (l) => (Array.isArray(l) ? l : []).slice(0, 60)
-  .filter((d) => d && DOC_ID.test(String(d.id)))
-  .map((d) => ({ id: String(d.id), titre: String(d.titre ?? "").slice(0, 200), date: String(d.date ?? ""), tags: Array.isArray(d.tags) ? d.tags.map(String).slice(0, 10) : [] }));
-function openDocuments(m) {
+const cleanDocList = (l: unknown) => (Array.isArray(l) ? l : []).slice(0, 60)
+  .filter((d: Msg) => d && DOC_ID.test(String(d.id)))
+  .map((d: Msg) => ({ id: String(d.id), titre: String(d.titre ?? "").slice(0, 200), date: String(d.date ?? ""), tags: Array.isArray(d.tags) ? d.tags.map(String).slice(0, 10) : [] }));
+function openDocuments(m: Msg | undefined): void {
   const liste = cleanDocList(m?.liste);
   const payload = { id: String(m?.id ?? ""), titre: String(m?.titre ?? "").slice(0, 200), html: renderMarkdown(m?.markdown), liste, lang };
   if (docsWin && !docsWin.isDestroyed()) {
@@ -594,9 +613,9 @@ function openOnboarding() {
   return onbWin;
 }
 
-async function showSettingsConfirmed() {
+async function showSettingsConfirmed(): Promise<void> {
   const target = openSettings();
-  if (target.webContents.isLoadingMainFrame()) await new Promise((resolve, reject) => {
+  if (target.webContents.isLoadingMainFrame()) await new Promise<void>((resolve, reject) => {
     const cleanup = () => {
       clearTimeout(timer);
       target.webContents.removeListener("did-finish-load", loaded);
@@ -604,7 +623,7 @@ async function showSettingsConfirmed() {
       target.removeListener("closed", closed);
     };
     const loaded = () => { cleanup(); resolve(); };
-    const failed = (_e, _code, description, _url, mainFrame) => { if (mainFrame) { cleanup(); reject(new Error(description)); } };
+    const failed = (_e: unknown, _code: number, description: string, _url: string, mainFrame: boolean) => { if (mainFrame) { cleanup(); reject(new Error(description)); } };
     const closed = () => { cleanup(); reject(textError(both("closedWhileLoading"))); };
     const timer = setTimeout(() => { cleanup(); reject(textError(both("loadTooLong"))); }, 8000);
     target.webContents.once("did-finish-load", loaded);
@@ -625,7 +644,7 @@ function openTextInput() {
   return textWin;
 }
 /** N'accepte que la fenêtre de saisie et un avatar connecté ; un échec conserve le brouillon. */
-function submitText(e, raw) {
+function submitText(e: { sender: unknown }, raw: unknown): boolean {
   if (!textWin || e.sender !== textWin.webContents) return false;
   if (typeof raw !== "string" || !raw.trim() || raw.length > 10000 || !kernel || !currentPorts || !winReady || !win || win.isDestroyed()) return false;
   activity();
@@ -673,7 +692,7 @@ function toggleDictate() {
   if (dictating) {
     try { typer ??= new Typer((msg) => { kernelLog.write(`[app] ${msg}
 `); console.log(`[app] ${msg}`); }); }
-    catch (e) { dictating = false; problems.set("dictée", e?.text ?? String(e?.message ?? e)); refreshTray(); return; }
+    catch (e) { const err = e as { text?: Bilingual; message?: unknown }; dictating = false; problems.set("dictée", err?.text ?? String(err?.message ?? e)); refreshTray(); return; }
     typer.reset();
     showDictationPill();
   } else finishDictationPill();
@@ -682,13 +701,14 @@ function toggleDictate() {
 }
 function toggleMute() { muted = !muted; win?.webContents.send("shortcut", muted ? "mute-on" : "mute-off"); refreshTray(); }
 
-const SHORTCUT_ACTIONS = { ecrire: () => openTextInput(), parler: () => togglePtt(), dicter: () => toggleDictate(), dormir: () => toggleMute(), avatar: () => toggleWindow() };
-const registered = new Map(); // action -> raccourci posé
+const SHORTCUT_ACTIONS: Record<string, () => void> = { ecrire: () => openTextInput(), parler: () => togglePtt(), dicter: () => toggleDictate(), dormir: () => toggleMute(), avatar: () => toggleWindow() };
+const registered = new Map<string, string>(); // action -> raccourci posé
 /** Pose les raccourcis globaux choisis. Un raccourci déjà pris par une autre app (ex. Ctrl+Alt+Espace) est signalé. */
-function applyShortcuts(next) {
+function applyShortcuts(next: unknown): void {
   if (!app.isReady()) return;
   for (const [a, fn] of Object.entries(SHORTCUT_ACTIONS)) {
-    const keys = typeof next?.[a] === "string" ? next[a] : SHORTCUT_DEFAULTS[a];
+    const chosen = (next as Record<string, unknown> | null | undefined)?.[a];
+    const keys = typeof chosen === "string" ? chosen : SHORTCUT_DEFAULTS[a]!;
     shortcuts[a] = keys;
     if (registered.get(a) === keys) continue;
     const old = registered.get(a);
@@ -708,10 +728,10 @@ function applyShortcuts(next) {
 // ------------------------------------------------------------------ démarrage
 app.whenReady().then(() => {
   // Micro : seulement pour nos fenêtres (fichiers locaux) : l'avatar, et les réglages (enregistrer une voix). Rien d'autre.
-  const micOk = (wc) => !!wc && (wc === win?.webContents || (!!settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents));
+  const micOk = (wc: WebContents | null | undefined) => !!wc && (wc === win?.webContents || (!!settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents));
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && micOk(wc)));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && micOk(wc));
-  tray = new Tray(dotIcon(COLORS.starting));
+  tray = new Tray(dotIcon(COLORS.starting!));
   tray.on("click", toggleWindow);
   createWindow();
   startKernel();
@@ -735,8 +755,9 @@ app.whenReady().then(() => {
     if (!win || e.sender !== win.webContents) throw new Error("refusé");
     try {
       return { ok: true, text: placeAvatar({ coin: String(a?.coin ?? "bas_droite"), ecran: a?.ecran === undefined ? undefined : Number(a.ecran), cible: a?.cible === "fenetre" ? "fenetre" : "ecran" }) };
-    } catch (err) {
-      return { ok: false, text: err?.text ?? String(err?.message ?? err) };
+    } catch (error) {
+      const err = error as { text?: Bilingual; message?: unknown };
+      return { ok: false, text: err?.text ?? String(err?.message ?? error) };
     }
   });
   // Dictée : le noyau envoie les mots confirmés ; seule la page de l'avatar peut les faire taper.
@@ -793,9 +814,9 @@ app.whenReady().then(() => {
     } catch { /* adresse invalide : rien */ }
   });
   // Fenêtre des réglages : seulement depuis sa propre page.
-  const fromSettings = (e) => settingsWin && e.sender === settingsWin.webContents;
+  const fromSettings = (e: { sender: unknown }) => settingsWin && e.sender === settingsWin.webContents;
   // Fenêtre « Bienvenue » : seulement depuis sa propre page.
-  const fromOnb = (e) => onbWin && !onbWin.isDestroyed() && e.sender === onbWin.webContents;
+  const fromOnb = (e: { sender: unknown }) => onbWin && !onbWin.isDestroyed() && e.sender === onbWin.webContents;
   ipcMain.handle("onboarding:get", (e, o) => fromOnb(e) ? kernelRequest({
     type: "onboarding.get", fresh: o?.fresh === true,
     ...(typeof o?.manualBytes === "number" && o.manualBytes >= 0 && o.manualBytes < 2 ** 50 ? { manualBytes: o.manualBytes } : {}),
@@ -804,12 +825,12 @@ app.whenReady().then(() => {
   ipcMain.handle("onboarding:skip", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.skip" }) : null);
   // Répertoire de travail choisi dans « Bienvenue » : le noyau le note puis repart dans ce dossier (réglage dossier_floppy).
   ipcMain.handle("onboarding:home", async (e) => {
-    if (!fromOnb(e)) return null;
+    if (!fromOnb(e) || !onbWin) return null;
     const r = await dialog.showOpenDialog(onbWin, { title: T("pickTitle"), properties: ["openDirectory", "createDirectory"] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
     return kernelRequest({ type: "settings.set", key: "dossier_floppy", value: r.filePaths[0] });
   });
-  ipcMain.on("onboarding:close", (e) => { if (fromOnb(e)) onbWin.close(); });
+  ipcMain.on("onboarding:close", (e) => { if (fromOnb(e)) onbWin?.close(); });
   ipcMain.on("onboarding:settings", (e) => { if (fromOnb(e)) openSettings(); });
   ipcMain.handle("onboarding:state", (e) => (fromSettings(e) ? lastOnb : null));
   ipcMain.on("open-onboarding", (e) => { if (settingsWin && e.sender === settingsWin.webContents) openOnboarding(); });
@@ -831,9 +852,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("items:pick", async (e, opts) => {
     if (!fromSettings(e) || !settingsWin) return null;
-    const o = opts && typeof opts === "object" ? opts : {};
+    const o: Msg = opts && typeof opts === "object" ? opts : {};
     const filters = Array.isArray(o.filters)
-      ? o.filters.slice(0, 10).map((f) => ({ name: String(f?.name ?? ""), extensions: Array.isArray(f?.extensions) ? f.extensions.slice(0, 20).map((x) => String(x).replace(/^\./, "")) : [] }))
+      ? o.filters.slice(0, 10).map((f) => ({ name: String(f?.name ?? ""), extensions: Array.isArray(f?.extensions) ? f.extensions.slice(0, 20).map((x: unknown) => String(x).replace(/^\./, "")) : [] }))
       : [];
     const r = await dialog.showOpenDialog(settingsWin, {
       title: T("pickTitle"), properties: [o.directory ? "openDirectory" : "openFile"], ...(filters.length && !o.directory ? { filters } : {}),
@@ -843,13 +864,13 @@ app.whenReady().then(() => {
   ipcMain.handle("settings:set", (e, key, value) => fromSettings(e) ? kernelRequest({ type: "settings.set", key: String(key), value }) : null);
   ipcMain.handle("settings:undo", (e) => fromSettings(e) ? kernelRequest({ type: "settings.undo" }) : null);
   // Assistant IA : relais fenêtre des réglages ↔ service « coder » du noyau.
-  const coderCall = (msg) => {
+  const coderCall = (msg: Msg): Promise<any> => {
     if (!kernel) return Promise.resolve({ ok: false, error: T("noKernel") });
     const reqId = ++reqSeq;
     return new Promise((res) => {
       const t = setTimeout(() => { pending.delete(reqId); res({ ok: false, error: T("noAnswer") }); }, 30000);
       pending.set(reqId, (r) => { clearTimeout(t); res(r); });
-      kernel.postMessage({ ...msg, reqId });
+      kernel?.postMessage({ ...msg, reqId });
     });
   };
   ipcMain.handle("coder:agents", async (e) => {
@@ -878,7 +899,7 @@ app.whenReady().then(() => {
   ipcMain.on("drag", (e, phase) => {
     if (!win || win.isDestroyed() || e.sender !== win.webContents) return;
     const pt = screen.getCursorScreenPoint();
-    if (phase === "start") { const [wx, wy] = win.getPosition(); drag = { cx: pt.x, cy: pt.y, wx, wy }; }
+    if (phase === "start") { const [wx, wy] = win.getPosition() as [number, number]; drag = { cx: pt.x, cy: pt.y, wx, wy }; }
     else if (phase === "move" && drag) win.setPosition(Math.round(drag.wx + pt.x - drag.cx), Math.round(drag.wy + pt.y - drag.cy));
     else if (phase === "end") { drag = null; keepOnScreen(); }
   });
@@ -900,7 +921,7 @@ app.on("before-quit", (e) => {
 });
 app.on("window-all-closed", () => { /* l'app reste dans la barre des tâches */ });
 // Une fenêtre dont le rendu plante (avatar, réglages…) est rechargée ; au-delà de 3 pannes en 5 minutes, on la laisse.
-let rendererCrashes = [];
+let rendererCrashes: number[] = [];
 app.on("render-process-gone", (_e, contents, details) => {
   if (quitting || details?.reason === "clean-exit") return;
   const now = Date.now();
