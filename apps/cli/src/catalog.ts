@@ -1,63 +1,80 @@
 // Liste des plugins connus. Une entrée de la config choisit un plugin par son id (champ `plugin:`).
+// Chaque paquet est chargé à part (import dynamique) : un plugin qui plante au chargement de son module ne
+// bloque plus le démarrage. Ses entrées passent en erreur visible, et le reste démarre.
 import type { PluginDef } from "@floppy/core";
-import tools from "@floppy/plugin-tools";
-import llmLlamacpp from "@floppy/plugin-llm-llamacpp";
-import llmOpenai from "@floppy/plugin-llm-openai";
-import memory from "@floppy/plugin-memory";
-import brainAisdk from "@floppy/plugin-brain-aisdk";
-import benchApi from "@floppy/plugin-bench-api";
-import brainClaudeCli from "@floppy/plugin-brain-claude-cli";
-import brainCodexCli from "@floppy/plugin-brain-codex-cli";
-import brainAgyCli from "@floppy/plugin-brain-agy-cli";
-import bodyHub from "@floppy/plugin-body-hub";
-import bodyWs from "@floppy/plugin-body-ws";
-import bodyElectron from "@floppy/plugin-body-electron";
-import bodyReachy from "@floppy/plugin-body-reachy";
-import conversation from "@floppy/plugin-conversation";
-import orca from "@floppy/plugin-orca";
-import browser from "@floppy/plugin-browser";
-import inbox from "@floppy/plugin-inbox";
-import websearch from "@floppy/plugin-websearch";
-import m365 from "@floppy/plugin-m365";
-import avatarTv from "@floppy/plugin-avatar-tv";
-import avatarPixel from "@floppy/plugin-avatar-pixel";
-import avatarEssaim from "@floppy/plugin-avatar-essaim";
-import avatarGyre from "@floppy/plugin-avatar-gyre";
-import avatarGoutte from "@floppy/plugin-avatar-goutte";
-import avatarOscillo from "@floppy/plugin-avatar-oscillo";
-import avatarIris from "@floppy/plugin-avatar-iris";
-import avatarPixelcat from "@floppy/plugin-avatar-pixelcat";
-import coder from "@floppy/plugin-coder";
-import agentSessions from "@floppy/plugin-agent-sessions";
-import ttsGemini from "@floppy/plugin-tts-gemini";
-import ttsElevenlabs from "@floppy/plugin-tts-elevenlabs";
-import liveGemini from "@floppy/plugin-live-gemini";
-import liveOpenai from "@floppy/plugin-live-openai";
-import wakewordSherpa from "@floppy/plugin-wakeword-sherpa";
-import wakewordPorcupine from "@floppy/plugin-wakeword-porcupine";
-import wakewordStt from "@floppy/plugin-wakeword-stt";
-import searxng from "@floppy/plugin-searxng";
-import documents from "@floppy/plugin-documents";
-import scheduler from "@floppy/plugin-scheduler";
-import veille from "@floppy/plugin-veille";
-import notifyTelegram from "@floppy/plugin-notify-telegram";
-import notifyMail from "@floppy/plugin-notify-mail";
-import ttsAudiocpp from "@floppy/plugin-tts-audiocpp";
-import ttsSystem from "@floppy/plugin-tts-system";
-import voiceListen from "@floppy/plugin-voice-listen";
-import sttSherpa from "@floppy/plugin-stt-sherpa";
 
-export const catalog: PluginDef<any>[] = [
-  tools, llmLlamacpp, llmOpenai, memory, brainAisdk, brainClaudeCli, brainCodexCli, brainAgyCli,
-  bodyHub, bodyWs, bodyElectron, bodyReachy, conversation, orca, browser, inbox, websearch, m365, avatarTv, avatarPixel, avatarEssaim, avatarGyre, avatarGoutte, avatarOscillo, avatarIris, avatarPixelcat, coder, agentSessions,
-  ttsGemini, ttsElevenlabs, liveGemini, liveOpenai,
-  wakewordStt, wakewordSherpa, wakewordPorcupine,
-  searxng, documents, scheduler, veille, notifyTelegram, notifyMail, ttsAudiocpp, ttsSystem, voiceListen, sttSherpa,
+/** Paquets des plugins livrés, dans l'ordre (le premier fournisseur actif d'un service gagne, à défaut de choix). */
+export const PACKAGES: readonly string[] = [
+  "@floppy/plugin-tools",
+  "@floppy/plugin-llm-llamacpp",
+  "@floppy/plugin-llm-openai",
+  "@floppy/plugin-memory",
+  "@floppy/plugin-brain-aisdk",
+  "@floppy/plugin-brain-claude-cli",
+  "@floppy/plugin-brain-codex-cli",
+  "@floppy/plugin-brain-agy-cli",
+  "@floppy/plugin-body-hub",
+  "@floppy/plugin-body-ws",
+  "@floppy/plugin-body-electron",
+  "@floppy/plugin-body-reachy",
+  "@floppy/plugin-conversation",
+  "@floppy/plugin-orca",
+  "@floppy/plugin-browser",
+  "@floppy/plugin-inbox",
+  "@floppy/plugin-websearch",
+  "@floppy/plugin-m365",
+  "@floppy/plugin-avatar-tv",
+  "@floppy/plugin-avatar-pixel",
+  "@floppy/plugin-avatar-essaim",
+  "@floppy/plugin-avatar-gyre",
+  "@floppy/plugin-avatar-goutte",
+  "@floppy/plugin-avatar-oscillo",
+  "@floppy/plugin-avatar-iris",
+  "@floppy/plugin-avatar-pixelcat",
+  "@floppy/plugin-coder",
+  "@floppy/plugin-agent-sessions",
+  "@floppy/plugin-tts-gemini",
+  "@floppy/plugin-tts-elevenlabs",
+  "@floppy/plugin-live-gemini",
+  "@floppy/plugin-live-openai",
+  "@floppy/plugin-wakeword-stt",
+  "@floppy/plugin-wakeword-sherpa",
+  "@floppy/plugin-wakeword-porcupine",
+  "@floppy/plugin-searxng",
+  "@floppy/plugin-documents",
+  "@floppy/plugin-scheduler",
+  "@floppy/plugin-veille",
+  "@floppy/plugin-notify-telegram",
+  "@floppy/plugin-notify-mail",
+  "@floppy/plugin-tts-audiocpp",
+  "@floppy/plugin-tts-system",
+  "@floppy/plugin-voice-listen",
+  "@floppy/plugin-stt-sherpa",
 ];
 
 /**
  * Plugins de développement, chargés seulement avec FLOPPY_DEV=1. `bench-api` répond aux accords tout seul pour le banc
  * (en-tête X-Approval) : il ne doit jamais tourner dans un Floppy de tous les jours.
  */
-export const devPlugins: PluginDef<any>[] = [benchApi];
-if (process.env.FLOPPY_DEV === "1") catalog.push(...devPlugins);
+export const DEV_PACKAGES: readonly string[] = ["@floppy/plugin-bench-api"];
+
+export interface LoadedCatalog {
+  plugins: PluginDef<any>[];
+  /** Paquets qui n'ont pas pu se charger, avec la raison. */
+  failed: { pkg: string; error: string }[];
+}
+
+/** Charge les plugins livrés (et ceux de développement si `dev`). Un paquet qui échoue est rendu dans `failed`. */
+export async function loadCatalog(opts: { dev?: boolean; packages?: readonly string[] } = {}): Promise<LoadedCatalog> {
+  const list = opts.packages ?? [...PACKAGES, ...((opts.dev ?? process.env.FLOPPY_DEV === "1") ? DEV_PACKAGES : [])];
+  const results = await Promise.allSettled(list.map((pkg) => import(pkg) as Promise<{ default?: PluginDef<any> }>));
+  const plugins: PluginDef<any>[] = [];
+  const failed: LoadedCatalog["failed"] = [];
+  results.forEach((r, i) => {
+    const pkg = list[i]!;
+    if (r.status === "rejected") failed.push({ pkg, error: r.reason instanceof Error ? r.reason.message : String(r.reason) });
+    else if (!r.value.default?.manifest) failed.push({ pkg, error: "pas de plugin exporté par défaut (definePlugin)" });
+    else plugins.push(r.value.default);
+  });
+  return { plugins, failed };
+}

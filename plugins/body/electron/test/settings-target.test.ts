@@ -6,7 +6,8 @@ import bodyHub from "@floppy/plugin-body-hub";
 import bodyElectron from "../src/index.ts";
 import { findSettingsTarget } from "../src/settings-target.ts";
 
-const proc = process as unknown as { parentPort?: unknown };
+// Faux canal de l'app de bureau, donné au noyau (option host) : plus aucun objet global du processus.
+const proc: { parentPort?: unknown } = {};
 
 const snap = (section: string, id: string, items: { id: string; label: ProviderSnapshot["items"][number]["label"]; actions?: { id: string; label: string }[] }[], layout: ProviderSnapshot["layout"] = "list") =>
   ({ id, section, layout, items } as unknown as ProviderSnapshot);
@@ -58,7 +59,7 @@ describe("ouvrir_reglages sur un élément", () => {
         });
       },
     });
-    const k = new Kernel({ logger: () => {}, plugins: [bodyHub, bodyElectron, fake] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron, fake] });
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }, { id: "faux", plugin: "faux-orca" }] });
     try {
       const r = await k.tools.call("ouvrir_reglages", { element: "orka" });

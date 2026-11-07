@@ -1,7 +1,7 @@
 // Entrée du noyau dans l'app : tourne dans un utilityProcess d'Electron (Node 24 inclus dans Electron 45).
 // Même démarrage que `floppy start` (boot.ts). Le plugin body-electron reçoit ici les MessagePort de l'avatar.
 import { boot } from "@floppy/cli/boot";
-import { T, tr, errorText, type CoderService } from "@floppy/core";
+import { T, tr, errorText, type CoderService, type HostChannel } from "@floppy/core";
 
 interface ParentPort {
   on(ev: "message", fn: (e: { data: unknown }) => void): void;
@@ -13,7 +13,7 @@ const configPath = process.argv[2] ?? process.env.FLOPPY_CONFIG;
 
 // Un démarrage impossible (floppy.yml invalide, plugin cassé au chargement) : la raison part à l'app avant l'arrêt,
 // pour qu'elle la montre au lieu de relancer en boucle.
-const running = await boot(configPath ? { configPath } : {}).catch((err: unknown) => {
+const running = await boot({ ...(configPath ? { configPath } : {}), host: parent as unknown as HostChannel }).catch((err: unknown) => {
   console.error(err);
   parent.postMessage({ type: "kernel.failed", text: errorText(err) });
   setTimeout(() => process.exit(2), 200);
@@ -89,7 +89,8 @@ function watchCoder() {
   coderSub = svc;
   if (svc) coderUnsub = svc.onEvent((event) => parent.postMessage({ type: "coder.event", event }));
 }
-k.bus.on("plugin.state", (s: { id?: string }) => { if (s?.id === "coder") watchCoder(); });
+// Le fournisseur du service « coder » change (démarré, arrêté, remplacé) : on suit le nouveau, quel que soit son id.
+k.bus.on("service.changed", (c) => { if (c.name === "coder") watchCoder(); });
 watchCoder();
 
 function handleCoder(d: CoderMsg) {

@@ -11,7 +11,8 @@ import avatarTv from "@floppy/plugin-avatar-tv";
 import avatarPixel from "@floppy/plugin-avatar-pixel";
 import bodyElectron, { defineAvatar, readAvatarDir } from "../src/index.ts";
 
-const proc = process as unknown as { parentPort?: unknown };
+// Faux canal de l'app de bureau, donné au noyau (option host) : plus aucun objet global du processus.
+const proc: { parentPort?: unknown } = {};
 
 describe("avatars (plugins)", () => {
   const oldHome = process.env.FLOPPY_HOME;
@@ -26,7 +27,7 @@ describe("avatars (plugins)", () => {
     process.env.FLOPPY_HOME = home;
     const sent: { type: string; settings?: Record<string, unknown> }[] = [];
     proc.parentPort = { on: () => {}, postMessage: (m: never) => { sent.push(m); } };
-    k = new Kernel({ logger: () => {}, home, plugins: [bodyHub, bodyElectron, avatarTv, avatarPixel, ...extra] });
+    k = new Kernel({ host: proc.parentPort as never, logger: () => {}, home, plugins: [bodyHub, bodyElectron, avatarTv, avatarPixel, ...extra] });
     await k.applyConfig({
       assistant: { name: "Floppy", wake_words: ["floppy"] }, approvals: { timeout_s: 5 },
       plugins: [

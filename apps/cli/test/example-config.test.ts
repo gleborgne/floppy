@@ -3,17 +3,28 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadConfigFile } from "@floppy/core";
-import { catalog as production, devPlugins } from "../src/catalog.ts";
+import { loadCatalog, DEV_PACKAGES, PACKAGES } from "../src/catalog.ts";
 
 // Le banc (bench/bench.yml) se lance avec FLOPPY_DEV=1 : ses plugins de développement comptent ici.
-const catalog = [...production, ...devPlugins];
+const { plugins: catalog, failed } = await loadCatalog({ dev: true });
 
 const files = ["floppy.example.yml", "bench/bench.yml"].map((f) => fileURLToPath(new URL(`../../../${f}`, import.meta.url)));
 
-describe("catalogue de production", () => {
-  it("ne contient pas les plugins de développement (bench-api répond aux accords tout seul)", () => {
-    if (process.env.FLOPPY_DEV === "1") return;
-    for (const d of devPlugins) expect(production.some((p) => p.manifest.id === d.manifest.id)).toBe(false);
+describe("catalogue", () => {
+  it("chaque paquet se charge et exporte un plugin", () => {
+    expect(failed).toEqual([]);
+    expect(catalog).toHaveLength(PACKAGES.length + DEV_PACKAGES.length);
+  });
+
+  it("la production ne contient pas les plugins de développement (bench-api répond aux accords tout seul)", async () => {
+    const prod = await loadCatalog({ dev: false });
+    expect(prod.plugins.some((p) => p.manifest.id === "bench-api")).toBe(false);
+  });
+
+  it("un paquet qui ne se charge pas est rendu à part, le reste se charge", async () => {
+    const r = await loadCatalog({ packages: ["@floppy/plugin-memory", "@floppy/plugin-qui-n-existe-pas"] });
+    expect(r.plugins.map((p) => p.manifest.id)).toEqual(["memory"]);
+    expect(r.failed.map((f) => f.pkg)).toEqual(["@floppy/plugin-qui-n-existe-pas"]);
   });
 });
 

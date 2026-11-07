@@ -3,7 +3,7 @@ export const VERSION = "0.1.0";
 
 export { Kernel, consoleLogger, type Logger, type EntryStatus, type SlotStatus, type KernelOptions } from "./plugin/kernel.ts";
 export { definePlugin, manifestError, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
-export type { Context, Borrowed, ExecOptions, ExecResult, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
+export type { Context, Borrowed, ExecOptions, ExecResult, HostChannel, HostMessage, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
 export { DownloadManager, hostAllowed, type ContextDownloads, type DownloadFile, type DownloadRequest, type DownloadState, type DownloadPhase, type DownloadManagerOptions } from "./downloads.ts";
 export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
 export type { NotifyMessage, NotifyService } from "./services.ts";

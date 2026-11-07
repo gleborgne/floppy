@@ -24,7 +24,8 @@ describe("normalizeShortcut", () => {
   });
 });
 
-const proc = process as unknown as { parentPort?: unknown };
+// Faux canal de l'app de bureau, donné au noyau (option host) : plus aucun objet global du processus.
+const proc: { parentPort?: unknown } = {};
 
 describe("réglages des raccourcis", () => {
   afterEach(() => { delete proc.parentPort; });
@@ -34,7 +35,7 @@ describe("réglages des raccourcis", () => {
     const sent: { type: string; settings?: { raccourcis?: Record<string, string> } }[] = [];
     const parent = Object.assign(new EventEmitter(), { postMessage: (m: unknown) => { sent.push(m as (typeof sent)[number]); } });
     proc.parentPort = parent;
-    const k = new Kernel({ logger: () => {}, plugins: [bodyHub, electron] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, electron] });
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }] });
     const byKey = (key: string) => k.settings.list().find((s) => s.key === key);
     expect(byKey("raccourci_parler")).toMatchObject({ section: "systeme", type: "text", value: SHORTCUT_DEFAULTS.parler, group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } });

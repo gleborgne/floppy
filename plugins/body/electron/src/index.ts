@@ -108,7 +108,8 @@ export default definePlugin<Config>({
   },
   config: Config,
   apply(ctx, cfg) {
-    const parent = (process as unknown as { parentPort?: ParentPort }).parentPort;
+    // Canal vers l'app de bureau, donné par l'hôte (boot({ host })) : jamais un objet global du processus.
+    const parent = ctx.host as ParentPort | undefined;
     if (!parent) {
       // Hors de l'app (--headless) : pas d'écran, donc pas de corps. Ce n'est pas une panne : on reste inactif.
       ctx.items.status({ fr: "inactif : pas dans l'application (mode --headless)", en: "inactive: not running inside the app (--headless mode)" }, "warn");

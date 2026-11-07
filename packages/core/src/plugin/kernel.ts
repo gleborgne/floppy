@@ -41,6 +41,7 @@ import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
 import { findExe, killTree, stableStringify } from "../util/process.ts";
 import { ChildRegistry } from "../util/children.ts";
+import { Deadline, KERNEL_EVENTS, offerItems, sameEntry } from "./lifecycle-util.ts";
 import { chooseHome } from "../util/home.ts";
 import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
@@ -146,6 +147,10 @@ export interface KernelOptions {
   disposeTimeoutMs?: number;
   /** Attentes avant chaque reprise automatique d'une entrée en panne (défaut : 5 s, 30 s, 2 min ; puis abandon visible). */
   retryDelays?: number[];
+  /** Paquets de plugins qui n'ont pas pu se charger (dit dans l'erreur d'une entrée dont le plugin manque). */
+  unloaded?: { pkg: string; error: string }[];
+  /** Canal vers l'hôte (app de bureau), donné aux plugins par ctx.host. */
+  host?: import("./context.ts").HostChannel;
 }
 
 export class Kernel {
@@ -184,6 +189,8 @@ export class Kernel {
   private readonly retryDelays: number[];
   /** Emprunteurs d'un fork (ctx.borrow) : prévenus quand il s'arrête. Clé du fork → fonctions. */
   private readonly borrowers = new Map<string, Set<() => void>>();
+  private readonly unloaded: { pkg: string; error: string }[];
+  private readonly host: import("./context.ts").HostChannel | undefined;
   private stopped = false;
   private readonly catalog = new Map<string, PluginDef<any>>();
   /** Plugins dont le manifeste est invalide : id → raison. Leurs entrées démarrent en erreur visible. */
@@ -228,6 +235,8 @@ export class Kernel {
     this.startTimeoutMs = opts.startTimeoutMs ?? 60_000;
     this.disposeTimeoutMs = opts.disposeTimeoutMs ?? 10_000;
     this.retryDelays = opts.retryDelays ?? [5_000, 30_000, 120_000];
+    this.unloaded = opts.unloaded ?? [];
+    this.host = opts.host;
     this.hooks.onError = (owner, name, err) => this.log("error", owner ?? "hooks", `middleware ${name} sauté : ${err instanceof Error ? err.message : String(err)}`);
     this.children = new ChildRegistry(join(this.home, "children.json"));
     this.approvals = new ApprovalManager(this.bus, this.audit, base.approvals);
@@ -752,7 +761,13 @@ export class Kernel {
     const bad = this.invalid.get(cfg.plugin);
     if (bad) return this.setError(e, T(`manifeste invalide : ${bad}`, `invalid manifest: ${bad}`));
     const def = this.catalog.get(cfg.plugin);
-    if (!def) return this.setError(e, T(`plugin inconnu : ${cfg.plugin}`, `unknown plugin: ${cfg.plugin}`));
+    if (!def) {
+      // Un paquet de plugin qui ne se charge pas est peut-être celui-ci : on le dit (on ne connaît pas son id).
+      const why = this.unloaded.map((u) => `${u.pkg} (${u.error.slice(0, 160)})`).join(" ; ");
+      return this.setError(e, why
+        ? T(`plugin inconnu : ${cfg.plugin}. Ces plugins ne se chargent pas : ${why}`, `unknown plugin: ${cfg.plugin}. These plugins don't load: ${why}`)
+        : T(`plugin inconnu : ${cfg.plugin}`, `unknown plugin: ${cfg.plugin}`));
+    }
     e.def = def;
     if (def.config) {
       const r = def.config.safeParse(cfg.config ?? {});
@@ -1183,6 +1198,23 @@ export class Kernel {
     if (wasActive) for (const name of provided) this.bus.emit("service.changed", { name, provider: this.providerOf(name) });
   }
 
+  /** Canal de l'hôte pour un plugin : ses écouteurs tournent à son nom et sont retirés à son arrêt. */
+  private hostFor(id: string, scope: EffectScope, as: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R): import("./context.ts").HostChannel {
+    const host = this.host!;
+    const off = (fn: (e: import("./context.ts").HostMessage) => void) => { (host.off ?? host.removeListener)?.call(host, "message", fn); };
+    const wrapped = new Map<(e: import("./context.ts").HostMessage) => void, (e: import("./context.ts").HostMessage) => void>();
+    return {
+      postMessage: (data) => { if (!scope.isClosed) host.postMessage(data); else this.log("warn", id, "host.postMessage après l'arrêt du plugin : refusé"); },
+      on: (_ev, fn) => {
+        const w = as(fn);
+        wrapped.set(fn, w);
+        host.on("message", w);
+        scope.add(() => off(w));
+      },
+      off: (_ev, fn) => { const w = wrapped.get(fn); if (w) { off(w); wrapped.delete(fn); } },
+    };
+  }
+
   /** Prévient ceux qui ont emprunté ce fork : il s'est arrêté (panne, arrêt, nouveau choix). */
   private loseBorrowers(key: string): void {
     const set = this.borrowers.get(key);
@@ -1427,6 +1459,7 @@ export class Kernel {
       },
       effect: (dispose) => scope.add(dispose),
       on: (event, fn) => { scope.add(this.bus.on(event, as(fn))); },
+      ...(this.host ? { host: this.hostFor(e.cfg.id, scope, as) } : {}),
       emit: (event, payload) => {
         if (closed(`emit(${event})`)) return;
         // Ces événements disent ce que le noyau a décidé : un plugin ne peut pas les imiter (fausse demande d'accord…).
@@ -1526,55 +1559,5 @@ export class Kernel {
 
   private log(level: LogLevel, source: string, msg: string, data?: Record<string, unknown>): void {
     this.logger({ level, source, msg, ...(data ? { data } : {}) });
-  }
-}
-
-/** Événements émis seulement par le noyau (ctx.emit les refuse aux plugins). */
-const KERNEL_EVENTS = new Set(["approval.request", "approval.closed", "plugin.state", "service.changed", "task.done", "floppy.restart"]);
-
-function sameEntry(a: EntryConfig, b: EntryConfig): boolean {
-  return a.plugin === b.plugin && a.disabled === b.disabled && stableStringify(a.config) === stableStringify(b.config);
-}
-
-/** Éléments d'une offre ; une offre qui plante ne casse pas la liste. */
-function offerItems(offer: OfferDef<any>): OfferItem[] {
-  try { return offer.items(); } catch { return []; }
-}
-
-/** Délai d'un démarrage, qu'on peut mettre en pause (le temps d'attendre un autre plugin ne compte pas). */
-class Deadline {
-  private left: number;
-  private since = 0;
-  private timer: NodeJS.Timeout | undefined;
-  private paused = 0;
-  private done = false;
-  private readonly onTimeout: () => void;
-
-  constructor(ms: number, onTimeout: () => void) {
-    this.left = ms;
-    this.onTimeout = onTimeout;
-    this.arm();
-  }
-
-  pause(): void {
-    if (this.done || this.paused++ > 0) return;
-    clearTimeout(this.timer);
-    this.left -= Date.now() - this.since;
-  }
-
-  resume(): void {
-    if (this.done || --this.paused > 0) return;
-    this.arm();
-  }
-
-  stop(): void {
-    this.done = true;
-    clearTimeout(this.timer);
-  }
-
-  private arm(): void {
-    this.since = Date.now();
-    this.timer = setTimeout(() => { this.done = true; this.onTimeout(); }, Math.max(0, this.left));
-    this.timer.unref?.();
   }
 }

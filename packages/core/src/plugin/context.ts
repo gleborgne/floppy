@@ -126,6 +126,21 @@ export interface OfferDef<T = unknown> {
   startTimeout_s?: number;
 }
 
+/** Message de l'hôte (l'app de bureau) : des données, et parfois des MessagePort (ex. le canal de l'avatar). */
+export interface HostMessage { data: unknown; ports?: unknown[] }
+
+/**
+ * Canal entre le noyau et son hôte (l'app de bureau). Donné par l'hôte au démarrage (`boot({ host })`) ; absent en
+ * ligne de commande. Un plugin le lit par ctx.host au lieu d'un objet global du processus ; ses écouteurs sont
+ * retirés à son arrêt.
+ */
+export interface HostChannel {
+  postMessage(data: unknown): void;
+  on(ev: "message", fn: (e: HostMessage) => void): void;
+  off?(ev: "message", fn: (e: HostMessage) => void): void;
+  removeListener?(ev: "message", fn: (e: HostMessage) => void): void;
+}
+
 export interface ExecOptions {
   /** Délai (défaut : 30 000 ms). */
   timeoutMs?: number;
@@ -222,6 +237,8 @@ export interface Context {
 
   effect(dispose: Disposer): () => Promise<void>;
   on<K extends keyof CoreEvents & string>(event: K, fn: (payload: CoreEvents[K]) => void): void;
+  /** Canal vers l'hôte (app de bureau), ou undefined (ligne de commande). */
+  readonly host?: HostChannel;
   /** Émet sur le bus. Les événements du noyau (accords, état des plugins, services, tâches, relance) sont refusés. */
   emit<K extends keyof CoreEvents & string>(event: K, payload: CoreEvents[K]): void;
   /**

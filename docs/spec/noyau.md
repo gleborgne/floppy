@@ -40,7 +40,9 @@ assistant/plugins/
 
 **Règle de frontière** : un plugin ne parle aux autres que par les contrats de `packages/core`. Il n'importe **jamais** un autre paquet de plugin (ni par son nom, ni par un chemin relatif, pas même un type). Testé : `packages/core/test/boundaries.test.ts`. C'est pourquoi les contrats `mcp`, `body` et `avatars` (et `defineAvatar`) vivent dans le noyau (`services.ts`, `avatars.ts`).
 
-Le nom du paquet ne dépend pas du dossier (`@floppy/plugin-brain-aisdk`…). Une entrée de la config choisit un plugin par l'id de son manifeste (`plugin: brain-aisdk`). La liste des plugins connus : `apps/cli/src/catalog.ts`.
+Le nom du paquet ne dépend pas du dossier (`@floppy/plugin-brain-aisdk`…). Une entrée de la config choisit un plugin par l'id de son manifeste (`plugin: brain-aisdk`). La liste des plugins connus : `apps/cli/src/catalog.ts` (`PACKAGES`). Chaque paquet est chargé à part (`loadCatalog`) : un module qui plante au chargement ne bloque pas le démarrage, il est écrit au journal et rappelé dans l'erreur des entrées dont le plugin manque. Les plugins de développement (`DEV_PACKAGES` : `bench-api`) ne sont chargés qu'avec `FLOPPY_DEV=1`.
+
+**L'hôte** (l'app de bureau) donne au noyau un canal (`boot({ host })`). Un plugin le lit par `ctx.host` (absent en ligne de commande), jamais par un objet global du processus ; ses écouteurs tournent à son nom et sont retirés à son arrêt. `body-electron` s'en sert (port de l'avatar, ouvrir les réglages, affichage).
 
 Depuis le 6 novembre 2026 : `tasks/scheduler`, `display/documents`, `veille/digest`, `tools/searxng`. Voir [Tâches](taches.md), [Documents](documents.md), [Veille](veille.md).
 
@@ -326,6 +328,17 @@ Un seul dossier pour tout ce que Floppy garde : la config `floppy.yml`, les rég
 - **La config** est `<dossier>/floppy.yml`, créée depuis `floppy.example.yml`. Une ancienne config à la racine du dépôt est copiée une fois (l'originale n'est plus lue). `FLOPPY_CONFIG` ou `--config` imposent un autre fichier.
 - **Plugins** : `ctx.home` est ce dossier ; `ctx.workspace(nom)` rend `<dossier>/workspaces/<id du plugin>/<nom>` (créé). Les cerveaux CLI (Claude, Codex, Antigravity), l'assistant IA des réglages, ses relectures, la recherche web et les sessions d'agents y travaillent.
 - L'app Electron et le worker Orca lisent le même pointeur pour trouver ce dossier (journal, pont).
+
+## Dette d'architecture restante (revue du 7 novembre 2026)
+
+Ce qui reste de la revue d'architecture, par ordre d'intérêt :
+
+1. **Contrats hors du noyau.** `services.ts` porte encore tous les contrats (environ 55 interfaces, dont des contrats propres à un plugin : `CoderService`, `BodyHub`…). Cible : chaque domaine dans son paquet, qui complète l'interface `Services` par une augmentation de module (comme Cordis), le noyau ne gardant que ses propres contrats.
+2. **Code produit hors du noyau.** Premier lancement, lecture de la machine, bibliothèques de modèles et de programmes vivent dans `packages/core` ; cible : un paquet à part, ou des plugins.
+3. **Découper `kernel.ts`** (environ 1 550 lignes) : la fabrique du `ctx` et les réglages du noyau (langues, dossiers) en modules à part, ou en plugins internes posés au démarrage. Les pièces sans état sont déjà dans `plugin/lifecycle-util.ts`.
+4. **Fichiers trop gros côté app** : `apps/desktop/src/main.mjs`, `renderer/settings.js`, `plugins/conversation/default/src/index.ts`.
+5. **Doublons restants** : lecteur de fichiers GGUF et lancement d'un serveur local (llamacpp, audiocpp), éléments à secret recopiés (llm-openai, mail, telegram, mcp : à faire entrer dans `providerConfig`), normalisation de texte et `hostOf`.
+6. **Réseau** : faire passer tous les appels par `ctx.fetch`, puis refuser (et non plus signaler) un hôte hors `permissions.net`.
 
 ## Le noyau dans l'app Electron (vérifié)
 

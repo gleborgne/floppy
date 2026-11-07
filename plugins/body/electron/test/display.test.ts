@@ -7,7 +7,8 @@ import { EventEmitter } from "node:events";
 import bodyHub from "@floppy/plugin-body-hub";
 import bodyElectron from "../src/index.ts";
 
-const proc = process as unknown as { parentPort?: unknown };
+// Faux canal de l'app de bureau, donné au noyau (option host) : plus aucun objet global du processus.
+const proc: { parentPort?: unknown } = {};
 
 describe("réglages d'affichage", () => {
   afterEach(() => { delete proc.parentPort; });
@@ -17,7 +18,7 @@ describe("réglages d'affichage", () => {
     let request: { type: string; reqId: string } | undefined;
     parent.postMessage = m => { const r = m as typeof request; if (r?.type === "settings.open") request = r; };
     proc.parentPort=parent;
-    const k = new Kernel({ logger: () => {}, plugins:[bodyHub,bodyElectron,conversation] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins:[bodyHub,bodyElectron,conversation] });
     try {
       await k.applyConfig({ assistant:{name:'Floppy',wake_words:['floppy']}, plugins:[{id:'body',plugin:'body-hub'},{id:'bodyel',plugin:'body-electron'},{id:'conv',plugin:'conversation'}] });
       let receive!: (m: BodyToKernel) => void;
@@ -37,7 +38,7 @@ describe("réglages d'affichage", () => {
     let request: { type: string; reqId: string } | undefined;
     parent.postMessage = m => { const r = m as typeof request; if (r?.type === "settings.open") request = r; };
     proc.parentPort = parent;
-    const k = new Kernel({ logger: () => {}, plugins: [bodyHub, bodyElectron, conversation] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron, conversation] });
     try {
       await k.applyConfig({ assistant: { name: "Floppy", language: "en", wake_words: ["floppy"] }, plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }, { id: "conv", plugin: "conversation" }] });
       let receive!: (m: BodyToKernel) => void;
@@ -56,7 +57,7 @@ describe("réglages d'affichage", () => {
     let request: { type: string; reqId: string } | undefined;
     parent.postMessage = (m) => { const r = m as typeof request; if (r?.type === "settings.open") request = r; };
     proc.parentPort = parent;
-    const k = new Kernel({ logger: () => {}, plugins: [bodyHub, bodyElectron] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron] });
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }] });
     try {
       expect(k.tools.list().some((t) => t.name === "ouvrir_reglages")).toBe(true);
@@ -75,7 +76,7 @@ describe("réglages d'affichage", () => {
   it("envoie l'état au démarrage puis à chaque changement", async () => {
     const sent: { type: string; settings?: Record<string, unknown> }[] = [];
     proc.parentPort = { on: () => {}, postMessage: (m: never) => { sent.push(m); } };
-    const k = new Kernel({ logger: () => {}, plugins: [bodyHub, bodyElectron] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron] });
     await k.applyConfig({
       assistant: { name: "Floppy", wake_words: ["floppy"] },
       approvals: { timeout_s: 5 },
@@ -96,7 +97,7 @@ describe("réglages d'affichage", () => {
   });
 
   it("hors de l'app (pas de parentPort) : inactif sans erreur, registre d'avatars quand même fourni", async () => {
-    const k = new Kernel({ logger: () => {}, plugins: [bodyHub, bodyElectron] });
+    const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron] });
     await k.applyConfig({
       assistant: { name: "Floppy", wake_words: ["floppy"] },
       approvals: { timeout_s: 5 },

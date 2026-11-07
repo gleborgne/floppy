@@ -248,3 +248,28 @@ describe("nouveau choix pendant un chargement", () => {
     await k.stopAll();
   });
 });
+
+describe("canal de l'hôte", () => {
+  it("ctx.host : les écouteurs d'un plugin sont retirés à son arrêt ; absent sans hôte", async () => {
+    const { EventEmitter } = await import("node:events");
+    const host = Object.assign(new EventEmitter(), { sent: [] as unknown[], postMessage(m: unknown) { this.sent.push(m); } });
+    const got: unknown[] = [];
+    let ctx!: Context;
+    const p = definePlugin({ manifest: { id: "p", version: "0", licence: "MIT" }, apply(c) { ctx = c; c.host?.on("message", (e) => got.push(e.data)); c.host?.postMessage("bonjour"); } });
+    const { k } = kernel([p], { host });
+    await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
+    host.emit("message", { data: 1 });
+    expect(got).toEqual([1]);
+    expect(host.sent).toEqual(["bonjour"]);
+    await k.stopAll();
+    host.emit("message", { data: 2 });
+    expect(got).toEqual([1]);
+    expect(host.listenerCount("message")).toBe(0);
+    ctx.host?.postMessage("après");
+    expect(host.sent).toEqual(["bonjour"]);
+    const { k: k2 } = kernel([p]);
+    await k2.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
+    expect(ctx.host).toBeUndefined();
+    await k2.stopAll();
+  });
+});

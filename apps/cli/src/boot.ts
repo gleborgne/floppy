@@ -2,8 +2,8 @@
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, defaultConfigPath, onboardingFor, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
-import { catalog } from "./catalog.ts";
+import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, defaultConfigPath, onboardingFor, type HostChannel, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
+import { loadCatalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
 import { createWiki } from "./plugins/wiki.ts";
@@ -28,6 +28,8 @@ export interface BootOptions {
   safetyNet?: boolean;
   /** Arrête les programmes restés d'une session précédente (défaut : oui). */
   reapOrphans?: boolean;
+  /** Canal vers l'hôte (app de bureau), donné aux plugins par ctx.host. */
+  host?: HostChannel;
 }
 
 /** Dossiers de debug passés par l'app de bureau (variable FLOPPY_DEV_PLUGINS, séparés comme le PATH). */
@@ -66,8 +68,14 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
       console.warn(`[kernel] programme resté d'une session précédente arrêté : ${r.name} (pid ${r.pid}, ${r.owner})`);
     }
   }
+  // Plugins livrés : chacun chargé à part ; un module qui plante ne bloque pas le démarrage (ses entrées sont en erreur).
+  const loaded = opts.plugins ? { plugins: opts.plugins, failed: [] } : await loadCatalog();
+  for (const f of loaded.failed) console.error(`[catalog] ${f.pkg} ne se charge pas : ${f.error}`);
+  const plugins = loaded.plugins;
   const kernel = new Kernel({
-    plugins: opts.plugins ?? catalog,
+    plugins,
+    ...(loaded.failed.length ? { unloaded: loaded.failed } : {}),
+    ...(opts.host ? { host: opts.host } : {}),
     audit: new FileAudit(join(home, "audit.jsonl")),
     home,
     ...(opts.logger ? { logger: opts.logger } : {}),
@@ -84,13 +92,13 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
   // Plugins de l'utilisateur : chargés avant la config, pour démarrer ceux qu'il a activés avec le reste.
   const devDirs = opts.devDirs ?? envDevDirs();
   const userPlugins = createUserPlugins(kernel, {
-    builtin: (opts.plugins ?? catalog).map((p) => p.manifest.id), logger: log,
+    builtin: plugins.map((p) => p.manifest.id), logger: log,
     ...(devDirs.length ? { devDirs } : {}),
     sandbox: { ...(process.env.FLOPPY_DEV_INSPECT === "1" ? { inspect: true } : {}), ...opts.sandbox },
   });
   const store = createPluginStore(kernel, { reload: () => userPlugins.reload(), enableKey: settingKey, logger: log, ...(opts.reviewer ? { reviewer: opts.reviewer } : {}) });
   // Wiki des plugins (outil doc_plugins) : pour l'assistant IA qui écrit un plugin depuis la fenêtre des réglages.
-  const builtinManifests = (opts.plugins ?? catalog).map((p) => p.manifest);
+  const builtinManifests = plugins.map((p) => p.manifest);
   const offWiki = kernel.tools.register("plugins-wiki", [createWiki({ kernel, manifests: () => builtinManifests }).tool]);
   try { await userPlugins.reload(false); } catch (e) { log({ level: "error", source: "user-plugins", msg: String(e) }); }
   // Le point de contrôle s'ouvre avant la config : la CLI répond (`floppy status`) pendant qu'un modèle se charge.
