@@ -169,6 +169,20 @@ Floppy keeps the hash of the reviewed content. If a file changes after the insta
 
 Other commands: `floppy plugin list`, `floppy plugin approve <id>`, `floppy plugin remove <id>`.
 
+## Let the AI assistant write the plugin
+
+In the Settings window, AI assistant section, choose "Create a plugin" and describe what you want.
+The agent (Claude Code or Codex) first reads the plugin wiki with the `doc_plugins` tool: the rules, the recipes, the exact contracts of Floppy's services, what is running now.
+You see every file it writes before it is written. It tests the plugin, then you turn it on with a click.
+
+You can read the wiki yourself too: [`packages/sdk/wiki`](../../../packages/sdk/wiki).
+
+## Use Floppy's services (personal plugin)
+
+A personal plugin can send a message (Telegram, mail), ask the model, search the web or show a document.
+It declares the service in `optional` in its manifest, then borrows it for the time of a job. Recipes: [`packages/sdk/wiki/services.md`](../../../packages/sdk/wiki/services.md).
+A third-party plugin has no access to services: it runs isolated.
+
 ## Personal plugin or third-party plugin
 
 | | Personal plugin | Third-party plugin |
@@ -178,5 +192,6 @@ Other commands: `floppy plugin list`, `floppy plugin approve <id>`, `floppy plug
 | `floppy-plugin.json` | No | Yes |
 | Runs | In the kernel, with all its rights | In an isolated process |
 | AI review | No | Yes, required |
+| Floppy services (message, model, search) | Yes | No |
 
 A folder with a `floppy-plugin.json` always runs isolated, even if copied by hand.

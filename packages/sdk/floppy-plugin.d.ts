@@ -124,6 +124,89 @@ export interface BusEvents {
   "service.changed": { name: string; provider?: string };
 }
 
+// ------------------------------------------------------------------ services de Floppy (plugin personnel seulement)
+// Contrats copiés du noyau (packages/core/src/services.ts) ; packages/sdk/test/types.test.ts vérifie qu'ils suivent.
+
+/** Message envoyé sur un canal (Telegram, mail…) : le canal met le Markdown en forme. */
+export interface NotifyMessage {
+  titre: string;
+  markdown: string;
+}
+
+/** Un canal d'envoi configuré par l'utilisateur. Envoyer = sortir de chez lui : l'outil qui envoie est de niveau « send ». */
+export interface NotifyService {
+  label?: string;
+  cloud?: boolean;
+  send(msg: NotifyMessage, opts?: { signal?: AbortSignal }): Promise<void>;
+}
+
+export interface CompletionRequest {
+  system: string;
+  prompt: string;
+  /** Schéma JSON de la réponse attendue : `json` est alors rempli (ou l'appel échoue). */
+  schema?: Record<string, unknown>;
+  signal?: AbortSignal;
+}
+
+/** Un appel au modèle hors conversation (pas d'outils, pas de mémoire) : trier, noter, résumer. */
+export interface CompletionService {
+  label?: string;
+  cloud?: boolean;
+  complete(req: CompletionRequest): Promise<{ text: string; json?: unknown }>;
+}
+
+export interface SearchHit {
+  titre: string;
+  url: string;
+  resume?: string;
+  source?: string;
+  /** ISO 8601. */
+  date?: string;
+}
+
+/** Recherche web. */
+export interface SearchService {
+  label?: string;
+  cloud?: boolean;
+  search(q: string, opts?: { max?: number; depuis?: Date; signal?: AbortSignal }): Promise<SearchHit[]>;
+}
+
+export interface DocRef {
+  id: string;
+  titre: string;
+  /** ISO 8601. */
+  date: string;
+  source: string;
+  tags: string[];
+}
+
+/** Documents Markdown montrés dans une fenêtre de Floppy. */
+export interface DocumentsService {
+  save(doc: { titre: string; markdown: string; source: string; tags?: string[] }): Promise<DocRef>;
+  /** Montre un document ; rend l'id du corps qui l'affiche, ou undefined. */
+  show(id: string, cible?: string): Promise<string | undefined>;
+  list(filtre?: { tag?: string; max?: number }): Promise<DocRef[]>;
+  get(id: string): Promise<(DocRef & { markdown: string }) | undefined>;
+}
+
+/** Services qu'un plugin personnel peut utiliser (à déclarer dans `inject` ou `optional`). */
+export interface Services {
+  notify: NotifyService;
+  completion: CompletionService;
+  search: SearchService;
+  documents: DocumentsService;
+}
+
+/** Un élément offert pour un service (ex. « Telegram · perso »). */
+export interface ServiceOffer {
+  /** "<entrée>/<élément>", à passer à borrowItem. */
+  value: string;
+  label: Text;
+  /** Les données partent sur internet. */
+  cloud?: boolean;
+  entry: string;
+}
+
 /** Ce que ton plugin peut utiliser. Tout est retiré à la fin du plugin (effects). */
 export interface PluginContext {
   /** Nom de ton entrée dans la config. */
@@ -141,6 +224,23 @@ export interface PluginContext {
     /** Valeur gardée d'un démarrage précédent. */
     saved<T>(key: string): T | undefined;
   };
+  /**
+   * Plugin personnel seulement. Service déclaré dans `manifest.inject` (toujours là).
+   * Un plugin tiers n'a pas de services : l'appel lève une erreur.
+   */
+  get<K extends keyof Services>(name: K): Services[K];
+  /** Plugin personnel seulement. Service déclaré dans `manifest.optional` : undefined s'il manque. */
+  maybe<K extends keyof Services>(name: K): Services[K] | undefined;
+  /**
+   * Plugin personnel seulement. Éléments offerts pour un service déclaré dans inject/optional
+   * (ex. chaque canal « notify », chaque modèle « completion »). `value` se passe à borrowItem.
+   */
+  offers(service: keyof Services): ServiceOffer[];
+  /**
+   * Plugin personnel seulement, après apply (dans un outil, un minuteur) : emprunte un élément le temps d'un travail.
+   * Appelle release() à la fin. undefined : élément indisponible.
+   */
+  borrowItem<K extends keyof Services>(service: K, value: string): Promise<{ service: Services[K]; release(): void } | undefined>;
   on<K extends keyof BusEvents & string>(event: K, fn: (payload: BusEvents[K]) => void): void;
   emit<K extends keyof BusEvents & string>(event: K, payload: BusEvents[K]): void;
   /** Enregistre un nettoyage, appelé quand le plugin s'arrête ou se recharge. */

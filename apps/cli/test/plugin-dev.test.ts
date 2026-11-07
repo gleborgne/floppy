@@ -40,6 +40,8 @@ describe("mode debug", () => {
     const dir = newPlugin("essai-dev", temp());
     const { r, home } = await start(dir);
     expect(r.kernel.status().find((e) => e.id === "u-essai-dev")?.state).toBe("active");
+    // Le wiki des plugins est là pour l'assistant IA (outil de lecture).
+    expect(r.kernel.tools.list().find((t) => t.name === "doc_plugins")?.level).toBe("read");
     expect((await controlCall(home, "POST", "/tool", { name: "essai_dev_bonjour", args: { nom: "Ada" } })).data).toMatchObject({ status: "done", text: "Bonjour Ada !" });
     // Un appel d'outil inconnu ne casse rien.
     expect((await controlCall(home, "POST", "/tool", { name: "nexiste_pas", args: {} })).data.status).toBe("failed");

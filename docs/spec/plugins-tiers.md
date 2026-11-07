@@ -146,6 +146,7 @@ Les commentaires sont retirés avant la recherche des motifs (les chaînes reste
 
 - **Réseau** : Node 24 ne limite pas le réseau par `--permission`. Le blocage vient du retrait des modules (hook), de `fetch` remplacé et des contrôles statiques. Un trou dans ces trois couches à la fois donnerait le réseau.
 - **Interface** : un plugin tiers n'a que les réglages déclarés. Pas de formulaire `providerConfig`, pas d'éléments, pas de secrets (`ctx.secrets`). Une clé d'API se met aujourd'hui dans un réglage `text` : ce n'est pas un coffre.
+- **Services** : un plugin tiers n'utilise pas les services de Floppy (`notify`, `completion`, `search`, `documents`). Dans son processus, `ctx.offers` rend `[]`, `ctx.maybe` rend `undefined`, `ctx.get` et `ctx.borrowItem` lèvent une erreur claire. Les plugins personnels les ont (wiki : `packages/sdk/wiki/services.md`).
 - **Déni de service** : un plugin peut consommer du processeur ou envoyer beaucoup de messages. Les appels ont un délai (2 min) ; il n'y a pas de quota.
 - **Revue** : elle aide, elle ne prouve rien. La sécurité repose sur l'isolation et les contrôles ; la revue attrape surtout ce qui est trompeur (données envoyées sans le dire, niveau d'outil trop bas).
 

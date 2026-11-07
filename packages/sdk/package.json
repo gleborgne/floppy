@@ -9,6 +9,7 @@
     "./floppy-plugin.d.ts": "./floppy-plugin.d.ts",
     "./template/*": "./template/*",
     "./examples/*": "./examples/*",
+    "./wiki/*": "./wiki/*",
     "./package.json": "./package.json"
   }
 }

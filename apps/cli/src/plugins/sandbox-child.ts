@@ -86,6 +86,9 @@ function pushValues(): void {
   if (settings.size) send({ t: "values", values });
 }
 
+const NO_SERVICE = "un plugin tiers n'a pas accès aux services de Floppy (plugin personnel seulement)";
+const noService = (): never => { throw new Error(NO_SERVICE); };
+
 function makeContext(init: Msg): PluginContext {
   return {
     id: String(init.id),
@@ -138,6 +141,11 @@ function makeContext(init: Msg): PluginContext {
     log(level, msg, data) { send({ t: "log", level, msg: String(msg), ...(data ? { data } : {}) }); },
     get alive() { return alive; },
     fail(reason) { alive = false; send({ t: "fail", reason }); },
+    // Un plugin tiers n'a pas les services de Floppy (plugin personnel seulement) : erreur claire, aucune liste.
+    get: noService,
+    maybe: () => undefined,
+    offers: () => [],
+    borrowItem: () => Promise.reject(new Error(NO_SERVICE)),
   };
 }
 

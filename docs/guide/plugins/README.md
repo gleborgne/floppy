@@ -169,6 +169,20 @@ Floppy garde l'empreinte du contenu relu. Si un fichier change après l'installa
 
 Autres commandes : `floppy plugin list`, `floppy plugin approve <id>`, `floppy plugin remove <id>`.
 
+## Faire écrire le plugin par l'assistant IA
+
+Dans la fenêtre des réglages, rubrique Assistant IA, choisis « Créer un plugin » et décris ce que tu veux.
+L'agent (Claude Code ou Codex) lit d'abord le wiki des plugins avec l'outil `doc_plugins` : les règles, les recettes, les contrats exacts des services de Floppy, ce qui tourne en ce moment.
+Chaque fichier qu'il écrit t'est montré avant. Il teste le plugin, puis tu l'actives d'un clic.
+
+Le wiki (en anglais) est aussi lisible à la main : [`packages/sdk/wiki`](../../../packages/sdk/wiki).
+
+## Utiliser les services de Floppy (plugin personnel)
+
+Un plugin personnel peut envoyer un message (Telegram, mail), demander au modèle, chercher sur le web ou montrer un document.
+Il déclare le service dans `optional` du manifeste, puis l'emprunte le temps d'un travail. Recettes : [`packages/sdk/wiki/services.md`](../../../packages/sdk/wiki/services.md).
+Un plugin tiers n'a pas accès aux services : il tourne isolé.
+
 ## Plugin personnel ou plugin tiers
 
 | | Plugin personnel | Plugin tiers |
@@ -178,5 +192,6 @@ Autres commandes : `floppy plugin list`, `floppy plugin approve <id>`, `floppy p
 | `floppy-plugin.json` | Non | Oui |
 | Exécution | Dans le noyau, avec tous ses droits | Dans un processus isolé |
 | Revue par une IA | Non | Oui, obligatoire |
+| Services de Floppy (message, modèle, recherche) | Oui | Non |
 
 Un dossier qui a un `floppy-plugin.json` tourne toujours isolé, même copié à la main.

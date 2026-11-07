@@ -5,6 +5,7 @@ import { Kernel, FileAudit, consoleLogger, loadConfigFile, watchConfig, startCon
 import { catalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
+import { createWiki } from "./plugins/wiki.ts";
 import { cliLang, sayer } from "./lang.ts";
 
 export interface BootOptions {
@@ -57,6 +58,9 @@ export async function boot(opts: BootOptions): Promise<Running> {
     sandbox: { ...(process.env.FLOPPY_DEV_INSPECT === "1" ? { inspect: true } : {}), ...opts.sandbox },
   });
   const store = createPluginStore(kernel, { reload: () => userPlugins.reload(), enableKey: settingKey, logger: log, ...(opts.reviewer ? { reviewer: opts.reviewer } : {}) });
+  // Wiki des plugins (outil doc_plugins) : pour l'assistant IA qui écrit un plugin depuis la fenêtre des réglages.
+  const builtinManifests = (opts.plugins ?? catalog).map((p) => p.manifest);
+  const offWiki = kernel.tools.register("plugins-wiki", [createWiki({ kernel, manifests: () => builtinManifests }).tool]);
   try { await userPlugins.reload(false); } catch (e) { log({ level: "error", source: "user-plugins", msg: String(e) }); }
   await kernel.applyConfig(loadConfigFile(configPath));
   const unwatch = opts.watch === false ? () => {} : watchConfig(configPath, kernel);
@@ -71,6 +75,7 @@ export async function boot(opts: BootOptions): Promise<Running> {
     stop: () => (stopping ??= (async () => {
       unwatch();
       store.dispose();
+      void offWiki();
       userPlugins.dispose();
       await stopControl();
       await kernel.stopAll();

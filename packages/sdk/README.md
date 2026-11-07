@@ -8,6 +8,7 @@ Ce qu'il faut pour écrire un plugin Floppy. *What you need to write a Floppy pl
 | `template/` | Le gabarit de `floppy plugin new <id>`. |
 | `examples/minuteur` | Un outil, un réglage, une annonce plus tard. |
 | `examples/meteo` | Un accès réseau déclaré (`permissions.net`), un fichier `.ts` importé. |
+| `wiki/` | Le wiki des plugins (en anglais), servi à l'assistant IA par l'outil `doc_plugins` : règles, recettes, services. Une page = `# titre`, `> résumé`, puis le texte. |
 
 Guide : [docs/guide/plugins/README.md](../../docs/guide/plugins/README.md) · [English](../../docs/guide/plugins/README.en.md).
 Spec : [docs/spec/plugins-tiers.md](../../docs/spec/plugins-tiers.md).

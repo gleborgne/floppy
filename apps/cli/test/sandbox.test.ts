@@ -64,6 +64,27 @@ export default p;`);
     expect((await k.tools.call("essai_double", {})).text).toBe("n = 14");
   }, 30_000);
 
+  it("n'a pas les services de Floppy : offers vide, get et borrowItem refusés avec un message clair", async () => {
+    const { dir, pkg } = writePlugin(`
+import type { UserPlugin } from "./floppy-plugin.d.ts";
+const p: UserPlugin = { ${manifest()},
+  apply(ctx) {
+    ctx.tools.register([{ name: "essai_services", description: "services", inputSchema: { type: "object", properties: {} }, level: "read",
+      handler: async () => {
+        const out = ["offers:" + ctx.offers("notify").length, "maybe:" + String(ctx.maybe("documents"))];
+        try { ctx.get("documents"); out.push("get ok"); } catch (e) { out.push("get: " + (e as Error).message); }
+        try { await ctx.borrowItem("notify", "a/b"); out.push("borrow ok"); } catch (e) { out.push("borrow: " + (e as Error).message); }
+        return { status: "done", text: out.join(" | ") };
+      } }]);
+  } };
+export default p;`);
+    const k = await start(dir, pkg);
+    const text = String((await k.tools.call("essai_services", {})).text);
+    expect(text).toContain("offers:0 | maybe:undefined");
+    expect(text).toContain("get: un plugin tiers n'a pas accès aux services");
+    expect(text).toContain("borrow: un plugin tiers n'a pas accès aux services");
+  }, 30_000);
+
   it("refuse les modules de Node, même par contournement", async () => {
     const { dir, pkg } = writePlugin(`
 const p = { ${manifest()},

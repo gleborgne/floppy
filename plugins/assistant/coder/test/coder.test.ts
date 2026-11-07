@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { Kernel, MemoryAudit, type CoderEvent, type CoderService, type CoderAgent, type CoderMode } from "@floppy/core";
 import tools from "@floppy/plugin-tools";
 import coder, { copyKit } from "../src/index.ts";
+import { systemPrompt } from "../src/prompts.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fakeClaude = join(here, "fixtures", "fake-claude.mjs");
@@ -111,10 +112,17 @@ describe("coder : Claude", () => {
     const p = await open("claude", "plugin");
     const pa = textOf(await turn(p, "info"));
     expect(pa).toContain("--tools Read,Edit,Write,Glob,Grep");
-    expect(pa).toContain("--allowedTools mcp__floppy__tester_plugin,mcp__floppy__recharger_plugins,mcp__floppy__etat_plugins,mcp__floppy__lister_reglages");
+    expect(pa).toContain("--allowedTools mcp__floppy__doc_plugins,mcp__floppy__tester_plugin,mcp__floppy__recharger_plugins,mcp__floppy__etat_plugins,mcp__floppy__lister_reglages");
     expect(pa).toContain("--permission-prompt-tool mcp__floppy__permission");
     expect(pa).not.toContain("Bash");
     coderSvc.close(p);
+  });
+
+  it("mode plugin : la consigne envoie l'agent vers le wiki (doc_plugins) avant d'écrire", () => {
+    const sys = systemPrompt("plugin", "Floppy", "C:/plugins");
+    expect(sys).toContain("Commence par appeler doc_plugins");
+    expect(sys).toMatch(/les outils de Floppy : doc_plugins, tester_plugin/);
+    expect(systemPrompt("reglages", "Floppy", "C:/plugins")).not.toContain("doc_plugins");
   });
 
   it("arrêt : tue le tour, puis le message suivant reprend la session (--resume)", async () => {

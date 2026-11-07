@@ -4,6 +4,8 @@
 
 Ce dossier contient tes plugins personnels. Un plugin = un dossier `<id>/index.ts`.
 Exemple complet : `exemple-minuteur/index.ts`. Les types sont dans `floppy-plugin.d.ts`.
+Le wiki à jour (en anglais) est l'outil MCP `doc_plugins` : appelle-le sans argument pour le sommaire, puis `{ page: "basics" }`.
+Il décrit aussi les services de Floppy (envoyer un message, demander au modèle, chercher sur le web) et leurs contrats.
 
 ## Règles du format
 

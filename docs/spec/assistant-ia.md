@@ -28,7 +28,7 @@ flowchart LR
 |---|---|---|
 | Dossier de travail | `<home>\coder-reglages` (vide) | `<home>\plugins` |
 | Outils intégrés du CLI | **aucun** (pas de shell, fichiers, web) | `Read`, `Edit`, `Write`, `Glob`, `Grep` (pas de shell, pas de web) |
-| Outils Floppy (MCP limité) | `lister_reglages`, `changer_reglage`, `annuler_reglage`, `etat_plugins` | `tester_plugin`, `recharger_plugins`, `etat_plugins`, `lister_reglages` + `permission` |
+| Outils Floppy (MCP limité) | `lister_reglages`, `changer_reglage`, `annuler_reglage`, `etat_plugins` | `doc_plugins` (wiki), `tester_plugin`, `recharger_plugins`, `etat_plugins`, `lister_reglages` + `permission` |
 | Écritures | changer un réglage (risque contrôlé par le noyau) | **chaque écriture de fichier validée par l'utilisateur**, avec aperçu du changement ; tout chemin hors de `<home>\plugins` est refusé même si l'utilisateur dit oui |
 
 - **Jeton MCP limité** : un jeton par conversation, qui ne voit et n'appelle que les outils de son mode (les autres répondent « Outil inconnu », journal `mcp.scope_refused`). Le jeton complet reste réservé à la délégation.
@@ -52,7 +52,8 @@ sequenceDiagram
   participant A as Assistant (mode plugin)
   participant K as Noyau
   U->>A: « Crée un plugin qui me rappelle de boire de l'eau »
-  A->>A: lit AGENTS.md, floppy-plugin.d.ts, l'exemple
+  A->>K: doc_plugins : sommaire, basics, services…
+  A->>A: lit floppy-plugin.d.ts, l'exemple
   A->>U: validation : créer plugins\eau\index.ts (aperçu)
   U-->>A: Autoriser
   A->>K: tester_plugin(eau) — accord (exécute du code)
@@ -69,6 +70,23 @@ sequenceDiagram
 - Rechargement à chaud : le noyau remplace la définition et redémarre seulement ce plugin et ses dépendants (`replacePlugin`).
 - Risque restant : un plugin personnel activé tourne dans le noyau avec tous les droits.
 - Un dossier qui a un `floppy-plugin.json` (plugin distribué) n'est jamais importé : il tourne dans un processus isolé. Installer le plugin de quelqu'un d'autre, le faire relire par un agent IA, le mode debug et le SDK : [plugins-tiers.md](plugins-tiers.md).
+
+### Le wiki des plugins (`doc_plugins`)
+
+L'agent qui écrit un plugin ne voit que le dossier `<home>\plugins`. Pour qu'il connaisse la structure et les contrats de Floppy sans quitter l'application, le noyau a un outil de lecture `doc_plugins`, un wiki **en anglais** (`apps/cli/src/plugins/wiki.ts`, enregistré par `boot.ts`). Sans argument : le sommaire ; `{ page }` : une page ; `{ search }` : les lignes qui contiennent tous les mots.
+
+| Pages | Source |
+|---|---|
+| `basics`, `tools`, `settings`, `languages`, `events`, `services`, `security`, `testing` | écrites à la main, en anglais : `packages/sdk/wiki/*.md` (une ligne `# titre`, une ligne `> résumé`) |
+| `contract-notify`, `contract-completion`, `contract-search`, `contract-documents` | lues dans `packages/core/src/services.ts` à chaque appel : jamais en retard sur le noyau |
+| `active-services` | calculée : qui fournit chaque service maintenant (manifestes livrés + état des entrées) |
+| `existing-tools` | calculée : noms et niveaux des outils déjà enregistrés |
+| `example-<nom>` | le code complet des exemples du SDK (`packages/sdk/examples`) |
+
+- Pourquoi un outil et pas des fichiers copiés : le kit copié dans `<home>\plugins` n'est jamais écrasé (il vieillit), certaines pages sont calculées, et le même outil marche pour Claude Code et Codex.
+- La consigne du mode plugin dit d'appeler `doc_plugins` d'abord, et qu'une API absente du wiki n'existe pas pour un plugin.
+- Services d'un plugin personnel : `optional`/`inject` dans le manifeste, puis `ctx.maybe`/`ctx.get` (fournisseur unique) ou `ctx.offers` + `ctx.borrowItem` (éléments au choix : canaux `notify`, modèles `completion`, moteurs `search`). Ces méthodes et les 4 contrats sont dans `floppy-plugin.d.ts` ; `packages/sdk/test/types.test.ts` vérifie qu'ils suivent le noyau. Un plugin tiers (processus isolé) n'a pas de services : `offers` rend `[]`, `get` et `borrowItem` lèvent une erreur claire.
+- L'outil est aussi visible du cerveau à la voix (niveau `read`, sans effet).
 
 ## Testé
 
