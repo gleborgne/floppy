@@ -40,9 +40,9 @@ flowchart LR
 
 ## Orca (plugin `orca`)
 
-Orca gère les worktrees et les agents de code (Claude Code, Codex). Le plugin lit son état par la CLI `orca worktree ps --json`, `orca terminal list --json` et `orca terminal read --screen --json` (lecture seule ; aucune commande qui crée, envoie, modifie ou change l'affichage d'Orca).
+Orca gère les worktrees et les agents de code (Claude Code, Codex). Le plugin lit son état par la CLI `orca worktree ps --json`, `orca terminal list --json` et `orca terminal read --screen --json`. Il peut aussi transmettre une consigne à un agent ouvert par `orca terminal send --text … --enter --json`, après le contrôle d'accord du noyau.
 
-**But : informer sans changer de contexte.** Floppy ne répond pas aux agents et ne bascule pas l'affichage d'Orca. Il donne assez de détails pour que l'utilisateur décide (oui ou non) sans quitter ce qu'il fait.
+**But : suivre et relancer ses agents sans changer de contexte.** Floppy informe l'utilisateur et transmet les consignes qu'il demande, sans basculer l'affichage d'Orca.
 
 | Outil | Niveau | Rôle |
 |---|---|---|
@@ -50,9 +50,13 @@ Orca gère les worktrees et les agents de code (Claude Code, Codex). Le plugin l
 | `orca_detail(nom?)` | read | fiche d'un agent : état, branche, PR liée, note du worktree, demande, action en cours (outil et commande), dernier message complet. Recherche floue sur le worktree, le dépôt, la branche, la tâche ; les agents qui attendent passent en premier |
 | `orca_ecran(nom?)` | read | ce que montre le terminal de l'agent (60 lignes de l'écran rendu, sans lignes de cadre, ≤ 2 000 caractères) : question exacte, permission demandée, choix proposés |
 | `orca_recherche(texte, recent?)` | read | recherche plein texte dans les conversations des agents (tous projets, `orca search --scope conversation`, 5 résultats) : titre, agent, projet, branche, date, extrait et qui parle (l'utilisateur ou l'agent). `recent` : les plus récentes d'abord |
+| `orca_envoyer(message, nom?)` | send | transmet une consigne à l'agent annoncé en dernier, ou au seul qui attend, ou à celui nommé explicitement ; la confirmation montre le projet et le message |
 
 - **Sans nom**, `orca_detail` et `orca_ecran` visent l'agent annoncé en dernier ; sinon le seul agent qui attend (hors workers d'orchestration) ; sinon ils demandent lequel. Exemple : « Sur Differendum, ton agent attend » → « qu'est-ce qu'il demande exactement ? ».
-- **Terminal d'un agent** : le `paneKey` d'un agent vaut `tabId:leafId` d'un terminal ; à défaut, un terminal du même worktree. L'identifiant de terminal rendu par Orca est le seul argument variable d'une commande ; il doit ressembler à `term_…` (lettres, chiffres, tirets), sinon il est ignoré. Le texte de l'utilisateur n'entre jamais dans une commande.
+- **Terminal d'un agent** : le `paneKey` d'un agent vaut `tabId:leafId` d'un terminal ; pour la lecture seulement, à défaut, un terminal du même worktree. L'identifiant rendu par Orca doit ressembler à `term_…` (lettres, chiffres, tirets), sinon il est ignoré. Recherche et envoi passent le texte dans un argument d'un exécutable direct, jamais dans un shell.
+- **Envoyer une consigne** (`src/send.ts`) : « dis-lui de commit » après une annonce vise cet agent. Le hook `tool.before` résout une cible unique et son terminal exact avant l'accord ; il les garde pour cet appel. Une autre annonce pendant l'accord ne change pas la cible. Après l'accord, l'agent et le terminal sont revérifiés : aucun repli vers un autre agent ou un autre terminal. Plusieurs correspondances, agent disparu, worker d'orchestration ou agent sans terminal identifiable : refus explicite. Les chats sans terminal ne sont pas pris en charge.
+  - La consigne fait de 1 à 4 000 caractères sur une ligne, sans caractères de contrôle ni tiret initial ; les shims `.cmd` / `.bat` sont refusés. Le plugin ne simule pas de touches pour valider les menus de permissions.
+  - `accepted: true` confirme seulement la transmission, jamais l'exécution du travail. Une réponse incertaine ou une erreur de transport donne `unverified`, sans nouvel envoi automatique. Tests avec réponses Orca simulées ; aucun envoi réel à un agent pendant la validation.
 - **Noms dictés** : la reconnaissance vocale déforme les noms techniques (« différend dom » pour `differendum`, « dev m c p » pour `dev-mcp`). La recherche d'agent compare sans espaces ni tirets, puis tolère quelques fautes (distance d'édition ≤ un quart du mot). Elle compare aussi les mots que Floppy a dits dans l'annonce (nom de projet lisible, tâche nettoyée). Une correspondance exacte passe avant une ressemblance. Le cerveau passe le nom tel qu'il l'a entendu, sans le corriger.
 - **Recherche** (`orca_recherche`, `src/search.ts`) : Orca indexe les conversations seulement si l'utilisateur l'a allumé dans Orca (Réglages → « Agent Session History » ; pas de commande pour l'allumer). Éteinte : l'outil dit où l'allumer. Index en cours (`orca search --index-status`, phase `indexing`) : l'outil prévient qu'il peut manquer des résultats.
   - Recherche plein texte, sans tolérance aux fautes : la description demande au cerveau d'écrire les termes techniques dans leur orthographe probable (« réacte » → « React »), à l'inverse des noms d'agents.

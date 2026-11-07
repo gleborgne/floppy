@@ -51,10 +51,11 @@ L'interrupteur en haut de la page allume ou éteint Orca entier dans Floppy : le
 - « Qu'est-ce qu'il demande ? » : Floppy prend l'agent qu'il vient d'annoncer, ou le seul qui attend.
 - « Montre-moi l'écran de l'agent de la migration » : Floppy lit le terminal de l'agent et te le résume.
 - « Quel agent a travaillé sur le cache ? », « Qu'est-ce qu'on avait décidé pour les dates ? » : Floppy cherche dans les conversations de tous tes agents. Il faut d'abord allumer la recherche dans Orca : **Réglages → Agent Session History**.
+- « Dis-lui de commit », « Demande-lui de corriger les tests » : après une annonce, Floppy propose d'envoyer la consigne à cet agent. La confirmation indique le projet et le message. Tu peux aussi préciser le projet ou la tâche.
 
 Les noms de projets mal compris par la dictée sont tolérés : « différendum » trouve `differendum`.
 
-Floppy **ne fait rien** dans Orca. Il ne tape rien dans les terminaux et ne change pas d'onglet. Il t'informe, c'est tout.
+Floppy transmet tes consignes aux agents ouverts dans un terminal Orca, sans changer d'onglet. S'il ne peut pas identifier un agent unique, il demande de préciser. Les chats sans terminal et les workers pilotés par un coordinateur ne sont pas pris en charge pour l'envoi. Une consigne transmise ne signifie pas que l'agent a déjà fait le travail.
 
 ## Ça ne marche pas ?
 

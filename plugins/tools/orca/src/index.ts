@@ -1,10 +1,9 @@
 // Plugin `orca` : outils Orca pour Floppy + surveillance des agents (initiatives quand un job se termine).
 // - orca_agents / orca_detail : lecture seule, à partir de `orca worktree ps --json`.
 // - orca_ecran : ce que montre le terminal d'un agent (`orca terminal read --screen`), lecture seule.
-//   But : informer l'utilisateur sans qu'il change de fenêtre. Le plugin n'agit jamais dans Orca.
+// - orca_envoyer : transmettre une consigne à l'agent identifié, après accord du noyau.
 // - Surveillance : on suit chaque agent (worktreeId + paneKey) ; passage « en cours » → autre état = une initiative.
-// - Les arguments de la CLI sont fixes. Jamais de texte de l'utilisateur dans la ligne de commande :
-//   le seul argument variable est un identifiant de terminal rendu par Orca et vérifié (TERM_HANDLE).
+// - Recherche et envoi : texte dans un argument d'un exécutable direct, jamais dans un shell.
 import { z } from "zod";
 import { existsSync, readdirSync } from "node:fs";
 import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
@@ -12,6 +11,7 @@ import { definePlugin, T, type Text, type ToolDef, type ToolOutput, type Context
 import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
 import { BRIDGE_LIVE_MS, BRIDGE_POLL_MS, EVENT_WINS_MS, kindOfEvent, startBridge, type BridgeEvent } from "./bridge.ts";
 import { formatSearch, searchArgs, type SearchResult } from "./search.ts";
+import { sendTool } from "./send.ts";
 import { copyState, installOrcaPlugin, ORCA_PLUGIN_SRC, rawCli, type OrcaRawCli } from "./install.ts";
 
 const Config = z.object({
@@ -56,14 +56,14 @@ export interface OrcaTerminal {
   tabId?: string;
   leafId?: string;
 }
-/** Lance une commande Orca en lecture (arguments fixes) et rend son champ `result`. */
+/** Lance une commande Orca et rend son champ `result`. */
 export type OrcaCli = (args: string[]) => Promise<unknown>;
 /** Lance `orca worktree ps --json` et rend la liste des worktrees. */
 export type OrcaRunner = () => Promise<OrcaWorktree[]>;
 
 export interface OrcaOptions {
   run?: OrcaRunner;
-  /** Autres commandes Orca en lecture (terminal list / read). Tests : simulées. */
+  /** Autres commandes Orca (terminal list / read / send, recherche). Tests : simulées. */
   cli?: OrcaCli;
   /** Porte d'entrée du plugin Orca « Floppy » (par défaut : ouverte). */
   bridge?: boolean;
@@ -357,18 +357,24 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const isHit = (x: Hit | ToolOutput): x is Hit => "a" in x;
 
       /** L'agent visé : par son nom ; sans nom, le dernier annoncé, sinon le seul qui attend. */
-      const target = (wts: OrcaWorktree[], nom: string): Hit | ToolOutput => {
-        if (norm(nom)) return matchAgents(wts, nom)[0] ?? nope(`Aucun agent Orca ne correspond à « ${nom} ».`, `No Orca agent matches “${nom}”.`);
+      const target = (wts: OrcaWorktree[], nom: string, strict = false): Hit | ToolOutput => {
+        if (norm(nom)) {
+          const matches = matchAgents(wts, nom);
+          if (strict && matches.length > 1) return nope("Plusieurs agents correspondent. Précise le projet ou la tâche.", "Several agents match. Specify the project or task.");
+          return matches[0] ?? nope(`Aucun agent Orca ne correspond à « ${nom} ».`, `No Orca agent matches “${nom}”.`);
+        }
         const all = wts.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a })));
         const la = lastAnnounced;
         const last = la && all.find((h) => h.w.worktreeId === la.worktreeId && h.a.paneKey === la.paneKey);
         if (last) return last;
+        if (strict && la) return nope("L'agent annoncé n'est plus disponible. Précise à quel agent envoyer la consigne.", "The announced agent is no longer available. Specify which agent should receive the instruction.");
         const waiting = all.filter((h) => kindOf(h.a) === "en_attente" && !isWorker(h.a));
         if (waiting.length === 1) return waiting[0]!;
         return nope("Quel agent ? Donne le nom du projet ou de la tâche.", "Which agent? Give the project or task name.");
       };
 
       const tools: ToolDef[] = [
+        sendTool({ ctx, cli, run, direct: () => !!opts.cli || !/\.(cmd|bat)$/i.test(resolveExe(cfg.command)), target: (wts, nom) => target(wts, nom, true) }),
         {
           name: "orca_agents",
           description: "Liste les agents de code Orca (Claude, Codex) : lesquels travaillent, lesquels ont fini, lesquels attendent une réponse, avec la tâche et le dernier message. À utiliser pour « où en sont mes jobs Orca », « synthèse de mes agents ». filtre : en_cours, termines, en_attente ou tous (par défaut).",
