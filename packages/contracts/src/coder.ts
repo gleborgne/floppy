@@ -23,6 +23,7 @@ export type CoderEvent =
   | { type: "permission"; sessionId: string; id: string; tool: string; description: string; input?: unknown; diff?: { path: string; before?: string; after?: string } }
   | { type: "done"; sessionId: string; stopReason: "end" | "cancelled" | "error"; error?: string; signIn?: boolean };
 
+/** L'assistant IA de la fenêtre des réglages : un agent en ligne de commande (Claude, Codex) piloté pour l'utilisateur. */
 export interface CoderService {
   /** Agents connus du plugin, avec leur disponibilité. */
   agents(): Promise<CoderAgentInfo[]>;

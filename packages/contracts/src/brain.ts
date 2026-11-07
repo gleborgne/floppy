@@ -53,6 +53,7 @@ export type BrainEvent =
   | { type: "delegate"; to: string }
   | { type: "done"; text: string; info?: Record<string, unknown> };
 
+/** Un cerveau qui mène un tour : il reçoit la demande et rend un flux de texte, d'émotions et d'outils. */
 export interface BrainService {
   name: string;
   /** Nom à dire et à afficher (ex. « Claude Sonnet »). Absent : `name`. */
@@ -71,6 +72,7 @@ export interface MemorySnapshot {
   memory: string;
 }
 
+/** La mémoire de Floppy : ce qu'il sait de l'utilisateur, et l'historique des conversations où chercher. */
 export interface MemoryService {
   /** USER.md et MEMORY.md, lus maintenant. Le cerveau en garde une photo par conversation. */
   snapshot(): MemorySnapshot;

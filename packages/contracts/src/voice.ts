@@ -35,6 +35,7 @@ export interface VoiceStream {
   close(): void;
 }
 
+/** Le flux voix d'un corps : écoute (détection de parole, transcription) et, avec une voix locale, parole. */
 export interface VoiceService {
   name: string;
   /** Ouvre un flux pour un corps (un id par corps). La voix locale y parle quand un fork « tts » local est en service. */
@@ -84,6 +85,7 @@ export interface WakewordStream {
   pushTranscript?(transcript: WakewordTranscript): void;
   close(): void;
 }
+/** Un détecteur du mot d'activation (« Floppy »), sur le son ou sur le texte transcrit. */
 export interface WakewordService {
   name: string;
   /** Audio par défaut. Une source transcription attend la phrase avant d'ouvrir Live. */
@@ -125,6 +127,7 @@ export interface LiveSession {
   append(kind: "say" | "think" | "instruct", text: string, delegationId?: string): void;
   close(): Promise<void>;
 }
+/** Un modèle « Live » qui écoute et parle lui-même (Gemini, GPT) ; les outils passent par lui ou par délégation. */
 export interface LiveService {
   name: string;
   availability?(): Availability;

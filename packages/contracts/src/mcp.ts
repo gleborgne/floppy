@@ -22,6 +22,7 @@ export interface ScopedEndpoint {
   close(): void;
 }
 
+/** Le serveur MCP de Floppy : les agents lancés y voient les outils de Floppy (tous, ou quelques-uns par un accès restreint). */
 export interface McpEndpoint {
   /** http://127.0.0.1:<port>/mcp */
   url: string;

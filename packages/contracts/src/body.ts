@@ -24,6 +24,7 @@ export interface AttachOpts {
   managed?: boolean;
 }
 
+/** Le hub des corps (fenêtre, page web, robot) : il les branche et leur envoie messages et son. */
 export interface BodyHub {
   /** L'identité vient de `opts` (transport authentifié) ; le hello du client ne choisit ni id ni `managed`. */
   attach(transport: BodyTransport, opts?: AttachOpts): void;
@@ -50,6 +51,7 @@ export interface AvatarEntry extends AvatarInfo {
   preview?: string;
 }
 
+/** Les avatars de l'app de bureau : chaque plugin d'avatar s'y inscrit, la fenêtre des réglages les liste. */
 export interface AvatarRegistry {
   /** Inscrit un avatar ; rend la fonction qui le retire. */
   register(a: AvatarEntry): () => void;

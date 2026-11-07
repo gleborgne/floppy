@@ -22,6 +22,7 @@ export interface DocRef {
   tags: string[];
 }
 
+/** Les documents Markdown de Floppy (veille, résumés) : les ranger, les lister, les montrer sur un corps. */
 export interface DocumentsService {
   /** Enregistre un document Markdown (fichier dans <home>/documents). */
   save(doc: { titre: string; markdown: string; source: string; tags?: string[] }): Promise<DocRef>;

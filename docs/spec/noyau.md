@@ -54,38 +54,138 @@ Un plugin fournit ou utilise un service par son nom ; il ne connaît jamais le p
 - **Les domaines** (`packages/contracts/src/` : `brain.ts`, `voice.ts`, `body.ts`, `coder.ts`, `mcp.ts`, `search.ts`, `notify.ts`) ajoutent chacun leurs services à `Services` par une augmentation de module (`declare module "@floppy/core" { interface Services { … } }`). Un plugin importe les types d'ici (`import type { BrainService } from "@floppy/contracts"`).
 - Ajouter un service ne touche donc pas au noyau : on complète le fichier du domaine, ou un plugin déclare le sien de la même façon. Le test des frontières vérifie que le noyau n'importe aucun contrat de domaine.
 
-| Service | Contrat | Fournisseurs |
-|---|---|---|
-| `llm` | `{ baseURL, model }`, et si le fournisseur sait changer de modèle : `models`, `current`, `switch(id)` | `llm-llamacpp` |
-| `llmRemote` | `models()` : modèles distants **actifs** (API au format OpenAI, clé lue à chaque appel dans le coffre) ; `onChange(fn)` | `llm-openai` |
-| `brain` | `run({ texte, session, corps d'origine, voix/texte })` → flux d'événements (texte, émotion, outil, délégation, fin) ; `reset(session)` ; facultatifs : `label`, `aliases` (comment l'oral le désigne), `enabled()` | `brain-aisdk`, `brain-claude-cli` |
-| `delegate` | même contrat que `brain` (avec `label` et `aliases` : « Claude Sonnet », « claude », « sonnet ») | `brain-claude-cli` |
-| `memory` | `snapshot()`, `record()`, `search()` | `memory` |
-| `voice` | `open(corps)` → flux : `pushAudio`, `speak` (facultatif), `cancel`, `setSpeaking`, `ptt`, événements (vad, transcript, merge, barge_in, audio…) | `voice-listen` |
-| `vad` / `stt` | détecteur de parole (`open` → `push`) ; transcription (`transcribe`) — voir [ecoute.md](ecoute.md) | `stt-sherpa` |
-| `tts` | `voices()`, `speak(texte, { voice, signal })` → flux PCM16 mono avec taux ; absent : voix locale | `tts-gemini`, `tts-elevenlabs` |
-| `live` | `open({ corps, instructions, outils, signal, on })` → session audio, transcriptions, fonctions / délégation ; `close()` | `live-gemini`, `live-openai` |
-| `body` | `attach(transport, { id, name, managed })`, `sessions`, `has`, `send`, `sendAudio`, `broadcast`, `on` | `body-hub` |
-| `avatars` | `register(avatar)` (rend de quoi le retirer), `list()` | `body-electron` |
-| `mcp` | `{ url, token }` du serveur MCP Floppy ; `scoped({ tools })` : accès restreint à quelques outils | `tools` |
-| `coder` | `agents()` (Claude, Codex : disponibles ou pas), `start`, `send`, `cancel`, `answerPermission`, `close`, `onEvent` : l'assistant IA de la fenêtre des réglages (voir [assistant-ia.md](assistant-ia.md)) | `coder` |
-
+<!-- carte des services : début (généré par `npm run docs:services`, ne pas modifier à la main) -->
 ```mermaid
-flowchart TB
-  llm --> brain
-  memory -.-> brain
-  mcp --> claude["delegate (brain-claude-cli)"]
-  claude -.-> brain
-  brain --> conv["conversation"]
-  body --> conv
-  voice -.-> conv
-  body --> bel["body-electron"]
-  body --> bws["body-ws"]
-  body --> bench["bench-api (dev)"]
-  brain --> bench
+flowchart LR
+  p_noyau[["noyau (tâches, documents)"]]
+  s_avatars(["avatars"])
+  s_body(["body"])
+  s_brain(["brain"])
+  s_coder(["coder"])
+  s_completion(["completion"])
+  s_delegate(["delegate"])
+  s_documents(["documents"])
+  s_live(["live"])
+  s_llm(["llm"])
+  s_mcp(["mcp"])
+  s_memory(["memory"])
+  s_notify(["notify"])
+  s_search(["search"])
+  s_stt(["stt"])
+  s_task(["task"])
+  s_tts(["tts"])
+  s_vad(["vad"])
+  s_voice(["voice"])
+  s_wakeword(["wakeword"])
+  p_tools["tools"]
+  p_tools --> s_mcp
+  p_llm_llamacpp["llm-llamacpp<br/>llm-openai"]
+  p_llm_llamacpp --> s_llm
+  p_llm_llamacpp --> s_completion
+  p_memory["memory"]
+  p_memory --> s_memory
+  p_brain_aisdk["brain-aisdk"]
+  p_brain_aisdk --> s_brain
+  s_memory -.-> p_brain_aisdk
+  s_llm == "brain.main" ==> p_brain_aisdk
+  s_delegate == "brain.delegate" ==> p_brain_aisdk
+  p_brain_claude_cli["brain-claude-cli"]
+  p_brain_claude_cli --> s_delegate
+  p_brain_claude_cli --> s_llm
+  p_brain_claude_cli --> s_brain
+  p_brain_claude_cli --> s_completion
+  s_mcp --> p_brain_claude_cli
+  p_brain_codex_cli["brain-codex-cli<br/>brain-agy-cli"]
+  p_brain_codex_cli --> s_delegate
+  p_brain_codex_cli --> s_llm
+  s_mcp --> p_brain_codex_cli
+  p_body_hub["body-hub"]
+  p_body_hub --> s_body
+  p_body_ws["body-ws<br/>body-reachy"]
+  s_body --> p_body_ws
+  p_body_electron["body-electron"]
+  p_body_electron --> s_avatars
+  s_body --> p_body_electron
+  p_conversation["conversation"]
+  s_body --> p_conversation
+  s_brain -.-> p_conversation
+  s_voice -.-> p_conversation
+  s_memory -.-> p_conversation
+  s_live == "conversation.live" ==> p_conversation
+  s_tts == "voice.tts" ==> p_conversation
+  s_wakeword == "listen.wakeword" ==> p_conversation
+  p_orca["orca"]
+  s_llm -.-> p_orca
+  p_websearch["websearch"]
+  p_websearch --> s_search
+  s_body -.-> p_websearch
+  p_avatar_tv["avatar-tv<br/>avatar-pixel<br/>avatar-essaim<br/>avatar-gyre<br/>avatar-goutte<br/>avatar-oscillo<br/>avatar-iris<br/>avatar-pixelcat"]
+  s_avatars -.-> p_avatar_tv
+  p_coder["coder"]
+  p_coder --> s_coder
+  s_mcp --> p_coder
+  p_tts_gemini["tts-gemini<br/>tts-elevenlabs<br/>tts-audiocpp<br/>tts-system"]
+  p_tts_gemini --> s_tts
+  p_live_gemini["live-gemini<br/>live-openai"]
+  p_live_gemini --> s_live
+  p_wakeword_stt["wakeword-stt"]
+  p_wakeword_stt --> s_wakeword
+  s_voice -.-> p_wakeword_stt
+  p_wakeword_sherpa["wakeword-sherpa<br/>wakeword-porcupine"]
+  p_wakeword_sherpa --> s_wakeword
+  p_searxng["searxng"]
+  p_searxng --> s_search
+  p_documents["documents"]
+  p_documents --> s_documents
+  s_body -.-> p_documents
+  p_scheduler["scheduler"]
+  s_notify -.-> p_scheduler
+  s_documents -.-> p_scheduler
+  p_veille["veille"]
+  p_veille --> s_task
+  s_documents -.-> p_veille
+  s_completion == "veille.tri" ==> p_veille
+  s_search == "veille.recherche" ==> p_veille
+  p_notify_telegram["notify-telegram<br/>notify-mail"]
+  p_notify_telegram --> s_notify
+  p_voice_listen["voice-listen"]
+  p_voice_listen --> s_voice
+  s_vad == "listen.vad" ==> p_voice_listen
+  s_stt == "listen.stt" ==> p_voice_listen
+  p_stt_sherpa["stt-sherpa"]
+  p_stt_sherpa --> s_vad
+  p_stt_sherpa --> s_stt
+  s_task -.-> p_noyau
+  s_documents -.-> p_noyau
+  s_llm -. "type" .- s_brain
 ```
 
-Trait plein : `inject` (obligatoire). Pointillé : `optional`.
+Lecture : plugin → service = il le fournit. Service → plugin : trait plein = `inject` (obligatoire), pointillé = `optional`, trait double = un slot (le choix d'un élément, nommé sur la flèche). « type » : un contrat cite le type d'un autre service. Les plugins aux mêmes liens partagent un nœud.
+
+Sans service (outils seuls) : `agent-sessions`, `browser`, `inbox`, `m365`.
+
+| Service | Contrat | Ce qu'il fait | Fournisseurs | Utilisé par |
+|---|---|---|---|---|
+| `avatars` | `AvatarRegistry` (`packages/contracts/src/body.ts`) | Les avatars de l'app de bureau | `body-electron` | `avatar-tv` (facultatif), `avatar-pixel` (facultatif), `avatar-essaim` (facultatif), `avatar-gyre` (facultatif), `avatar-goutte` (facultatif), `avatar-oscillo` (facultatif), `avatar-iris` (facultatif), `avatar-pixelcat` (facultatif) |
+| `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
+| `brain` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-aisdk`, `brain-claude-cli` | `conversation` (facultatif) |
+| `coder` | `CoderService` (`packages/contracts/src/coder.ts`) | L'assistant IA de la fenêtre des réglages | `coder` | — |
+| `completion` | `CompletionService` (`packages/contracts/src/brain.ts`) | Un appel au modèle hors conversation | `llm-llamacpp`, `llm-openai`, `brain-claude-cli` | `veille` (slot `veille.tri`) |
+| `delegate` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli` | `brain-aisdk` (slot `brain.delegate`) |
+| `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `scheduler` (facultatif), `veille` (facultatif), noyau |
+| `live` | `LiveService` (`packages/contracts/src/voice.ts`) | Un modèle « Live » qui écoute et parle lui-même (Gemini, GPT) ; les outils passent par lui ou par délégation | `live-gemini`, `live-openai` | `conversation` (slot `conversation.live`) |
+| `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli` | `orca` (facultatif), `brain-aisdk` (slot `brain.main`) |
+| `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `coder` |
+| `memory` | `MemoryService` (`packages/contracts/src/brain.ts`) | La mémoire de Floppy | `memory` | `brain-aisdk` (facultatif), `conversation` (facultatif) |
+| `notify` | `NotifyService` (`packages/contracts/src/notify.ts`) | Un canal d'envoi configuré (ex. « Telegram · mon canal », « Gmail · perso ») | `notify-telegram`, `notify-mail` | `scheduler` (facultatif) |
+| `search` | `SearchService` (`packages/contracts/src/search.ts`) | Recherche web en service, pour les autres plugins (la Veille) | `websearch`, `searxng` | `veille` (slot `veille.recherche`) |
+| `stt` | `SttService` (`packages/contracts/src/voice.ts`) | Transcription en service (l'élément choisi dans le slot listen.stt) | `stt-sherpa` | `voice-listen` (slot `listen.stt`) |
+| `task` | `TaskService` (`packages/core/src/services.ts`) | Un plugin qui a des tâches les déclare dans son manifeste (`tasks`) et fournit ce service | `veille` | noyau |
+| `tts` | `TtsService` (`packages/contracts/src/voice.ts`) | Une voix en service (l'élément choisi dans le slot voice.tts) | `tts-gemini`, `tts-elevenlabs`, `tts-audiocpp`, `tts-system` | `conversation` (slot `voice.tts`) |
+| `vad` | `VadService` (`packages/contracts/src/voice.ts`) | Détecteur de parole en service (l'élément choisi dans le slot listen.vad) | `stt-sherpa` | `voice-listen` (slot `listen.vad`) |
+| `voice` | `VoiceService` (`packages/contracts/src/voice.ts`) | Le flux voix d'un corps | `voice-listen` | `conversation` (facultatif), `wakeword-stt` (facultatif) |
+| `wakeword` | `WakewordService` (`packages/contracts/src/voice.ts`) | Un détecteur du mot d'activation (« Floppy »), sur le son ou sur le texte transcrit | `wakeword-stt`, `wakeword-sherpa`, `wakeword-porcupine` | `conversation` (slot `listen.wakeword`) |
+<!-- carte des services : fin -->
 
 ## Un plugin
 
