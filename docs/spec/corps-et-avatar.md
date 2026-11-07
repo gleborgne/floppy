@@ -78,11 +78,141 @@ Mêmes messages sur les 2 transports : `MessagePort` (avatar, dans l'app) et Web
 | noyau → corps | `transcript`, `reply.delta`, `reply.done` | texte de la bulle |
 | noyau → corps | binaire | voix : 4 octets (taux) + PCM int16 |
 | noyau → corps | `interrupt` | vider la file audio |
-| noyau → corps | `duck` (`on`) | baisser la voix (on) ou lui rendre son volume (off), sans vider la file ; `interrupt` rend aussi le volume |
+| noyau → corps | `duck` (`on`) | suspendre la lecture du bureau (on) ou la reprendre (off), sans perdre les mots ; `interrupt` vide la file et retire la suspension |
 | noyau → corps | `approval.request`, `approval.closed` | carte d'accord |
 | noyau → corps | `tool.call`, `card`, `notify`, `error` | outil corps, carte, notification |
 
 ## Les émotions
+
+### Profil d'expressivité
+
+Le réglage `expressivite` (Voix) propose **discret**, **naturel** et **joueur**, à chaud, avec **joueur par défaut**.
+Il module l'intensité des émotions envoyées aux corps (facteurs 0,45 / 0,8 / 1) et le jeu des voix compatibles.
+Il ne modifie pas la fréquence des gestes autonomes. Les consignes vocales des modèles Live reçoivent aussi
+ce profil, à l'ouverture et à chaud quand le ton ou l'expressivité change.
+
+En mode séparé, la file de parole reçoit une intention par phrase, déduite de l'émotion du cerveau : expliquer,
+rassurer, plaisanter ou neutre. L'intention persiste jusqu'à la prochaine émotion ; la même émotion pilote
+l'avatar à la lecture. `TtsService.speak` reçoit un champ facultatif `delivery` (intention, profil, langue, ton),
+séparé du texte prononcé. Qwen CustomVoice 1.7B à voix intégrée reçoit ces consignes dans `instructions`.
+La variante est reconnue par son nom de fichier standard (1.7b puis customvoice) ; un fichier renommé n'active
+pas automatiquement ce pilotage. Base/clonage, Pocket, Supertonic et les autres fournisseurs restent compatibles
+et ignorent ce champ. Gemini TTS traduit désormais ce champ dans son prompt de synthèse, avant la transcription
+inchangée : intention, profil, langue et ton, avec une voix et un débit réguliers. La voix sélectionnée reste
+la même. Rassurer écarte le ton sarcastique et le style fixe de la voix pour garder une consigne calme.
+
+`bench/voice-compare.ts` produit trois paires WAV (témoin/joueur), les temps du premier bloc, le temps total et
+la durée du son, dans `bench/out/voice-compare`. Il lance un noyau isolé sur un autre port et ne change pas la
+voix sélectionnée. Les mesures excluent le chargement du modèle. Gemini reste à comparer ultérieurement.
+
+### Synchronisation avec la lecture (7 novembre 2026)
+
+En mode séparé, **toutes** les émotions associées à une phrase, y compris la première, attendent son audio.
+Le corps du bureau annonce la capacité facultative `speech_timing`. Pour ce corps d'origine seulement,
+le message `emotion` porte `nextAudio` (identifiant de phrase, unique dans le tour). Il précède immédiatement
+le premier bloc de la phrase, **après** l'éventuel bloc de silence entre paragraphes. Le transport doit conserver
+l'ordre JSON/audio (MessagePort et WebSocket). Le PCM et son en-tête restent inchangés.
+
+Le lecteur associe cette expression à l'heure programmée du bloc dans `AudioContext.currentTime` et la montre
+au premier rafraîchissement audio correspondant (environ 33 ms). Une synthèse en avance ne fait donc plus
+changer le visage pendant la phrase précédente. Une interruption ou reconnexion efface aussi les expressions
+en attente et la réaction locale temporaire. Les blocs d'un tour annulé restent rejetés par la conversation.
+Les autres corps reçoivent une émotion immédiate, sans `nextAudio`. Les émotions de situation restent immédiates.
+Le mode Live utilise les mêmes repères de lecture, avec un alignement par bloc décrit plus bas.
+
+La TV accepte `setAttention(target)`, facultatif pour les autres avatars : `listening` regarde au centre,
+`thinking` en haut de côté, `speaking` recentre le regard, `approval` regarde la carte située au-dessus.
+L'attention prime sur la souris et passe par les ressorts existants ; au repos, le regard libre revient.
+Une interruption utilisateur remet une expression neutre et l'écoute, sans sursaut systématique.
+La TV retire les gestes brefs résiduels au passage en écoute. Le mouvement réduit reste respecté.
+
+**Interruption et parole expressive.** Sur le bureau, `duck` suspend l'horloge audio et coupe le niveau de bouche
+dès la détection locale, sans attendre la fin de l'énoncé ni sa transcription. La vérification d'écho reste dans
+la conversation : un écho reprend au même endroit, une vraie demande annule la file. Les expressions restent
+figées avec le son ; les nouveaux blocs reçus pendant la pause ne relancent pas la lecture. Les attentes de
+confirmation restent bornées par les délais de la conversation. En Live à appels de fonctions (Gemini),
+la détection locale coupe immédiatement la lecture et rejette l'ancienne génération, sans attendre le réseau.
+
+Pendant la parole, la TV souligne les attaques de volume par un bref relèvement des yeux, une inclinaison
+alternée de la tête et un léger déplacement du regard. Au moins 420 ms séparent deux accents ; ils retombent
+seuls, sans battement périodique sur un son constant. Le regard propre à l'émotion reste visible. La bouche
+se referme au silence même pour le rire. Le mouvement réduit désactive ces accents, en gardant l'articulation.
+Le soulèvement passe lui aussi par un ressort, plutôt que de recevoir directement les pics audio. La rotation,
+le regard, l'échelle et le soulèvement sont davantage amortis (0,72), avec des pas d'intégration de 1/120 s au plus.
+Chaque accent a désormais une montée de 140 ms et une retombée de 340 ms, avec vitesse et accélération nulles
+aux extrémités. Deux accents peuvent se chevaucher : chacun garde sa direction jusqu'au bout, sans retourner
+brutalement le reliquat du précédent. L'amplitude reste proche du réglage précédent (environ 3° et 6 pixels
+sur la séquence de référence), avec un très léger zoom. La respiration garde une phase continue lorsque
+l'état change ; son rythme, son amplitude et le balancement d'écoute se fondent progressivement.
+La posture de parole revient au repos progressivement à la fin du son.
+
+### Gestuelle par intention de phrase
+
+En mode séparé, la conversation attribue à chaque phrase `explain`, `playful`, `question` ou `none`.
+Cette première version utilise les émotions déjà émises par le cerveau, des indices bilingues de la phrase
+(question, hésitation, connecteurs d'explication) et la demande initiale. Les émotions tristes, inquiètes ou
+agacées neutralisent cette gestuelle. Il n'y a ni nouvel appel au modèle ni changement des consignes TTS.
+Ce classement reste heuristique ; il ne reconnaît pas précisément les mots importants ou la chute d'une blague.
+
+Le message `speech.gesture` porte l'intention, l'intensité du profil et `nextAudio`. Il va uniquement au corps
+vocal d'origine s'il annonce `speech_timing`, immédiatement avant le premier bloc de la phrase et après
+l'éventuelle pause de paragraphe. Le bureau le place sur la même horloge audio que les émotions. Un repère
+ancien garde son heure de départ : une fenêtre qui reprend tard ne rejoue pas un geste périmé.
+
+La TV joue de petites séquences : deux hochements pour expliquer, regard et inclinaison malicieux pour
+plaisanter, regard en haut de côté puis retour pour questionner ou hésiter. Sens et amplitude varient légèrement
+entre les gestes, sans hasard ; un même geste ne redémarre pas à moins de 700 ms d'intervalle. Un changement
+d'intention fond le geste précédent sur 220 ms. La bouche reste liée au son. La progression suit l'horloge de
+lecture, donc `duck` la fige ; interruption, reconnexion, fin de lecture ou sortie de parole l'annulent.
+Le mouvement réduit désactive ces séquences. Les méthodes d'avatar `setSpeechTime(seconds)` et
+`setSpeechGesture(intent, intensity, at)` restent facultatives pour les plugins existants.
+
+### Gestes et attention communs aux huit avatars
+
+Le bureau passe à `create(container, options)` une source facultative `options.motion`, sans dépendance entre
+plugins. `sample()` donne six signaux sans unité (`nod`, `lean`, `lookX`, `lookY`, `smile`, `open`) ; `gaze()` donne
+une cible d'attention ou `null` au repos. La source partage les enveloppes, le fondu, les variations d'amplitude
+et l'horloge audio. Chaque dessin interprète ces signaux et les amortit, sans modifier le niveau de la bouche :
+
+- TV : hochements, inclinaison, regard et sourire ; conserve son moteur autonome pour les galeries sans hôte.
+- Pixel : déplacement du regard, inclinaison et petits hochements du disque lumineux.
+- Chat : inclinaison et hochement doux du sprite, regard et amplitude de la queue ; conserve son dessin en pixels.
+- Iris : déplacement de la lentille, ouverture et rotation des lamelles.
+- Goutte : compression, élargissement, inclinaison et regard.
+- Oscillo : décalage du visage, sourcils et très légère expansion ; l'onde reste liée à la voix.
+- Gyre : inclinaison, soulèvement et ouverture du noyau.
+- Essaim : regroupement, expansion et orientation du nuage.
+
+L'attention recentre l'écoute et la parole, regarde de côté en réflexion et vers le haut pour un accord.
+Les mouvements propres aux nouveaux gestes s'arrêtent en mouvement réduit ; leurs cibles sont effacées
+à l'interruption ou à la sortie de parole, puis les dessins reviennent progressivement. Le changement d'avatar
+pendant une réponse reprend la source en cours, sans rejouer le début du geste. Sans `motion`, les plugins
+continuent de fonctionner dans leurs galeries et chez un ancien hôte.
+
+### Jeu et synchronisation Live
+
+Gemini Live et GPT Live reçoivent des consignes conversationnelles bilingues adaptées au profil : débit
+régulier, même voix, explications soulignées, réassurance calme sans sarcasme ni rire forcé. Ces consignes
+n'imposent pas une récitation de texte et ne changent ni les outils ni les accords.
+
+La transcription de sortie est associée au **prochain bloc audio accepté** de la même génération, puis les
+émotions et gestes attendent sa lecture réelle sur le bureau. Les fragments sont réunis pour reconnaître une
+intention et ne redémarrent pas le même geste à chaque paquet. L'audio ne patiente jamais pour attendre du
+texte. Le texte reçu après le dernier bloc n'engendre aucun geste ; un repère qui attend plus de 1,2 s, une fin
+de génération, une coupure ou un changement de génération l'invalide. Ce n'est pas un alignement au mot près.
+
+Le contrat `LiveEvent.output_transcript` accepte une `generation` facultative. Gemini l'émet comme pour
+l'audio, et livre le texte avant le son lorsqu'ils sont dans le même paquet. GPT marque l'époque de sa socket
+(la coupure ouvre toujours une autre socket). Les transcriptions d'une génération rejetée ne changent ni
+les sous-titres ni les gestes ; celles d'un fournisseur ancien sans époque sont ignorées après une coupure
+jusqu'au prochain audio accepté. Les corps sans `speech_timing` gardent les émotions immédiates.
+
+Validation : réponses réseau simulées pour les fournisseurs cloud, tests du vrai lecteur avec horloge audio,
+tests des signaux communs et des uniformes des sept autres dessins, et comparaison de la TV autonome/partagée.
+Le rendu et le jeu réels des voix cloud restent à auditionner avec un compte configuré.
+
+Tests : file d'expressions et vrai lecteur avec une horloge audio simulée (`apps/desktop/test`),
+routage et rejet des anciens blocs (`conversation.test.ts`), cibles du regard (`avatar/tv/test/attention.test.ts`).
 
 L'émotion est **pilotée par le noyau** et rendue par chaque corps à sa façon : visage de l'avatar, tête et antennes de Reachy.
 
@@ -102,7 +232,7 @@ flowchart LR
 - **Réaction immédiate** à ce qu'on lui dit (`feel.ts`, mots-clés, sans LLM) : « merci » → content, « haha » → rire, « bravo » → fier, « t'es nul » → triste… Elle dure ~1 s, puis le visage réfléchit ; l'étiquette du cerveau a le dernier mot.
 - **Mode Live** : le modèle ne donne pas d'émotion. La conversation la devine dans ce qu'on dit et dans ce qu'il dit, phrase par phrase.
 - **Humeur** (`mood.ts`, message `mood` : valence -1..1, énergie 0..1) : le fond émotionnel. Chaque émotion la pousse un peu ; elle revient lentement vers le caractère de base (plutôt content). Seul plus de 3 minutes, il perd de l'énergie (fatigué, puis il pique du nez) ; on lui parle, il se réveille. Au repos, le visage montre l'humeur au lieu du neutre.
-- **Signaux** (message `cue`) : `nod` petit hochement quand on lui parle (pause après au moins 0.5 s de parole), `perk` il se redresse au réveil ou au bouton parler, `startle` sursaut quand on le coupe.
+- **Signaux** (message `cue`) : `nod` petit hochement quand on lui parle (pause après au moins 0.5 s de parole), `perk` il se redresse au réveil ou au bouton parler, `startle` sursaut disponible pour une surprise. Une interruption ordinaire revient calmement à l'écoute.
 - **Il entend son nom** (signal `wake`, envoyé dès la détection, quel que soit le détecteur) : petit saut et hochement du visage, un anneau part de la tête, et la bulle affiche « Je t'écoute… » avec des barres qui suivent le micro. La ligne reste tant qu'il écoute ; elle part quand la phrase est transcrite. Rien n'a été dit : la bulle se ferme tout de suite.
 - 28 émotions dans le protocole (`EMOTIONS`). Le cerveau n'en voit que 12 en français (`PROMPT_EMOTIONS_FR`) : une liste courte pour un petit modèle.
 
@@ -216,8 +346,11 @@ flowchart LR
   d’oscilloscope (elle suit la voix entendue en écoute et le niveau de la voix en parole). Le néon scintille parfois.
 - `iris` : un **œil-caméra à diaphragme** (6 lamelles) et un anneau de 24 LED. Pas de bouche : l’ouverture, le regard,
   les paupières et les LED montrent tout (écoute vers le micro, réflexion qui tourne, niveau de la voix).
-- `pixelcat` : un **chat en pixels**, façon jeu vidéo rétro (sprite 32 × 32 redessiné à chaque image, agrandi sans
-  flou par le shader, yeux qui brillent, lignes de balayage). Oreilles, yeux, bouche, queue et un petit signe (z, ?, !, cœur).
+- `pixelcat` : un **chat chibi en pixels**, façon jeu vidéo rétro (sprite 32 × 32 redessiné à chaque image, agrandi sans
+  flou par le shader, lignes de balayage). Grande tête ronde, petites oreilles, corps compact, museau crème et joues roses.
+  Les yeux sont sombres avec un reflet crème, sans lueur ; ils suivent le regard dans la même direction, y compris en
+  écoute et en surprise. Oreilles, yeux, bouche, queue et un petit signe (z, ?, !, cœur) expriment les états et émotions ;
+  le halo et les signes flottants gardent la lumière de l'état.
 - Les 6 gèrent toute l'interface : humeur, regard (la forme ou les yeux suivent la souris), oreille, ressort (tassement puis
   rebond), hochement, sursaut, clic, mouvement réduit (et clignement pour ceux qui ont des yeux).
 - Le noyau envoie toujours les mêmes états et émotions : un avatar n'a rien à savoir du reste.

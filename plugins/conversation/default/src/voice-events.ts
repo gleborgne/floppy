@@ -3,7 +3,7 @@
 import { T, errorText, type Context, type Text } from "@floppy/core";
 import type { BodyHub, ConversationCommand, ConversationCommandInput, LiveService, TurnMode, VoiceEvent } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
-import { isSleepCommand, stripWakeWord, matchQuickSetting } from "./text.ts";
+import { isSleepCommand, stripWakeWord, matchQuickSetting, isBackchannel, hasWakeWord } from "./text.ts";
 import { isEcho } from "./echo.ts";
 import { DUCK_MAX_MS, DUCK_WAIT_TRANSCRIPT_MS, PARAGRAPH_PAUSE_MS, silenceLike, type Body, type Turn } from "./model.ts";
 
@@ -18,7 +18,7 @@ export interface VoiceDeps {
   freeListen(): number;
   bodies: Map<string, Body>;
   setState(b: Body, state: BodyState): void;
-  setEmotion(emotion: Emotion | string, ms?: number, intensity?: number): void;
+  setEmotion(emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }): void;
   cue(c: Cue): void;
   maybeFinish(b: Body, t: Turn): void;
   mayEcho(b: Body): boolean;
@@ -58,6 +58,16 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
           case "transcript": {
             // Le STT possède une horloge commençant à l'ouverture de son flux.
             if (b.voiceOffset) ev = { ...ev, ...(ev.start_sample === undefined ? {} : { start_sample: ev.start_sample + b.voiceOffset }), ...(ev.end_sample === undefined ? {} : { end_sample: ev.end_sample + b.voiceOffset }) };
+            // Un « mhm » ou un mot halluciné par le STT ne doit pas jeter l'explication.
+            // Les accords, le bouton et une adresse explicite restent de vraies réponses.
+            if (!b.live?.active && !b.ptt && !b.awaiting.size && (b.playing || b.duck)
+              && !hasWakeWord(ev.text, wake) && !(b.wakeActivation && Date.now() <= b.wakeActivation.expires)
+              && isBackchannel(ev.text)) {
+              ctx.audit.write({ kind: "transcript.backchannel", body: b.id, chars: ev.text.length, ducked: !!b.duck });
+              b.speechOpen = false;
+              endDuck(b, true);
+              break;
+            }
             // Écho de la voix de Floppy : ni une demande, ni une coupure. La voix reprend son volume.
             if (!b.live?.active && !b.ptt && mayEcho(b) && isEcho(ev.text, (b.spoken ?? []).map((x) => x.text))) {
               ctx.audit.write({ kind: "transcript.echo", body: b.id, chars: ev.text.length, ducked: !!b.duck });
@@ -133,7 +143,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
             } else if (b.ptt) userBargeIn(b); // bouton parler : coupure tout de suite
             else if (b.init || b.turn?.spoke || b.playing) {
               // Voix entendue pendant que Floppy parle : l'utilisateur, ou l'écho de Floppy dans le micro ?
-              // On baisse la voix sans la couper, et le texte reconnu tranche (voir « transcript »).
+              // Le bureau suspend la lecture sans perdre les mots ; le texte reconnu tranche (voir « transcript »).
               if (!b.duck) {
                 b.duck = { timer: setTimeout(() => {}, 0) };
                 duckFor(b, DUCK_MAX_MS);
@@ -151,10 +161,15 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
             } else if (t && !t.abort.signal.aborted) {
               if (!t.spoke) { t.spoke = true; t.marks.first_audio ??= Math.round(performance.now() - t.t0); }
               const c = t.cues.get(ev.id);
-              if (c) { t.cues.delete(ev.id); setEmotion(c.emotion, undefined, c.intensity); }
               if (!b.playing || b.state !== "speaking") { setState(b, "speaking"); b.stream?.setSpeaking(true); }
               b.playing = true;
               if (t.pauses?.delete(ev.id)) hub.sendAudio(b.id, silenceLike(ev.data, PARAGRAPH_PAUSE_MS));
+              if (c) { t.cues.delete(ev.id); setEmotion(c.emotion, undefined, c.intensity, { body: b.id, id: ev.id }); }
+              const gesture = t.gestures?.get(ev.id);
+              if (gesture) {
+                t.gestures!.delete(ev.id);
+                if (hub.has(b.id, "speech_timing")) hub.send(b.id, { type: "speech.gesture", ...gesture, nextAudio: ev.id });
+              }
             }
             hub.sendAudio(b.id, ev.data);
             break;
@@ -162,7 +177,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
           case "speak_done":
             if (ev.error && (b.init?.id === ev.id || b.turn?.pending.has(ev.id))) hub.send(b.id, { type: "error", text: ev.error });
             if (b.init?.id === ev.id) { b.init.done = true; if (!b.playing) finishInit(b); }
-            else if (b.turn?.pending.has(ev.id)) { b.turn.pending.delete(ev.id); maybeFinish(b, b.turn); }
+            else if (b.turn?.pending.has(ev.id)) { b.turn.pending.delete(ev.id); b.turn.gestures?.delete(ev.id); maybeFinish(b, b.turn); }
             break;
           case "closed":
             b.stream = undefined;

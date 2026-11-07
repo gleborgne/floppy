@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { T } from "@floppy/core";
 import type { TurnMode, VoiceStream, WakewordStream, WakewordDetection } from "@floppy/contracts";
-import type { BodyState, Emotion } from "@floppy/protocol";
+import type { BodyState, Emotion, SpeechGesture } from "@floppy/protocol";
 import { encodeAudioOut } from "@floppy/protocol";
 import type { AudioHistory } from "@floppy/core";
 import type { SpeechQueue } from "./speech.ts";
@@ -11,6 +11,7 @@ import type { Dictation } from "./dictation.ts";
 import type { ReplyFeeler } from "./feel.ts";
 
 export const Config = z.object({
+  expressiveness: z.enum(["discreet", "natural", "playful"]).default("playful"),
   free_listen_s: z.number().default(8),
   idle_reset_s: z.number().default(300),
   neutral_after_ms: z.number().default(5000),
@@ -41,6 +42,7 @@ export interface Turn {
   marks: Record<string, number>;
   /** Émotions placées au milieu de la réponse : montrées quand leur phrase commence à être dite (id de phrase). */
   cues: Map<string, { emotion: Emotion; intensity?: number }>;
+  gestures?: Map<string, { intent: SpeechGesture; intensity: number }>;
   /** Phrases qui ouvrent un paragraphe : un silence est joué juste avant elles (id de phrase). */
   pauses?: Set<string>;
 }

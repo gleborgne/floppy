@@ -3,6 +3,15 @@ import type { VoiceEvent, VoiceStream, TtsService } from "@floppy/contracts";
 import { SpeechQueue } from "../src/speech.ts";
 
 describe("file TTS distante", () => {
+  it("transmet le jeu de chaque phrase séparément du texte et respecte l'ordre", async () => {
+    const received: unknown[] = [];
+    const tts: TtsService = { name: "test", async *speak(text, opts) { received.push({ text, delivery: opts.delivery }); yield { rate: 24000, pcm: new Int16Array([1]) }; } };
+    const queue = new SpeechQueue({ stream: { cancel() {} } as VoiceStream, tts, emit() {} });
+    const first = { intent: "explain", profile: "playful", language: "fr" } as const;
+    const second = { ...first, intent: "reassure" } as const;
+    queue.speak("1", "Première phrase.", first); queue.speak("2", "Deuxième phrase.", second);
+    await vi.waitFor(() => expect(received).toEqual([{ text: "Première phrase.", delivery: first }, { text: "Deuxième phrase.", delivery: second }]));
+  });
   it("annulation : rejette une réponse réseau tardive et vide les phrases en attente", async () => {
     let release!: () => void;
     const wait = new Promise<void>((r) => { release = r; });

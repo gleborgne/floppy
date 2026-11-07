@@ -173,7 +173,8 @@ function program(gl, vs, fs) {
   return { p, u };
 }
 
-export function create(container, { reducedMotion = false } = {}) {
+export function create(container, { reducedMotion = false, motion } = {}) {
+  const pose = { nod: 0, lean: 0, lookX: 0, lookY: 0, smile: 0, open: 0 };
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "width:100%;height:100%;display:block";
   container.append(canvas);
@@ -249,6 +250,8 @@ export function create(container, { reducedMotion = false } = {}) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    const targetPose = !reducedMotion && state === "speaking" ? motion?.sample() : null;
+    for (const key in pose) pose[key] += ((targetPose?.[key] ?? 0) - pose[key]) * (1 - Math.exp(-dt * 12));
     const ease = (k) => Math.min(1, dt * k);
     if (until && now > until) { emotion = "neutral"; until = 0; }
 
@@ -282,7 +285,7 @@ export function create(container, { reducedMotion = false } = {}) {
     faceK += ((showFace ? 1 : 0) - faceK) * ease(showFace ? 2.2 : 1.6);
 
     // Regard, ressort, respiration, hochement.
-    const g = now - gaze.at < 5000 ? gaze : { x: 0, y: 0 };
+    const g = motion?.gaze() ?? (now - gaze.at < 5000 ? gaze : { x: 0, y: 0 });
     look.yaw += (g.x * 0.45 - look.yaw) * ease(3);
     look.pitch += (-g.y * 0.3 - look.pitch) * ease(3);
     const wk = 2 * Math.PI * 2.4;
@@ -316,10 +319,10 @@ export function create(container, { reducedMotion = false } = {}) {
     gl.uniform1i(u.uFB, FLOW[fb]);
     gl.uniform1f(u.uLevel, state === "speaking" ? levelS : 0);
     gl.uniform1f(u.uHear, hearingS);
-    gl.uniform1f(u.uScale, scale);
-    gl.uniform1f(u.uBob, breathe * 0.01 + nod);
-    gl.uniform1f(u.uYaw, look.yaw);
-    gl.uniform1f(u.uPitch, look.pitch);
+    gl.uniform1f(u.uScale, scale - pose.nod * 0.035 + pose.smile * 0.035 + pose.open * 0.025);
+    gl.uniform1f(u.uBob, breathe * 0.01 + nod + pose.nod * 0.025);
+    gl.uniform1f(u.uYaw, look.yaw + pose.lean * 0.08);
+    gl.uniform1f(u.uPitch, look.pitch - pose.lookY * 0.07);
     gl.uniform1f(u.uPx, px);
     gl.uniform1f(u.uAlpha, alpha * 0.55);
     gl.uniform2f(u.uAsp, asp[0], asp[1]);

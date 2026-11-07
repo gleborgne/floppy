@@ -44,6 +44,14 @@ export interface VoiceService {
 
 export interface TtsChunk { rate: number; pcm: Int16Array }
 
+/** Consigne de jeu distincte du texte prononcé ; facultative pour les moteurs sans contrôle expressif. */
+export interface SpeechDelivery {
+  intent: "explain" | "reassure" | "playful" | "neutral";
+  profile: "discreet" | "natural" | "playful";
+  language: "fr" | "en";
+  tone?: string;
+}
+
 /** Début ou fin de parole ; sample = index de l'échantillon dans le flux du détecteur (compté depuis open ou reset). */
 export interface VadEvent { type: "start" | "end"; sample: number }
 export interface VadStream {
@@ -102,7 +110,7 @@ export interface TtsService {
   availability?(): Availability;
   /** Voix locale : elle parle dans le flux du service `voice` (VoiceStream.speak), pas par speak(). */
   viaStream?: boolean;
-  speak?(text: string, opts: { signal: AbortSignal }): AsyncIterable<TtsChunk>;
+  speak?(text: string, opts: { signal: AbortSignal; delivery?: SpeechDelivery }): AsyncIterable<TtsChunk>;
 }
 
 /** Les blocs sont ordonnés. final et generation_done sont facultatifs dans le protocole
@@ -111,7 +119,7 @@ export interface TtsService {
 export type LiveEvent =
   | { type: "audio"; generation: number; rate: number; pcm: Int16Array }
   | { type: "input_transcript"; text: string; final: boolean; startMs?: number; endMs?: number }
-  | { type: "output_transcript"; text: string; final: boolean }
+  | { type: "output_transcript"; text: string; final: boolean; /** Même époque que les blocs audio, si connue du fournisseur. */ generation?: number }
   | { type: "interrupted"; generation: number }
   | { type: "generation_done" }
   | { type: "tool_call"; id: string; name: string; args: Record<string, unknown> }

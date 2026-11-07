@@ -9,12 +9,13 @@
 // - Signaux : hochement de tête (nod), se redresser (perk), sursaut (startle), réaction à un clic (poke),
 //   « oui ? » quand il entend son nom (wake).
 import { createGLRenderer } from "./face-gl.js";
+import { SpeechGestures } from "./speech-gestures.js";
 
 const BASE = {
   eyeW: 46, eyeH: 56, eyeR: 15, eyeY: -10, gap: 94,
   lidTop: 0, lidAngle: 0, lidBot: 0,
   mouth: 0, mouthOpen: 0, mouthW: 0, mouthY: 52, mouthTilt: 0,
-  lookX: 0, lookY: 0, tilt: 0, scale: 1,
+  lookX: 0, lookY: 0, tilt: 0, scale: 1, speechLift: 0,
   hue: 0, blush: 0, heart: 0, halo: 0.55,
   // asymétrie : facteurs pour l'œil gauche (L) et droit (R)
   hL: 1, hR: 1, topL: 0, topR: 0, botL: 0, botR: 0,
@@ -69,6 +70,9 @@ const HEAVY = { sad: 1, cry: 1, sorry: 0.6, tired: 0.7, bored: 0.5 };
 const KEEP_FX = new Set(["zzz", "dots", "question", "tears"]);
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+// Départ et arrivée à vitesse et accélération nulles : les accents se relient sans impulsion.
+const easeGesture = (x) => { const p = clamp(x, 0, 1); return p * p * p * (p * (p * 6 - 15) + 10); };
+const ACCENT_RISE_MS = 140, ACCENT_FALL_MS = 340;
 /** Ajoute à t l'écart d'un preset par rapport à BASE, multiplié par w. */
 function blend(t, preset, w) {
   if (!w) return;
@@ -89,8 +93,22 @@ export class Face {
     this.emotion = "neutral";
     this.intensity = 1;
     this.state = "idle";
+    this.attention = "idle";
     this.level = 0;
     this.levelSmooth = 0;
+    this.speechAccent = 0;
+    this.speechSway = 0;
+    this.speechAccents = [];
+    this.speechGestures = new SpeechGestures();
+    this.motion = opts.motion;
+    this.speechTime = 0;
+    this.speechSide = 1;
+    this.lastSpeechAccent = -Infinity;
+    this.previousLevel = 0;
+    this.breathPhase = 0;
+    this.breathRate = 1.56;
+    this.breathAmplitude = 1.2;
+    this.listeningBlend = 0;
     this.hearing = 0;
     this.hearingSmooth = 0;
     this.mood = { valence: 0.2, energy: 0.6 };
@@ -126,7 +144,17 @@ export class Face {
     if (s === this.state) return;
     // Réveil : les yeux s'ouvrent d'un coup, avec un petit rebond.
     if (this.state === "sleep" && s !== "sleep") this.kick({ scale: 0.5, eyeH: 40 });
+    if (this.state === "speaking" && s === "listening") { this.moves = []; this.flash = null; }
     this.state = s;
+    if (s !== "speaking") { this.speechAccent = 0; this.speechSway = 0; this.speechAccents = []; this.previousLevel = 0; this.speechGestures.clear(); }
+    this.attention = s;
+  }
+  /** Cible de conversation : priorité sur la souris, déplacement adouci par les ressorts. */
+  setAttention(target) { this.attention = target; }
+  setSpeechTime(seconds) { this.speechTime = seconds * 1000; }
+  setSpeechGesture(intent, intensity = 1, at = this.speechTime / 1000) {
+    if (intent === null || this.reducedMotion) this.speechGestures.clear();
+    else this.speechGestures.play(intent, intensity, at * 1000);
   }
   setLevel(v) { this.level = v; }
   /** Humeur de fond (valence -1..1, énergie 0..1). */
@@ -208,10 +236,18 @@ export class Face {
     if (this.state === "thinking" && this.emotion === "neutral") { Object.assign(t, EMOTION_PRESETS.thinking); delete t.fx; fx.add("dots"); }
     if (this.state === "speaking") {
       if (!t.mouthW) t.mouthW = 28;
-      t.mouthOpen = Math.max(t.mouthOpen, Math.min(1, this.levelSmooth * 1.6));
+      // L'émotion colore l'articulation mais ne maintient pas la bouche ouverte dans les pauses.
+      t.mouthOpen = Math.min(1, this.levelSmooth * (1.5 + t.mouthOpen * 0.5));
       // La bouche s'élargit un peu avec la voix, et change de forme d'une syllabe à l'autre.
       const time = (now - this.t0) / 1000;
       t.mouthW += this.levelSmooth * (8 + Math.sin(time * 13.7) * 4);
+      const accent = this.reducedMotion ? 0 : this.speechAccent;
+      t.eyeH += accent * 9;
+      t.tilt += (this.reducedMotion ? 0 : this.speechSway) * 5.4;
+      // Toute la posture passe par les ressorts, y compris le soulèvement : aucun pic brut au rendu.
+      if (!this.reducedMotion) t.speechLift = this.levelSmooth * 2.8 + accent * 9;
+      t.lidTop = Math.max(0, t.lidTop - accent * 0.12);
+      t.halo += accent * 0.12;
     }
     t.halo *= STATE_HALO[this.state] ?? 1;
     if (this.state === "listening") t.halo *= 1 + this.hearingSmooth * 0.4;
@@ -232,6 +268,22 @@ export class Face {
     }
     if (this.flash && now < this.flash.until) fx.add(this.flash.fx);
     t.rgb = HUES[t.hue] ?? HUES[0];
+    if (this.attention === "listening") { t.lookX = 0; t.lookY = 0; }
+    else if (this.attention === "thinking") { t.lookX = 10; t.lookY = -8; }
+    else if (this.attention === "speaking") {
+      // Garde le regard expressif de l'émotion ; atténue seulement le suivi de souris.
+      t.lookX = (preset.lookX ?? 0) + (t.lookX - (preset.lookX ?? 0)) * 0.25;
+      t.lookY = (preset.lookY ?? 0) + (t.lookY - (preset.lookY ?? 0)) * 0.25;
+      if (!this.reducedMotion) t.lookX += this.speechSway * 4;
+    }
+    else if (this.attention === "approval") { t.lookX = 0; t.lookY = -12; }
+    if (this.state === "speaking" && this.attention !== "approval" && !this.reducedMotion) {
+      const m = this.motion?.sample();
+      const pose = m ? { tilt: m.lean * 2.6, lookX: m.lookX * 6.5, lookY: m.lookY * 4,
+        eyeY: m.nod * 1.4, speechLift: -m.nod * 2.8, lidBot: m.smile * 0.1, mouth: m.smile * 0.14, hR: m.open * 0.08 }
+        : this.speechGestures.sample(this.speechTime);
+      for (const [key, value] of Object.entries(pose)) t[key] += value;
+    }
     return { t, fx };
   }
 
@@ -239,6 +291,33 @@ export class Face {
   step(now) {
     const dt = clamp((now - this.lastStep) / 1000, 0, 0.05);
     this.lastStep = now;
+    // Changer d'état ne doit pas changer brutalement la phase de respiration ou ajouter un balancement.
+    const rate = this.state === "sleep" ? 0.9 : this.state === "listening" ? 2.4 : 1.2 + this.mood.energy * 0.6;
+    const breathingEase = 1 - Math.exp(-dt * 6);
+    const previousRate = this.breathRate;
+    this.breathRate += (rate - this.breathRate) * breathingEase;
+    this.breathPhase += (previousRate + this.breathRate) * 0.5 * dt;
+    this.breathAmplitude += ((this.state === "sleep" ? 2.2 : 1.2) - this.breathAmplitude) * breathingEase;
+    this.listeningBlend += ((this.state === "listening" ? 1 : 0) - this.listeningBlend) * breathingEase;
+    // Accents sur les attaques, avec un temps de repos : une voix soutenue ne fait pas osciller la tête en boucle.
+    if (this.state === "speaking" && !this.reducedMotion && this.level > 0.12
+        && this.level - this.previousLevel > 0.08 && now - this.lastSpeechAccent > 420) {
+      this.speechSide *= -1;
+      this.speechAccents.push({ start: now, strength: Math.min(1, (this.level - this.previousLevel) * 2.5) * 0.6, side: this.speechSide });
+      this.lastSpeechAccent = now;
+    }
+    this.speechAccents = this.speechAccents.filter(a => now - a.start < ACCENT_RISE_MS + ACCENT_FALL_MS);
+    this.speechAccent = 0; this.speechSway = 0;
+    for (const a of this.speechAccents) {
+      const age = now - a.start;
+      const envelope = age < ACCENT_RISE_MS ? easeGesture(age / ACCENT_RISE_MS)
+        : 1 - easeGesture((age - ACCENT_RISE_MS) / ACCENT_FALL_MS);
+      const weight = a.strength * envelope;
+      this.speechAccent += weight;
+      // Chaque geste garde sa direction jusqu'au bout, même si le suivant part de l'autre côté.
+      this.speechSway += weight * a.side;
+    }
+    this.previousLevel = this.level;
     const { t, fx } = this.target(now);
     this.fx = fx;
     if (this.reducedMotion || !dt) {
@@ -247,11 +326,18 @@ export class Face {
       for (const key of NUM_KEYS) { this.cur[key] += (t[key] - this.cur[key]) * k; this.vel[key] = 0; }
     } else {
       // Ressort un peu souple : ω = 2π·2.6 Hz, amortissement 0.55 (dépasse d'environ 12 %, puis revient).
-      const w = 2 * Math.PI * 2.6, z = 0.55;
+      const w = 2 * Math.PI * 2.6;
       for (const key of NUM_KEYS) {
-        const a = -w * w * (this.cur[key] - t[key]) - 2 * z * w * this.vel[key];
-        this.vel[key] += a * dt;
-        this.cur[key] += this.vel[key] * dt;
+        // Posture plus amortie ; petits pas pour garder la même souplesse à 30 comme à 60 images/s.
+        const posture = ["tilt", "scale", "lookX", "lookY", "speechLift"].includes(key);
+        const z = posture ? 0.72 : 0.55;
+        const steps = posture ? Math.ceil(dt * 120) : 1;
+        const h = dt / steps;
+        for (let n = 0; n < steps; n++) {
+          const a = -w * w * (this.cur[key] - t[key]) - 2 * z * w * this.vel[key];
+          this.vel[key] += a * h;
+          this.cur[key] += this.vel[key] * h;
+        }
       }
     }
     // Garde-fous : un ressort ne doit jamais retourner un œil ou une paupière.
@@ -288,16 +374,12 @@ export class Face {
     if (fx.has("bounce")) oy -= Math.abs(Math.sin(time * 7)) * 5 * (still ? 0 : 1);
     if (fx.has("shake") && !still) ox += Math.sin(time * 40) * 1.5;
     if (fx.has("sway") && !still) ox += Math.sin(time * 1.3) * 3;
-    if (this.state === "listening" && !still) oy += Math.sin(time * 3) * 1.2;
+    if (!still) oy += Math.sin(time * 3) * 1.2 * this.listeningBlend;
     // Respiration : plus lente quand il est fatigué ou qu'il dort.
-    const rate = this.state === "sleep" ? 0.9 : this.state === "listening" ? 2.4 : 1.2 + this.mood.energy * 0.6;
-    const breathe = still ? 0 : Math.sin(time * rate);
-    oy += breathe * (this.state === "sleep" ? 2.2 : 1.2);
-    // En parlant : la tête accompagne la voix.
-    if (this.state === "speaking" && !still) {
-      oy -= this.levelSmooth * 2.5;
-      tiltExtra += Math.sin(time * 2.1) * this.levelSmooth * 1.6;
-    }
+    const breathe = still ? 0 : Math.sin(this.breathPhase);
+    oy += breathe * this.breathAmplitude;
+    // La posture revient progressivement au repos, même quand la parole vient de s'arrêter.
+    if (!still) oy -= c.speechLift;
     for (const m of this.moves) {
       const p = (now - m.start) / m.dur;
       if (m.kind === "nod") { oy += Math.sin(p * Math.PI) * 7; tiltExtra += Math.sin(p * Math.PI) * 1.5; }
@@ -326,7 +408,7 @@ export class Face {
     return {
       time, ox, oy, tilt: ((c.tilt + tiltExtra) * Math.PI) / 180, scale: 1,
       // Respiration : la tête grandit un tout petit peu à l'inspiration (appliqué par frame, pas par la galerie).
-      breath: 1 + breathe * 0.008,
+      breath: 1 + breathe * 0.0095 + (still ? 0 : c.speechLift * 0.0007),
       color: c.rgb.map((v) => v / 255), level: this.levelSmooth, halo: c.halo, background: this.background,
       eyes, heart: c.heart, blush: c.blush,
       mouth: { on: mw > 2, ax: mx - mw / 2, ay: my - tilt, cx: mx + mw / 2, cy: my + tilt, bx: mx, by: my + curve, botY: my + curve + open * 3.2, open: c.mouthOpen },

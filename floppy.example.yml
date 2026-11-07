@@ -128,7 +128,7 @@ plugins:
   - { id: bodyws, plugin: body-ws, config: { port: 8750 } }
   # Reachy Mini robots: add them in Settings → Bodies.
   - { id: reachy, plugin: body-reachy }
-  - { id: conv, plugin: conversation }
+  - { id: conv, plugin: conversation, config: { expressiveness: playful } }
   # --- AI assistant of the Settings window: your Claude Code or Codex subscription, no API key.
   - { id: coder, plugin: coder }
   # --- Apps (Settings → Connectors)

@@ -89,8 +89,9 @@ function approach(cur, tgt, k) {
  * Le « vivant » commun : état, émotion (avec durée), humeur, regard, oreille, voix, ressort, hochement, clignement.
  * tick(now) avance tout ; L.key = le jeu de paramètres voulu maintenant (veille > émotion > état ; au repos, l'humeur).
  */
-function makeLife(reducedMotion) {
+function makeLife(reducedMotion, motion) {
   const L = {
+    motion: { nod: 0, lean: 0, lookX: 0, lookY: 0, smile: 0, open: 0 },
     state: "idle", emotion: "neutral", intensity: 1, until: 0, level: 0, levelS: 0, hearing: 0, hearingS: 0,
     mood: { valence: 0.2, energy: 0.6 }, gaze: { x: 0, y: 0, at: -1e9 }, look: { x: 0, y: 0 },
     pop: 0, popV: 0, nodAt: -1e9, flashEmo: "", flashUntil: 0, blinkAt: 0, blinkT: -1e9, blink: 0,
@@ -110,11 +111,13 @@ function makeLife(reducedMotion) {
     const dt = Math.min(0.05, Math.max(0, (now - L.last) / 1000));
     L.last = now;
     L.dt = dt;
+    const pose = !reducedMotion && L.state === "speaking" ? motion?.sample() : null;
+    for (const key in L.motion) L.motion[key] += ((pose?.[key] ?? 0) - L.motion[key]) * (1 - Math.exp(-dt * 12));
     if (L.until && now > L.until) { L.emotion = "neutral"; L.until = 0; }
     L.key = wanted(now);
     L.levelS += (L.level - L.levelS) * Math.min(1, dt * 18);
     L.hearingS += (L.hearing - L.hearingS) * Math.min(1, dt * (L.hearing > L.hearingS ? 14 : 4));
-    const g = now - L.gaze.at < 5000 ? L.gaze : { x: 0, y: 0 };
+    const g = motion?.gaze() ?? (now - L.gaze.at < 5000 ? L.gaze : { x: 0, y: 0 });
     L.look.x += (g.x - L.look.x) * Math.min(1, dt * 4);
     L.look.y += (g.y - L.look.y) * Math.min(1, dt * 4);
     const wk = 2 * Math.PI * 2.4;
@@ -309,10 +312,10 @@ void main() {
   o = vec4(min(col, vec3(a)), a);
 }`;
 
-export function create(container, { reducedMotion = false } = {}) {
+export function create(container, { reducedMotion = false, motion } = {}) {
   const sf = surface(container, FS);
   const gl = sf.gl;
-  const L = makeLife(reducedMotion);
+  const L = makeLife(reducedMotion, motion);
   const cur = snapshot("idle");
   let tt = 0, raf = 0, dead = false, flickAt = 0, flickT = -1e9;
 
@@ -333,10 +336,12 @@ export function create(container, { reducedMotion = false } = {}) {
     if (now > flickAt) { flickT = now; flickAt = now + (reducedMotion ? 1e9 : (6000 + Math.random() * 9000) / (1 + cur.flick * 4)); }
     const fp = (now - flickT) / 260;
     const glow = fp >= 0 && fp < 1 ? 0.55 + 0.45 * Math.abs(Math.sin(fp * 17)) : 0.92 + 0.08 * Math.sin(now / 90) * Math.sin(now / 37);
-    const lx = L.look.x * 0.07, ly = L.look.y * 0.05;
+    const lx = L.look.x * 0.07 + L.motion.lookX * 0.05, ly = L.look.y * 0.05 + L.motion.lookY * 0.04;
     const face = [...cur.el, ...cur.er, ...cur.bl, ...cur.br];
+    face[15] += L.motion.lean * 0.12;
+    face[21] -= L.motion.open * 0.15;
     for (const o of [0, 6]) face[o + 2] *= 1 - 0.85 * L.blink * Math.abs(Math.cos(face[o + 3]));
-    const scale = 1 + L.pop * 0.5 + L.breathe * 0.006 + (L.state === "speaking" ? L.levelS * 0.015 : 0);
+    const scale = 1 + L.pop * 0.5 + L.breathe * 0.006 + L.motion.smile * 0.012 + (L.state === "speaking" ? L.levelS * 0.015 : 0);
     sf.draw(1.04, (u, px) => {
       gl.uniform1f(u.uT, tt);
       gl.uniform1f(u.uPx, px / scale);
@@ -351,7 +356,7 @@ export function create(container, { reducedMotion = false } = {}) {
       gl.uniform1f(u.uLevel, L.levelS);
       gl.uniform1f(u.uSpeak, L.state === "speaking" ? 1 : 0);
       gl.uniform1f(u.uHear, L.state === "listening" ? L.hearingS : 0);
-      gl.uniform2f(u.uOff, lx, ly + L.nod * 0.05);
+      gl.uniform2f(u.uOff, lx, ly + L.nod * 0.05 + L.motion.nod * 0.025);
       gl.uniform3f(u.uCol, cur.col[0], cur.col[1], cur.col[2]);
       gl.uniform3f(u.uCol2, cur.col2[0], cur.col2[1], cur.col2[2]);
     });

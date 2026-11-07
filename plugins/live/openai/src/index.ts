@@ -52,7 +52,7 @@ export default definePlugin({
               const pcm = decoder.push(Buffer.from(e.delta, "base64"));
               if (pcm.length) opts.on({ type: "audio", generation: 0, pcm, rate: 16000 });
             } else if (e.type === "session.input_transcript.delta") opts.on({ type: "input_transcript", text: e.delta, final: false, startMs: e.start_ms, endMs: e.end_ms });
-            else if (e.type === "session.output_transcript.delta") opts.on({ type: "output_transcript", text: e.delta, final: false });
+            else if (e.type === "session.output_transcript.delta") opts.on({ type: "output_transcript", generation: 0, text: e.delta, final: false });
             else if (e.type === "session.delegation.created" && e.delegation?.target === "client") opts.on({ type: "delegation", id: e.delegation.id, offsetMs: e.offset_ms });
             else if (e.type === "session.closed") { closed = true; if (session) sessions.delete(session); opts.on({ type: "closed", reason: "Session terminée" }); }
           },

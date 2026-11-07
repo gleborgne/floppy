@@ -43,6 +43,23 @@ beforeAll(async () => {
 });
 
 describe("fenêtre des réglages (Preact)", () => {
+  it("la voix active expose l'action d'ajout des autres voix intégrées dans sa fiche", async () => {
+    const data = structuredClone(DEMO.items);
+    const provider = data.providers.find((p: Any) => p.items.some((i: Any) => i.id === "anna"));
+    provider.can.action = true;
+    provider.items.find((i: Any) => i.id === "anna").actions = [{ id: "add-builtins", label: { fr: "Ajouter les autres voix intégrées", en: "Add the other built-in voices" } }];
+    pushItems(data);
+    await flush();
+    byText("#nav button", "Voix")!.click();
+    byText("#content .srow.pick", "Anna")!.click();
+    itemOp.mockClear();
+    byText("#content button", "Ajouter les autres voix intégrées")!.click();
+    await flush();
+    expect(itemOp).toHaveBeenCalledWith({ op: "action", provider: provider.id, id: "anna", action: "add-builtins" });
+    pushItems(structuredClone(DEMO.items));
+    await flush();
+  });
+
   it("un rafraîchissement garde la page : même bouton Retour, pas d'animation rejouée, retour au premier clic", async () => {
     byText("#nav button", "Cerveau")!.click();
     byText(".srow.pick", "Gemma 4 12B")!.click();

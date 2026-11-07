@@ -10,7 +10,7 @@
 //   elle change) ; les erreurs montrées dans les fenêtres suivent la langue de l'interface (ctx.uiLang()).
 // - Interruption : si l'utilisateur parle pendant la voix, tout s'arrête (cerveau, synthèse, lecture).
 import { definePlugin, type Text, AudioHistory, T, tr, errorText } from "@floppy/core";
-import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, TurnMode, ConversationCommand, ConversationCommandInput } from "@floppy/contracts";
+import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, TurnMode, ConversationCommand, ConversationCommandInput, SpeechDelivery } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, SentenceSplitter, matchQuickSetting } from "./text.ts";
 
@@ -23,6 +23,7 @@ import { withIdleTimeout } from "./idle.ts";
 import { Config, PHRASES, ECHO_TAIL_MS, type Body, type Turn } from "./model.ts";
 import { createInitiatives } from "./initiatives.ts";
 import { voiceHandler } from "./voice-events.ts";
+import { sentenceGesture } from "./gesture.ts";
 
 export { PHRASES };
 
@@ -86,6 +87,16 @@ export default definePlugin<Config>({
     const mute = separate && !tts && ttsSetting?.value === "@none" && (ttsSetting.options ?? []).some((o) => o.value !== "@none");
     const ttsUnavailable = separate && !tts && !mute;
     let tone = ctx.settings.saved<string>("ton") ?? tr(PHRASES.tone, lang);
+    const savedProfile = ctx.settings.saved<string>("expressivite");
+    let profile: SpeechDelivery["profile"] = savedProfile === "discreet" || savedProfile === "natural" || savedProfile === "playful" ? savedProfile : cfg.expressiveness;
+    ctx.settings.declare([{
+      key: "expressivite", section: "voix", type: "enum", risk: "free",
+      label: T("Expressivité", "Expressiveness"), description: T("Intensité des expressions et jeu des voix compatibles.", "Expression intensity and delivery of compatible voices."),
+      options: [{ value: "discreet", label: T("Discret", "Discreet"), aliases: ["discret", "discrete", "discreet"] },
+        { value: "natural", label: T("Naturel", "Natural"), aliases: ["naturel", "naturelle", "natural"] },
+        { value: "playful", label: T("Joueur", "Playful"), aliases: ["joueur", "joueuse", "playful"] }],
+      get: () => profile, set: v => { profile = v as SpeechDelivery["profile"]; for (const b of bodies.values()) b.live?.updateTone(); },
+    }]);
     ctx.settings.declare([{ key: "ton", section: "voix", label: { fr: "Ton", en: "Tone" }, description: { fr: "La manière de parler, commune à tous les modes.", en: "Speaking style shared by all conversation modes." }, type: "text", maxLength: 300, risk: "free", get: () => tone, set: (v) => { tone = String(v); for (const b of bodies.values()) b.live?.updateTone(); } }]);
     const wake = wakeword?.words?.() ?? [...ctx.assistant.wake_words];
     let freeListen = ctx.settings.saved<number>("ecoute_libre") ?? cfg.free_listen_s;
@@ -114,9 +125,13 @@ export default definePlugin<Config>({
       if (m) hub.broadcast({ type: "mood", ...m }, "emotion");
     };
     ctx.interval(() => { mood.tick(); sendMood(); }, 20_000);
-    const setEmotion = (emotion: Emotion | string, ms?: number, intensity?: number) => {
+    const setEmotion = (emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }) => {
       clearTimeout(neutralTimer);
-      hub.broadcast({ type: "emotion", emotion: emotion as Emotion, ...(ms ? { ms } : {}), ...(intensity === undefined ? {} : { intensity }) }, "emotion");
+      for (const body of hub.sessions()) {
+        if (!body.capabilities.includes("emotion")) continue;
+        hub.send(body.id, { type: "emotion", emotion: emotion as Emotion, ...(ms ? { ms } : {}), ...(intensity === undefined && profile === "playful" ? {} : { intensity: (intensity ?? 1) * (profile === "discreet" ? 0.45 : profile === "natural" ? 0.8 : 1) }),
+          ...(timing?.body === body.id && body.capabilities.includes("speech_timing") ? { nextAudio: timing.id } : {}) });
+      }
       mood.feel(emotion as Emotion, intensity ?? 1);
       sendMood();
     };
@@ -144,10 +159,13 @@ export default definePlugin<Config>({
     };
 
     /** Envoie une phrase à la voix et la garde en mémoire pour reconnaître son écho. */
-    const speakOut = (b: Body, id: string, text: string) => {
+    const speakOut = (b: Body, id: string, text: string, emotion?: string) => {
       const now = Date.now();
       b.spoken = [...(b.spoken ?? []).filter((x) => now - x.at < 120_000), { text, at: now }].slice(-30);
-      b.output!.speak(id, text);
+      const intent = emotion && ["sorry", "sad", "cry", "scared"].includes(emotion) ? "reassure"
+        : emotion && ["mischief", "wink", "laugh", "joy", "excited"].includes(emotion) ? "playful"
+        : emotion && ["thinking", "focused", "curious"].includes(emotion) ? "explain" : "neutral";
+      b.output!.speak(id, text, { intent, profile, language: lang, tone });
     };
     /** Floppy parle ou vient de parler : un texte entendu peut être l'écho de sa voix. */
     const mayEcho = (b: Body) => b.playing || !!b.duck || Date.now() - (b.playEndAt ?? 0) < ECHO_TAIL_MS;
@@ -187,7 +205,7 @@ export default definePlugin<Config>({
       interrupt(b, "l'utilisateur parle");
       // Sans écoute libre relancée, une coupure après sa fin jetait la phrase en silence.
       listenFreely(b);
-      cue("startle");
+      setEmotion("neutral");
     }
 
     const interrupt = (b: Body, why: string) => {
@@ -239,14 +257,17 @@ export default definePlugin<Config>({
         let full = "";
         // Émotion arrivée au milieu de la réponse : elle attend que sa phrase soit dite (voix seulement).
         let nextCue: { emotion: Emotion; intensity?: number } | undefined;
+        let speakingEmotion: string | undefined;
         const say = (s: string, paragraph = false) => {
           if (mode !== "voice" || !b.stream || t.abort.signal.aborted) return;
           const id = `t${t.n}-${++seq}`;
-          if (nextCue) { t.cues.set(id, nextCue); nextCue = undefined; }
+          if (nextCue) { t.cues.set(id, nextCue); speakingEmotion = nextCue.emotion; nextCue = undefined; }
           if (paragraph) (t.pauses ??= new Set()).add(id);
+          (t.gestures ??= new Map()).set(id, { intent: sentenceGesture(s, speakingEmotion, text),
+            intensity: profile === "discreet" ? 0.45 : profile === "natural" ? 0.8 : 1 });
           t.pending.add(id);
           mark("first_sentence");
-          speakOut(b, id, s);
+          speakOut(b, id, s, speakingEmotion);
         };
         mark("brain_start");
         // Contexte d'une annonce récente (moins de 2 minutes) : « c'est quoi ce job ? » garde son sens.
@@ -270,8 +291,8 @@ ${text}` : text;
             for (const p of splitter.pushParts(ev.delta)) say(p.text, p.paragraph);
           } else if (ev.type === "emotion") {
             const e = { emotion: ev.emotion as Emotion, ...(ev.intensity === undefined ? {} : { intensity: ev.intensity }) };
-            // Avant tout texte, en mode texte, ou sans voix : tout de suite. Sinon : avec la phrase qui suit.
-            if (mode !== "voice" || !b.stream || (!seq && !full.trim())) setEmotion(e.emotion, undefined, e.intensity);
+            // Avec une voix, même la première émotion attend l'audio de sa phrase.
+            if (mode !== "voice" || !b.stream) setEmotion(e.emotion, undefined, e.intensity);
             else nextCue = e;
           } else if (ev.type === "tool") {
             mark("first_tool");
@@ -299,7 +320,7 @@ ${text}` : text;
         if (mode === "voice" && b.stream) {
           const id = `t${t.n}-err`;
           t.pending.add(id);
-          speakOut(b, id, errorReply);
+          speakOut(b, id, errorReply, "sorry");
         } else finish(b, t);
       } finally {
         release();
@@ -462,13 +483,13 @@ ${text}` : text;
       if (!ctx.alive) return;
       if (live) b.live = new LiveConversation({
         ctx, service: live, brain, body: b.id, history: b.history!,
-        tone: () => tone, freeListen: () => freeListen,
+        tone: () => tone, profile: () => profile, freeListen: () => freeListen,
         onInput: (text) => {
           if (isSleepCommand(text, wake)) { b.muted = true; b.history?.clear(); b.live?.stop("veille"); setState(b, "sleep"); return; }
           answerApproval(b, text);
         },
         onState: (state) => { setState(b, b.muted ? "sleep" : state); b.stream?.setSpeaking(!b.muted && state === "speaking"); if (!b.muted && state === "listening") b.awakeUntil = Date.now() + freeListen * 1000; },
-        onPlaying: (on) => { b.playing = on; if (!on) b.feeler?.reset(); },
+        onPlaying: (on) => { b.playing = on; if (!on) { b.feeler?.reset(); neutralSoon(); } },
         onIdle: drain,
         // Le modèle Live ne donne pas d'émotion : on la devine dans les mots (les vôtres, puis les siens).
         onHeard: (text) => {
@@ -476,9 +497,10 @@ ${text}` : text;
           const g = guessEmotion(stripWakeWord(text, wake), "user");
           if (g) setEmotion(g.emotion, 1500, g.intensity);
         },
-        onReply: (delta) => {
+        onReply: (delta, timing) => {
           const g = (b.feeler ??= new ReplyFeeler()).push(delta);
-          if (g) { setEmotion(g.emotion, undefined, g.intensity); neutralSoon(); }
+          if (g) setEmotion(g.emotion, undefined, g.intensity, timing);
+          return g?.emotion;
         },
       });
       await attachWakeword(b);

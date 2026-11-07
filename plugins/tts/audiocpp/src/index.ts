@@ -7,7 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, wr
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, httpHealthy, startLocalServer, scanGguf as scanAll, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
-import type { TtsChunk, TtsService } from "@floppy/contracts";
+import { speechInstructions, type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -109,10 +109,13 @@ export function serverConfig(item: ModelValues, cfg: ServerCfg, dirs: { voiceDir
 }
 
 /** Corps de la requête de parole. `lang` : langue de l'assistant, utilisée quand le modèle n'en impose pas. */
-export function speechRequest(item: ModelValues, text: string, lang?: string): Record<string, unknown> {
+export function speechRequest(item: ModelValues, text: string, lang?: string, delivery?: SpeechDelivery): Record<string, unknown> {
   const language = item.langue || lang;
   const options: Record<string, unknown> = {};
   const fam = familyOf(item);
+  // Seul CustomVoice 1.7B garantit ce contrôle ; le clonage garde son chemin habituel.
+  const expressive = fam === "qwen3_tts" && /1[._-]7b.*customvoice/i.test(item.model) && item.voix === "integree";
+  const instructions = delivery && expressive ? [delivery.intent === "reassure" ? "" : item.instruct, speechInstructions(delivery)].filter(Boolean).join("\n") : item.instruct;
   if (fam === "voxcpm2") options.retry_badcase = false;
   if (item.voix === "integree") {
     if (item.speaker) options.voice_id = item.speaker;
@@ -122,7 +125,7 @@ export function speechRequest(item: ModelValues, text: string, lang?: string): R
     ...(item.voix === "clone" ? { voice: VOICE_NAME } : {}),
     ...(item.mode === "streaming" ? { stream_format: "sse" } : { response_format: "wav" }),
     ...(language ? { language } : {}),
-    ...(item.instruct ? { instructions: item.instruct } : {}),
+    ...(instructions ? { instructions } : {}),
     ...(Object.keys(options).length ? { options } : {}),
   };
 }
@@ -444,7 +447,7 @@ return definePlugin<Config>({
             let r: Response;
             try {
               r = await fetch(`${base}/v1/audio/speech`, {
-                method: "POST", signal, headers: { "content-type": "application/json" }, body: JSON.stringify(speechRequest(e, text, ctx.assistant.language)),
+                method: "POST", signal, headers: { "content-type": "application/json" }, body: JSON.stringify(speechRequest(e, text, ctx.assistant.language, opts.delivery)),
               });
             } catch (err) {
               if (signal.aborted) throw err;

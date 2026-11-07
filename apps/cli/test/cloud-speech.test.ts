@@ -122,10 +122,13 @@ describe("fournisseurs Live : contrat WebSocket", () => {
       expect(events.at(-1)).toEqual({ type: "tool_call", id: "call", name: "agenda", args: {} });
       session.toolResult!("call", "agenda", { text: "rien", status: "done" });
       expect(ws.sent.at(-1).toolResponse.functionResponses[0].id).toBe("call");
-      ws.receive({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: "audio/pcm;rate=24000", data: "AQA=" } }] } } });
+      ws.receive({ serverContent: { outputTranscription: { text: "Bonjour." }, modelTurn: { parts: [{ inlineData: { mimeType: "audio/pcm;rate=24000", data: "AQA=" } }] } } });
+      expect(events.at(-2)).toEqual({ type: "output_transcript", text: "Bonjour.", final: false, generation: 0 });
       expect(events.at(-1)).toMatchObject({ type: "audio", rate: 24000, pcm: new Int16Array([1]) });
       ws.receive({ serverContent: { interrupted: true } });
       expect(events.at(-1)).toEqual({ type: "interrupted", generation: 1 });
+      ws.receive({ serverContent: { outputTranscription: { text: "Après." } } });
+      expect(events.at(-1)).toMatchObject({ type: "output_transcript", generation: 1 });
       await session.close(); expect(ws.readyState).toBe(3);
     } finally { await k.stopAll(); }
   });

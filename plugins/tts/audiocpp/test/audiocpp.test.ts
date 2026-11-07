@@ -17,6 +17,14 @@ const cfg = { port: 8095, backend: "cpu" as const, device: 0, threads: 4 };
 const clone = clean({ label: "Q", model, voix: "clone", refWav: wav, refText: "Bonjour", langue: "fr" });
 
 describe("serverConfig / speechRequest", () => {
+  it("adapte le jeu au CustomVoice 1.7B sans envoyer de consignes dynamiques aux voix clonées", () => {
+    const delivery = { intent: "reassure", profile: "playful", language: "fr", tone: "sarcastique" } as const;
+    const custom = clean({ label: "Q", model: "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf", voix: "integree", speaker: "Vivian", instruct: "toujours sarcastique" });
+    const req = speechRequest(custom, "Ça va aller.", "fr", delivery);
+    expect(req.input).toBe("Ça va aller."); expect(req.instructions).toContain("calme"); expect(req.instructions).not.toContain("toujours sarcastique");
+    expect(speechRequest(clone, "Bonjour", "fr", delivery)).not.toHaveProperty("instructions");
+    expect(speechRequest({ ...custom, model: "qwen3-tts-0.6b-customvoice.gguf", instruct: "" }, "Bonjour", "fr", delivery)).not.toHaveProperty("instructions");
+  });
   it("écrit la config du serveur avec la famille et le mode", () => {
     const c = serverConfig(clone, cfg, { voiceDir: "C:\\x\\voices" }) as { models: Record<string, unknown>[]; voice_dir: string; backend: string; port: number };
     expect(c).toMatchObject({ host: "127.0.0.1", port: 8095, backend: "cpu", max_loaded_models: 1, ui: false, voice_dir: "C:/x/voices" });

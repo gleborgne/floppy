@@ -1,7 +1,7 @@
 // Avatar « pixelcat » : un petit chat assis, dessiné en gros pixels comme dans un jeu vidéo rétro.
 // Les émotions passent par les oreilles, les yeux, la bouche, la queue et un petit signe qui flotte (z, ?, !, cœur).
 // Le sprite (32 x 32 cases) est redessiné à chaque image puis envoyé au GPU (WebGL2) ; 1 fragment shader l'agrandit
-// sans flou, avec un relief par pixel, la lueur des yeux, un halo de la couleur de l'état et des lignes de balayage.
+// sans flou, avec un relief par pixel, un halo de la couleur de l'état et des lignes de balayage.
 // Vivant : humeur au repos, regard (la tête et les pupilles suivent la souris), oreille (les oreilles se dressent quand
 // la voix entendue monte), voix (la bouche s'ouvre avec le niveau), ressort, hochement, sursaut, clic, clignement.
 
@@ -88,8 +88,9 @@ function approach(cur, tgt, k) {
  * Le « vivant » commun : état, émotion (avec durée), humeur, regard, oreille, voix, ressort, hochement, clignement.
  * tick(now) avance tout ; L.key = le jeu de paramètres voulu maintenant (veille > émotion > état ; au repos, l'humeur).
  */
-function makeLife(reducedMotion) {
+function makeLife(reducedMotion, motion) {
   const L = {
+    motion: { nod: 0, lean: 0, lookX: 0, lookY: 0, smile: 0, open: 0 },
     state: "idle", emotion: "neutral", intensity: 1, until: 0, level: 0, levelS: 0, hearing: 0, hearingS: 0,
     mood: { valence: 0.2, energy: 0.6 }, gaze: { x: 0, y: 0, at: -1e9 }, look: { x: 0, y: 0 },
     pop: 0, popV: 0, nodAt: -1e9, flashEmo: "", flashUntil: 0, blinkAt: 0, blinkT: -1e9, blink: 0,
@@ -109,11 +110,13 @@ function makeLife(reducedMotion) {
     const dt = Math.min(0.05, Math.max(0, (now - L.last) / 1000));
     L.last = now;
     L.dt = dt;
+    const pose = !reducedMotion && L.state === "speaking" ? motion?.sample() : null;
+    for (const key in L.motion) L.motion[key] += ((pose?.[key] ?? 0) - L.motion[key]) * (1 - Math.exp(-dt * 12));
     if (L.until && now > L.until) { L.emotion = "neutral"; L.until = 0; }
     L.key = wanted(now);
     L.levelS += (L.level - L.levelS) * Math.min(1, dt * 18);
     L.hearingS += (L.hearing - L.hearingS) * Math.min(1, dt * (L.hearing > L.hearingS ? 14 : 4));
-    const g = now - L.gaze.at < 5000 ? L.gaze : { x: 0, y: 0 };
+    const g = motion?.gaze() ?? (now - L.gaze.at < 5000 ? L.gaze : { x: 0, y: 0 });
     L.look.x += (g.x - L.look.x) * Math.min(1, dt * 4);
     L.look.y += (g.y - L.look.y) * Math.min(1, dt * 4);
     const wk = 2 * Math.PI * 2.4;
@@ -194,11 +197,11 @@ vec3 neon(float d, float w, vec3 c, float px) {
 
 // Le chat est un sprite de 32 x 32 pixels, redessiné à chaque image (c'est très peu de cases) puis envoyé au GPU.
 // Le shader l'agrandit sans flou, ajoute un léger relief par pixel, la lueur des pixels qui brillent
-// (yeux, signes), un halo de la couleur de l'état et des lignes de balayage d'écran rétro.
+// (signes), un halo de la couleur de l'état et des lignes de balayage d'écran rétro.
 const G = 32;
 // Palette : 0 vide, 1 contour, 2 pelage, 3 pelage sombre, 4 clair (museau, poitrail), 5 rose, 6 œil, 7 blanc, 8 pupille, 9 signe (couleur de l'état).
-const PAL = ["#000000", "#24162E", "#F5A04A", "#C8662C", "#FFE3B8", "#FF7BA5", "#8DFF6A", "#FFFFFF", "#1B1030", "#00E5FF"];
-const GLOW = new Set([6, 9]);           // ces pixels brillent
+const PAL = ["#000000", "#493044", "#F6B76B", "#D68B4F", "#FFF0D4", "#F29C9F", "#896078", "#FFF9ED", "#35283F", "#00E5FF"];
+export const GLOW = new Set([9]);     // seuls les signes brillent, jamais le regard
 
 // Par émotion : oreilles, yeux, bouche, signe, queue (en l'air 0..1, vitesse, amplitude), saut, couleur de l'état.
 const P = {
@@ -216,7 +219,7 @@ const P = {
   wink: { ears: "up", eyes: "wink", mouth: "smile", tail: [1, 2.5, 1.6], c: "#FFD000" },
 };
 // Pointe de l'oreille gauche (relative au centre de la tête) ; la droite est le miroir, sauf « tilt ».
-const EAR = { up: [-7.5, -12], perk: [-7.5, -13.5], down: [-11.5, -8], back: [-12, -7], tilt: [-7.5, -12] };
+const EAR = { up: [-7, -10.5], perk: [-7, -11.5], down: [-10, -5], back: [-10.5, -4], tilt: [-7, -10.5] };
 const GLYPH = {
   z: ["XXXX", "..X.", ".X..", "XXXX"],
   q: ["XXX", "..X", ".XX", "...", ".X."],
@@ -226,7 +229,7 @@ const GLYPH = {
 const HEART_EYE = ["X.X", "XXX", ".X."];
 
 /** Dessine le chat dans g (une case = un index de palette). */
-function paint(g, f) {
+export function paint(g, f) {
   g.fill(0);
   const part = new Uint8Array(G * G);                         // 1 tête, 2 corps (pour le trait entre les deux)
   const set = (x, y, c, pt = 0) => {
@@ -265,30 +268,30 @@ function paint(g, f) {
     ell(ux * f.tail[0] + gx * (1 - f.tail[0]), uy * f.tail[0] + gy * (1 - f.tail[0]), 1.25 + f.puff * 0.4, 1.25 + f.puff * 0.4, i > 8 ? 3 : 2, 2);
   }
   // Corps, poitrail, pattes.
-  ell(hx, by, 7.2 + f.puff * 0.5, 5.8, 2, 2, G - 1);
-  ell(hx, by - 1, 3.2, 3, 4, 2);
-  ell(hx - 3.2, by + 4.6, 2.1, 1.3, 4, 2);
-  ell(mx(hx - 3.2), by + 4.6, 2.1, 1.3, 4, 2);
+  ell(hx, by, 5.8 + f.puff * 0.5, 5.3, 2, 2, G - 1);
+  ell(hx, by, 2.8, 2.8, 4, 2);
+  ell(hx - 2.8, by + 4.1, 2, 1.3, 4, 2);
+  ell(mx(hx - 2.8), by + 4.1, 2, 1.3, 4, 2);
   // Tête et oreilles.
-  const rx = 9.6 + f.puff * 0.6, ry = 7.6 + f.puff * 0.3;
+  const rx = 10 + f.puff * 0.4, ry = 7.6 + f.puff * 0.3;
   const earL = EAR[f.ears], earR = f.ears === "tilt" ? EAR.down : earL;
   const tipL = [hx + earL[0], hy + earL[1] - f.perk], tipR = [mx(hx + earR[0]), hy + earR[1] - f.perk];
-  const baseL = [[hx - 9, hy - 2], [hx - 2.5, hy - 6.5]], baseR = [[mx(hx - 9), hy - 2], [mx(hx - 2.5), hy - 6.5]];
+  const baseL = [[hx - 9, hy - 3], [hx - 3, hy - 5]], baseR = [[mx(hx - 9), hy - 3], [mx(hx - 3), hy - 5]];
   tri(baseL[0], baseL[1], tipL, 2, 1);
   tri(baseR[0], baseR[1], tipR, 2, 1);
+  ell(hx, hy, rx, ry, 2, 1);
   const shrink = (p, c) => [c[0] + (p[0] - c[0]) * 0.5, c[1] + (p[1] - c[1]) * 0.5];
   for (const [b0, b1, tp] of [[baseL[0], baseL[1], tipL], [baseR[0], baseR[1], tipR]]) {
     const cc = [(b0[0] + b1[0] + tp[0]) / 3, (b0[1] + b1[1] + tp[1]) / 3];
     tri(shrink(b0, cc), shrink(b1, cc), shrink(tp, cc), 5, 1);
   }
-  ell(hx, hy, rx, ry, 2, 1);
   // Ombre du pelage en bas de la tête, rayures sur le front, museau, nez.
   for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
     if (part[y * G + x] === 1 && g[y * G + x] === 2 && ((x + 0.5 - hx) / rx) ** 2 + ((y + 0.5 - hy) / ry) ** 2 > 0.72 && y > hy + 2) g[y * G + x] = 3;
   }
-  for (const dx of [-2, 0, 1, 3]) { const x = hx + dx - 1; set(x, hy - 7, 3); set(x, hy - 6, 3); }
-  set(hx - 1, hy - 5, 3); set(hx, hy - 5, 3);
-  ell(hx, hy + 4.4, 4.3, 2.4, 4, 1);
+  for (const dx of [-3, 2]) { set(hx + dx, hy - 6, 3); set(hx + dx, hy - 5, 3); }
+  set(hx - 1, hy - 6, 3); set(hx, hy - 6, 3);
+  ell(hx, hy + 3.5, 3.6, 2, 4, 1);
   set(hx - 1, hy + 2, 5); set(hx, hy + 2, 5);
 
   // Contour : chaque case vide qui touche le chat. Puis le trait entre la tête et le corps.
@@ -301,43 +304,40 @@ function paint(g, f) {
   for (let y = 1; y < G; y++) for (let x = 0; x < G; x++)
     if (part[y * G + x] === 2 && part[(y - 1) * G + x] === 1) g[y * G + x] = 1;
 
-  // Moustaches (dehors, en clair).
+  // Petites joues roses et moustaches courtes : le visage reste rond.
   for (const s of [1, -1]) {
     const X = (x) => (s > 0 ? x : mc(x));
-    set(X(hx - 11), hy + 2, 4); set(X(hx - 12), hy + 1, 4);
-    set(X(hx - 11), hy + 4, 4); set(X(hx - 12), hy + 5, 4);
+    set(X(hx - 7), hy + 2, 5); set(X(hx - 6), hy + 2, 5);
+    set(X(hx - 10), hy + 2, 4); set(X(hx - 11), hy + 2, 4);
   }
 
-  // Yeux. Boîte de 3 x 3 : gauche en (hx-6, hy-2), droite en miroir.
+  // Grands yeux sombres de chaton, reflets crème et bas mauve, sans iris lumineux.
+  // Le regard se déplace dans le même sens des deux côtés, sans miroir des pupilles.
   const eye = (x0, y0, kind, right) => {
-    const px = Math.max(0, Math.min(2, 1 + f.gx)), py = f.gy < -0.4 ? 0 : 1;
     const X = (i) => (right ? mc(x0 + i) : x0 + i);
+    const roundedEye = (big = false, sad = false) => {
+      const dx = Math.max(-1, Math.min(1, f.gx));
+      const dy = kind === "lookup" || f.gy < -0.4 ? -1 : f.gy > 0.4 ? 1 : 0;
+      const left = (right ? mc(x0 + 3) : x0) + dx;
+      const top = y0 + dy + (sad ? 1 : big ? -1 : 0);
+      const rows = sad ? ["8888", ".66."] : big ? [".88.", "8888", "8888", "8888", ".66."] : [".88.", "8888", "8888", ".66."];
+      rows.forEach((row, y) => [...row].forEach((c, x) => { if (c !== ".") set(left + x, top + y, Number(c)); }));
+      set(left + 1, top + (sad ? 0 : 1), 7);
+    };
     switch (kind) {
-      case "big":
-        for (let j = -1; j < 3; j++) for (let i = -1; i < 3; i++) set(X(i), y0 + j, 6);
-        for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) set(X(i + Math.max(-1, Math.min(0, f.gx))), y0 + j + (py ? 0 : -1), 8);
-        set(X(-1), y0 - 1, 7);
-        break;
+      case "big": roundedEye(true); break;
       case "closed": for (let i = 0; i < 3; i++) set(X(i), y0 + 2, 1); break;
       case "happy": set(X(0), y0 + 1, 1); set(X(1), y0, 1); set(X(2), y0 + 1, 1); break;
-      case "heart": glyph(HEART_EYE.map((r) => (right ? [...r].reverse().join("") : r)), right ? mc(x0 + 2) : x0, y0, 9); break;
+      case "heart": glyph(HEART_EYE, right ? mc(x0 + 2) : x0, y0, 5); break;
       case "narrow":
-        for (let i = 0; i < 3; i++) set(X(i), y0 + 1, 6);
-        set(X(px), y0 + 1, 8);
+        for (let i = 0; i < 3; i++) set(X(i), y0 + 1, 8);
         set(X(0), y0 - 1, 1); set(X(1), y0 - 1, 1); set(X(2), y0, 1);
         break;
       case "sad":
-        for (let j = 1; j < 3; j++) for (let i = 0; i < 3; i++) set(X(i), y0 + j, 6);
-        set(X(px), y0 + 2, 8); set(X(0), y0 + 1, 7);
+        roundedEye(false, true);
         set(X(0), y0, 1); set(X(1), y0 - 1, 1); set(X(2), y0 - 1, 1);
         break;
-      default: {   // open, lookup
-        for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) set(X(i), y0 + j, 6);
-        const up = kind === "lookup";
-        const cx = up ? 2 : px;
-        set(X(cx), y0 + (up ? 0 : py), 8); set(X(cx), y0 + (up ? 1 : py + 1), 8);
-        set(X(up ? 0 : 0), y0, cx === 0 ? 6 : 7);
-      }
+      default: roundedEye(); // open, lookup
     }
   };
   let [eL, eR] = { confused: ["open", "big"], wink: ["open", "happy"] }[f.eyes] ?? [f.eyes, f.eyes];
@@ -376,12 +376,14 @@ const FS = `#version 300 es
 precision highp float;
 in vec2 vP; out vec4 o;
 uniform sampler2D uTex;
-uniform float uT, uZoom, uPx, uHalo, uDim;
+uniform float uT, uZoom, uPx, uHalo, uDim, uLean, uNod;
 uniform vec3 uAcc;
 const float GRID = ${G}.0;
 vec4 cell(ivec2 c) { if (c.x < 0 || c.y < 0 || c.x >= ${G} || c.y >= ${G}) return vec4(0.0); return texelFetch(uTex, c, 0); }
 void main() {
   vec2 p = vec2(vP.x, -vP.y) * uZoom;
+  p.y -= uNod;
+  p = mat2(cos(uLean), -sin(uLean), sin(uLean), cos(uLean)) * p;
   vec2 g = (p + 0.95) / 1.9 * GRID;           // coordonnées en cases
   ivec2 c = ivec2(floor(g));
   vec2 f = fract(g);
@@ -392,7 +394,7 @@ void main() {
   col += uAcc * exp(-r * r * 3.5) * 0.22 * uHalo;
   vec2 sh = (p - vec2(0.0, 0.93)) / vec2(0.55, 0.05);
   col += uAcc * exp(-dot(sh, sh)) * 0.25 * uHalo;
-  // Lueur des pixels qui brillent (yeux, signes).
+  // Lueur des signes flottants ; le visage reste doux.
   float glow = 0.0; vec3 gc = vec3(0.0);
   for (int j = -3; j <= 3; j++) for (int i = -3; i <= 3; i++) {
     vec4 t = cell(c + ivec2(i, j));
@@ -416,10 +418,10 @@ void main() {
 
 const STATE_HALO = { idle: 0.6, listening: 1.1, thinking: 0.9, speaking: 1.0, sleep: 0.3 };
 
-export function create(container, { reducedMotion = false } = {}) {
+export function create(container, { reducedMotion = false, motion } = {}) {
   const sf = surface(container, FS);
   const gl = sf.gl;
-  const L = makeLife(reducedMotion);
+  const L = makeLife(reducedMotion, motion);
   const g = new Uint8Array(G * G);
   const rgba = new Uint8Array(G * G * 4);
   const pal = PAL.map(rgb);
@@ -451,8 +453,8 @@ export function create(container, { reducedMotion = false } = {}) {
     const f = {
       t: tt, hx: 16 + gx, hy: 13 + bob, by: 24 + hop + Math.max(0, spring),
       ears: p.ears, eyes: p.eyes, mouth: L.state === "speaking" && p.mouth !== "o" ? "open" : p.mouth, glyph: p.glyph,
-      tail: p.tail, puff: p.puff ?? 0, perk: L.state === "listening" && L.hearingS > 0.3 ? 1 : 0,
-      gx: Math.round(L.look.x * 1.4), gy: L.look.y, blink: L.blink > 0.4, level: L.levelS,
+      tail: [p.tail[0], p.tail[1], p.tail[2] + L.motion.smile * 0.8], puff: p.puff ?? 0, perk: L.state === "listening" && L.hearingS > 0.3 ? 1 : 0,
+      gx: Math.round(L.look.x * 1.4 + L.motion.lookX), gy: L.look.y + L.motion.lookY * 0.8, blink: L.blink > 0.4, level: L.levelS,
     };
     paint(g, f);
     pal[9] = acc;
@@ -469,6 +471,8 @@ export function create(container, { reducedMotion = false } = {}) {
       gl.uniform1f(u.uPx, px);
       gl.uniform1f(u.uHalo, halo);
       gl.uniform1f(u.uDim, dim);
+      gl.uniform1f(u.uLean, L.motion.lean * 0.035);
+      gl.uniform1f(u.uNod, L.motion.nod * 0.025);
       gl.uniform3f(u.uAcc, acc[0], acc[1], acc[2]);
     });
   }

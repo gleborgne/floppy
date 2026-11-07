@@ -4,6 +4,7 @@
 export type * from "./brain.ts";
 export type * from "./agents.ts";
 export type * from "./voice.ts";
+export { speechInstructions, liveDeliveryInstructions } from "./speech-delivery.ts";
 export type * from "./coder.ts";
 export type * from "./mcp.ts";
 export type * from "./body.ts";

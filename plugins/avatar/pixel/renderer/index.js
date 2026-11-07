@@ -125,7 +125,8 @@ function compile(gl, type, src) {
   return s;
 }
 
-export function create(container, { reducedMotion = false } = {}) {
+export function create(container, { reducedMotion = false, motion } = {}) {
+  const pose = { nod: 0, lean: 0, lookX: 0, lookY: 0, smile: 0, open: 0 };
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "width:100%;height:100%;display:block";
   container.append(canvas);
@@ -202,8 +203,11 @@ export function create(container, { reducedMotion = false } = {}) {
     const t = now / 1000;
     const blinking = !asleep && blinkAt && now - blinkAt < 130;
     const lk = [...(e.look ?? [0, 0])];
+    const attention = motion?.gaze();
+    if (attention && !asleep) { lk[0] = attention.x * 1.6; lk[1] = attention.y * 1.2; }
+    lk[0] += pose.lookX; lk[1] += pose.lookY;
     // Regard : il suit la souris quelques secondes après qu'elle a bougé.
-    if (!e.look && !asleep && now - gaze.at < 5000 && state !== "thinking") { lk[0] += gaze.x * 1.6; lk[1] += gaze.y * 1.2; }
+    if (!attention && !e.look && !asleep && now - gaze.at < 5000 && state !== "thinking") { lk[0] += gaze.x * 1.6; lk[1] += gaze.y * 1.2; }
     look[0] += (lk[0] - look[0]) * 0.15; look[1] += (lk[1] - look[1]) * 0.15;
     const dx = Math.round(look[0]), dy = Math.round(look[1]);
     const eyeCh = e.pinkEyes ? 1 : 0;
@@ -243,6 +247,8 @@ export function create(container, { reducedMotion = false } = {}) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    const targetPose = !reducedMotion && state === "speaking" ? motion?.sample() : null;
+    for (const key in pose) pose[key] += ((targetPose?.[key] ?? 0) - pose[key]) * (1 - Math.exp(-dt * 12));
     if (until && now > until) { emotion = "neutral"; until = 0; waveAt = now; }
     if (state !== "sleep" && now > nextBlink) { blinkAt = now; nextBlink = now + 2400 + Math.random() * 4200; }
     levelS += (level - levelS) * Math.min(1, dt * 18);
@@ -279,10 +285,10 @@ export function create(container, { reducedMotion = false } = {}) {
     const tilt = reducedMotion ? 0 : (emotion === "confused" || emotion === "thinking" ? 0.10 : 0) + Math.sin(t * 0.7) * 0.012;
     fit();
     gl.uniform1f(U.uTime, t);
-    gl.uniform1f(U.uScale, scale);
-    gl.uniform1f(U.uBob, breathe * 0.006 - nod);
+    gl.uniform1f(U.uScale, scale + pose.smile * 0.01);
+    gl.uniform1f(U.uBob, breathe * 0.006 - nod + pose.nod * 0.012);
     gl.uniform1f(U.uDim, state === "sleep" ? 1 : 0);
-    gl.uniform1f(U.uTilt, tilt);
+    gl.uniform1f(U.uTilt, tilt + pose.lean * 0.045);
     gl.uniform3f(U.uHalo, halo.rgb[0], halo.rgb[1], halo.rgb[2]);
     gl.uniform1f(U.uHaloK, halo.k);
     gl.clearColor(0, 0, 0, 0);

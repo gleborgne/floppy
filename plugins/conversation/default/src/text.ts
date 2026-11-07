@@ -11,6 +11,11 @@ export function tokens(s: string): string[] {
   return norm(s).match(/[a-z0-9]+/g) ?? [];
 }
 
+/** Acquiescement ou hésitation isolé : trop ambigu pour détruire une réponse en cours. */
+export function isBackchannel(text: string): boolean {
+  return /^(?:oui|ouais|yes|yeah|yep|yup|ok|okay|d accord|m+h+m*|h+m+|euh|uh|um)$/.test(tokens(text).join(" "));
+}
+
 /** Le mot d'activation est-il dans la phrase ? (comparaison par mots, sans accents ; cascade/pipeline.py) */
 export function hasWakeWord(text: string, words: string[]): boolean {
   const t = tokens(text);

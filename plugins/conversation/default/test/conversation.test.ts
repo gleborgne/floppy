@@ -288,6 +288,8 @@ const fakeBrain = definePlugin({
           yield { type: "text", delta: "Première phrase. Deu" };
           yield { type: "emotion", emotion: "mischief", intensity: 1.25 };
           yield { type: "text", delta: "xième phrase." };
+        } else if (/explique/.test(input.text)) {
+          yield { type: "text", delta: "La lumière change de direction.\n\nTu veux un exemple ?" };
         } else if (/ouvre|open/.test(input.text)) {
           const r = await ctx.tools.call("ouvrir_url", { url: "https://example.org" }, { origin: input.origin ?? "" });
           yield { type: "tool.result", name: "ouvrir_url", status: r.status };
@@ -302,6 +304,30 @@ const fakeBrain = definePlugin({
     };
     ctx.provide("brain", b);
   },
+});
+
+it("transmet les intentions et le profil du tour jusqu'au fournisseur TTS", async () => {
+  const deliveries: unknown[] = [];
+  const tts = definePlugin({ manifest: { id: "delivery-tts", version: "0", licence: "MIT", provides: ["tts"] }, apply(c) {
+    c.offer("tts", { items: () => [{ id: "test", label: "Test" }], start(f) { f.provide("tts", {
+      name: "test", async *speak(text, opts) { deliveries.push({ text, delivery: opts.delivery }); yield { rate: 24000, pcm: new Int16Array([1]) }; },
+    }); } });
+  } });
+  const k = new Kernel({ home: mkdtempSync(join(tmpdir(), "delivery-")), logger: () => {}, plugins: [bodyHub, conversation, fakeBrain, fakeVoice, tts] });
+  try {
+    await k.applyConfig({ slots: { "voice.tts": "tts/test" }, plugins: [{ id: "body", plugin: "body-hub" },
+      { id: "voice", plugin: "fake-voice" }, { id: "tts", plugin: "delivery-tts" }, { id: "brain", plugin: "fake-brain" }, { id: "conv", plugin: "conversation" }] });
+    const body = new FakeBody("delivery", ["voice", "emotion"]);
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(body.transport, { id: body.id }); body.hello();
+    await vi.waitFor(() => expect(streams.has(body.id)).toBe(true));
+    await new Promise<void>(r => setImmediate(r));
+    body.send({ type: "text", text: "raconte" });
+    await vi.waitFor(() => expect(deliveries).toHaveLength(2));
+    expect(deliveries).toMatchObject([
+      { text: "Première phrase.", delivery: { intent: "neutral", profile: "playful", language: "fr" } },
+      { text: "Deuxième phrase.", delivery: { intent: "playful", profile: "playful", language: "fr" } },
+    ]);
+  } finally { await k.stopAll(); }
 });
 
 const urlTool: BodyToolDecl = { name: "ouvrir_url", description: "Ouvre une URL", inputSchema: { type: "object", properties: { url: { type: "string" } } }, level: "write" };
@@ -444,6 +470,14 @@ describe("conversation (2 corps)", () => {
     expect(avatar.audio).toBe(cut + 2);
   });
 
+  it("le profil joueur est le défaut et le choix discret réduit les expressions à chaud", async () => {
+    expect(k.settings.list().find(s => s.key === "expressivite")?.value).toBe("playful");
+    await k.settings.change("expressivite", "discreet", "ui");
+    chat.send({ type: "text", text: "raconte" });
+    await vi.waitFor(() => expect(chat.of("reply.done")).toHaveLength(1));
+    expect(avatar.of("emotion").find(e => e.emotion === "mischief")?.intensity).toBeCloseTo(1.25 * 0.45);
+  });
+
   it("une émotion au milieu de la réponse attend que sa phrase soit dite", async () => {
     const st = streams.get("avatar")!;
     avatar.send({ type: "ptt", on: true }); // bouton parler : pas besoin du mot d'activation
@@ -453,6 +487,52 @@ describe("conversation (2 corps)", () => {
     expect(avatar.got[i]).toMatchObject({ emotion: "mischief", intensity: 1.25 });
     expect(avatar.audioAt[i]).toBe(1); // après la voix de la 1re phrase, avant celle de la 2e
     expect(avatar.audioAt[avatar.got.findIndex((m) => m.type === "emotion" && m.emotion === "happy")]).toBe(0);
+  });
+
+  it.each([["playful", 1], ["discreet", 0.45]] as const)("annote expressions et gestes pour le corps synchronisé (%s)", async (profile, intensity) => {
+    await k.settings.change("expressivite", profile, "ui");
+    const timed = new FakeBody("timed", ["voice", "emotion", "speech_timing"]);
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(timed.transport, { id: "timed" }); timed.hello();
+    await vi.waitFor(() => expect(streams.has("timed")).toBe(true));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    timed.send({ type: "ptt", on: true });
+    const st = streams.get("timed")!;
+    st.emit({ type: "transcript", text: "Floppy, raconte", audio_s: 1, stt_ms: 0, merged: false });
+    await vi.waitFor(() => expect(timed.audio).toBe(2));
+    const expressions = timed.of("emotion").filter(e => e.nextAudio);
+    expect(expressions.map(e => e.emotion)).toEqual(["happy", "mischief"]);
+    expect(new Set(expressions.map(e => e.nextAudio)).size).toBe(2);
+    expect(timed.audioAt[timed.got.indexOf(expressions[0]!)]).toBe(0);
+    expect(timed.audioAt[timed.got.indexOf(expressions[1]!)]).toBe(1);
+    const gestures = timed.of("speech.gesture");
+    expect(gestures).toEqual([
+      { type: "speech.gesture", intent: "none", intensity, nextAudio: expressions[0]!.nextAudio },
+      { type: "speech.gesture", intent: "playful", intensity, nextAudio: expressions[1]!.nextAudio },
+    ]);
+    expect(gestures.map(g => timed.audioAt[timed.got.indexOf(g)])).toEqual([0, 1]);
+    expect(avatar.of("speech.gesture")).toHaveLength(0);
+    expect(avatar.of("emotion").some(e => e.nextAudio)).toBe(false);
+    expect(avatar.of("emotion").at(-1)?.emotion).toBe("mischief");
+    st.emit({ type: "barge_in" });
+    expect(timed.of("interrupt")).toHaveLength(1);
+    expect(timed.of("cue").some(e => e.cue === "startle")).toBe(false);
+    expect(timed.of("state").at(-1)?.state).toBe("listening");
+    expect(timed.of("emotion").at(-1)?.emotion).toBe("neutral");
+    const count = timed.got.length;
+    st.emit({ type: "audio", id: expressions[1]!.nextAudio!, data: new Uint8Array(8) });
+    expect(timed.got).toHaveLength(count); expect(timed.audio).toBe(2);
+  });
+
+  it("place le geste après la pause de paragraphe, même sans étiquette émotionnelle", async () => {
+    const timed = new FakeBody("gesture-paragraph", ["voice", "emotion", "speech_timing"]);
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(timed.transport, { id: timed.id }); timed.hello();
+    await vi.waitFor(() => expect(streams.has(timed.id)).toBe(true));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    timed.send({ type: "text", text: "Explique-moi un arc-en-ciel".toLowerCase() });
+    await vi.waitFor(() => expect(timed.audio).toBe(3));
+    const gestures = timed.of("speech.gesture");
+    expect(gestures.map(g => g.intent)).toEqual(["explain", "question"]);
+    expect(gestures.map(g => timed.audioAt[timed.got.indexOf(g)])).toEqual([0, 2]);
   });
 
   it("réagit tout de suite à « merci », donne l'humeur aux corps et hoche la tête quand on lui parle", async () => {
@@ -681,6 +761,20 @@ describe("conversation (2 corps)", () => {
     expect(st.cancelled).toBe(1);
   });
 
+  it.each(["Yeah.", "Mhm.", "Oui.", "Euh."])("un acquiescement ambigu pendant la réponse (%s) reprend la lecture sans annuler", async (text) => {
+    const st = streams.get("avatar")!;
+    st.emit({ type: "transcript", text: "Floppy, explique comment fonctionne un arc-en-ciel.", audio_s: 3.9, stt_ms: 182, merged: true });
+    await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
+    const replies = st.spoken.length;
+    st.emit({ type: "barge_in" });
+    st.emit({ type: "transcript", text, audio_s: 1.02, stt_ms: 74, silence_ms: 500, merged: false });
+    expect(avatar.of("interrupt")).toHaveLength(0);
+    expect(st.cancelled).toBe(0);
+    expect(avatar.of("duck").at(-1)).toEqual({ type: "duck", on: false });
+    expect(st.spoken).toHaveLength(replies);
+    expect(k.audit.tail(50).some((r) => r.kind === "transcript.backchannel")).toBe(true);
+  });
+
   it("écho : la voix de Floppy reprise par le micro ne coupe pas la réponse", async () => {
     const st = streams.get("avatar")!;
     st.emit({ type: "transcript", text: "Floppy, ça va ?", audio_s: 1, stt_ms: 50, merged: false });
@@ -695,13 +789,23 @@ describe("conversation (2 corps)", () => {
     expect(k.audit.tail(50).some((r) => r.kind === "transcript" && r.text === "bonjour je vais bien")).toBe(false);
   });
 
-  it("un mot seul (« stop ») coupe toujours, même s'il ressemble à ce que dit Floppy", async () => {
+  it.each(["Stop.", "Attends.", "Non.", "Bien.", "Oui, attends.", "Floppy, oui."])("une interruption explicite (%s) coupe toujours", async (text) => {
     const st = streams.get("avatar")!;
     st.emit({ type: "transcript", text: "Floppy, ça va ?", audio_s: 1, stt_ms: 50, merged: false });
     await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
     st.emit({ type: "barge_in" });
-    st.emit({ type: "transcript", text: "Bien.", audio_s: 1, stt_ms: 50, merged: false });
+    st.emit({ type: "transcript", text, audio_s: 1, stt_ms: 50, merged: false });
     expect(avatar.of("interrupt")).toHaveLength(1);
+  });
+
+  it("un oui après la fin de lecture reste une réponse à part entière", async () => {
+    const st = streams.get("avatar")!;
+    st.emit({ type: "transcript", text: "Floppy, ça va ?", audio_s: 1, stt_ms: 50, merged: false });
+    await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
+    avatar.send({ type: "playback", playing: false });
+    st.emit({ type: "transcript", text: "Oui.", audio_s: 1, stt_ms: 50, merged: false });
+    await vi.waitFor(() => expect(avatar.of("transcript").at(-1)).toMatchObject({ text: "Oui." }));
+    expect(k.audit.tail(50).some(r => r.kind === "transcript.backchannel")).toBe(false);
   });
 });
 

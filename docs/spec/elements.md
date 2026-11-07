@@ -232,6 +232,11 @@ de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partag�
   audio.cpp répond « prefill requires speaker ») et VoiceDesign ne clonent pas ; la variante se lit dans le nom du
   fichier. Ils ne sont pas proposés ; une voix clonée posée sur l'un d'eux est en erreur (« ne sait pas cloner »),
   refusée à l'enregistrement et au chargement.
+- **CustomVoice importé manuellement** : la fiche d'une voix intégrée (ex. Anna) propose **Ajouter les autres voix
+  intégrées** si des locuteurs manquent. Le plugin ajoute les voix du même GGUF, sans téléchargement ni changement
+  de voix active. Il conserve la langue et les paramètres audio du modèle ; chaque nouvelle voix commence sans
+  style personnalisé. Les locuteurs déjà présents, même désactivés ou écrits avec une autre casse, ne sont pas
+  dupliqués. La reconnaissance repose sur la famille Qwen3-TTS et le nom de fichier contenant `customvoice`.
 - **Supprimer** est en haut de la page d'un élément, à côté de son nom (deux clics : le second confirme). Une voix
   en service garde le bouton : le clic répond « choisis d'abord une autre voix ».
 - Une voix clonée se modifie avec le formulaire `voice` (type de l'élément : `voice` si clonée, `gguf` si intégrée).

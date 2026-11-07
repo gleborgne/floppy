@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { definePlugin, providerConfig, readSse, Pcm16Decoder, T, TextError } from "@floppy/core";
 import type { TtsService } from "@floppy/contracts";
+import { speechInstructions } from "@floppy/contracts";
 
 const Config = z.object({
   model: z.string().regex(/^[\w.-]+$/).default("gemini-3.1-flash-tts-preview"),
@@ -32,11 +33,18 @@ export default definePlugin({
         const abort = new AbortController(); active.add(abort);
         const signal = AbortSignal.any([opts.signal, abort.signal, AbortSignal.timeout(60_000)]);
         try {
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:streamGenerateContent?alt=sse`, {
+          const response = await ctx.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:streamGenerateContent?alt=sse`, {
             method: "POST", signal,
             headers: { "x-goog-api-key": account.apiKey(), "content-type": "application/json" },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: `Synthesize speech. Read only the following transcript, exactly as written:\n${text}` }] }],
+              contents: [{ parts: [{ text: [
+                "Synthesize speech.",
+                opts.delivery ? speechInstructions(opts.delivery) : "",
+                opts.delivery?.language === "fr"
+                  ? "Parle en français, avec un débit régulier et des pauses naturelles. Lis uniquement la transcription suivante, sans la modifier :"
+                  : "Speak with a steady pace and natural pauses. Read only the following transcript, exactly as written:",
+                text,
+              ].join("\n\n") }] }],
               generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.voice } } } },
             }),
           });

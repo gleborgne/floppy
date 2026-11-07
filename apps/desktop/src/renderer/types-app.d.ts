@@ -52,6 +52,9 @@ interface AvatarInstance {
   lookAt?(x: number, y: number): void;
   setHearing?(level: number): void;
   cue?(name: string): void;
+  setAttention?(target: string): void;
+  setSpeechTime?(seconds: number): void;
+  setSpeechGesture?(intent: import("@floppy/protocol").SpeechGesture | null, intensity?: number, at?: number): void;
   destroy(): void;
 }
-interface AvatarModule { create(box: HTMLElement, opts: { reducedMotion: boolean }): AvatarInstance }
+interface AvatarModule { create(box: HTMLElement, opts: { reducedMotion: boolean; motion: Pick<import("./avatar-motion.ts").AvatarMotion, "sample" | "gaze"> }): AvatarInstance }

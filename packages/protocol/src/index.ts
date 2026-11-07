@@ -74,6 +74,9 @@ export interface Mood { valence: number; energy: number }
 export const CUES = ["nod", "perk", "startle", "wake"] as const;
 export type Cue = (typeof CUES)[number];
 
+/** Intention gestuelle d'une phrase ; le corps reste libre de sa mise en scène. */
+export type SpeechGesture = "explain" | "playful" | "question" | "none";
+
 // ------------------------------------------------------------------ États
 export const STATES = ["sleep", "idle", "listening", "thinking", "speaking"] as const;
 export type BodyState = (typeof STATES)[number];
@@ -83,7 +86,7 @@ export type BodyState = (typeof STATES)[number];
  * `panel` : le corps sait ouvrir une fenêtre de résultats décrite en A2UI (voir docs/spec/a2ui.md).
  * `document` : le corps sait afficher un document Markdown (fenêtre « Documents » avec la liste des anciens).
  */
-export const CAPABILITIES = ["voice", "text", "voice_note", "display", "emotion", "gesture", "approval", "panel", "document"] as const;
+export const CAPABILITIES = ["voice", "text", "voice_note", "display", "emotion", "gesture", "approval", "panel", "document", "speech_timing"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
 /** Une ligne de la liste des documents (date ISO). */
@@ -116,7 +119,9 @@ export type KernelToBody =
   | { type: "welcome"; protocol: number; assistant: { name: string; language: string } }
   | { type: "state"; state: BodyState }
   /** intensity : voir parseEmotionTag (1 sans valeur). ms : durée, puis retour à l'humeur. */
-  | { type: "emotion"; emotion: Emotion; intensity?: number; ms?: number }
+  | { type: "emotion"; emotion: Emotion; intensity?: number; ms?: number; /** Corps speech_timing : début du prochain bloc audio, après les blocs déjà en file. */ nextAudio?: string }
+  /** Pour le corps vocal d'origine avec speech_timing, juste avant le premier bloc de la phrase. */
+  | { type: "speech.gesture"; intent: SpeechGesture; intensity: number; nextAudio: string }
   /** Humeur de fond (voir Mood), envoyée aux corps qui ont `emotion`. */
   | { type: "mood"; valence: number; energy: number }
   /** Signal bref (voir CUES) : hochement pendant l'écoute, etc. Envoyé aux corps qui ont `emotion`. */

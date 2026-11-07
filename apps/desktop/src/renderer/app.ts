@@ -3,6 +3,9 @@
 
 // Module : aucun nom global partagé avec les autres pages (placé en tête : la fin du fichier est lue seule par un test).
 export {};
+import { SpeechExpressions } from "./speech-expressions.ts";
+import { AvatarMotion } from "./avatar-motion.ts";
+import type { SpeechGesture } from "@floppy/protocol";
 
 /** Demande d'outil du noyau (tool.call). */
 interface ToolCallMsg { type: "tool.call"; name: string; callId: string; args?: { titre?: unknown; lignes?: string[]; coin?: string; ecran?: unknown; cible?: string } }
@@ -10,7 +13,8 @@ interface ToolCallMsg { type: "tool.call"; name: string; callId: string; args?: 
 type KernelMsg =
   | { type: "welcome"; assistant?: { language?: string } }
   | { type: "state"; state: string }
-  | { type: "emotion"; emotion: string; intensity?: number; ms?: number }
+  | { type: "emotion"; emotion: string; intensity?: number; ms?: number; nextAudio?: string }
+  | { type: "speech.gesture"; intent: SpeechGesture; intensity: number; nextAudio: string }
   | { type: "mood"; valence: number; energy: number }
   | { type: "cue"; cue: string }
   | { type: "transcript"; text: string }
@@ -96,6 +100,7 @@ function setLang(l: string): void {
 // et, s'il sait les montrer : setMood(valence, energy), lookAt(x, y) (-1..1), setHearing(niveau 0..1), cue(nom), resize.
 // Le noyau envoie toujours les mêmes états et émotions ; `face` les garde et les rejoue sur l'avatar chargé.
 const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+const motion = new AvatarMotion(reducedMotion);
 // Aucun avatar en dur : le noyau (plugin body-electron) dit lequel afficher et où est son dessin (message display).
 // Tant qu'il n'en a pas donné, ou si le chargement échoue, la page reste dans un état neutre (aucun avatar).
 let current: AvatarInstance | null = null;           // avatar chargé
@@ -105,7 +110,7 @@ let loadSeq = 0;
 // quand la voix et le cerveau sont prêts (modèles chargés).
 const last: { state: string; emotion: string | null; intensity: number | undefined; emotionUntil: number; level: number; mood: { valence: number; energy: number } | null } = { state: "sleep", emotion: null, intensity: undefined, emotionUntil: 0, level: 0, mood: null };
 const face = {
-  setState(s: string) { last.state = s; current?.setState(s); },
+  setState(s: string) { last.state = s; motion.setState(s); current?.setState(s); },
   setEmotion(name: string, ms?: number, intensity?: number) {
     last.emotion = name;
     last.intensity = intensity;
@@ -117,6 +122,9 @@ const face = {
   lookAt(x: number, y: number) { current?.lookAt?.(x, y); },
   setHearing(v: number) { current?.setHearing?.(v); },
   cue(name: string) { current?.cue?.(name); },
+  setAttention(target: string) { motion.setAttention(target); current?.setAttention?.(target); },
+  setSpeechTime(seconds: number) { motion.setTime(seconds); current?.setSpeechTime?.(seconds); },
+  setSpeechGesture(intent: SpeechGesture | null, intensity?: number, at?: number) { motion.play(intent, intensity, at); current?.setSpeechGesture?.(intent, intensity, at); },
 };
 /** État neutre : aucun avatar affiché. */
 function clearAvatar() {
@@ -145,7 +153,7 @@ async function loadAvatar(rawId: unknown, url: unknown): Promise<void> {
   try { current?.destroy(); } catch { /* déjà détruit */ }
   box.replaceChildren();
   try {
-    current = mod.create(box, { reducedMotion });
+    current = mod.create(box, { reducedMotion, motion });
   } catch (e) {
     console.log(`avatar ${id} : création impossible (${errText(e)})`);
     current = null;
@@ -156,6 +164,7 @@ async function loadAvatar(rawId: unknown, url: unknown): Promise<void> {
   // On rejoue l'état courant sur le nouvel avatar.
   current.setState(last.state);
   current.setLevel(last.level);
+  current.setAttention?.(approvals.size ? "approval" : last.state);
   if (last.mood) current.setMood?.(last.mood.valence, last.mood.energy);
   if (last.emotion) {
     const left = last.emotionUntil ? last.emotionUntil - performance.now() : 0;
@@ -375,6 +384,9 @@ function card(kind: string, title: CardText, text: string, buttons?: { label: Ca
 }
 
 // ------------------------------------------------------------------ voix (lecture)
+const expressions = new SpeechExpressions();
+const speechGestures = new SpeechExpressions<{ intent: SpeechGesture; intensity: number }>();
+let speechPaused = false;
 const play: { ctx: AudioContext | null; head: number; sources: Set<AudioBufferSourceNode>; analyser: AnalyserNode | null; gain: GainNode | null; playing: boolean } = { ctx: null, head: 0, sources: new Set(), analyser: null, gain: null, playing: false };
 /** Contexte audio de lecture, créé au premier morceau de voix. */
 function ensurePlay(): { ctx: AudioContext; analyser: AnalyserNode } {
@@ -407,26 +419,45 @@ function playChunk(buf: ArrayBuffer): void {
   src.connect(analyser);
   play.head = Math.max(play.head, ctx.currentTime + 0.04);
   src.start(play.head);
+  expressions.audio(play.head);
+  speechGestures.audio(play.head);
   play.head += ab.duration;
   play.sources.add(src);
   src.onended = () => play.sources.delete(src);
   if (!play.playing) { play.playing = true; send({ type: "playback", playing: true }); }
 }
 function stopPlayback() {
+  expressions.clear();
+  speechGestures.clear();
+  face.setSpeechGesture(null);
+  clearTimeout(life.flashTimer);
+  life.kernel = { name: "neutral", intensity: 1, until: 0, at: performance.now() };
+  face.setEmotion("neutral");
+  face.setLevel(0);
   for (const s of play.sources) { try { s.stop(); } catch { /* déjà fini */ } }
   play.sources.clear();
   if (play.ctx) play.head = play.ctx.currentTime;
   setDuck(false);
 }
-/** Voix baissée pendant que le noyau vérifie si l'utilisateur coupe la parole (ou si c'est l'écho). */
+/** Pause réversible : silence immédiat, sans perdre les mots si le micro a capté un écho. */
 function setDuck(on: boolean): void {
   if (!play.gain || !play.ctx) return;
-  play.gain.gain.setTargetAtTime(on ? 0.15 : 1, play.ctx.currentTime, 0.04);
+  if (speechPaused === on) return;
+  speechPaused = on;
+  play.gain.gain.setTargetAtTime(on ? 0 : 1, play.ctx.currentTime, 0.01);
+  if (on) {
+    face.setLevel(0);
+    void play.ctx.suspend().catch(() => {});
+  } else void play.ctx.resume().catch(() => {});
 }
 // Niveau de la voix → bouche ; fin de la file → playback:false.
 const levelBuf = new Float32Array(512);
 setInterval(() => {
   if (!play.ctx || !play.analyser) return;
+  if (speechPaused) { face.setLevel(0); return; }
+  expressions.tick(play.ctx.currentTime, (expression) => onMessage({ type: "emotion", ...expression }));
+  face.setSpeechTime(play.ctx.currentTime);
+  speechGestures.tick(play.ctx.currentTime, (gesture, at) => face.setSpeechGesture(gesture.intent, gesture.intensity, at));
   play.analyser.getFloatTimeDomainData(levelBuf);
   let s = 0;
   for (const v of levelBuf) s += v * v;
@@ -434,6 +465,7 @@ setInterval(() => {
   if (play.playing && play.ctx.currentTime > play.head + 0.05) {
     play.playing = false;
     face.setLevel(0);
+    face.setSpeechGesture(null);
     send({ type: "playback", playing: false });
   }
 }, 33);
@@ -533,6 +565,7 @@ function onMessage(m: KernelMsg): void {
       curState = m.state;
       if (m.state !== "idle") life.activeAt = performance.now();
       face.setState(m.state);
+      face.setAttention(approvals.size ? "approval" : m.state);
       host?.setState(m.state);
       if (m.state === "listening" || m.state === "thinking") { pttOn = pttOn && m.state === "listening"; }
       showListening(m.state === "listening");
@@ -542,9 +575,13 @@ function onMessage(m: KernelMsg): void {
       else clearTimeout(hideTimer);
       break;
     case "emotion":
+      if (m.nextAudio) { expressions.mark({ emotion: m.emotion, intensity: m.intensity, ms: m.ms }); break; }
       clearTimeout(life.flashTimer);
       life.kernel = { name: m.emotion, intensity: m.intensity, until: m.ms ? performance.now() + m.ms : 0, at: performance.now() };
       face.setEmotion(m.emotion, m.ms, m.intensity);
+      break;
+    case "speech.gesture":
+      speechGestures.mark({ intent: m.intent, intensity: m.intensity });
       break;
     case "mood": face.setMood(m.valence, m.energy); break;
     case "cue":
@@ -574,11 +611,13 @@ function onMessage(m: KernelMsg): void {
       bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: m.ttl_s * 1000, fill: "forwards" });
       el.append(bar);
       approvals.set(m.id, el);
+      face.setAttention("approval");
       break;
     }
     case "approval.closed": {
       approvals.get(m.id)?.remove();
       approvals.delete(m.id);
+      face.setAttention(approvals.size ? "approval" : curState);
       if (!approvals.size) host?.approvalClosed();
       if (!$("cards").children.length) hideBubbleSoon(4000);
       break;
@@ -594,6 +633,7 @@ function onMessage(m: KernelMsg): void {
 }
 
 function connect(p: MessagePort): void {
+  if (port) { port.onmessage = null; stopPlayback(); }
   port?.close();
   port = p;
   // Nouvelle connexion : les anciennes demandes d'accord n'existent plus côté noyau. On retire les cartes
@@ -610,7 +650,7 @@ function connect(p: MessagePort): void {
   };
   port.start();
   send({ type: "hello", id: "avatar", name: "Avatar (bureau)", version: "0.1.0",
-         capabilities: ["voice", "display", "emotion", "approval", "panel", "document"], tools: TOOLS });
+         capabilities: ["voice", "display", "emotion", "approval", "panel", "document", "speech_timing"], tools: TOOLS });
 }
 
 window.addEventListener("message", (e) => {

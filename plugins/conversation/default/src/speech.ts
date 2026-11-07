@@ -1,5 +1,5 @@
 import { T, tr, errorText, type Text } from "@floppy/core";
-import type { TtsService, VoiceEvent, VoiceStream } from "@floppy/contracts";
+import type { TtsService, VoiceEvent, VoiceStream, SpeechDelivery } from "@floppy/contracts";
 import { encodeAudioOut } from "@floppy/protocol";
 
 interface Options {
@@ -22,7 +22,7 @@ export class SpeechQueue {
   private pending = new Map<string, AbortSignal>();
   private readonly opts: Options;
   constructor(opts: Options) { this.opts = opts; }
-  speak(id: string, text: string): void {
+  speak(id: string, text: string, delivery?: SpeechDelivery): void {
     const { stream, tts, emit, unavailable } = this.opts;
     const lang = this.opts.lang?.() ?? "fr";
     if (this.opts.mute) { emit({ type: "speak_done", id, cancelled: false }); return; }
@@ -44,7 +44,7 @@ export class SpeechQueue {
       let error: string | undefined;
       try {
         emit({ type: "audio_start", id });
-        for await (const chunk of speakWith(text, { signal })) {
+        for await (const chunk of speakWith(text, { signal, ...(delivery ? { delivery } : {}) })) {
           if (signal.aborted) break;
           emit({ type: "audio", id, data: encodeAudioOut(chunk.pcm, chunk.rate) });
         }

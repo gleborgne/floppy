@@ -46,6 +46,8 @@ export default definePlugin({
             if (e.error) { opts.on({ type: "error", message: say("Gemini Live : erreur de session", "Gemini Live: session error"), fatal: true }); return { close: "Gemini Live : session refusée" }; }
             const content = e.serverContent;
             if (content?.interrupted) { decoder = new Pcm16Decoder(); opts.on({ type: "interrupted", generation: ++generation }); }
+            // Le texte du même paquet précède son audio pour les repères d'expression.
+            if (content?.outputTranscription) opts.on({ type: "output_transcript", generation, text: content.outputTranscription.text ?? "", final: false });
             for (const part of content?.modelTurn?.parts ?? []) {
               if (!part.inlineData) continue;
               const mime = String(part.inlineData.mimeType ?? "");
@@ -55,7 +57,6 @@ export default definePlugin({
             }
             // Pas de dépendance à un champ « finished » : l'orchestrateur dispose aussi du STT local et de la lecture.
             if (content?.inputTranscription) opts.on({ type: "input_transcript", text: content.inputTranscription.text ?? "", final: false });
-            if (content?.outputTranscription) opts.on({ type: "output_transcript", text: content.outputTranscription.text ?? "", final: false });
             if (content?.turnComplete) { opts.on({ type: "generation_done" }); generation++; }
             for (const call of e.toolCall?.functionCalls ?? []) opts.on({ type: "tool_call", id: call.id, name: call.name, args: call.args ?? {} });
             if (e.toolCallCancellation) opts.on({ type: "tool_cancelled", ids: e.toolCallCancellation.ids ?? [] });

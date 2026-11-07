@@ -204,6 +204,7 @@ export default definePlugin<Config>({
 
     // Fenêtre des réglages : corps branchés (et corps désactivés gardés par nom).
     const CAP_LABEL: Record<string, Text> = {
+      speech_timing: T("Expressions synchronisées", "Synchronized expressions"),
       voice: T("voix", "voice"), text: T("texte", "text"), voice_note: T("messages vocaux", "voice notes"), display: T("écran", "screen"),
       emotion: T("émotions", "emotions"), gesture: T("gestes", "gestures"), approval: T("accord", "approval"), panel: T("fenêtre de résultats", "results window"),
     };

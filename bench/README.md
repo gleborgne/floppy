@@ -21,3 +21,21 @@ Plusieurs modèles à la suite : `bash bench/run-models.sh <nom1> <nom2>` (un se
 Vitesse brute de llama-server (lecture, MTP, contexte) : `python bench/speed.py <gguf> <sortie.jsonl> [--exe <llama-server>]`.
 
 Résultats : voir `docs/spec/proto.md#mesures`.
+
+## Jeu expressif de la voix locale
+
+Depuis la racine du dépôt, avec un modèle Qwen CustomVoice **1.7B** déjà installé :
+
+```powershell
+node bench/voice-compare.ts --model C:/models/qwen3-tts-1.7b-customvoice.gguf --exe C:/programs/audiocpp_server.exe --voice ono_anna
+```
+
+Le banc utilise les vrais plugins et leur cycle de vie, dans un noyau isolé. Il produit trois paires WAV
+(expliquer, rassurer, plaisanter ; témoin puis profil joueur) et `results.json` dans `bench/out/voice-compare`.
+La voix habituelle et les réglages utilisateur restent intacts. Le serveur temporaire utilise le port 8099
+(`--port` pour en choisir un autre) et s'arrête à la fin, même en cas d'erreur. `--backend cpu` force le processeur.
+Un autre dossier de sortie se choisit avec `--output`.
+
+Les temps mesurent le premier bloc audio et la génération complète, **après chargement du modèle**.
+Un seul passage sert à comparer l'écoute ; répéter les mesures et alterner l'ordre des essais avant de conclure
+sur la vitesse. La durée des fichiers ne prouve ni la qualité ni le respect des consignes.

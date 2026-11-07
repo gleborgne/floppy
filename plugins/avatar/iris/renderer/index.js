@@ -89,8 +89,9 @@ function approach(cur, tgt, k) {
  * Le « vivant » commun : état, émotion (avec durée), humeur, regard, oreille, voix, ressort, hochement, clignement.
  * tick(now) avance tout ; L.key = le jeu de paramètres voulu maintenant (veille > émotion > état ; au repos, l'humeur).
  */
-function makeLife(reducedMotion) {
+function makeLife(reducedMotion, motion) {
   const L = {
+    motion: { nod: 0, lean: 0, lookX: 0, lookY: 0, smile: 0, open: 0 },
     state: "idle", emotion: "neutral", intensity: 1, until: 0, level: 0, levelS: 0, hearing: 0, hearingS: 0,
     mood: { valence: 0.2, energy: 0.6 }, gaze: { x: 0, y: 0, at: -1e9 }, look: { x: 0, y: 0 },
     pop: 0, popV: 0, nodAt: -1e9, flashEmo: "", flashUntil: 0, blinkAt: 0, blinkT: -1e9, blink: 0,
@@ -110,11 +111,13 @@ function makeLife(reducedMotion) {
     const dt = Math.min(0.05, Math.max(0, (now - L.last) / 1000));
     L.last = now;
     L.dt = dt;
+    const pose = !reducedMotion && L.state === "speaking" ? motion?.sample() : null;
+    for (const key in L.motion) L.motion[key] += ((pose?.[key] ?? 0) - L.motion[key]) * (1 - Math.exp(-dt * 12));
     if (L.until && now > L.until) { L.emotion = "neutral"; L.until = 0; }
     L.key = wanted(now);
     L.levelS += (L.level - L.levelS) * Math.min(1, dt * 18);
     L.hearingS += (L.hearing - L.hearingS) * Math.min(1, dt * (L.hearing > L.hearingS ? 14 : 4));
-    const g = now - L.gaze.at < 5000 ? L.gaze : { x: 0, y: 0 };
+    const g = motion?.gaze() ?? (now - L.gaze.at < 5000 ? L.gaze : { x: 0, y: 0 });
     L.look.x += (g.x - L.look.x) * Math.min(1, dt * 4);
     L.look.y += (g.y - L.look.y) * Math.min(1, dt * 4);
     const wk = 2 * Math.PI * 2.4;
@@ -327,10 +330,10 @@ void main() {
   o = vec4(min(col, vec3(a)), a);
 }`;
 
-export function create(container, { reducedMotion = false } = {}) {
+export function create(container, { reducedMotion = false, motion } = {}) {
   const sf = surface(container, FS);
   const gl = sf.gl;
-  const L = makeLife(reducedMotion);
+  const L = makeLife(reducedMotion, motion);
   const cur = snapshot("idle");
   const led = new Float32Array(24).fill(0.4);
   let tt = 0, raf = 0, dead = false;
@@ -342,6 +345,10 @@ export function create(container, { reducedMotion = false } = {}) {
     const dt = L.dt;
     tt += dt * (reducedMotion ? 0.3 : 1) * (L.key === "idle" ? 0.6 + 0.8 * L.mood.energy : 1);
     const tgt = snapshot(L.key);
+    tgt.ap += L.motion.open * 0.035 + L.motion.smile * 0.015;
+    tgt.rot += L.motion.lean * 0.08;
+    tgt.dx += L.motion.lookX * 0.07;
+    tgt.dy += L.motion.lookY * 0.05 + L.motion.nod * 0.045;
     if (L.key === "idle") tgt.col = moodTint(tgt.col, L.mood);
     // Écoute : il s'ouvre plus fort quand la voix entendue monte.
     if (L.state === "listening") tgt.ap += L.hearingS * 0.08;

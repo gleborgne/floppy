@@ -1,6 +1,6 @@
 {
   "id": "pixelcat",
   "name": { "fr": "Chat pixel", "en": "Pixel Cat" },
-  "description": { "fr": "WebGL · chat en pixels, façon jeu vidéo rétro · oreilles, queue et yeux qui brillent", "en": "WebGL · pixel-art cat, retro video game style · ears, tail and glowing eyes" },
+  "description": { "fr": "WebGL · petit chat chibi en pixels · joues roses, regard doux et queue animée", "en": "WebGL · little pixel-art chibi cat · rosy cheeks, gentle eyes and animated tail" },
   "emotions": ["neutral","happy","sad","angry","surprised","love","confused","wink","sleepy","thinking"]
 }

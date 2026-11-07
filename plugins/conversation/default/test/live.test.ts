@@ -2,15 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import { Kernel, definePlugin, AudioHistory, type Context } from "@floppy/core";
 import type { BodyHub, LiveService, LiveSession, LiveEvent, BrainRunInput } from "@floppy/contracts";
 import type { KernelToBody } from "@floppy/protocol";
-import { LiveConversation } from "../src/live.ts";
+import { LiveConversation, liveInstructions } from "../src/live.ts";
 
-async function fixture(kind: "function" | "delegation" = "function") {
+async function fixture(kind: "function" | "delegation" = "function", timed = false) {
   let ctx!: Context;
   let events!: (e: LiveEvent) => void;
   const sent: KernelToBody[] = [], audio: Uint8Array[] = [], replay: number[] = [];
   const session: LiveSession = { pushAudio: (f) => replay.push(...f), sendText: vi.fn(), append: vi.fn(), toolResult: vi.fn(), close: vi.fn(async () => {}) };
   const service: LiveService = { name: "fake", capabilities: { tools: kind }, open: vi.fn(async (o) => { events = o.on; return session; }) };
-  const hub: BodyHub = { send: (_, m) => { sent.push(m); }, sendAudio: (_, data) => { audio.push(data); }, attach: () => {}, sessions: () => [], has: () => false, broadcast: () => {}, on: () => () => {} };
+  const order: string[] = [];
+  const hub: BodyHub = { send: (_, m) => { sent.push(m); order.push(m.type); }, sendAudio: (_, data) => { audio.push(data); order.push("audio"); }, attach: () => {}, sessions: () => [], has: (_, cap) => timed && cap === "speech_timing", broadcast: () => {}, on: () => () => {} };
   const provider = definePlugin({ manifest: { id: "body", version: "0", licence: "MIT", provides: ["body"] }, apply(c) { c.provide("body", hub); } });
   const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["body"], optional: ["memory"], permissions: { approvals: "respond" } }, apply(c) { ctx = c; } });
   const k = new Kernel({ logger: () => {}, plugins: [provider, probe] });
@@ -18,13 +19,92 @@ async function fixture(kind: "function" | "delegation" = "function") {
   const history = new AudioHistory(); history.push(new Float32Array([10, 11, 12, 13, 14]));
   const run = vi.fn(async function* (_input: BrainRunInput) { yield { type: "text" as const, delta: "Résultat confirmé." }; });
   const input = vi.fn();
+  const reply = vi.fn((_text: string, _timing: { body: string; id: string }): string | undefined => undefined);
+  let profile: "playful" | "discreet" = "playful";
   const states: string[] = [];
   const live = new LiveConversation({ ctx, body: "avatar", service, brain: { name: "fake", reset: () => {}, run }, history,
-    tone: () => "sobre", freeListen: () => 1, onInput: input, onState: (s) => states.push(s), onPlaying: () => {} });
-  return { k, service, session, live, audio, sent, history, run, input, replay, states, emit: (e: LiveEvent) => events(e) };
+    tone: () => "sobre", profile: () => profile, freeListen: () => 1, onInput: input, onReply: reply, onState: (s) => states.push(s), onPlaying: () => {} });
+  return { k, service, session, live, audio, sent, history, run, input, reply, order, replay, states, setProfile: (p: typeof profile) => { profile = p; live.updateTone(); }, emit: (e: LiveEvent) => events(e) };
 }
 
 describe("conversation Live", () => {
+  it.each(["function", "delegation"] as const)("aligne le texte sur le prochain bloc %s sans retarder le son", async (kind) => {
+    const f = await fixture(kind, true);
+    try {
+      await f.live.start(0, 5);
+      f.emit({ type: "audio", generation: 0, rate: 24000, pcm: new Int16Array(2400) });
+      expect(f.audio).toHaveLength(1); expect(f.reply).not.toHaveBeenCalled();
+      f.emit({ type: "output_transcript", generation: 0, text: "Parce que la lumière traverse les gouttes.", final: false });
+      expect(f.reply).not.toHaveBeenCalled();
+      f.emit({ type: "audio", generation: 0, rate: 24000, pcm: new Int16Array(2400) });
+      expect(f.reply).toHaveBeenCalledWith(expect.stringContaining("lumière"), { body: "avatar", id: expect.any(String) });
+      expect(f.sent).toContainEqual({ type: "speech.gesture", intent: "explain", intensity: 1, nextAudio: expect.any(String) });
+      expect(f.order.slice(-2)).toEqual(["speech.gesture", "audio"]);
+      f.emit({ type: "output_transcript", generation: 0, text: "Et ensuite ?", final: false });
+      f.emit({ type: "generation_done" });
+      f.emit({ type: "audio", generation: 1, rate: 24000, pcm: new Int16Array(2400) });
+      expect(f.reply).toHaveBeenCalledOnce(); // le reliquat ne colore pas la réponse suivante
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("rejette aussi les transcriptions et gestes d'une génération interrompue", async () => {
+    const f = await fixture("function", true);
+    try {
+      await f.live.start(0, 5);
+      f.emit({ type: "audio", generation: 3, rate: 24000, pcm: new Int16Array(2400) });
+      f.emit({ type: "output_transcript", generation: 3, text: "Parce que", final: false });
+      f.live.bargeIn(); f.sent.length = 0;
+      f.emit({ type: "output_transcript", generation: 3, text: "Ancien texte ?", final: false });
+      f.emit({ type: "output_transcript", text: "Ancien texte sans époque ?", final: false });
+      f.emit({ type: "audio", generation: 4, rate: 24000, pcm: new Int16Array(2400) });
+      expect(f.reply).not.toHaveBeenCalled();
+      expect(f.sent.some(m => m.type === "speech.gesture" || m.type === "reply.delta")).toBe(false);
+      f.setProfile("discreet");
+      expect(f.session.append).toHaveBeenLastCalledWith("instruct", expect.stringContaining("Expression vocale discrète"));
+      f.emit({ type: "output_transcript", generation: 4, text: "Peut-être ?", final: false });
+      f.emit({ type: "audio", generation: 4, rate: 24000, pcm: new Int16Array(2400) });
+      expect(f.sent).toContainEqual({ type: "speech.gesture", intent: "question", intensity: 0.45, nextAudio: expect.any(String) });
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("les consignes Live restent conversationnelles, bilingues et respectent les accords", () => {
+    const fr = liveInstructions({ name: "Floppy", language: "fr", tone: "amical", recent: [] });
+    const en = liveInstructions({ name: "Floppy", language: "en", tone: "friendly", recent: [], profile: "discreet" });
+    expect(fr).toContain("malice amicale"); expect(fr).toContain("sans sarcasme");
+    expect(en).toContain("Understated vocal expression"); expect(en).toContain("never tools or approvals");
+    expect(fr).not.toContain("uniquement le texte fourni");
+  });
+  it("réunit les petits fragments, ignore les repères trop vieux et ne les transmet pas aux anciens corps", async () => {
+    const f = await fixture("function", true), legacy = await fixture();
+    const clock = vi.spyOn(Date, "now");
+    try {
+      clock.mockReturnValue(1000); await f.live.start(0, 5); await legacy.live.start(0, 5);
+      const audio = { type: "audio" as const, generation: 0, rate: 24000, pcm: new Int16Array(2400) };
+      f.emit({ type: "output_transcript", generation: 0, text: "Parce ", final: false }); f.emit(audio);
+      f.emit({ type: "output_transcript", generation: 0, text: "que la lumière", final: false }); f.emit(audio);
+      f.emit({ type: "output_transcript", generation: 0, text: " traverse les gouttes", final: false }); f.emit(audio);
+      expect(f.sent.filter(m => m.type === "speech.gesture")).toHaveLength(1);
+      expect(f.sent).toContainEqual(expect.objectContaining({ type: "speech.gesture", intent: "explain" }));
+      f.emit({ type: "output_transcript", generation: 0, text: "Peut-être ?", final: false });
+      clock.mockReturnValue(2300); f.emit(audio);
+      expect(f.reply).toHaveBeenCalledTimes(3);
+      legacy.emit({ type: "output_transcript", text: "Parce que.", final: false }); legacy.emit(audio);
+      expect(legacy.reply).toHaveBeenCalledOnce(); expect(legacy.sent.some(m => m.type === "speech.gesture")).toBe(false);
+    } finally { clock.mockRestore(); await f.live.stop("test"); await legacy.live.stop("test"); await f.k.stopAll(); await legacy.k.stopAll(); }
+  });
+  it("coupe localement avant le fournisseur et rejette les blocs de la réponse interrompue", async () => {
+    const f = await fixture();
+    try {
+      await f.live.start(0, 5);
+      f.emit({ type: "audio", generation: 3, rate: 24000, pcm: new Int16Array(24000) });
+      f.live.bargeIn();
+      expect(f.sent).toContainEqual({ type: "interrupt" });
+      expect(f.states.at(-1)).toBe("listening");
+      f.emit({ type: "audio", generation: 3, rate: 24000, pcm: new Int16Array(24000) });
+      expect(f.audio).toHaveLength(1);
+      f.emit({ type: "interrupted", generation: 4 });
+      f.emit({ type: "audio", generation: 4, rate: 24000, pcm: new Int16Array(24000) });
+      expect(f.audio).toHaveLength(2);
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
   it("une demande écrite ouvre Live sans rejouer le micro et conserve le contexte", async () => {
     const f = await fixture();
     try {

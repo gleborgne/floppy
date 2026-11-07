@@ -169,7 +169,8 @@ function snapshot(k) {
   };
 }
 
-export function create(container, { reducedMotion = false } = {}) {
+export function create(container, { reducedMotion = false, motion } = {}) {
+  const pose = { nod: 0, lean: 0, lookX: 0, lookY: 0, smile: 0, open: 0 };
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "width:100%;height:100%;display:block";
   container.append(canvas);
@@ -225,6 +226,8 @@ export function create(container, { reducedMotion = false } = {}) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    const targetPose = !reducedMotion && state === "speaking" ? motion?.sample() : null;
+    for (const key in pose) pose[key] += ((targetPose?.[key] ?? 0) - pose[key]) * (1 - Math.exp(-dt * 12));
     if (until && now > until) { emotion = "neutral"; until = 0; }
     const key = wanted(now);
     const tgt = snapshot(key);
@@ -256,7 +259,7 @@ export function create(container, { reducedMotion = false } = {}) {
     const hk = (STATE_HALO[state] ?? 0.45) * (state === "listening" ? 1 + hearingS * 0.5 : 1) * (state === "speaking" ? 0.8 + levelS * 0.6 : 1);
     haloK += (hk - haloK) * Math.min(1, dt * 4);
 
-    const g = now - gaze.at < 5000 ? gaze : { x: 0, y: 0 };
+    const g = motion?.gaze() ?? (now - gaze.at < 5000 ? gaze : { x: 0, y: 0 });
     look.yaw += (g.x * 0.5 - look.yaw) * Math.min(1, dt * 3);
     look.pitch += (-g.y * 0.35 - look.pitch) * Math.min(1, dt * 3);
     const wk = 2 * Math.PI * 2.4;
@@ -284,7 +287,7 @@ export function create(container, { reducedMotion = false } = {}) {
     gl.bindVertexArray(emptyVao);
     gl.blendFunc(gl.ONE, gl.ONE);
     gl.uniform1f(u.uT, t);
-    gl.uniform1f(u.uR, cur.R);
+    gl.uniform1f(u.uR, cur.R * (1 + pose.open * 0.035));
     gl.uniform1f(u.uD, cur.d);
     gl.uniform1f(u.uN, cur.n);
     gl.uniform1f(u.uM, cur.m);
@@ -298,11 +301,11 @@ export function create(container, { reducedMotion = false } = {}) {
     gl.uniform1f(u.uBurst, cur.burst);
     gl.uniform1f(u.uGhost, cur.ghost);
     gl.uniform1f(u.uLevel, state === "speaking" ? levelS : 0);
-    gl.uniform1f(u.uScale, scale);
-    gl.uniform1f(u.uBob, breathe * 0.01 + nod);
+    gl.uniform1f(u.uScale, scale + pose.smile * 0.025);
+    gl.uniform1f(u.uBob, breathe * 0.01 + nod + pose.nod * 0.025);
     gl.uniform1f(u.uDy, cur.dy);
-    gl.uniform1f(u.uYaw, look.yaw);
-    gl.uniform1f(u.uPitch, look.pitch);
+    gl.uniform1f(u.uYaw, look.yaw + pose.lean * 0.07);
+    gl.uniform1f(u.uPitch, look.pitch - pose.lookY * 0.06);
     gl.uniform1f(u.uPx, px);
     gl.uniform1f(u.uAlpha, cur.a * 0.6);
     gl.uniform2f(u.uAsp, asp[0], asp[1]);
