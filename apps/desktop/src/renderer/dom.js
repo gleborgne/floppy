@@ -1,7 +1,54 @@
-// Petits outils DOM partagés par les modules de la fenêtre des réglages.
+// Petits outils d'affichage partagés par les modules de la fenêtre des réglages.
+//
+// La fenêtre décrit ce qu'elle montre avec h() (éléments virtuels de Preact) et le donne à mount() : Preact compare avec
+// ce qui est à l'écran et ne change que ce qui diffère. Un bouton, un champ, une ligne restent les mêmes éléments d'un
+// dessin à l'autre : un clic n'est jamais perdu, un champ garde son curseur, une animation d'entrée ne se rejoue pas.
+// Tout texte venu du noyau passe en texte (jamais de HTML).
+import { h as vh, render } from "./vendor/preact.mjs";
 
-/** Crée un élément : h("div", { class, text, onclick… }, enfants…). */
+/** Ce qui n'est pas affiché parmi les enfants (comme avant : null, undefined, false). */
+const shown = (c) => c !== undefined && c !== null && c !== false && c !== true;
+
+/**
+ * Élément virtuel : h("div", { class, text, onclick… }, enfants…). `text` : le texte, placé avant les enfants.
+ * Une propriété null, undefined ou false est absente (un attribut retiré, un bouton qui n'est plus désactivé).
+ */
 export function h(tag, props, ...kids) {
+  const p = {};
+  let text = null;
+  for (const [k, v] of Object.entries(props ?? {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "text") text = String(v);
+    else p[k] = v;
+  }
+  const children = kids.flat(Infinity).filter(shown);
+  return vh(tag, p, ...(text === null ? children : [text, ...children]));
+}
+
+/** Dessine `vnode` dans `container` (Preact : seuls les changements touchent la page). */
+export function mount(vnode, container) {
+  render(vnode, container);
+}
+
+/** Icône Lucide (voir icons.js) en élément virtuel : décorative, le bouton porte le nom. */
+export function icon(name) {
+  const paths = typeof window !== "undefined" && window.lucideIconPaths ? window.lucideIconPaths(name) : [];
+  return vh("svg", {
+    viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round",
+    "aria-hidden": "true", focusable: "false", class: `icon lucide-${name}`,
+  }, ...paths.map((d) => vh("path", { d })));
+}
+
+/**
+ * Un morceau construit à la main dans le DOM (l'enregistreur de voix : micro, minuterie, ondes) posé dans la page.
+ * `make()` le construit à chaque dessin (son état vit à part) ; la boîte ne compte pas dans la mise en page.
+ */
+export function island(make) {
+  return vh("div", { class: "island", ref: (el) => { if (el) el.replaceChildren(make()); } });
+}
+
+/** Élément réel du DOM (pour les morceaux construits à la main, voir island) : même forme que h(). */
+export function hdom(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props ?? {})) {
     if (v === undefined || v === null || v === false) continue;
@@ -12,40 +59,10 @@ export function h(tag, props, ...kids) {
     else if (k === "checked") e.checked = !!v;
     else e.setAttribute(k, v === true ? "" : String(v));
   }
-  for (const c of kids.flat()) if (c !== undefined && c !== null && c !== false) e.append(c);
+  for (const c of kids.flat()) if (shown(c)) e.append(c);
   return e;
 }
+
 let uid = 0;
 /** Id unique dans la page (lien label / champ). */
 export const nextId = () => `f${++uid}`;
-
-/* ---- Rendu sans clignotement : la page n'est reconstruite que si ce qu'elle montre change. */
-// Ids donnés par nextId() (« f12 ») : nouveaux à chaque rendu, ils ne comptent pas dans la comparaison.
-const ID_ATTRS = new Set(["id", "for", "aria-labelledby", "aria-describedby", "aria-controls"]);
-const FIELD = /^(INPUT|SELECT|TEXTAREA)$/;
-
-/** Empreinte de ce qu'un nœud montre : balise, attributs, valeur des champs, texte, enfants. */
-export function fingerprint(n) {
-  if (n.nodeType === 3) return JSON.stringify(n.data);
-  if (n.nodeType !== 1) return "";
-  const attrs = [...n.attributes].map((a) => `${a.name}=${ID_ATTRS.has(a.name) ? a.value.replace(/\bf\d+\b/g, "#") : a.value}`).sort().join(" ");
-  const state = FIELD.test(n.tagName) ? ` value=${n.value ?? ""} checked=${!!n.checked}` : "";
-  return `<${n.tagName} ${attrs}${state}>${[...n.childNodes].map(fingerprint).join("")}</>`;
-}
-
-/** Les enfants de `parent` montrent déjà exactement `nodes` : rien à reconstruire. */
-export function sameContent(parent, nodes) {
-  const cur = parent.childNodes;
-  return cur.length === nodes.length && nodes.every((n, i) => fingerprint(n) === fingerprint(cur[i]));
-}
-
-/**
- * Remplace les enfants de `parent` par `nodes`, sauf s'ils montrent déjà la même chose. Une page identique n'est pas
- * reconstruite : pas de clignotement, et un clic en cours (appui puis relâchement) garde son bouton.
- * Rend true si la page a été reconstruite.
- */
-export function replaceIfChanged(parent, nodes) {
-  if (sameContent(parent, nodes)) return false;
-  parent.replaceChildren(...nodes);
-  return true;
-}

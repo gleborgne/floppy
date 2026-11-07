@@ -316,13 +316,17 @@ dialog#editor.catalog { width: min(1120px, 94vw); max-width: none; }
 @keyframes pg-in-right { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 @keyframes pg-in-left { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
 @keyframes pg-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-#content.anim-fwd > * { animation: pg-in-right 200ms cubic-bezier(.2, .7, .2, 1) both; }
-#content.anim-back > * { animation: pg-in-left 200ms cubic-bezier(.2, .7, .2, 1) both; }
-#content.anim-fade > * { animation: pg-fade 180ms ease-out both; }
-#content.anim-tab .tabpanel { animation: pg-fade 150ms ease-out both; }
+/* La page (.pg) est un nouvel élément à chaque navigation : son animation se joue une fois, à son arrivée. Redessinée
+   avec de nouvelles données, elle reste le même élément : rien ne se rejoue. Même chose pour un onglet (.tabin). */
+#content .pg.anim-fwd { animation: pg-in-right 200ms cubic-bezier(.2, .7, .2, 1) both; }
+#content .pg.anim-back { animation: pg-in-left 200ms cubic-bezier(.2, .7, .2, 1) both; }
+#content .pg.anim-fade { animation: pg-fade 180ms ease-out both; }
+#content .tabpanel.tabin { animation: pg-fade 150ms ease-out both; }
 @media (prefers-reduced-motion: reduce) {
-  #content[class*="anim-"] > *, #content[class*="anim-"] .tabpanel { animation: none !important; }
+  #content .pg, #content .tabpanel { animation: none !important; }
 }
+/* Morceau construit à la main (enregistreur de voix) : sa boîte ne compte pas dans la mise en page. */
+.island { display: contents; }
 .tabpanel > .prov:first-child, .tabpanel > .card:first-child, .tabpanel > .dsec:first-child { margin-top: 0; }
 
 /* ---- bibliothèque de modèles : fenêtre « Modèles à télécharger », barres d'avancement (DESIGN.md, « Progress bar ») */

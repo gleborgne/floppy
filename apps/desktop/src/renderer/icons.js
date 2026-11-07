@@ -26,4 +26,6 @@
     for (const d of ICONS[name] ?? []) { const p = document.createElementNS(NS, "path"); p.setAttribute("d", d); svg.append(p); }
     return svg;
   };
+  /** Les tracés d'une icône, pour la dessiner en élément virtuel (icon() de dom.js). */
+  window.lucideIconPaths = (name) => ICONS[name] ?? [];
 })();

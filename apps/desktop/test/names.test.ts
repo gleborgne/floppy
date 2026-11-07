@@ -28,6 +28,6 @@ it("processus principal : chaque nom utilisé existe", () => {
 
 it("fenêtre des réglages et ses modules : chaque nom utilisé existe", () => {
   const dir = join(SRC, "renderer");
-  const files = ["settings.js", "fields.js", "dom.js", "settings-texts.js"].map((f) => join(dir, f));
+  const files = readdirSync(dir).filter((f) => /^(settings.*|fields|dom)\.js$/.test(f) && f !== "settings-demo.js").map((f) => join(dir, f));
   expect(unknownNames(files, ["--module", "esnext", "--moduleResolution", "bundler", "--lib", "dom,es2023"])).toEqual([]);
 }, 120_000);

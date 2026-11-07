@@ -8,17 +8,20 @@
   "scripts": {
     "start": "electron .",
     "gallery": "electron scripts/capture.mjs ../../plugins/avatar/tv/gallery/gallery.html ../../docs/spec/img/avatar-emotions.png 1190 610",
-    "avatar-previews": "electron scripts/avatar-previews.mjs"
+    "avatar-previews": "electron scripts/avatar-previews.mjs",
+    "vendor": "node scripts/vendor-preact.mjs"
   },
   "dependencies": {
     "@floppy/cli": "0.1.0",
     "@floppy/contracts": "0.1.0",
     "@floppy/protocol": "0.1.0",
     "koffi": "3.3.7",
-    "markdown-it": "14.3.3"
+    "markdown-it": "14.3.3",
+    "preact": "11.2.0"
   },
   "devDependencies": {
     "@types/markdown-it": "14.2.0",
-    "electron": "45.2.3"
+    "electron": "45.2.3",
+    "happy-dom": "21.0.4"
   }
 }
