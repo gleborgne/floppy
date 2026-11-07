@@ -11,7 +11,7 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, killTree, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, killTree, watchHealth, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
 
 import { LLAMA_BUILDS, LLAMA_VERSION } from "./known-builds.ts";
 import { KNOWN_MODELS } from "./known-models.ts";
@@ -67,9 +67,9 @@ const Config = z.object({
 });
 type Config = z.infer<typeof Config>;
 
-async function healthy(base: string): Promise<boolean> {
+async function healthy(base: string, timeoutMs = 1500): Promise<boolean> {
   try {
-    const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) });
     return r.ok;
   } catch {
     return false;
@@ -410,6 +410,8 @@ return definePlugin<Config>({
     ctx.offer("llm", {
       max: 1, // la mémoire du GPU
       items: () => enabled().map((m) => ({ id: m.id, label: m.label, aliases: m.aliases, slow: true })),
+      // Charger un gros modèle peut être long : le délai du noyau suit celui du réglage (plus une marge).
+      startTimeout_s: cfg.startTimeout_s + 60,
       async start(f, id) {
         const e = findEntry(id);
         await acquire(f, e);
@@ -489,13 +491,19 @@ return definePlugin<Config>({
       const last = () => tail.trim().split("\n").slice(-2).join(" | ");
       p.on("exit", (code) => { exited = true; if (!stopping && ctx.alive) onCrash(`llama-server s'est arrêté (code ${code}) : ${last()}`); });
       p.on("error", (err) => { exited = true; if (!stopping && ctx.alive) onCrash(`llama-server : ${err.message}`); });
-      const stop = () => { stopping = true; if (p.pid) killTree(p); else p.kill?.(); };
+      let unwatch = () => {};
+      const stop = () => { stopping = true; unwatch(); if (p.pid) killTree(p); else p.kill?.(); };
       const deadline = Date.now() + cfg.startTimeout_s * 1000;
       while (!(await healthy(base))) {
         if (exited || !ctx.alive) { stop(); const l = last(); throw new TextError(T(`llama-server n'a pas démarré : ${l}`, `llama-server didn't start: ${l}`)); }
         if (Date.now() > deadline) { stop(); throw new TextError(T(`llama-server pas prêt après ${cfg.startTimeout_s} s`, `llama-server not ready after ${cfg.startTimeout_s} s`)); }
         await new Promise((r) => setTimeout(r, 500));
       }
+      // Prêt : un llama-server figé (il ne répond plus, sans s'arrêter) met le modèle en panne ; le noyau le relance.
+      unwatch = watchHealth(ctx, {
+        check: () => healthy(base, 5000),
+        onDead: (n) => { if (stopping || exited || !ctx.alive) return; stop(); onCrash(`llama-server ne répond plus (${n} vérifications ratées)`); },
+      });
       return stop;
     };
 

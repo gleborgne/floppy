@@ -3,7 +3,7 @@ export const VERSION = "0.1.0";
 
 export { Kernel, consoleLogger, type Logger, type EntryStatus, type SlotStatus, type KernelOptions } from "./plugin/kernel.ts";
 export { definePlugin, manifestError, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
-export type { Context, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
+export type { Context, Borrowed, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
 export { DownloadManager, hostAllowed, type ContextDownloads, type DownloadFile, type DownloadRequest, type DownloadState, type DownloadPhase, type DownloadManagerOptions } from "./downloads.ts";
 export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
 export type { NotifyMessage, NotifyService } from "./services.ts";
@@ -24,6 +24,7 @@ export { KernelConfig, EntryConfig, AssistantSettings, ApprovalSettings, Level, 
 export { loadConfigFile, watchConfig } from "./config/loader.ts";
 export { findExe, killTree, stableStringify } from "./util/process.ts";
 export { ChildRegistry, reapOrphans, systemReapDeps, programBase, type ChildRecord, type ReapDeps } from "./util/children.ts";
+export { watchHealth, type HealthWatch } from "./util/health.ts";
 export { installSafetyNet, type SafetyKind, type SafetyNetOptions } from "./util/safety.ts";
 export { writeFileAtomic, writeJsonAtomic, readJsonFile, corruptFiles, onCorruptFile, type CorruptReport } from "./util/files.ts";
 export { startControl, controlCall, floppyHome, type ControlInfo, type ControlHandlers } from "./control.ts";

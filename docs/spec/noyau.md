@@ -186,6 +186,17 @@ Règles « à la demande », comme dans Cordis (toutes testées dans `packages/c
 
 Limite connue : deux slots qui choisissent deux éléments différents d'une offre `max: 1` se disputent la place (le noyau s'arrête après 1 000 tours avec une erreur claire).
 
+Règles « le noyau ne se bloque jamais » (toutes testées dans `packages/core/test/resilience.test.ts`) :
+
+14. **Délais.** `apply` a 60 s au plus (`manifest.startTimeout_s` le change), le `start` d'un fork 600 s (`OfferDef.startTimeout_s`). Le temps passé à attendre un autre plugin (`ctx.use`, `ctx.slot`) ne compte pas. Au-delà, l'entrée passe en erreur et ce qu'elle a ouvert est fermé. Chaque fermeture a 10 s au plus : au-delà, elle est abandonnée (une ligne au journal) et les suivantes tournent.
+15. **Un démarrage annulé n'est plus attendu.** `ctx.fail` pendant `apply`, un délai dépassé, l'arrêt de Floppy ou un nouveau choix pour le même slot : le noyau cesse d'attendre `apply` (le code du plugin continue peut-être, mais son contexte est fermé). Choisir un autre élément pendant qu'un modèle charge annule donc ce chargement.
+16. **Contexte fermé = contexte inerte.** Après l'arrêt, `emit` est ignoré ; `tools.call`, `settings.change`, `items.run`, `runHook`, `tasks.run` et `downloads.start` sont refusés ; `approvals.check` rend un refus. Chaque refus est écrit une fois au journal, au nom du plugin. Les demandes d'accord d'un plugin sont annulées à son arrêt.
+17. **Pannes attribuées.** Le code d'un plugin (apply, start, écouteurs, middlewares, minuteries, outils) tourne au nom de son entrée (`AsyncLocalStorage`). Le filet global rend l'erreur à ce plugin : une exception non rattrapée le met en panne ; une promesse rejetée non suivie est seulement notée. Une minuterie (`ctx.interval`, `ctx.timeout`) qui plante est notée, sans panne. Un middleware qui plante est sauté et noté ; la chaîne continue.
+18. **Reprise automatique.** Une entrée ou un fork en panne (pas une config invalide, pas un démarrage annulé exprès) repart après 5 s, 30 s, puis 2 min. Ensuite l'erreur reste visible jusqu'à une relance à la main ou un nouveau choix. Une entrée restée active plus d'une minute avant sa panne repart avec tous ses essais. Pour un fork, ceux qui le voulaient (slot) repartent pour le redemander.
+19. **Emprunts.** Un élément emprunté (`ctx.borrow`, `ctx.borrowItem`) qui s'arrête prévient l'emprunteur (`lost`) et rend sa place. Exemple : l'écoute réemprunte la transcription tombée en panne, sans fermer les flux ouverts.
+
+Les plugins qui lancent un serveur local (llama-server, audio.cpp) le surveillent une fois prêt (`watchHealth` : `/health` toutes les 30 s ; après 3 échecs d'affilée, `ctx.fail`), et la reprise automatique le relance. La conversation arrête un tour quand le cerveau se tait plus de `turn_idle_s` (300 s par défaut) et le dit. Une tâche qui ignore le signal d'arrêt n'est plus attendue 10 s après l'arrêt.
+
 ### Exemple : passer en mode Live
 
 ```mermaid

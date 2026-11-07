@@ -65,9 +65,13 @@ export async function boot(opts: BootOptions): Promise<Running> {
     ...(opts.logger ? { logger: opts.logger } : {}),
   });
   const log = opts.logger ?? consoleLogger;
-  // Filet global : une erreur asynchrone oubliée par un plugin est écrite au journal au lieu de tuer le noyau.
+  // Filet global : une erreur asynchrone oubliée par un plugin est écrite au journal, à son nom, au lieu de tuer le noyau.
+  // Une exception non rattrapée met ce plugin en panne (il repart tout seul) ; sans plugin connu, elle est seulement notée.
   const offSafety = opts.safetyNet === false ? () => {} : installSafetyNet({
-    onError: (kind, e) => log({ level: "error", source: "kernel", msg: `${kind} : ${e instanceof Error ? e.stack ?? e.message : String(e)}` }),
+    onError: (kind, e) => {
+      if (kernel.blame(kind, e)) return;
+      log({ level: "error", source: "kernel", msg: `${kind} : ${e instanceof Error ? e.stack ?? e.message : String(e)}` });
+    },
   });
   // Plugins de l'utilisateur : chargés avant la config, pour démarrer ceux qu'il a activés avec le reste.
   const devDirs = opts.devDirs ?? envDevDirs();

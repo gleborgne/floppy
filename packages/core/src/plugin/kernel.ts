@@ -13,6 +13,7 @@
 //   et s'arrête quand plus personne ne s'en sert. Changer le choix redémarre le consommateur sur le nouvel élément.
 // - Aucun plugin n'allume ni n'éteint un autre plugin : seul le noyau le fait, d'après les besoins déclarés.
 import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, mkdtempSync } from "node:fs";
@@ -75,6 +76,19 @@ interface Entry {
   fork?: { parent: string; service: string; item: string };
   /** Ordre de démarrage (le plus ancien fork part d'abord quand `max` est atteint). */
   startedAt?: number;
+  /** Délai du démarrage en cours (mis en pause pendant ctx.use et ctx.slot). */
+  deadline?: Deadline;
+  /** Fermeture en cours (ctx.fail ou délai pendant le démarrage) : attendue avant de poser l'erreur. */
+  disposing?: Promise<Error[]>;
+  /** Panne du plugin : comme ctx.fail (pour le filet global, qui ne connaît que l'id). */
+  fail?: (reason: Text) => void;
+  /** Reprise automatique après une panne : nombre d'essais faits, minuterie en cours. */
+  retries: number;
+  retryTimer?: NodeJS.Timeout;
+  /** Heure à laquelle l'entrée est devenue active (une panne après une longue marche remet les essais à zéro). */
+  activeAt?: number;
+  /** Démarrage annulé exprès (nouveau choix, arrêt) : pas de reprise automatique. */
+  cancelled?: boolean;
 }
 
 export interface EntryStatus {
@@ -125,6 +139,12 @@ export interface KernelOptions {
   downloads?: DownloadManagerOptions;
   /** Lecture de la machine (tests : sorties simulées). Défaut : les vraies sondes. */
   machine?: ProbeOptions;
+  /** Délai par défaut de apply (défaut : 60 s ; manifest.startTimeout_s le remplace). */
+  startTimeoutMs?: number;
+  /** Délai d'une fermeture (défaut : 10 s). */
+  disposeTimeoutMs?: number;
+  /** Attentes avant chaque reprise automatique d'une entrée en panne (défaut : 5 s, 30 s, 2 min ; puis abandon visible). */
+  retryDelays?: number[];
 }
 
 export class Kernel {
@@ -156,6 +176,14 @@ export class Kernel {
   /** Langue de l'assistant choisie dans les réglages (sinon celle de floppy.yml : assistant.language). */
   private assistantLang?: string;
   private readonly logger: Logger;
+  /** Entrée dont le code tourne (apply, minuteries, écouteurs, outils) : le filet global sait à qui est une erreur. */
+  private readonly als = new AsyncLocalStorage<string>();
+  private readonly startTimeoutMs: number;
+  private readonly disposeTimeoutMs: number;
+  private readonly retryDelays: number[];
+  /** Emprunteurs d'un fork (ctx.borrow) : prévenus quand il s'arrête. Clé du fork → fonctions. */
+  private readonly borrowers = new Map<string, Set<() => void>>();
+  private stopped = false;
   private readonly catalog = new Map<string, PluginDef<any>>();
   /** Plugins dont le manifeste est invalide : id → raison. Leurs entrées démarrent en erreur visible. */
   private readonly invalid = new Map<string, string>();
@@ -196,6 +224,10 @@ export class Kernel {
     // Sans dossier imposé (tests) : un dossier temporaire neuf par noyau, pour ne jamais mélanger les réglages.
     this.home = opts.home ?? mkdtempSync(join(tmpdir(), "floppy-kernel-"));
     this.logger = opts.logger ?? consoleLogger;
+    this.startTimeoutMs = opts.startTimeoutMs ?? 60_000;
+    this.disposeTimeoutMs = opts.disposeTimeoutMs ?? 10_000;
+    this.retryDelays = opts.retryDelays ?? [5_000, 30_000, 120_000];
+    this.hooks.onError = (owner, name, err) => this.log("error", owner ?? "hooks", `middleware ${name} sauté : ${err instanceof Error ? err.message : String(err)}`);
     this.children = new ChildRegistry(join(this.home, "children.json"));
     this.approvals = new ApprovalManager(this.bus, this.audit, base.approvals);
     this.tools = new ToolRegistry(this.approvals, this.audit, this.hooks);
@@ -385,10 +417,19 @@ export class Kernel {
         set: async (v) => {
           const value = String(v);
           if (!kernel.slotOptions(holder.def).some((o) => o.value === value)) throw new TextError(T("Choix inconnu ou désactivé", "Unknown or disabled choice"));
+          // L'élément choisi avant charge encore (un gros modèle) : on l'annule, le nouveau choix n'attend pas sa fin.
+          const loading = kernel.slotKey(slot.id);
+          const old = loading ? kernel.forks.get(loading) : undefined;
+          if (old?.state === "starting" && kernel.slotValue(slot.id) !== value) {
+            kernel.abortStart(old, T("remplacé par un autre choix", "replaced by another choice"), { cancelled: true });
+          }
           await kernel.enqueue(async () => {
             const before = kernel.selectionEdits.get(key);
             const restore = async () => {
               if (before === undefined) kernel.selectionEdits.delete(key); else kernel.selectionEdits.set(key, before);
+              // L'ancien élément a pu être annulé pendant son chargement : il repart.
+              const back = kernel.slotKey(slot.id);
+              if (back && kernel.forks.get(back)?.cancelled) kernel.forks.delete(back);
               await kernel.reconcile();
             };
             kernel.selectionEdits.set(key, value);
@@ -481,6 +522,7 @@ export class Kernel {
   /** Applique une nouvelle config : seules les entrées changées (et leurs dépendants) redémarrent. */
   applyConfig(input: KernelConfigInput | KernelConfig): Promise<void> {
     const cfg = KernelConfig.parse(input);
+    this.stopped = false;
     return this.enqueue(() => this.applyNow(cfg));
   }
 
@@ -557,6 +599,10 @@ export class Kernel {
 
   /** Arrête tout (ordre inverse de la config). */
   stopAll(): Promise<void> {
+    this.stopped = true;
+    for (const e of this.all()) { clearTimeout(e.retryTimer); delete e.retryTimer; }
+    // Un démarrage en cours (modèle qui charge) ne doit pas retarder l'arrêt : il est annulé tout de suite.
+    for (const e of this.all()) if (e.state === "starting") this.abortStart(e, T("arrêt de Floppy", "Floppy is stopping"), { cancelled: true });
     return this.enqueue(async () => {
       this.approvals.cancelAll();
       for (const e of [...this.entries.values()].reverse()) await this.stopEntry(e, "loaded");
@@ -652,6 +698,22 @@ export class Kernel {
     return id ? (this.entries.get(id)!.provided.get(name) as T) : undefined;
   }
 
+  /**
+   * Erreur rattrapée par le filet global : rend l'id de l'entrée dont le code tournait (ou undefined).
+   * Une exception non rattrapée met ce plugin en panne (son état n'est plus sûr) ; une promesse rejetée est seulement notée.
+   */
+  blame(kind: "unhandledRejection" | "uncaughtException", err: unknown): string | undefined {
+    const id = this.als.getStore();
+    if (!id) return undefined;
+    const e = this.entries.get(id) ?? this.forks.get(id);
+    const msg = err instanceof Error ? err.message : String(err);
+    this.log("error", id, `${kind === "uncaughtException" ? "exception non rattrapée" : "promesse rejetée non suivie"} : ${err instanceof Error ? err.stack ?? msg : msg}`);
+    if (kind === "uncaughtException" && e && (e.state === "active" || e.state === "starting")) {
+      e.fail?.(T(`erreur non rattrapée : ${msg}`, `uncaught error: ${msg}`));
+    }
+    return id;
+  }
+
   get assistantSettings(): AssistantSettings {
     return this.assistant;
   }
@@ -665,7 +727,7 @@ export class Kernel {
   }
 
   private makeEntry(cfg: EntryConfig): Entry {
-    const e: Entry = { cfg, state: "loaded", provided: new Map(), bound: new Map(), used: new Set(), slotBound: new Map(), offers: new Map() };
+    const e: Entry = { cfg, state: "loaded", provided: new Map(), bound: new Map(), used: new Set(), slotBound: new Map(), offers: new Map(), retries: 0 };
     if (cfg.disabled) { e.state = "disabled"; return e; }
     const bad = this.invalid.get(cfg.plugin);
     if (bad) return this.setError(e, T(`manifeste invalide : ${bad}`, `invalid manifest: ${bad}`));
@@ -877,7 +939,7 @@ export class Kernel {
     if (!f) {
       f = {
         cfg: { id: key, plugin: p.cfg.plugin, disabled: false }, def: p.def!, parsed: p.parsed, state: "loaded",
-        provided: new Map(), bound: new Map(), used: new Set(), slotBound: new Map(), offers: new Map(),
+        provided: new Map(), bound: new Map(), used: new Set(), slotBound: new Map(), offers: new Map(), retries: 0,
         fork: { parent, service, item },
       };
       this.forks.set(key, f);
@@ -953,6 +1015,7 @@ export class Kernel {
     delete e.missing;
     delete e.error;
     delete e.failReason;
+    delete e.cancelled;
     e.bound = new Map();
     e.used = new Set();
     e.slotBound = new Map();
@@ -964,20 +1027,33 @@ export class Kernel {
     this.emitState(e);
     const scope = new EffectScope();
     e.scope = scope;
+    delete e.disposing;
     const pending = new Map<string, unknown>();
     const ctx = this.makeContext(e, scope, pending);
+    const offer = e.fork ? this.entries.get(e.fork.parent)?.offers.get(e.fork.service) : undefined;
+    const limitS = e.fork ? (offer?.startTimeout_s ?? 600) : (def.manifest.startTimeout_s ?? this.startTimeoutMs / 1000);
+    e.deadline = new Deadline(limitS * 1000, () => {
+      this.log("error", e.cfg.id, `démarrage trop long (${limitS} s) : arrêté`);
+      this.abortStart(e, T(`démarrage trop long (${limitS} s)`, `start took too long (${limitS} s)`));
+    });
     try {
-      if (e.fork) {
-        const offer = this.entries.get(e.fork.parent)?.offers.get(e.fork.service);
-        if (!offer) throw new Error("l'offre a disparu");
-        await offer.start(ctx, e.fork.item);
-        if (!scope.isClosed && !pending.has(e.fork.service)) throw new Error(`l'élément ${e.fork.item} n'a pas fourni ${e.fork.service}`);
-      } else {
-        await def.apply(ctx, e.parsed);
-      }
-      if (scope.isClosed) { // ctx.fail() pendant apply : les effets sont fermés, l'erreur est posée ici, une seule fois
+      // Le code du plugin tourne « au nom » de l'entrée (filet global). On cesse de l'attendre si le démarrage est
+      // annulé (ctx.fail, délai, arrêt de Floppy) : il continue peut-être, mais son contexte est fermé.
+      const run = this.als.run(e.cfg.id, () => Promise.resolve().then(() => {
+        if (e.fork) {
+          if (!offer) throw new Error("l'offre a disparu");
+          return offer.start(ctx, e.fork.item);
+        }
+        return def.apply(ctx, e.parsed);
+      }));
+      run.catch(() => {});
+      await Promise.race([run, scope.closing]);
+      if (!scope.isClosed && e.fork && !pending.has(e.fork.service)) throw new Error(`l'élément ${e.fork.item} n'a pas fourni ${e.fork.service}`);
+      if (scope.isClosed) { // ctx.fail(), délai ou arrêt pendant apply : les effets sont fermés, l'erreur est posée ici, une seule fois
+        for (const err of (await (e.disposing as Promise<Error[]> | undefined)) ?? []) this.log("warn", e.cfg.id, `fermeture : ${err.message}`);
         e.scope = undefined;
         this.setError(e, e.failReason ?? T("arrêté pendant apply", "stopped during apply"));
+        this.scheduleRetry(e);
         return;
       }
       if (!e.fork) for (const s of def.manifest.provides ?? []) {
@@ -985,15 +1061,69 @@ export class Kernel {
       }
       e.provided = new Map(pending); // copie : un ctx.provide tardif ne doit pas devenir visible en silence
       e.state = "active";
+      e.activeAt = Date.now();
       this.emitState(e);
       for (const name of pending.keys()) this.bus.emit("service.changed", { name, provider: this.providerOf(name) });
       this.log("info", e.cfg.id, "actif");
     } catch (err) {
-      await scope.dispose();
+      for (const x of (await (e.disposing ?? scope.dispose({ timeoutMs: this.disposeTimeoutMs })))) this.log("warn", e.cfg.id, `fermeture : ${x.message}`);
       e.scope = undefined;
       const why = errorText(err);
       this.setError(e, e.failReason ?? T(`${e.fork ? "démarrage" : "apply"} a échoué : ${tr(why, "fr")}`, `${e.fork ? "start" : "apply"} failed: ${tr(why, "en")}`));
+      this.scheduleRetry(e);
+    } finally {
+      e.deadline?.stop();
+      delete e.deadline;
     }
+  }
+
+  /** Annule un démarrage en cours : ferme ses effets ; startEntry cesse de l'attendre et pose l'erreur. */
+  private abortStart(e: Entry, reason: Text, opts: { cancelled?: boolean } = {}): void {
+    const scope = e.scope;
+    if (e.state !== "starting" || !scope || scope.isClosed) return;
+    if (opts.cancelled) e.cancelled = true;
+    e.failReason ??= reason;
+    e.disposing = scope.dispose({ timeoutMs: this.disposeTimeoutMs });
+  }
+
+  /**
+   * Reprise automatique d'une entrée tombée en panne (pas d'une config invalide) : après 5 s, 30 s, puis 2 min.
+   * Ensuite l'erreur reste visible jusqu'à une relance à la main ou un nouveau choix. Une entrée restée active plus
+   * d'une minute avant sa panne repart avec tous ses essais.
+   */
+  private scheduleRetry(e: Entry): void {
+    if (this.stopped || e.state !== "error" || !e.def || e.cfg.disabled || e.cancelled) return;
+    if (e.activeAt && Date.now() - e.activeAt > 60_000) e.retries = 0;
+    delete e.activeAt;
+    const delay = this.retryDelays[e.retries];
+    if (delay === undefined) { this.log("warn", e.cfg.id, "reprise abandonnée après plusieurs essais"); return; }
+    e.retries++;
+    clearTimeout(e.retryTimer);
+    this.log("info", e.cfg.id, `nouvel essai dans ${Math.round(delay / 1000)} s (${e.retries}/${this.retryDelays.length})`);
+    e.retryTimer = setTimeout(() => {
+      delete e.retryTimer;
+      void this.enqueue(() => this.retryNow(e)).catch((err) => this.log("warn", e.cfg.id, `nouvel essai : ${String(err)}`));
+    }, delay);
+    e.retryTimer.unref?.();
+  }
+
+  private async retryNow(e: Entry): Promise<void> {
+    if (this.stopped || e.state !== "error") return;
+    if (e.fork) {
+      if (this.forks.get(e.cfg.id) !== e) return;
+      // Ceux qui voulaient ce fork tournent sans lui : ils repartent pour le redemander (comme restartForks).
+      for (const y of [...this.all()]) if (y.state === "active" && [...y.slotBound.values()].includes(e.cfg.id)) await this.stopEntry(y, "loaded");
+      e.state = "loaded";
+      delete e.error;
+      this.emitState(e);
+      await this.reconcile();
+      return;
+    }
+    if (this.entries.get(e.cfg.id) !== e) return;
+    e.state = "loaded";
+    delete e.error;
+    this.emitState(e);
+    await this.reconcile();
   }
 
   /** Arrête une entrée : d'abord celles qui utilisent ses services, puis ses forks, puis elle-même. */
@@ -1022,8 +1152,10 @@ export class Kernel {
     const provided = [...e.provided.keys()];
     e.provided = new Map();
     e.offers = new Map();
-    const errors = await e.scope.dispose();
+    const errors = await (e.disposing ?? e.scope.dispose({ timeoutMs: this.disposeTimeoutMs }));
+    delete e.disposing;
     e.scope = undefined;
+    if (e.fork) this.loseBorrowers(e.cfg.id);
     for (const err of errors) this.log("warn", e.cfg.id, `fermeture : ${err.message}`);
     if (after === "loaded" && e.cfg.disabled) e.state = "disabled";
     else e.state = after === "error" ? "error" : (e.def ? "loaded" : "error");
@@ -1031,12 +1163,28 @@ export class Kernel {
     if (wasActive) for (const name of provided) this.bus.emit("service.changed", { name, provider: this.providerOf(name) });
   }
 
-  /** Vue des accords pour un plugin : demander pour tous, répondre / lister seulement avec permissions.approvals. */
-  private approvalsFor(manifest: PluginDef["manifest"], id: string): ContextApprovals {
+  /** Prévient ceux qui ont emprunté ce fork : il s'est arrêté (panne, arrêt, nouveau choix). */
+  private loseBorrowers(key: string): void {
+    const set = this.borrowers.get(key);
+    if (!set) return;
+    this.borrowers.delete(key);
+    for (const fn of set) { try { fn(); } catch { /* rien */ } }
+  }
+
+  /**
+   * Vue des accords pour un plugin : demander pour tous, répondre / lister seulement avec permissions.approvals.
+   * Les demandes d'un plugin qui s'arrête sont annulées ; un plugin arrêté ne peut plus en ouvrir.
+   */
+  private approvalsFor(manifest: PluginDef["manifest"], id: string, scope: EffectScope): ContextApprovals {
     const may = manifest.permissions?.approvals === "respond";
     const deny = (what: string): never => { throw new Error(`${id} : ${what} demande permissions.approvals: "respond" dans le manifeste (seuls les corps et la CLI répondent aux accords)`); };
+    const stop = new AbortController();
+    scope.add(() => stop.abort());
     return {
-      check: (input) => this.approvals.check(input),
+      check: (input) => {
+        if (scope.isClosed) return Promise.resolve({ ok: false, reason: "cancelled" as const });
+        return this.approvals.check({ ...input, signal: input.signal ? AbortSignal.any([input.signal, stop.signal]) : stop.signal });
+      },
       respond: (rid, ok, by) => may ? this.approvals.respond(rid, ok, by) : deny("approvals.respond"),
       pending: () => may ? this.approvals.pending() : deny("approvals.pending"),
     };
@@ -1048,6 +1196,24 @@ export class Kernel {
     const kernel = this;
     let noteOff = false;
     let logoOff = false;
+    /** Un plugin arrêté ne fait plus rien par le noyau (du code à lui peut encore tourner : il est refusé et signalé). */
+    const warned = new Set<string>();
+    const closed = (what: string): boolean => {
+      if (!scope.isClosed) return false;
+      if (!warned.has(what)) { warned.add(what); kernel.log("warn", e.cfg.id, `${what} après l'arrêt du plugin : refusé`); }
+      return true;
+    };
+    const stoppedError = () => new TextError(T(`${e.cfg.id} est arrêté`, `${e.cfg.id} is stopped`));
+    /** Code du plugin appelé par le noyau (écouteur, minuterie, outil) : il tourne au nom de l'entrée (filet global). */
+    const as = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => kernel.als.run(e.cfg.id, () => fn(...a));
+    /** Minuterie du plugin : une erreur est notée à son nom, sans casser le noyau. */
+    const guarded = (fn: () => unknown, what: string) => as(() => {
+      const report = (err: unknown) => kernel.log("error", e.cfg.id, `${what} : ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+      try {
+        const r = fn();
+        if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(undefined, report);
+      } catch (err) { report(err); }
+    });
     const read = (name: string): unknown => {
       if (!allowed.has(name) && !e.used.has(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans inject/optional`);
       const p = e.bound.get(name);
@@ -1060,14 +1226,22 @@ export class Kernel {
       const svc = f?.provided.get(service);
       if (!svc) { kernel.hold(key, -1); await kernel.reconcile(); return undefined; }
       let done = false;
+      let markLost!: () => void;
+      const lost = new Promise<void>((r) => { markLost = r; });
+      const set = kernel.borrowers.get(key) ?? new Set<() => void>();
+      kernel.borrowers.set(key, set);
+      set.add(markLost);
       const release = () => {
         if (done) return;
         done = true;
+        set.delete(markLost);
         kernel.hold(key, -1);
         void kernel.enqueue(() => kernel.reconcile()).catch(() => {});
       };
+      // Le fork s'arrête pendant l'emprunt : l'emprunteur le sait (lost), et la place est rendue.
+      void lost.then(release);
       scope.add(release); // le plugin s'arrête : il rend ce qu'il a emprunté
-      return { service: svc, release } as never;
+      return { service: svc, release, lost } as never;
     };
     return {
       id: e.cfg.id,
@@ -1076,7 +1250,7 @@ export class Kernel {
       uiLang: () => this.uiLang,
       machine: () => this.machine(),
       restartOffers: (service) => this.restartForks(e.fork?.parent ?? e.cfg.id, service),
-      approvals: this.approvalsFor(def.manifest, e.cfg.id),
+      approvals: this.approvalsFor(def.manifest, e.cfg.id, scope),
       audit: this.audit,
       home: this.home,
       settings: {
@@ -1085,7 +1259,7 @@ export class Kernel {
         savedEntries: (prefix) => this.settings.savedEntries(prefix),
         value: (key) => this.settings.value(key),
         list: () => this.settings.list(),
-        change: (key, value, origin) => this.settings.change(key, value, "voice", origin),
+        change: (key, value, origin) => closed("settings.change") ? Promise.reject(stoppedError()) : this.settings.change(key, value, "voice", origin),
       },
       items: {
         declare: (def) => { scope.add(this.items.declare(e.cfg.id, def)); },
@@ -1093,7 +1267,7 @@ export class Kernel {
         store: (name) => ItemStore.in(this.home, name ?? e.cfg.id),
         snapshot: () => this.items.snapshot(),
         // Un plugin ne peut pas se faire passer pour la fenêtre (« ui ») ou la CLI : tout sauf « voice » devient « assistant ».
-        run: (op, via) => this.items.run(op, via === "voice" ? "voice" : "assistant"),
+        run: (op, via) => closed("items.run") ? Promise.reject(stoppedError()) : this.items.run(op, via === "voice" ? "voice" : "assistant"),
         actions: (list, run) => {
           this.appActions.set(e.cfg.id, { list, run });
           scope.add(() => { if (this.appActions.get(e.cfg.id)?.run === run) this.appActions.delete(e.cfg.id); });
@@ -1115,6 +1289,7 @@ export class Kernel {
       downloads: {
         get dir() { return downloadsDir(kernel.modelsDir, e.cfg.id); },
         start: (req) => {
+          if (closed("downloads.start")) throw stoppedError();
           const s = this.downloads.start(`${e.cfg.id}/${req.key}`, req, downloadsDir(this.modelsDir, e.cfg.id), def.manifest.permissions?.net);
           return { ...s, key: req.key };
         },
@@ -1126,9 +1301,13 @@ export class Kernel {
         },
       },
       tools: {
-        register: (defs) => { const clean = defs.map(({ selfApproved: _s, ...d }) => d); const remove = scope.add(this.tools.register(e.cfg.id, clean)); return () => { void remove(); }; },
+        register: (defs) => {
+          const clean = defs.map(({ selfApproved: _s, ...d }) => ({ ...d, handler: as(d.handler) }));
+          const remove = scope.add(this.tools.register(e.cfg.id, clean));
+          return () => { void remove(); };
+        },
         list: () => this.tools.list(),
-        call: (name, args, meta) => this.tools.call(name, args, meta),
+        call: (name, args, meta) => closed("tools.call") ? Promise.reject(stoppedError()) : this.tools.call(name, args, meta),
         onChange: (fn) => { scope.add(this.tools.onChange(fn)); },
       },
       get alive() { return !scope.isClosed; },
@@ -1151,17 +1330,24 @@ export class Kernel {
         // Un fork peut demander tout service ; une entrée seulement ceux de son manifeste (transparence des besoins).
         if (!e.fork && !allowed.has(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans inject/optional`);
         e.used.add(name);
-        const x = await kernel.ensureActive(kernel.candidateOf(name));
-        e.bound.set(name, x?.cfg.id);
-        return x?.provided.get(name) as never;
+        // Le temps passé à démarrer un autre plugin ne compte pas dans le délai de celui-ci.
+        e.deadline?.pause();
+        try {
+          const x = await kernel.ensureActive(kernel.candidateOf(name));
+          e.bound.set(name, x?.cfg.id);
+          return x?.provided.get(name) as never;
+        } finally { e.deadline?.resume(); }
       },
       async slot(id) {
         if (e.state !== "starting" || scope.isClosed) throw new Error(`${e.cfg.id} : ctx.slot(${id}) se fait pendant apply`);
         if (!(def.manifest.slots ?? []).some((x) => x.id === id)) throw new Error(`${e.cfg.id} : slot ${id} non déclaré dans le manifeste`);
         const key = kernel.slotKey(id);
         e.slotBound.set(id, key);
-        const f = key ? await kernel.ensureFork(key) : undefined;
-        return f?.provided.get(kernel.slotDefs.get(id)!.def.service) as never;
+        e.deadline?.pause();
+        try {
+          const f = key ? await kernel.ensureFork(key) : undefined;
+          return f?.provided.get(kernel.slotDefs.get(id)!.def.service) as never;
+        } finally { e.deadline?.resume(); }
       },
       offers(service) {
         if (!allowed.has(service)) throw new Error(`${e.cfg.id} : service ${service} non déclaré dans inject/optional`);
@@ -1198,7 +1384,7 @@ export class Kernel {
       },
       tasks: {
         list: () => kernel.tasks.list(),
-        run: (key, raison) => kernel.tasks.run(key, raison ?? "manuel"),
+        run: (key, raison) => closed("tasks.run") ? Promise.reject(stoppedError()) : kernel.tasks.run(key, raison ?? "manuel"),
         onChange: (fn) => { scope.add(kernel.tasks.onChange(fn)); },
       },
       offer(service, od) {
@@ -1214,10 +1400,10 @@ export class Kernel {
         return selected === "@none" ? undefined : selected;
       },
       effect: (dispose) => scope.add(dispose),
-      on: (event, fn) => { scope.add(this.bus.on(event, fn)); },
-      emit: (event, payload) => this.bus.emit(event, payload),
-      hook: (name, mw) => { scope.add(this.hooks.add(name, mw)); },
-      runHook: (name, input, final) => this.hooks.run(name, input, final),
+      on: (event, fn) => { scope.add(this.bus.on(event, as(fn))); },
+      emit: (event, payload) => { if (!closed(`emit(${event})`)) this.bus.emit(event, payload); },
+      hook: (name, mw) => { scope.add(this.hooks.add(name, as(mw), e.cfg.id)); },
+      runHook: (name, input, final) => closed(`runHook(${name})`) ? Promise.reject(stoppedError()) : this.hooks.run(name, input, final),
       spawn: (command: string, args: string[], options: SpawnOptions = {}) => {
         if (!execAllowed(def.manifest.permissions, command)) {
           throw new Error(`${e.cfg.id} : lancer « ${programName(command)} » demande permissions.exec dans le manifeste (exec: ["${programName(command)}"])`);
@@ -1229,14 +1415,13 @@ export class Kernel {
         child.once("exit", () => { void close(); });
         return child;
       },
-      interval: (fn, ms) => { const t = setInterval(fn, ms); scope.add(() => clearInterval(t)); },
-      timeout: (fn, ms) => { const t = setTimeout(fn, ms); scope.add(() => clearTimeout(t)); },
-      fail: (reason) => {
+      interval: (fn, ms) => { const t = setInterval(guarded(fn, "minuterie"), ms); scope.add(() => clearInterval(t)); },
+      timeout: (fn, ms) => { const t = setTimeout(guarded(fn, "minuterie"), ms); scope.add(() => clearTimeout(t)); },
+      fail: (e.fail = (reason) => {
         this.log("error", e.cfg.id, `panne : ${tr(reason, "fr")}`);
         if (e.state === "starting") {
-          // Pendant apply : on ferme les effets ; startEntry verra le scope fermé et posera l'erreur (une seule fois).
-          e.failReason ??= reason;
-          void scope.dispose();
+          // Pendant apply : on ferme les effets ; startEntry cesse d'attendre apply et pose l'erreur (une seule fois).
+          if (e.scope === scope) this.abortStart(e, reason);
           return;
         }
         void this.enqueue(async () => {
@@ -1244,9 +1429,10 @@ export class Kernel {
           await this.stopEntry(e, "error");
           e.error = reason;
           this.emitState(e);
+          this.scheduleRetry(e);
           await this.reconcile();
         });
-      },
+      }),
       log: (level, msg, data) => this.log(level, e.cfg.id, msg, data),
     };
   }
@@ -1271,4 +1457,42 @@ function sameEntry(a: EntryConfig, b: EntryConfig): boolean {
 /** Éléments d'une offre ; une offre qui plante ne casse pas la liste. */
 function offerItems(offer: OfferDef<any>): OfferItem[] {
   try { return offer.items(); } catch { return []; }
+}
+
+/** Délai d'un démarrage, qu'on peut mettre en pause (le temps d'attendre un autre plugin ne compte pas). */
+class Deadline {
+  private left: number;
+  private since = 0;
+  private timer: NodeJS.Timeout | undefined;
+  private paused = 0;
+  private done = false;
+  private readonly onTimeout: () => void;
+
+  constructor(ms: number, onTimeout: () => void) {
+    this.left = ms;
+    this.onTimeout = onTimeout;
+    this.arm();
+  }
+
+  pause(): void {
+    if (this.done || this.paused++ > 0) return;
+    clearTimeout(this.timer);
+    this.left -= Date.now() - this.since;
+  }
+
+  resume(): void {
+    if (this.done || --this.paused > 0) return;
+    this.arm();
+  }
+
+  stop(): void {
+    this.done = true;
+    clearTimeout(this.timer);
+  }
+
+  private arm(): void {
+    this.since = Date.now();
+    this.timer = setTimeout(() => { this.done = true; this.onTimeout(); }, Math.max(0, this.left));
+    this.timer.unref?.();
+  }
 }

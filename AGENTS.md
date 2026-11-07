@@ -21,8 +21,8 @@ Before changing the kernel or how a plugin starts, stops or fails, read `docs/sp
 - **Everything through `ctx`.** Open processes, timers, listeners and servers with `ctx.spawn`, `ctx.interval`, `ctx.timeout`, `ctx.on`, `ctx.effect`: the kernel closes them when the plugin stops, and kills programs left over from a forced stop.
 - **Short `apply`.** `apply` declares and returns. Slow work (remote connections, model loading) runs in an `ctx.offer` fork or in the background after `apply`.
 - **Heavy resources on demand.** A model on the GPU or a local voice is offered with `ctx.offer` and runs only while a slot uses it.
-- **Fail loudly.** A plugin that loses its resource calls `ctx.fail(T(…))`; the error shows in the app and in `floppy plugins`.
-- **Bounded waits.** Every network call and child process has a timeout (`AbortSignal.timeout`).
+- **Fail loudly, recover alone.** A plugin that loses its resource calls `ctx.fail(T(…))`; the error shows in the app and the kernel retries with backoff. A local server is watched once ready with `watchHealth`. A borrower listens to `lost` and borrows again.
+- **Bounded waits.** Every network call and child process has a timeout (`AbortSignal.timeout`). `apply` has 60 s (`manifest.startTimeout_s`), a fork's `start` 600 s (`OfferDef.startTimeout_s`).
 - **Safe files.** User data is written with `writeFileAtomic` / `writeJsonAtomic` and read with `readJsonFile`: a crash never leaves half a file, and a file that does not parse is set aside and reported.
 
 ## Two languages, everywhere

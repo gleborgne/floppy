@@ -119,6 +119,20 @@ export interface OfferDef<T = unknown> {
   renamed?: Record<string, string>;
   /** Démarre l'élément : doit appeler ctx.provide(service, …). Ce qui est ouvert avec ctx (spawn, effect…) est fermé avec le fork. */
   start(ctx: Context, item: string): void | Promise<void>;
+  /**
+   * Délai pour `start` (défaut : 600 s). Au-delà, le fork passe en erreur et ce qu'il a ouvert est fermé.
+   * Le temps passé à attendre d'autres plugins (ctx.use, ctx.slot) ne compte pas.
+   */
+  startTimeout_s?: number;
+}
+
+/** Un élément emprunté (ctx.borrow, ctx.borrowItem). */
+export interface Borrowed<T> {
+  service: T;
+  /** Rend l'élément : le noyau l'arrête si plus personne ne s'en sert. */
+  release(): void;
+  /** Tenue si l'élément s'arrête ou tombe en panne pendant l'emprunt : le service n'est plus utilisable, il faut le réemprunter. */
+  lost: Promise<void>;
 }
 
 export interface Context {
@@ -169,14 +183,14 @@ export interface Context {
    * sans le garder en marche. Le noyau le démarre si besoin ; release() le rend (il s'arrête si plus personne ne s'en sert).
    * Rendu automatiquement quand le plugin s'arrête. undefined : « aucun » choisi, ou élément indisponible.
    */
-  borrow<T = unknown>(id: string): Promise<{ service: T; release(): void } | undefined>;
+  borrow<T = unknown>(id: string): Promise<Borrowed<T> | undefined>;
   /**
    * Tous les éléments offerts pour un service (déclaré dans inject/optional), tous plugins : ex. les canaux « notify ».
    * value = "<entrée>/<élément>" (à passer à borrowItem).
    */
   offers(service: string): { value: string; label: Text; cloud?: boolean; entry: string }[];
   /** Comme borrow, mais pour un élément précis (value de offers) au lieu du choix d'un slot. */
-  borrowItem<T = unknown>(service: string, value: string): Promise<{ service: T; release(): void } | undefined>;
+  borrowItem<T = unknown>(service: string, value: string): Promise<Borrowed<T> | undefined>;
   /** Offre `service` élément par élément (voir OfferDef). Le service doit être dans `provides`. */
   offer<K extends keyof Services & string>(service: K, def: OfferDef<Services[K]>): void;
   /** Service déclaré dans inject (toujours là) ou optional (peut être undefined). */

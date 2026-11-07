@@ -203,3 +203,19 @@ describe("ctx.borrow", () => {
     expect(() => ctxRef!.borrow("brain.main")).toThrow(/non déclaré/);
   });
 });
+
+describe("tâche qui ignore l'arrêt", () => {
+  it("n'est plus attendue peu après l'arrêt : elle ne reste pas « en cours »", async () => {
+    const j: string[] = [];
+    k = new Kernel({ logger: quiet, plugins: [digest(j, { gate: new Promise(() => {}) })] });
+    k.tasks.abortGraceMs = 20;
+    await k.applyConfig({ plugins: [{ id: "digest", plugin: "digest" }] });
+    const run = k.tasks.run("digest/quotidienne", "manuel");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(k.tasks.cancel("digest/quotidienne")).toBe(true);
+    const out = await run;
+    expect(out.ok).toBe(false);
+    expect(tr(out.text, "fr")).toMatch(/arrêtée/);
+    expect(k.tasks.list().find((t) => t.key === "digest/quotidienne")?.running).toBeFalsy();
+  });
+});

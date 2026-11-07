@@ -3,12 +3,10 @@
 // - Les modèles sont empruntés (ctx.borrow) à l'ouverture du premier flux et rendus à la fermeture du dernier.
 // - Un flux par corps (son propre détecteur) ; la transcription est partagée, une demande à la fois.
 // - Les règles d'écoute (interruption, recollage, bouton, dictée) sont dans stream.ts, reprises du service Python.
-import { definePlugin, T, TextError, type SttService, type VadService, type VoiceService } from "@floppy/core";
+import { definePlugin, T, TextError, type Borrowed, type SttService, type VadService, type VoiceService } from "@floppy/core";
 import { ListenStream } from "./stream.ts";
 
 export { ListenStream } from "./stream.ts";
-
-type Borrowed<T> = { service: T; release(): void };
 
 export default definePlugin({
   manifest: {
@@ -32,9 +30,8 @@ export default definePlugin({
     /** File unique de transcription : une demande à la fois, tous corps confondus. */
     let sttQueue: Promise<unknown> = Promise.resolve();
 
-    const acquire = () => {
-      users++;
-      held ??= (async () => {
+    const borrowBoth = (): NonNullable<typeof held> => {
+      const mine: NonNullable<typeof held> = (async () => {
         const vad = await ctx.borrow<VadService>("listen.vad");
         const stt = await ctx.borrow<SttService>("listen.stt");
         if (!vad || !stt) {
@@ -44,8 +41,21 @@ export default definePlugin({
             : T("Aucune transcription en service. Ajoute-en une dans Réglages → Écoute.", "No transcription in use. Add one in Settings → Listening."));
         }
         ctx.log("info", `écoute : ${vad.service.name} + ${stt.service.name}`);
+        // Un des deux modèles s'arrête (panne, nouveau choix) : on rend l'autre et on réemprunte les deux pour les flux ouverts.
+        void Promise.race([vad.lost, stt.lost]).then(() => {
+          vad.release(); stt.release();
+          if (held !== mine || !ctx.alive) return;
+          ctx.log("warn", "écoute : un modèle s'est arrêté, nouvel emprunt");
+          held = users > 0 ? borrowBoth() : undefined;
+          held?.catch((e: unknown) => ctx.log("warn", `écoute : nouvel emprunt impossible : ${String(e)}`));
+        });
         return { vad, stt };
       })();
+      return mine;
+    };
+    const acquire = () => {
+      users++;
+      held ??= borrowBoth();
       const mine = held;
       return mine.catch((e: unknown) => { users--; if (held === mine) held = undefined; throw e; });
     };
@@ -68,7 +78,8 @@ export default definePlugin({
           vad: vad.service.open(),
           minSilenceMs: vad.service.minSilenceMs,
           transcribe: (audio) => {
-            const run = sttQueue.then(() => stt.service.transcribe(audio, { language }));
+            // La transcription en service au moment de la demande (elle a pu être réempruntée après une panne).
+            const run = sttQueue.then(async () => ((held ? (await held).stt : stt).service.transcribe(audio, { language })));
             sttQueue = run.catch(() => {});
             return run.then((r) => r.text.trim());
           },

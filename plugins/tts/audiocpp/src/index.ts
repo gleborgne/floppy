@@ -7,7 +7,7 @@ import type { ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, killTree, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, killTree, watchHealth, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -334,8 +334,8 @@ return definePlugin<Config>({
     /** Modèles chargés (ou en chargement) : id -> prêt ou non. */
     const running = new Map<string, boolean>();
 
-    const healthy = async (): Promise<boolean> => {
-      try { return (await fetch(`${base}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; }
+    const healthy = async (timeoutMs = 1500): Promise<boolean> => {
+      try { return (await fetch(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) })).ok; } catch { return false; }
     };
 
     // ---- Chemins propres à chaque PC : réglages (fenêtre ou CLI), jamais à la voix (ils lancent un programme).
@@ -419,6 +419,11 @@ return definePlugin<Config>({
         if (Date.now() > deadline) { stop(); throw new Error(`audio.cpp pas prêt après ${cfg.startTimeout_s} s : ${last()}`); }
         await new Promise((r) => setTimeout(r, 500));
       }
+      // Prêt : un audio.cpp figé (il ne répond plus, sans s'arrêter) met la voix en panne ; le noyau la relance.
+      watchHealth(f, {
+        check: () => healthy(5000),
+        onDead: (n) => { if (stopping || exited || !f.alive) return; stop(); f.fail(`audio.cpp ne répond plus (${n} vérifications ratées)`); },
+      });
     };
 
     const makeService = (f: Context, e: Entry): TtsService => {
@@ -461,6 +466,7 @@ return definePlugin<Config>({
     ctx.offer("tts", {
       max: 1, // la mémoire du GPU
       items: () => enabled().map((m) => ({ id: m.id, label: m.label, slow: true })),
+      startTimeout_s: cfg.startTimeout_s + 60,
       async start(f, id) {
         const e = enabled().find((m) => m.id === id);
         if (!e) throw new Error(`voix inconnue ou désactivée : ${id}`);

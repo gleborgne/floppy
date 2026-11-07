@@ -60,6 +60,8 @@ export class TaskRegistry {
 
   private readonly file: string;
   private readonly host: TaskHost;
+  /** Après l'arrêt d'un passage (délai, « arrête »), temps laissé à la tâche pour finir d'elle-même. */
+  abortGraceMs = 10_000;
 
   constructor(file: string, host: TaskHost) {
     this.file = file;
@@ -108,7 +110,8 @@ export class TaskRegistry {
       held = await this.host.acquire(info.entry);
       if (!held) throw new TextError(T("le plugin ne démarre pas", "the plugin does not start"));
       const prev = this.saved[key]?.lastRun;
-      const result = await held.service.run(def.id, { signal: ctrl.signal, raison, ...(prev ? { dernierPassage: new Date(prev) } : {}) });
+      // Une tâche qui ignore le signal d'arrêt ne reste pas « en cours » : on cesse de l'attendre peu après l'arrêt.
+      const result = await untilAborted(held.service.run(def.id, { signal: ctrl.signal, raison, ...(prev ? { dernierPassage: new Date(prev) } : {}) }), ctrl.signal, this.abortGraceMs);
       if (ctrl.signal.aborted) throw ctrl.signal.reason instanceof Error ? ctrl.signal.reason : new TextError(T("arrêtée", "stopped"));
       out = { ok: true, text: result.resume, result };
       this.saved[key] = { lastRun: started.toISOString(), last: { at: new Date().toISOString(), ok: true, text: result.resume } };
@@ -202,4 +205,17 @@ function readJson(file: string): Record<string, Saved> {
 
 function writeJson(file: string, v: unknown): void {
   try { writeJsonAtomic(file, v); } catch { /* disque plein : on garde en mémoire */ }
+}
+
+/** Attend `p`, mais au plus `graceMs` après l'arrêt de `signal` (la raison de l'arrêt devient l'erreur). */
+function untilAborted<T>(p: Promise<T>, signal: AbortSignal, graceMs: number): Promise<T> {
+  p.catch(() => {}); // abandonnée après l'arrêt : son rejet tardif n'est plus suivi
+  return new Promise<T>((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined;
+    const onAbort = () => {
+      timer = setTimeout(() => reject(signal.reason instanceof Error ? signal.reason : new TextError(T("arrêtée", "stopped"))), graceMs);
+    };
+    if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
+    p.then(resolve, reject).finally(() => { clearTimeout(timer); signal.removeEventListener("abort", onAbort); });
+  });
 }

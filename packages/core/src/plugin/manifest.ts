@@ -89,6 +89,11 @@ export interface Manifest {
    * Pour les plugins qui coûtent (mémoire du GPU, processus, connexions).
    */
   lazy?: boolean;
+  /**
+   * Délai pour `apply` (défaut : 60 s). Au-delà, l'entrée passe en erreur et ce qu'elle a ouvert est fermé.
+   * Le temps passé à attendre d'autres plugins (ctx.use, ctx.slot) ne compte pas.
+   */
+  startTimeout_s?: number;
   /** Services obligatoires : sans eux, le plugin attend (état « waiting »). */
   inject?: string[];
   /** Services facultatifs : le plugin démarre sans eux, et redémarre quand ils arrivent ou changent. */
@@ -151,6 +156,7 @@ const ManifestSchema = z.object({
     configure: z.string().min(1).optional(),
   }).strict()).optional(),
   lazy: z.boolean().optional(),
+  startTimeout_s: z.number().positive().max(3600).optional(),
   inject: strs.optional(),
   optional: strs.optional(),
   runtime: z.enum(["in-process", "out-of-process"]).optional(),
