@@ -235,6 +235,18 @@ describe("DownloadManager", () => {
 });
 
 describe("ctx.downloads", () => {
+  it("les modèles vont toujours dans <répertoire de travail>/models : l'ancien réglage du dossier est ignoré", async () => {
+    let ctx!: Context;
+    const p = definePlugin({ manifest: { id: "pdl", version: "0", licence: "MIT" }, config: z.object({}), apply(c) { ctx = c; } });
+    const home = dir();
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "settings.json"), JSON.stringify({ dossier_modeles: join(home, "ailleurs") }));
+    const k = new Kernel({ logger: quiet, plugins: [p], home, secrets: new MemorySecrets() });
+    await k.applyConfig({ plugins: [{ id: "dl", plugin: "pdl" }], services: {} });
+    expect(ctx.downloads.dir).toBe(join(home, "models", "dl"));
+    expect(k.settings.list().map((s) => s.key)).not.toContain("dossier_modeles");
+  });
+
   it("range dans <dossier des modèles>/<entrée>, préfixe les clés et annonce la fin", async () => {
     const s = await serve();
     let ctx!: Context;

@@ -1,8 +1,7 @@
 // Réglages propres au noyau : rubriques « general » et « plugins », langues (interface, assistant), répertoire de
-// travail et dossier des modèles, et la carte de fin d'un téléchargement. Posés par le constructeur du noyau.
+// travail, et la carte de fin d'un téléchargement. Posés par le constructeur du noyau.
 import { chooseHome } from "../util/home.ts";
 import { isLang, LANGS, T, tr } from "../i18n.ts";
-import { join } from "node:path";
 import type { KernelInternals } from "./kernel-internals.ts";
 
 export function declareCoreSettings(k: KernelInternals): void {
@@ -50,17 +49,6 @@ export function declareCoreSettings(k: KernelInternals): void {
       // La réponse part d'abord à la fenêtre ; ensuite l'hôte relance le noyau dans le nouveau dossier.
       setTimeout(() => k.bus.emit("floppy.restart", { reason: T("nouveau répertoire de travail", "new working folder") }), 300).unref?.();
     },
-  }]);
-  k.settings.declare("core", [{
-    key: "dossier_modeles", section: "general", group: { fr: "Modèles", en: "Models" },
-    label: { fr: "Dossier des modèles téléchargés", en: "Downloaded models folder" },
-    description: {
-      fr: "Où Floppy range les modèles et les voix téléchargés depuis les réglages. Vide : le dossier de données de Floppy. Les modèles déjà téléchargés restent dans l'ancien dossier.",
-      en: "Where Floppy stores the models and voices downloaded from the settings. Empty: Floppy's data folder. Models already downloaded stay in the old folder.",
-    },
-    type: "text", maxLength: 500, folder: true, risk: "cli",
-    get: () => k.modelsDir,
-    set: (v) => { const d = String(v ?? "").trim(); k.modelsDir = d || join(k.home, "models"); },
   }]);
   // Fin d'un téléchargement : une carte (sans voix) pour le dire, même si la fenêtre est fermée.
   k.downloads.onChange((d) => {

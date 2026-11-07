@@ -174,7 +174,7 @@ export class Kernel {
   readonly children: ChildRegistry;
   /** Téléchargements de fichiers des plugins (modèles, voix) : une seule file pour tout le noyau. */
   readonly downloads: DownloadManager;
-  /** Dossier où les plugins rangent les fichiers téléchargés (réglage « dossier_modeles », défaut <home>/models). */
+  /** Dossier où les plugins rangent les fichiers téléchargés (toujours <home>/models). */
   modelsDir: string;
   /** Indice de l'appli pour la lecture de la machine (fabricants des puces vues par le navigateur). */
   machineHint: ProbeOptions["hint"];
@@ -268,7 +268,7 @@ export class Kernel {
     this.items.onChange(refreshCatalogTools);
     this.downloads = new DownloadManager(opts.downloads);
     this.machineOpts = opts.machine ?? {};
-    this.modelsDir = this.settings.savedValue<string>("dossier_modeles") || join(this.home, "models");
+    this.modelsDir = join(this.home, "models");
     this.uiLang = this.settings.savedValue<string>("langue_interface") ?? "fr";
     // Langue de l'interface, langue de l'assistant, dossiers : réglages du noyau (core-settings.ts).
     declareCoreSettings(this as unknown as KernelInternals);

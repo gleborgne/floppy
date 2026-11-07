@@ -18,8 +18,8 @@ une fois sur le disque, ils rejoignent la liste du rôle, prêts à activer. Rie
     le modèle de la liste ; un modèle en service est refusé (« choisis d'abord un autre … »).
 - **Fin d'un téléchargement** : une carte « Gemma 4 12B est téléchargé. » (sans voix), même fenêtre fermée.
 - **Licence** : le pied de la fenêtre dit que télécharger un modèle, c'est accepter sa licence.
-- **Dossier** : réglage « Dossier des modèles téléchargés » (rubrique Général, clic seulement). Défaut : `models` dans
-  le dossier de données de Floppy. Chaque entrée de la config range ses fichiers dans `<dossier>/<entrée>/`.
+- **Dossier** : toujours `models` dans le répertoire de travail de Floppy (pas de réglage à part :
+  changer le répertoire de travail déplace aussi les modèles). Chaque entrée de la config range ses fichiers dans `<dossier>/<entrée>/`.
 
 ## Le noyau : `ctx.downloads`
 
