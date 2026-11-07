@@ -485,6 +485,32 @@ describe("conversation (2 corps)", () => {
     } finally { clock.mockRestore(); }
   });
 
+  it("une phrase commencée pendant l'écoute libre compte, même si sa transcription arrive après la fin", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    try {
+      const st = streams.get("avatar")!;
+      st.emit({ type: "transcript", text: "Floppy bonjour", audio_s: 1, stt_ms: 0, merged: false });
+      await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
+      avatar.send({ type: "playback", playing: false });
+      await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("listening"));
+      // Écoute libre de 2 s : l'utilisateur commence à 11,5 s, la phrase transcrite arrive à 13 s.
+      clock.mockReturnValue(11_500);
+      st.emit({ type: "vad", state: "speech" });
+      clock.mockReturnValue(13_000);
+      st.emit({ type: "vad", state: "silence" });
+      st.emit({ type: "transcript", text: "et demain ?", audio_s: 1.5, stt_ms: 0, merged: false });
+      await vi.waitFor(() => expect(avatar.of("transcript")).toHaveLength(2));
+      await vi.waitFor(() => expect(avatar.of("reply.done")).toHaveLength(2));
+      avatar.send({ type: "playback", playing: false });
+      // Une parole commencée après la fenêtre reste jetée.
+      clock.mockReturnValue(30_000);
+      st.emit({ type: "vad", state: "speech" });
+      st.emit({ type: "transcript", text: "une conversation ambiante", audio_s: 1, stt_ms: 0, merged: false });
+      await new Promise(r => setTimeout(r, 20));
+      expect(avatar.of("transcript")).toHaveLength(2);
+    } finally { clock.mockRestore(); }
+  });
+
   it("accord : demandé aux 2 corps, « oui » dit à l'avatar l'accorde, l'autre carte se ferme", async () => {
     const st = streams.get("avatar")!;
     avatar.onToolCall = (m) => avatar.send({ type: "tool.result", callId: m.callId, ok: true, text: "Ouvert." });

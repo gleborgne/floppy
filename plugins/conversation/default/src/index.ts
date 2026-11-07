@@ -104,6 +104,8 @@ interface Body {
   quick?: boolean;
   /** Début de la parole entendue (VAD) : un hochement de tête quand l'utilisateur fait une pause. */
   speechAt?: number;
+  /** La parole en cours a commencé pendant l'écoute libre : sa phrase compte même si elle arrive après la fin de la fenêtre. */
+  speechOpen?: boolean;
   /** Phrases envoyées à la voix (récentes) : pour reconnaître leur écho dans le micro. */
   spoken?: { text: string; at: number }[];
   /** Fin de la dernière lecture (message playback:false du corps). */
@@ -565,7 +567,9 @@ ${text}` : text;
           case "vad":
             if (ev.state === "speech" && !b.turn && !b.muted && Date.now() < b.awakeUntil) setState(b, "listening");
             if (b.duck) duckFor(b, ev.state === "speech" ? DUCK_MAX_MS : DUCK_WAIT_TRANSCRIPT_MS);
-            if (ev.state === "speech") b.speechAt = Date.now();
+            // La phrase arrive après la fin de la parole + le silence + la transcription : on retient
+            // qu'elle a commencé dans la fenêtre, sinon une phrase de 3 s dite à la fin est jetée.
+            if (ev.state === "speech") { b.speechAt = Date.now(); b.speechOpen = !b.muted && Date.now() < b.awakeUntil; }
             // Pause après au moins une demi-seconde de parole, pendant qu'il écoute : petit hochement (« je t'entends »).
             else if (b.speechAt && Date.now() - b.speechAt > 500 && !b.muted && b.state === "listening" && !b.playing) { b.speechAt = undefined; cue("nod"); }
             break;
@@ -592,6 +596,9 @@ ${text}` : text;
             b.wakeStream?.pushTranscript?.({ text: ev.text, startSample: ev.start_sample, endSample: ev.end_sample });
             const activation = b.wakeActivation;
             const activated = !b.live?.active && !!activation && Date.now() <= activation.expires && (activation.endSample === undefined || (ev.end_sample !== undefined && ev.end_sample >= activation.endSample));
+            const startedOpen = !!b.speechOpen;
+            b.speechOpen = false;
+            if (startedOpen && !b.muted && Date.now() > b.awakeUntil) b.awakeUntil = Date.now() + 1000; // la fenêtre couvre cette phrase
             if (!b.live?.active && !b.ptt && (b.muted || Date.now() > b.awakeUntil) && !activated) {
               // Trace sans le texte (parole non adressée à Floppy) : assez pour voir qu'une phrase a été jetée.
               ctx.audit.write({ kind: "transcript.ignored", body: b.id, why: b.muted ? "veille" : "pas de mot d'activation", chars: ev.text.length, state: b.state, late_ms: b.muted ? undefined : Date.now() - b.awakeUntil });
@@ -818,7 +825,7 @@ ${text}` : text;
           if (m.on && b.turn) interrupt(b, "muet");
           setState(b, m.on ? "sleep" : "idle");
           setEmotion(m.on ? "sleepy" : "happy", 1500);
-          if (m.on) { b.awakeUntil = 0; b.wakeActivation = undefined; abortInit(b); b.live?.stop("muet"); b.history?.clear(); } else drain();
+          if (m.on) { b.awakeUntil = 0; b.speechOpen = false; b.wakeActivation = undefined; abortInit(b); b.live?.stop("muet"); b.history?.clear(); } else drain();
         } else if (m.type === "playback") {
           b.playing = m.playing;
           if (!m.playing) b.playEndAt = Date.now();
