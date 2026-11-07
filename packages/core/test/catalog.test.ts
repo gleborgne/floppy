@@ -49,6 +49,59 @@ describe("catalogue des éléments", () => {
     expect((await k.items.snapshot()).length).toBe(0);
   });
 
+  it("utiliser_element : seulement les actions « use » marquées voice", async () => {
+    let current = "tv";
+    const used: string[] = [];
+    const looks = [{ id: "tv", label: "Visage TV" }, { id: "pixelcat", label: { fr: "Chat pixel", en: "Pixel Cat" } }];
+    const k = new Kernel({ plugins: [definePlugin({
+      manifest: { id: "looks", version: "0.0.1", licence: "MIT" },
+      apply(ctx) {
+        ctx.items.declare({
+          id: "avatars", section: "corps", label: "Avatars",
+          list: () => looks.map((l) => ({ ...l, enabled: true, active: l.id === current, actions: l.id === current ? [] : [{ id: "use", label: "Utiliser", voice: true }] })),
+          action: async (id) => { current = id; used.push(id); return { ok: true, text: "ok" }; },
+        });
+        ctx.items.declare({
+          id: "models", section: "cerveau", label: "Modèles",
+          list: () => [{ id: "qwen", label: "Qwen", enabled: true, actions: [{ id: "use", label: "Ajouter à la liste" }] }],
+          action: async (id) => { used.push(id); return { ok: true, text: "ok" }; },
+        });
+      },
+    })] });
+    await k.applyConfig({ plugins: [{ id: "l", plugin: "looks" }] });
+    const r = await k.tools.call("utiliser_element", { nom: "chat" });
+    expect(r.status).toBe("done");
+    expect(current).toBe("pixelcat");
+    expect((await k.tools.call("utiliser_element", { nom: "chat" })).text).toMatch(/déjà en service/);
+    // Action sans la marque voice : refusée par l'outil et par le catalogue.
+    expect((await k.tools.call("utiliser_element", { nom: "qwen" })).text).toMatch(/ne se choisit pas à la voix/);
+    expect((await k.items.run({ op: "action", provider: "models", id: "qwen", action: "use" }, "voice")).ok).toBe(false);
+    expect(used).toEqual(["pixelcat"]);
+    await k.stopAll();
+  });
+
+  it("une action qui rend seulement un son ne redessine pas la fenêtre ; les autres oui", async () => {
+    const k = new Kernel({ plugins: [definePlugin({
+      manifest: { id: "sons", version: "0.0.1", licence: "MIT" },
+      apply(ctx) {
+        ctx.items.declare({
+          id: "sons", section: "voix", label: "Sons",
+          list: () => [{ id: "v", label: "Voix", enabled: true, actions: [{ id: "listen", label: "Écouter", play: true }, { id: "use", label: "Utiliser" }] }],
+          action: async (_id, a) => (a === "listen" ? { ok: true, text: "", audio: "data:audio/wav;base64,AA==" } : { ok: true, text: "ok" }),
+        });
+      },
+    })] });
+    await k.applyConfig({ plugins: [{ id: "s", plugin: "sons" }] });
+    let n = 0;
+    k.items.onChange(() => { n++; });
+    const r = await k.items.run({ op: "action", provider: "sons", id: "v", action: "listen" }, "ui");
+    expect(r.audio).toBe("data:audio/wav;base64,AA==");
+    expect(n).toBe(0);
+    await k.items.run({ op: "action", provider: "sons", id: "v", action: "use" }, "ui");
+    expect(n).toBe(1);
+    await k.stopAll();
+  });
+
   it("ItemStore : ajouts, modifications, désactivation, suppression", () => {
     const s = ItemStore.in(mkdtempSync(join(tmpdir(), "items-")), "x");
     const id = s.add("k", { label: "Mon Modèle" }, "Mon Modèle", ["mon-modele"]);

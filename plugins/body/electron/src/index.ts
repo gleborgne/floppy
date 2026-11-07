@@ -274,7 +274,8 @@ export default definePlugin<Config>({
           status: active ? "ok" : "off",
           ...(active ? { statusText: { fr: "utilisé", en: "in use" } } : {}),
           editable: false, removable: false, toggleable: !active,
-          actions: active ? [] : [{ id: "use", label: { fr: "Utiliser", en: "Use" } }],
+          // voice : « mets l'avatar chat » (outil utiliser_element) ; changer d'avatar est sans risque.
+          actions: active ? [] : [{ id: "use", label: { fr: "Utiliser", en: "Use" }, voice: true }],
           aliases: [a.id],
         };
       }),

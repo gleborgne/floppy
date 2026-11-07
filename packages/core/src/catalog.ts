@@ -126,8 +126,10 @@ export interface ItemInfo {
   /**
    * Boutons propres à l'élément (« Utiliser », « Tester la voix »…). play : l'action rend un son (OpResult.audio) ;
    * la fenêtre la montre en bouton rond « lecture » au début de la ligne.
+   * voice : permise à la voix (outil utiliser_element, action « use »). Seulement pour un choix sans risque et qu'on
+   * défait de la même façon (l'avatar affiché), jamais pour ajouter, télécharger ou supprimer.
    */
-  actions?: { id: string; label: Text; play?: boolean }[];
+  actions?: { id: string; label: Text; play?: boolean; voice?: boolean }[];
   /** Mots qui le désignent à l'oral. */
   aliases?: string[];
   /** Clés des réglages qui appartiennent à cet élément : montrés dans l'élément (« Configurer »), pas dans la rubrique. */
@@ -341,7 +343,10 @@ export class CatalogRegistry {
     const entry = this.defs.get(o.provider);
     if (!entry) return { ok: false, text: T(`Fournisseur inconnu : ${o.provider}.`, `Unknown provider: ${o.provider}.`) };
     const { def } = entry;
-    if (via === "voice" && !(o.op === "enable" || (o.op === "add" && def.voiceAdd))) {
+    // Action à la voix : seulement celles que l'élément marque `voice` (choix sans risque, ex. l'avatar affiché).
+    const voiceAction = via === "voice" && o.op === "action"
+      && !!(await Promise.resolve().then(() => def.list()).catch(() => [] as ItemInfo[])).find((i) => i.id === o.id)?.actions?.some((x) => x.id === o.action && x.voice);
+    if (via === "voice" && !(o.op === "enable" || (o.op === "add" && def.voiceAdd) || voiceAction)) {
       this.audit.write({ kind: "catalog.refused", op: o.op, provider: o.provider, why: "pas à la voix" });
       return { ok: false, text: T("Ça ne se fait pas à la voix, pour ta sécurité : utilise la fenêtre des réglages.", "This can't be done by voice, for your safety: use the Settings window.") };
     }
@@ -429,7 +434,8 @@ export class CatalogRegistry {
         ...(o.op === "child" ? { child: o.child } : {}),
         ...(o.op === "action" ? { action: o.action } : {}),
       });
-      this.changed();
+      // Une action qui rend seulement un son (« Écouter ») ne change rien : la fenêtre ne se redessine pas.
+      if (!(o.op === "action" && r.audio)) this.changed();
     }
     return r;
   }

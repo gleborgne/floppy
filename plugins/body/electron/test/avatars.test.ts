@@ -47,7 +47,7 @@ describe("avatars (plugins)", () => {
     const p = await list();
     expect(p.items.map((i) => i.id).sort()).toEqual(["pixel", "tv"]);
     expect(p.items.find((i) => i.id === "tv")).toMatchObject({ enabled: true, active: true, toggleable: false });
-    expect(p.items.find((i) => i.id === "pixel")!.actions).toEqual([{ id: "use", label: { fr: "Utiliser", en: "Use" } }]);
+    expect(p.items.find((i) => i.id === "pixel")!.actions).toEqual([{ id: "use", label: { fr: "Utiliser", en: "Use" }, voice: true }]);
     const d = lastDisplay(sent)!;
     expect(d.avatar).toBe("tv");
     expect(String(d.avatarUrl)).toMatch(/^file:.*plugins\/avatar\/tv\/renderer\/index\.js$/);

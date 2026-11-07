@@ -69,7 +69,7 @@ flowchart LR
     X["Secrets<br/>Gestionnaire d'identification Windows"]
   end
   W["Fenêtre des réglages<br/>(formulaires générés)"]
-  F["Floppy à la voix<br/>lister_elements · activer_element · ajouter_application"]
+  F["Floppy à la voix<br/>lister_elements · activer_element · utiliser_element · ajouter_application"]
   L & O & T & V & R & E -- "ctx.items.declare(fournisseur)" --> C
   L & O & T & V & R & E -. "ajouts, modifs, désactivés" .-> S
   O & T -. "clés, jetons" .-> X
@@ -120,6 +120,7 @@ On ne peut pas désactiver l'élément en service sans remplaçant (le modèle c
 |---|---|---|---|
 | Lister | oui | `GET /items` | `lister_elements` |
 | Activer / désactiver | oui | `POST /items` | `activer_element` ; activer un élément **cloud** = demande d'accord |
+| Passer sur un élément (bouton « Utiliser » : l'avatar affiché) | oui | `POST /items` | `utiliser_element` : seulement les actions `use` que l'élément marque `voice: true` (choix sans risque). « Utiliser » d'un modèle (l'ajouter à la liste) reste refusé à la voix |
 | Ajouter une **application** livrée avec Floppy (Orca, navigateur…) | oui | `POST /items` | `ajouter_application` : **toujours** une demande d'accord, valeurs par défaut seulement |
 | Ajouter un autre élément (MCP, commande…), modifier, supprimer | oui | `POST /items` | **jamais** (un MCP local lance une commande sur le PC) |
 

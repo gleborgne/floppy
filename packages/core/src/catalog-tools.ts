@@ -71,6 +71,30 @@ export function catalogTools(cat: CatalogRegistry): ToolDef[] {
       },
     },
     {
+      name: "utiliser_element",
+      description: "Passe sur un élément quand l'utilisateur le demande (« mets l'avatar chat », « change d'avatar pour le rond pixel »). Seulement les éléments qu'on peut choisir à la voix (ex. avatars) ; voir lister_elements. Appelle-le tout de suite, sans confirmation. nom : le nom dit par l'utilisateur.",
+      inputSchema: { type: "object", properties: { nom: { type: "string" }, rubrique }, required: ["nom"] },
+      level: "write",
+      selfApproved: true,
+      handler: async (a, meta) => {
+        const nom = String(a.nom ?? "");
+        const all = await cat.find(nom, typeof a.rubrique === "string" ? a.rubrique : undefined);
+        // Un élément déjà en service n'a plus son bouton « use » : on le garde pour répondre « c'est déjà lui ».
+        const hits = all.filter((h) => h.item.active || h.item.actions?.some((x) => x.id === "use" && x.voice));
+        if (!hits.length) {
+          return { status: "failed", text: all.length
+            ? T(`${tr(all[0]!.item.label, "fr")} ne se choisit pas à la voix : utilise la fenêtre des réglages.`, `${tr(all[0]!.item.label, "en")} can't be chosen by voice: use the Settings window.`)
+            : T(`Je ne trouve pas « ${nom} ». Utilise lister_elements.`, `I can't find "${nom}". Use lister_elements.`) };
+        }
+        if (hits.length > 1) return { status: "failed", text: T(`Plusieurs éléments correspondent : ${hits.map((h) => tr(h.item.label, "fr")).join(", ")}. Demande lequel.`, `Several items match: ${hits.map((h) => tr(h.item.label, "en")).join(", ")}. Ask which one.`) };
+        const { provider, item } = hits[0]!;
+        if (item.active) return { status: "done", text: T(`${tr(item.label, "fr")} est déjà en service.`, `${tr(item.label, "en")} is already in use.`) };
+        const r = await cat.run({ op: "action", provider, id: item.id, action: "use" }, "voice", meta.origin);
+        const text = r.ok ? T(`C'est ${tr(item.label, "fr")} maintenant.`, `It's ${tr(item.label, "en")} now.`) : r.text;
+        return { status: r.ok ? "done" : isRefusal(r.text) ? "refused" : "failed", text };
+      },
+    },
+    {
       name: "ajouter_application",
       description: "Ajoute (installe) une application livrée avec l'assistant quand l'utilisateur le demande (« installe Orca », « ajoute le navigateur »). Voir lister_elements pour ce qu'on peut ajouter. Le noyau demande l'accord de l'utilisateur : appelle-le directement, sans redemander. nom : le nom dit par l'utilisateur.",
       inputSchema: { type: "object", properties: { nom: { type: "string" } }, required: ["nom"] },
