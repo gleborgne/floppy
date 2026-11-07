@@ -129,6 +129,12 @@ describe("plugin Orca (worker)", () => {
     expect(bridgeFiles({ LOCALAPPDATA: join("/h", "AppData", "Local") }, "/h", "win32")).toEqual([f("/h", "AppData", "Local", "floppy"), f("/h", ".local", "share", "floppy")]);
   });
 
+  it("trouve aussi le répertoire de travail choisi par l'utilisateur (pointeur du dossier par défaut)", () => {
+    const f = (...p: string[]) => join(...p, "orca-bridge.json");
+    const chosen = (base: string) => (base === join("/h", "AppData", "Local", "floppy") ? "/D/Floppy" : undefined);
+    expect(bridgeFiles({}, "/h", "win32", chosen)).toEqual([f("/D/Floppy"), f("/h", "AppData", "Local", "floppy"), f("/h", ".local", "share", "floppy")]);
+  });
+
   it("lit le premier fichier présent ; sinon dit ce qui a été essayé", () => {
     const files = ["/a", "/b"];
     expect(readBridgeInfo(files, (p) => { if (p === "/a") throw new Error("absent"); return '{"port":5,"token":"t"}'; })).toEqual({ port: 5, token: "t" });

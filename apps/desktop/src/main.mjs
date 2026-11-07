@@ -7,13 +7,14 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, utilityPro
 import { fileURLToPath } from "node:url";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
-import { createWriteStream, mkdirSync, existsSync, renameSync, statSync } from "node:fs";
+import { createWriteStream, mkdirSync, existsSync, readFileSync, renameSync, statSync } from "node:fs";
 import { renderMarkdown } from "./markdown.mjs";
 import { Typer, foregroundRect } from "./typer.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..", "..");                     // dossier assistant/
-const CONFIG = resolve(process.env.FLOPPY_CONFIG ?? join(ROOT, "floppy.yml"));
+// Config imposée (FLOPPY_CONFIG) ; sinon le noyau lit <répertoire de travail>/floppy.yml (apps/cli/src/boot.ts).
+const CONFIG = process.env.FLOPPY_CONFIG ? resolve(process.env.FLOPPY_CONFIG) : null;
 // Mode debug d'un plugin : `npm start -- --dev-plugin <dossier>` (répétable). Le noyau le charge activé et le relit
 // à chaque sauvegarde (apps/cli/src/boot.ts, variable FLOPPY_DEV_PLUGINS ; le noyau hérite de l'environnement).
 const DEV_PLUGINS = (process.argv ?? []).flatMap((a, i, all) => a === "--dev-plugin" && all[i + 1] ? [resolve(all[i + 1])] : a.startsWith("--dev-plugin=") ? [resolve(a.slice(13))] : []);
@@ -103,15 +104,31 @@ process.chdir(ROOT); // les chemins relatifs de floppy.yml partent de la racine 
 
 // ------------------------------------------------------------------ journal du noyau
 // Dossier de données (le même que celui du noyau). L'ancien nom « assistant » est déplacé une fois.
-const dataParent = process.env.LOCALAPPDATA ?? ROOT;
-let logDir = process.env.FLOPPY_HOME ?? join(dataParent, "floppy");
-if (!process.env.FLOPPY_HOME && !existsSync(logDir) && existsSync(join(dataParent, "assistant"))) {
-  try { renameSync(join(dataParent, "assistant"), logDir); } catch { logDir = join(dataParent, "assistant"); }
+const dataParent = process.env.LOCALAPPDATA || process.env.XDG_DATA_HOME || join(process.env.HOME ?? ROOT, ".local", "share");
+/**
+ * Répertoire de travail, comme le noyau le trouve (packages/core/src/util/home.ts) : FLOPPY_HOME, sinon le dossier
+ * choisi (pointeur <dossier par défaut>/home.json), sinon le dossier par défaut.
+ */
+function homeDir() {
+  if (process.env.FLOPPY_HOME) return process.env.FLOPPY_HOME;
+  const base = join(dataParent, "floppy");
+  try {
+    const chosen = JSON.parse(readFileSync(join(base, "home.json"), "utf8"))?.home;
+    if (typeof chosen === "string" && chosen) return chosen;
+  } catch { /* pas de pointeur : dossier par défaut */ }
+  if (!existsSync(base) && existsSync(join(dataParent, "assistant"))) {
+    try { renameSync(join(dataParent, "assistant"), base); } catch { return join(dataParent, "assistant"); }
+  }
+  return base;
 }
-mkdirSync(logDir, { recursive: true });
-// Au-delà de 20 Mo, le journal devient kernel.1.log (l'ancien est remplacé) : il ne grossit jamais sans limite.
-try { if (statSync(join(logDir, "kernel.log")).size > 20 * 1024 * 1024) renameSync(join(logDir, "kernel.log"), join(logDir, "kernel.1.log")); } catch { /* absent */ }
-const kernelLog = createWriteStream(join(logDir, "kernel.log"), { flags: "a" });
+function openLog(dir) {
+  try { mkdirSync(dir, { recursive: true }); } catch { /* disque absent : le noyau choisira le dossier par défaut */ }
+  // Au-delà de 20 Mo, le journal devient kernel.1.log (l'ancien est remplacé) : il ne grossit jamais sans limite.
+  try { if (statSync(join(dir, "kernel.log")).size > 20 * 1024 * 1024) renameSync(join(dir, "kernel.log"), join(dir, "kernel.1.log")); } catch { /* absent */ }
+  return createWriteStream(join(dir, "kernel.log"), { flags: "a" });
+}
+let logDir = homeDir();
+let kernelLog = openLog(logDir);
 
 // ------------------------------------------------------------------ textes du processus principal (fr / en)
 const TEXTS = {
@@ -241,7 +258,10 @@ function startKernel() {
   // La raison du dernier démarrage raté reste visible jusqu'à un démarrage réussi (kernel.ready).
   if (bootFailure) problems.set("noyau", bootFailure);
   const entry = join(here, "kernel.ts");
-  kernel = utilityProcess.fork(entry, [CONFIG], { stdio: "pipe", serviceName: "Floppy - noyau", cwd: ROOT });
+  // Nouveau répertoire de travail choisi : le journal suit.
+  const dir = homeDir();
+  if (dir !== logDir) { kernelLog.end(); logDir = dir; kernelLog = openLog(logDir); }
+  kernel = utilityProcess.fork(entry, CONFIG ? [CONFIG] : [], { stdio: "pipe", serviceName: "Floppy - noyau", cwd: ROOT });
   const source = kernel;
   const forward = (d) => { process.stdout.write(d); kernelLog.write(d); };
   kernel.stdout?.on("data", forward);
@@ -250,6 +270,7 @@ function startKernel() {
     if (quitting || kernel !== source) return;
     if (m?.type === "need-body-port") { kernelWantsPort = true; connectBody(); }
     else if (m?.type === "kernel.failed") bootFailure = m.text ?? null;
+    else if (m?.type === "restart") restartKernel();
     else if (m?.type === "display") applyDisplay(m.settings);
     else if (m?.type === "settings.open") {
       const source = kernel;
@@ -853,6 +874,13 @@ app.whenReady().then(() => {
   }) : null);
   ipcMain.handle("onboarding:apply", (e, level, brain) => fromOnb(e) ? kernelRequest({ type: "onboarding.apply", level: String(level).slice(0, 40), ...(brain ? { brain: String(brain).slice(0, 200) } : {}) }) : null);
   ipcMain.handle("onboarding:skip", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.skip" }) : null);
+  // Répertoire de travail choisi dans « Bienvenue » : le noyau le note puis repart dans ce dossier (réglage dossier_floppy).
+  ipcMain.handle("onboarding:home", async (e) => {
+    if (!fromOnb(e)) return null;
+    const r = await dialog.showOpenDialog(onbWin, { title: T("pickTitle"), properties: ["openDirectory", "createDirectory"] });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    return kernelRequest({ type: "settings.set", key: "dossier_floppy", value: r.filePaths[0] });
+  });
   ipcMain.on("onboarding:close", (e) => { if (fromOnb(e)) onbWin.close(); });
   ipcMain.on("onboarding:settings", (e) => { if (fromOnb(e)) openSettings(); });
   ipcMain.handle("onboarding:state", (e) => (fromSettings(e) ? lastOnb : null));

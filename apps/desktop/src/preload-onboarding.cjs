@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("floppyOnboarding", {
   }),
   apply: (level, brain) => ipcRenderer.invoke("onboarding:apply", String(level), brain ? String(brain) : ""),
   skip: () => ipcRenderer.invoke("onboarding:skip"),
+  /** Choisir le répertoire de travail (sélecteur de dossiers) ; Floppy repart dans ce dossier. */
+  chooseHome: () => ipcRenderer.invoke("onboarding:home"),
   close: () => ipcRenderer.send("onboarding:close"),
   openSettings: () => ipcRenderer.send("onboarding:settings"),
   onState: (cb) => {

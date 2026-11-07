@@ -36,7 +36,7 @@ The brain, the voice, the avatar, the tools and even the body it lives in are pl
 git clone https://github.com/gleborgne/floppy.git
 cd floppy
 npm install
-npm start          # first start creates floppy.yml from floppy.example.yml
+npm start          # first start creates floppy.yml (in Floppy's working folder) from floppy.example.yml
 ```
 
 Then open **Settings** (tray icon) to choose a brain and a voice.
@@ -67,7 +67,7 @@ npx floppy start --config <file>          # headless (disable body-electron in t
 npm run check                 # typecheck + tests + licence check
 ```
 
-Configuration lives in `floppy.yml` (reloaded live, ignored by git). User data lives in `%LOCALAPPDATA%\floppy` (or `FLOPPY_HOME`).
+Everything Floppy keeps lives in one working folder: `%LOCALAPPDATA%\floppy` by default, changeable in the Welcome window or in Settings → General (or forced with `FLOPPY_HOME`). It holds the configuration `floppy.yml` (reloaded live), the settings, the downloaded models, the agents' workspaces, third-party plugins and the logs.
 
 ## How it is built
 

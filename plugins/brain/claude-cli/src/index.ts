@@ -63,7 +63,7 @@ export function extractJson(text: string): unknown {
 
 /** Un appel ponctuel au CLI : aucun outil, aucun MCP, aucune mémoire. Le prompt passe par l'entrée standard. */
 function makeCompletion(ctx: Context, cfg: Config, model: string, label: string): CompletionService {
-  const cwd = cfg.cwd ?? join(ctx.home, "claude-workdir");
+  const cwd = cfg.cwd ?? ctx.workspace();
   const once = (system: string, prompt: string, signal?: AbortSignal): Promise<string> => new Promise((ok, ko) => {
     if (signal?.aborted) return ko(new Error("annulé"));
     mkdirSync(cwd, { recursive: true });
@@ -141,7 +141,7 @@ type Pick = () => { id: string; label: string };
 const labelOf = (id: string) => `Claude ${id.charAt(0).toUpperCase()}${id.slice(1)}`;
 
 function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () => ({ id: cfg.model, label: labelOf(cfg.model) })): BrainService & { stop(): Promise<void>; renew(): void } {
-  const cwd = cfg.cwd ?? join(ctx.home, "claude-workdir");
+  const cwd = cfg.cwd ?? ctx.workspace();
   mkdirSync(cwd, { recursive: true });
   const mcpConfig = JSON.stringify({ mcpServers: { floppy: { type: "http", url: mcp.url, headers: { Authorization: "Bearer ${FLOPPY_MCP_TOKEN}" } } } });
   // Les arguments (donc le prompt) suivent les outils visibles au moment du lancement.

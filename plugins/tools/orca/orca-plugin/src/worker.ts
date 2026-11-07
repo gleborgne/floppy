@@ -26,14 +26,26 @@ export interface BridgeInfo { port: number; token: string }
  * LOCALAPPDATA/floppy, sinon ~/.local/share/floppy. Orca lance ses workers sans LOCALAPPDATA : sous Windows, on
  * ajoute donc ~/AppData/Local/floppy (sa valeur par défaut).
  */
-export function bridgeFiles(env: Record<string, string | undefined> = process.env, home: string = homedir(), platform: string = process.platform): string[] {
-  const bases = [
-    env.FLOPPY_HOME,
+export function bridgeFiles(
+  env: Record<string, string | undefined> = process.env, home: string = homedir(), platform: string = process.platform,
+  chosen: (base: string) => string | undefined = readChosenHome,
+): string[] {
+  const defaults = [
     env.LOCALAPPDATA && join(env.LOCALAPPDATA, "floppy"),
     platform === "win32" ? join(home, "AppData", "Local", "floppy") : undefined,
     join(home, ".local", "share", "floppy"),
   ].filter((b): b is string => !!b);
+  // Répertoire de travail choisi par l'utilisateur : noté dans <dossier par défaut>/home.json.
+  const picked = defaults.map((b) => chosen(b)).filter((b): b is string => !!b);
+  const bases = [env.FLOPPY_HOME, ...picked, ...defaults].filter((b): b is string => !!b);
   return [...new Set(bases)].map((b) => join(b, "orca-bridge.json"));
+}
+
+function readChosenHome(base: string): string | undefined {
+  try {
+    const h = (JSON.parse(readFileSync(join(base, "home.json"), "utf8")) as { home?: unknown }).home;
+    return typeof h === "string" && h ? h : undefined;
+  } catch { return undefined; }
 }
 
 /** Premier fichier du pont lisible, ou la liste des essais ratés. */

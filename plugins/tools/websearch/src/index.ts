@@ -230,7 +230,7 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
     },
     config: Config,
     apply(ctx, cfg) {
-      const workdir = join(ctx.home, "websearch");
+      const workdir = ctx.workspace();
       // Même moteur, deuxième usage : service `search` pour les autres plugins (la Veille), choisi dans un slot.
       ctx.offer("search", {
         items: () => [{ id: "claude", label: t("Recherche Claude", "Claude search"), cloud: true }],

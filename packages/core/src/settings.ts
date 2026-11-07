@@ -44,6 +44,8 @@ export interface SettingDef {
   /** Texte : longueur maximale. Choix : suggestions (préréglages) pour un texte libre. */
   maxLength?: number;
   presets?: SettingOption[];
+  /** Texte : c'est un dossier (la fenêtre propose « Choisir… »). */
+  folder?: boolean;
   risk: SettingRisk;
   /** Risque selon la valeur demandée (ex. allumer un connecteur cloud = ask, l'éteindre = free). */
   riskFor?: (value: unknown) => SettingRisk;
@@ -64,6 +66,7 @@ export interface SettingInfo {
   options?: SettingOption[];
   presets?: SettingOption[];
   maxLength?: number;
+  folder?: boolean;
   min?: number;
   max?: number;
   risk: SettingRisk;
@@ -137,7 +140,7 @@ export class SettingsRegistry {
       ...(def.role ? { role: def.role } : {}),
       ...(def.options ? { options: def.options } : {}), ...(def.presets ? { presets: def.presets } : {}),
       ...(def.maxLength !== undefined ? { maxLength: def.maxLength } : {}), ...(def.min !== undefined ? { min: def.min } : {}),
-      ...(def.max !== undefined ? { max: def.max } : {}), risk: def.risk, source,
+      ...(def.max !== undefined ? { max: def.max } : {}), ...(def.folder ? { folder: true } : {}), risk: def.risk, source,
     }));
   }
 

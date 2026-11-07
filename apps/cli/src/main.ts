@@ -56,7 +56,12 @@ const ICON: Record<string, string> = { active: "●", waiting: "◌", error: "�
 async function main(): Promise<number> {
   switch (cmd) {
     case "start": {
-      const running = await boot({ configPath: values.config ?? "floppy.yml" });
+      const running = await boot(values.config ? { configPath: values.config } : {});
+      // Nouveau répertoire de travail choisi : Floppy s'arrête, il repart dans ce dossier au prochain lancement.
+      running.kernel.bus.on("floppy.restart", () => {
+        console.log("\n" + say("Nouveau répertoire de travail : relance Floppy pour l'utiliser.", "New working folder: start Floppy again to use it."));
+        void running.stop().then(() => process.exit(0));
+      });
       printStatus(running.kernel.status());
       console.log("\n" + say(`Noyau prêt (dossier : ${home}). Ctrl+C pour arrêter.`, `Kernel ready (folder: ${home}). Ctrl+C to stop.`));
       running.kernel.bus.on("plugin.state", (s) => {

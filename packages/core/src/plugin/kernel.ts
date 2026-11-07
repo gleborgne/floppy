@@ -16,7 +16,7 @@ import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { Bus, type PluginState } from "../bus.ts";
 import { Hooks } from "./hooks.ts";
 import { EffectScope } from "./effects.ts";
@@ -41,6 +41,7 @@ import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
 import { findExe, killTree, stableStringify } from "../util/process.ts";
 import { ChildRegistry } from "../util/children.ts";
+import { chooseHome } from "../util/home.ts";
 import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
 export type Logger = (rec: { level: LogLevel; source: string; msg: string; data?: Record<string, unknown> }) => void;
@@ -284,6 +285,25 @@ export class Kernel {
     this.downloads = new DownloadManager(opts.downloads);
     this.machineOpts = opts.machine ?? {};
     this.modelsDir = this.settings.savedValue<string>("dossier_modeles") || join(this.home, "models");
+    // Répertoire de travail : config, réglages, modèles, espaces des agents, plugins tiers, journaux (voir util/home.ts).
+    // Le changer relance le noyau ; les données suivent, sauf si le nouveau dossier a déjà des données de Floppy.
+    this.settings.declare("core", [{
+      key: "dossier_floppy", section: "general", group: { fr: "Dossier de Floppy", en: "Floppy's folder" },
+      label: { fr: "Répertoire de travail", en: "Working folder" },
+      description: {
+        fr: "Le dossier où Floppy garde tout : config, réglages, modèles, espaces de travail des agents, plugins, journaux. Le changer relance Floppy et y déplace ses données (un dossier qui a déjà des données de Floppy est repris tel quel).",
+        en: "The folder where Floppy keeps everything: config, settings, models, agents' workspaces, plugins, logs. Changing it restarts Floppy and moves its data there (a folder that already holds Floppy data is used as is).",
+      },
+      type: "text", maxLength: 500, folder: true, risk: "cli",
+      get: () => this.home,
+      set: (v) => {
+        const what = chooseHome(String(v ?? ""));
+        if (what === "same") return;
+        this.log("info", "core", `nouveau répertoire de travail (${what === "move" ? "données déplacées" : "données reprises"}) : ${String(v)}`);
+        // La réponse part d'abord à la fenêtre ; ensuite l'hôte relance le noyau dans le nouveau dossier.
+        setTimeout(() => this.bus.emit("floppy.restart", { reason: T("nouveau répertoire de travail", "new working folder") }), 300).unref?.();
+      },
+    }]);
     this.settings.declare("core", [{
       key: "dossier_modeles", section: "general", group: { fr: "Modèles", en: "Models" },
       label: { fr: "Dossier des modèles téléchargés", en: "Downloaded models folder" },
@@ -291,7 +311,7 @@ export class Kernel {
         fr: "Où Floppy range les modèles et les voix téléchargés depuis les réglages. Vide : le dossier de données de Floppy. Les modèles déjà téléchargés restent dans l'ancien dossier.",
         en: "Where Floppy stores the models and voices downloaded from the settings. Empty: Floppy's data folder. Models already downloaded stay in the old folder.",
       },
-      type: "text", maxLength: 500, risk: "cli",
+      type: "text", maxLength: 500, folder: true, risk: "cli",
       get: () => this.modelsDir,
       set: (v) => { const d = String(v ?? "").trim(); this.modelsDir = d || join(this.home, "models"); },
     }]);
@@ -1253,6 +1273,12 @@ export class Kernel {
       approvals: this.approvalsFor(def.manifest, e.cfg.id, scope),
       audit: this.audit,
       home: this.home,
+      workspace: (name) => {
+        const safe = (s: string) => s.replace(/[^a-z0-9._-]/gi, "_").replace(/^\.+/, "_");
+        const dir = join(this.home, "workspaces", safe(def.manifest.id), ...(name ? [safe(name)] : []));
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
       settings: {
         declare: (defs) => { scope.add(this.settings.declare(e.cfg.id, defs)); },
         saved: (key) => this.settings.savedValue(key),

@@ -316,7 +316,12 @@ function textControl(info, apply) {
   input.value = String(info.value ?? "");
   const ok = h("button", { type: "button", text: t("apply"), onclick: () => apply(input.value) });
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(input.value); });
-  const box = h("div", {}, h("div", { class: "txt" }, input, ok));
+  // Un dossier (répertoire de travail, modèles) : « Parcourir… » ouvre le sélecteur de dossiers du système.
+  const browse = info.folder && api?.pickPath ? h("button", {
+    type: "button", class: "sec", text: t("pick"),
+    onclick: async () => { const p = await api.pickPath({ directory: true }); if (p) { input.value = p; apply(p); } },
+  }) : null;
+  const box = h("div", {}, h("div", { class: "txt" }, input, browse, ok));
   if (info.presets?.length) {
     const row = h("div", { class: "chips" });
     for (const p of info.presets) {

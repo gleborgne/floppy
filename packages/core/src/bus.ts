@@ -18,6 +18,8 @@ export interface CoreEvents {
   "plugin.state": { id: string; plugin: string; state: PluginState; error?: string; missing?: string[] };
   /** Un service a un nouveau fournisseur (ou n'en a plus : provider = undefined). */
   "service.changed": { name: string; provider?: string };
+  /** Le noyau doit repartir de zéro (nouveau répertoire de travail) : l'hôte le relance. Émis par le noyau seulement. */
+  "floppy.restart": { reason: import("./i18n.ts").Text };
   [event: string]: unknown;
 }
 

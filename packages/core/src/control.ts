@@ -9,18 +9,7 @@ import type { Kernel } from "./plugin/kernel.ts";
 import { errorText, T, TextError } from "./i18n.ts";
 import { onboardingFor } from "./onboarding.ts";
 
-export function floppyHome(): string {
-  if (process.env.FLOPPY_HOME) { mkdirSync(process.env.FLOPPY_HOME, { recursive: true }); return process.env.FLOPPY_HOME; }
-  const parent = process.env.LOCALAPPDATA ?? join(process.env.HOME ?? ".", ".local", "share");
-  const base = join(parent, "floppy");
-  // Ancien nom du dossier de données (avant le renommage du projet) : déplacé une fois.
-  const legacy = join(parent, "assistant");
-  if (!existsSync(base) && existsSync(legacy)) {
-    try { renameSync(legacy, base); } catch { return legacy; /* dossier occupé (ancienne app ouverte) : nouvel essai au prochain démarrage */ }
-  }
-  mkdirSync(base, { recursive: true });
-  return base;
-}
+export { floppyHome } from "./util/home.ts";
 
 export interface ControlInfo { port: number; token: string; pid: number }
 

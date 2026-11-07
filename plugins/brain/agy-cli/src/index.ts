@@ -94,7 +94,7 @@ export type Pick = () => { id: string; label: string };
 
 export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: string, pick: Pick): BrainService & { stop(): Promise<void>; renew(): void } {
   const home = join(ctx.home, "agy-home");
-  const cwd = cfg.cwd ?? join(ctx.home, "agy-workdir");
+  const cwd = cfg.cwd ?? ctx.workspace();
   const schemas = join(home, ".gemini", "antigravity-cli", "mcp");
   const settings = agySettings(schemas);
   const schemaRead = (p: unknown) => String(p ?? "").toLowerCase().startsWith(schemas.toLowerCase());

@@ -8,17 +8,20 @@ interface ParentPort {
   postMessage(data: unknown): void;
 }
 const parent = (process as unknown as { parentPort: ParentPort }).parentPort;
-const configPath = process.argv[2] ?? process.env.FLOPPY_CONFIG ?? "floppy.yml";
+// Défaut : <répertoire de travail>/floppy.yml (boot.ts). FLOPPY_CONFIG impose une autre config.
+const configPath = process.argv[2] ?? process.env.FLOPPY_CONFIG;
 
 // Un démarrage impossible (floppy.yml invalide, plugin cassé au chargement) : la raison part à l'app avant l'arrêt,
 // pour qu'elle la montre au lieu de relancer en boucle.
-const running = await boot({ configPath }).catch((err: unknown) => {
+const running = await boot(configPath ? { configPath } : {}).catch((err: unknown) => {
   console.error(err);
   parent.postMessage({ type: "kernel.failed", text: errorText(err) });
   setTimeout(() => process.exit(2), 200);
   return new Promise<never>(() => {});
 });
 running.kernel.bus.on("plugin.state", (s) => parent.postMessage({ type: "plugin.state", ...s }));
+// Nouveau répertoire de travail : l'app relance le noyau, qui repart dans ce dossier.
+running.kernel.bus.on("floppy.restart", () => parent.postMessage({ type: "restart" }));
 parent.postMessage({ type: "kernel.ready", plugins: running.kernel.status(), firstRun: running.firstRun });
 
 // ------------------------------------------------------------------ réglages (fenêtre des réglages ↔ registre du noyau)
@@ -126,7 +129,7 @@ function handleOnboarding(d: OnboardingMsg) {
     } else if (d.type === "onboarding.get") {
       const manual = typeof d.manualBytes === "number" && d.manualBytes >= 0 ? d.manualBytes : undefined;
       ob.plan({ fresh: d.fresh === true, ...(manual !== undefined ? { manualBytes: manual } : {}) }).then(
-        ({ candidates: _c, ...plan }) => reply(true, { ...plan, state: ob.state, lang: k.uiLang }),
+        ({ candidates: _c, ...plan }) => reply(true, { ...plan, state: ob.state, lang: k.uiLang, home: k.home }),
         (err) => reply(false, undefined, uiError(err)),
       );
     } else if (d.type === "onboarding.apply") {

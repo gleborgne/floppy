@@ -27,7 +27,8 @@ export { ChildRegistry, reapOrphans, systemReapDeps, programBase, type ChildReco
 export { watchHealth, type HealthWatch } from "./util/health.ts";
 export { installSafetyNet, type SafetyKind, type SafetyNetOptions } from "./util/safety.ts";
 export { writeFileAtomic, writeJsonAtomic, readJsonFile, corruptFiles, onCorruptFile, type CorruptReport } from "./util/files.ts";
-export { startControl, controlCall, floppyHome, type ControlInfo, type ControlHandlers } from "./control.ts";
+export { startControl, controlCall, type ControlInfo, type ControlHandlers } from "./control.ts";
+export { floppyHome, defaultHome, chooseHome, applyPendingMove, defaultConfigPath, hasFloppyData } from "./util/home.ts";
 export type { Services, LlmService, BrainService, BrainEvent, BrainRunInput, TurnMode, MemoryService, MemorySnapshot, VoiceService, VoiceStream, VoiceEvent, CoderService, CoderEvent, CoderAgent, CoderAgentInfo, CoderMode } from "./services.ts";
 export type { McpEndpoint, ScopedEndpoint, ScopedOptions, ExtraTool, BodyHub, BodySessionInfo, HubEvent, AttachOpts, AvatarInfo, AvatarEntry, AvatarRegistry } from "./services.ts";
 export { defineAvatar, readAvatarDir } from "./avatars.ts";

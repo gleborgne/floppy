@@ -15,6 +15,8 @@ const I = {
     dedicated: "propre à la carte", forModels: "Pour les modèles", noChip: "aucune puce graphique utile", ram: "RAM", disk: "Place libre",
     manual: "Je n'ai rien pu lire. Combien de mémoire a ta carte graphique ?", manualNone: "Pas de carte",
     agents: "Programmes de cerveau", found: "trouvé", notFound: "pas installé", reread: "Relire la machine",
+    home: "Dossier de Floppy", homeHint: "Floppy y garde tout : config, réglages, modèles, espaces de travail des agents, plugins, journaux.",
+    homeChange: "Changer…", homeMoving: "Floppy repart dans le nouveau dossier…",
     levelTitle: "Choisis ton niveau",
     levelLead: "C'est toi qui choisis. Le niveau conseillé est le plus complet qui tient dans ta machine, mais tu peux prendre plus léger : moins à télécharger, et tu pourras monter plus tard (Réglages → Général). Un niveau marqué en jaune ne tient pas : tu peux le choisir quand même.",
     recommended: "Conseillé", toDownload: "À télécharger :", nothingToDownload: "Rien à télécharger", forced: "Ce niveau ne tient pas dans ta machine : il risque d'être lent ou de ne pas démarrer.",
@@ -37,6 +39,8 @@ const I = {
     dedicated: "on the card", forModels: "For models", noChip: "no usable graphics chip", ram: "RAM", disk: "Free space",
     manual: "I could not read anything. How much memory does your graphics card have?", manualNone: "No card",
     agents: "Brain programs", found: "found", notFound: "not installed", reread: "Read the computer again",
+    home: "Floppy's folder", homeHint: "Floppy keeps everything there: config, settings, models, agents' workspaces, plugins, logs.",
+    homeChange: "Change…", homeMoving: "Floppy is restarting in the new folder…",
     levelTitle: "Choose your level",
     levelLead: "You choose. The recommended level is the most complete one that fits in your computer, but you can take a lighter one: less to download, and you can go up later (Settings → General). A level marked in yellow does not fit: you can still choose it.",
     recommended: "Recommended", toDownload: "To download:", nothingToDownload: "Nothing to download", forced: "This level does not fit in your computer: it may be slow or fail to start.",
@@ -122,6 +126,14 @@ function machinePage() {
       onclick: () => { manual = g; void load({ manualBytes: g * GIB }); },
     }))));
   }
+  // Répertoire de travail : tout ce que Floppy garde (et tout ce qu'il va télécharger) va là.
+  if (plan.home) {
+    nodes.push(h("p", { class: "label", text: t("home") }));
+    nodes.push(h("div", { class: "card" }, h("div", { class: "row home" },
+      h("span", { class: "path", text: plan.home }),
+      h("span", { class: "v" }, h("button", { type: "button", class: "btn small", text: t("homeChange"), disabled: busy || !api.chooseHome, onclick: () => void chooseHome() })))));
+    nodes.push(h("p", { class: "hint", text: t("homeHint") }));
+  }
   if (plan.agents?.length) {
     nodes.push(h("p", { class: "label", text: t("agents") }));
     nodes.push(h("div", { class: "card" }, plan.agents.map((a) => h("div", { class: "row" },
@@ -188,6 +200,23 @@ function installPage() {
 }
 
 // ------------------------------------------------------------------ actions
+/** Nouveau répertoire de travail : le noyau repart dans ce dossier ; on relit le plan quand il répond de nouveau. */
+async function chooseHome() {
+  error = "";
+  const r = await api.chooseHome();
+  if (!r || r.canceled) return;
+  if (!r.ok) { error = tr(r.text, lang) || t("failed"); render(); return; }
+  busy = true; plan = null; render();
+  $("content").replaceChildren(h("div", { class: "wait" }, h("span", { class: "dot", "aria-hidden": "true" }), h("span", { text: t("homeMoving") })));
+  for (let i = 0; i < 40; i++) {
+    await new Promise((res) => setTimeout(res, 1000));
+    const next = await api.plan({});
+    if (next?.ok) { busy = false; await load({}); return; }
+  }
+  busy = false;
+  await load({});
+}
+
 async function install() {
   busy = true; error = ""; render();
   // Le cerveau cloud sert au niveau « cloud », et de secours si le cerveau local est trop lent.

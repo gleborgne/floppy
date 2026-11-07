@@ -153,7 +153,12 @@ export interface Context {
   restartOffers(service?: string): Promise<void>;
   readonly approvals: ContextApprovals;
   readonly audit: Audit;
-  /** Dossier de données de l'assistant (%LOCALAPPDATA%\floppy ou FLOPPY_HOME). */
+  /**
+   * Espace de travail du plugin dans le répertoire de travail : <home>/workspaces/<id du plugin>/<nom> (créé).
+   * Pour les agents lancés (Claude, Codex…), les fichiers temporaires d'un travail, les sessions.
+   */
+  workspace(name?: string): string;
+  /** Répertoire de travail de Floppy (%LOCALAPPDATA%\floppy par défaut, choisi dans les réglages, ou FLOPPY_HOME). */
   readonly home: string;
   readonly tools: ContextTools;
   readonly settings: ContextSettings;

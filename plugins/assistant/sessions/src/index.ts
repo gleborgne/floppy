@@ -18,8 +18,8 @@ import { definePlugin, findExe, type Text } from "@floppy/core";
 const t = (fr: string, en: string): Text => ({ fr, en });
 
 export const Config = z.object({
-  /** Dossier où chaque session sans dossier précis reçoit son propre sous-dossier. */
-  dossier: z.string().default(join(homedir(), "Documents", "Floppy")),
+  /** Dossier où chaque session sans dossier précis reçoit son propre sous-dossier. Défaut : l'espace de travail du plugin. */
+  dossier: z.string().optional(),
   /** Programmes (défaut : cherchés dans le PATH). */
   claudeExe: z.string().optional(),
   codexExe: z.string().optional(),
@@ -145,7 +145,7 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
             dir = String(a.dossier);
             if (!isAbsolute(dir) || !existsSync(dir) || !statSync(dir).isDirectory()) return { status: "failed", text: `Dossier introuvable : ${dir}.` };
           } else {
-            dir = join(cfg.dossier, sessionFolderName(consigne));
+            dir = join(cfg.dossier ?? ctx.workspace(), sessionFolderName(consigne));
             mkdirSync(dir, { recursive: true });
           }
           // La consigne vit dans un fichier, hors du dossier de travail (on ne salit pas un dépôt de l'utilisateur).

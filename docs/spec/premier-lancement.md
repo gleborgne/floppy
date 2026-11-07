@@ -18,8 +18,10 @@ Général → « Refaire le réglage de départ », et depuis le menu de l'icôn
 
 1. **Ta machine** : « Je regarde ta machine… », puis un résumé : la puce graphique, le type de mémoire, la mémoire
    utilisable par les modèles, la RAM, la place libre sur le disque. Si rien n'est lu : choix manuel (« Pas de carte
-   graphique », « 8 Go », « 12 Go », « 16 Go », « 24 Go et plus »). En dessous : les **programmes de cerveau** trouvés
-   (Claude Code, Codex, Antigravity : « trouvé » ou « pas installé »).
+   graphique », « 8 Go », « 12 Go », « 16 Go », « 24 Go et plus »). En dessous : le **dossier de Floppy** (son chemin,
+   et « Changer… » : un sélecteur de dossiers ; Floppy repart dans ce dossier, voir [Le noyau → Le répertoire de
+   travail](noyau.md#le-répertoire-de-travail)), puis les **programmes de cerveau** trouvés (Claude Code, Codex,
+   Antigravity : « trouvé » ou « pas installé »).
 2. **Le niveau** : une carte par niveau. Le niveau conseillé est mis en avant. Un niveau trop lourd reste visible avec
    la raison (« il manque 4 Go », « llama-server est introuvable ») ; on peut le forcer.
 3. **Le cerveau dans le cloud**, seulement si le niveau en a besoin : les cerveaux cloud déjà offerts (grisés si leur

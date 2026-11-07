@@ -41,7 +41,8 @@ Every text a user reads or hears exists in French and English.
 - Text the user sees names no operating system: "the system password vault", "start with the computer", "the program". Shortcuts read `Ctrl+Alt+…` and the app shows `⌃⌥` on macOS.
 - Paths to programs and models are settings with a portable default (`findExe("llama-server")` looks in the PATH). Code and committed config hold no absolute or machine-specific path.
 - Secrets go through `ctx.secrets` / `providerConfig` into the OS keychain, never into YAML or logs.
-- `floppy.yml` is the user's own config (git-ignored, created from `floppy.example.yml`). Defaults change in `floppy.example.yml`; `apps/cli/test/example-config.test.ts` validates it.
+- Everything Floppy keeps lives in its working folder (`ctx.home`; default `%LOCALAPPDATA%\floppy`, chosen in Welcome or Settings, see `packages/core/src/util/home.ts`): `floppy.yml`, settings, models, third-party plugins, logs. A plugin writes its files there, and an agent it launches works in `ctx.workspace()`.
+- `floppy.yml` is the user's own config, created in the working folder from `floppy.example.yml`. Defaults change in `floppy.example.yml`; `apps/cli/test/example-config.test.ts` validates it.
 - Examples use neutral placeholders (`contoso`, `C:/models/…`, `~/Notes`).
 
 ## Dependencies

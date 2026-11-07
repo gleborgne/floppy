@@ -1,15 +1,20 @@
 // Démarrage du noyau. Utilisé par `floppy start --headless` (Node 24) et par l'app Electron (utilityProcess).
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, onboardingFor, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
+import { fileURLToPath } from "node:url";
+import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, defaultConfigPath, onboardingFor, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
 import { catalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
 import { createWiki } from "./plugins/wiki.ts";
 import { cliLang, sayer } from "./lang.ts";
 
+/** Dossier de Floppy (le dépôt, ou l'app installée) : floppy.example.yml, et l'ancienne place de floppy.yml. */
+const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
 export interface BootOptions {
-  configPath: string;
+  /** Config à lire. Défaut : <répertoire de travail>/floppy.yml (créée depuis floppy.example.yml). */
+  configPath?: string;
   plugins?: PluginDef<any>[];
   logger?: Logger;
   watch?: boolean;
@@ -42,11 +47,14 @@ export interface Running {
   stop(): Promise<void>;
 }
 
-export async function boot(opts: BootOptions): Promise<Running> {
+export async function boot(opts: BootOptions = {}): Promise<Running> {
+  // Nouveau répertoire de travail choisi à la dernière session : les données y sont déplacées avant tout le reste.
+  applyPendingMove((m) => console.log(`[home] ${m}`));
   const home = floppyHome();
-  const configPath = resolve(opts.configPath);
+  // La config vit dans le répertoire de travail. Une ancienne config à la racine du dépôt y est copiée une fois.
+  const configPath = resolve(opts.configPath ?? defaultConfigPath(home, [join(APP_ROOT, "floppy.yml")], (m) => console.log(`[home] ${m}`)));
   // Premier lancement : floppy.yml (propre à ce PC, hors git) est créé depuis floppy.example.yml.
-  const example = join(dirname(configPath), "floppy.example.yml");
+  const example = [join(dirname(configPath), "floppy.example.yml"), join(APP_ROOT, "floppy.example.yml")].find((f) => existsSync(f)) ?? join(APP_ROOT, "floppy.example.yml");
   const created = !existsSync(configPath) && existsSync(example);
   if (created) {
     copyFileSync(example, configPath);

@@ -74,7 +74,7 @@ type Notif = { method: string; params?: any };
 export type Pick = () => { id: string; label: string };
 
 export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: string, pick: Pick): BrainService & { stop(): Promise<void>; renew(): void } {
-  const cwd = cfg.cwd ?? join(ctx.home, "codex-workdir");
+  const cwd = cfg.cwd ?? ctx.workspace();
   let p: ChildProcessWithoutNullStreams | undefined;
   let ready: Promise<void> | undefined;
   let nextId = 1;

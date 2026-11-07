@@ -46,6 +46,9 @@ h2 { margin: 0 0 4px; font-size: 24px; font-weight: 650; line-height: 1.3; }
 .row + .row { border-top: 1px solid var(--line); }
 .row .k { color: var(--ink-soft); }
 .row .v { font-weight: 600; overflow-wrap: anywhere; }
+/* Répertoire de travail : le chemin (mono) puis « Changer… ». */
+.row.home { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.row .path { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
 
 .wait { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
@@ -95,6 +98,7 @@ h2 { margin: 0 0 4px; font-size: 24px; font-weight: 650; line-height: 1.3; }
 .btn.pri { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .btn.pri:hover { filter: brightness(1.1); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.small { height: 30px; padding: 0 10px; font-size: 12.5px; }
 
 @media (max-width: 640px) {
   .top, #content, .actions { padding-left: 16px; padding-right: 16px; }

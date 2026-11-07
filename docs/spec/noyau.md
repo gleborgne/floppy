@@ -313,6 +313,17 @@ Une pièce qui casse ne doit pas arrêter tout Floppy. Ce qui existe (testé dan
 | Journaux | Chaque ligne du journal du noyau porte l'heure et le niveau. `kernel.log` et `audit.jsonl` passent à `*.1.*` au-delà de 20 Mo. Une écriture d'audit impossible (disque plein) est signalée, et l'action continue. |
 | Démarrage lent | Le point de contrôle de la CLI s'ouvre avant la config : `floppy plugins` répond pendant qu'un modèle se charge. |
 
+## Le répertoire de travail
+
+Un seul dossier pour tout ce que Floppy garde : la config `floppy.yml`, les réglages, les éléments, les modèles téléchargés, les espaces de travail des agents (`workspaces/<plugin>/…`), les plugins tiers (`plugins/`), les journaux (`kernel.log`, `audit.jsonl`). Code : `packages/core/src/util/home.ts`, testé dans `packages/core/test/home.test.ts`.
+
+- **Par défaut** : `%LOCALAPPDATA%\floppy` (ailleurs : `$XDG_DATA_HOME/floppy`, sinon `~/.local/share/floppy`). `FLOPPY_HOME` passe avant tout (tests, mode debug, `--home`).
+- **Le choisir** : fenêtre « Bienvenue » (première page, « Changer… ») ou Réglages → Général → « Répertoire de travail » (réglage `dossier_floppy`, avec « Parcourir… » ; pas à la voix). Le choix est noté dans un fichier pointeur qui reste au même endroit : `<dossier par défaut>/home.json`.
+- **Changer de dossier** relance le noyau (événement `floppy.restart` : l'app relance le noyau ; la CLI s'arrête et le dit). Au démarrage suivant, avant d'ouvrir quoi que ce soit, les données sont déplacées (renommées sur le même disque, copiées puis effacées sur un autre). Un dossier qui contient déjà des données de Floppy est repris tel quel. Un chemin relatif, un dossier où l'on ne peut pas écrire, ou un dossier dans l'autre sont refusés.
+- **La config** est `<dossier>/floppy.yml`, créée depuis `floppy.example.yml`. Une ancienne config à la racine du dépôt est copiée une fois (l'originale n'est plus lue). `FLOPPY_CONFIG` ou `--config` imposent un autre fichier.
+- **Plugins** : `ctx.home` est ce dossier ; `ctx.workspace(nom)` rend `<dossier>/workspaces/<id du plugin>/<nom>` (créé). Les cerveaux CLI (Claude, Codex, Antigravity), l'assistant IA des réglages, ses relectures, la recherche web et les sessions d'agents y travaillent.
+- L'app Electron et le worker Orca lisent le même pointeur pour trouver ce dossier (journal, pont).
+
 ## Le noyau dans l'app Electron (vérifié)
 
 Spike `assistant\spikes\electron-utility` : Electron 45.2.3 embarque **Node 24.22.2**. Dans un `utilityProcess` : `node:sqlite` avec FTS5 marche, les processus enfants marchent, un fichier `.ts` est lancé directement, et le `MessagePort` avec le processus principal marche. Le même noyau tourne donc dans l'app et en ligne de commande.

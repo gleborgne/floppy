@@ -89,6 +89,9 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .txt input { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); }
 .txt button { padding: 7px 14px; border-radius: 9px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 650; }
 .txt button:hover { filter: brightness(1.1); }
+/* Bouton secondaire à côté du champ (« Parcourir… ») : une seule action cyan par ligne. */
+.txt button.sec { background: var(--panel-2); color: var(--ink); border: 1px solid var(--edge); font-weight: 600; }
+.txt button.sec:hover { filter: none; background: #1a2431; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chips button { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 12.5px; }
 .chips button:hover { color: var(--ink); border-color: var(--accent); }
