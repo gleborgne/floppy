@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel } from "@floppy/core";
-import { createInboxPlugin, settingKey } from "../src/index.ts";
+import { createInboxPlugin, MAX_APPS, settingKey } from "../src/index.ts";
 import { checkActionUrl, cleanText, parseHello, parseMessage } from "../src/protocol.ts";
 
 // Boîte aux lettres : une app locale dépose un message ; Floppy le dit ou l'affiche ; « ouvre-la » lance le lien.
@@ -56,7 +56,7 @@ describe("boîte aux lettres", () => {
     let summary = "";
     k.bus.on("approval.request", (r) => { summary = JSON.stringify(r); k.approvals.respond(r.id, true, "test"); });
     expect((await k.tools.call("ouvrir_annonce", {})).status).toBe("done");
-    expect(summary).toContain("Ouvrir la PR 1234 (Differendum)");
+    expect(summary).toContain("Ouvrir la PR 1234 — inwink-differendum:// (Differendum)");
     expect(opened).toEqual([msg().action.url]);
   });
 
@@ -66,7 +66,7 @@ describe("boîte aux lettres", () => {
     k.bus.on("approval.request", (r) => { asked.push(r.summary); k.approvals.respond(r.id, true, "hub:fenetre"); });
     expect(await post(hello)).toBe(403);
     await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("app"));
-    expect(asked).toEqual(["J'ai reçu un message de Differendum. Autoriser ses annonces ? Elle pourra faire ouvrir inwink-differendum:// et https."]);
+    expect(asked).toEqual(["J'ai reçu un message de l'application « Differendum ». Autoriser ses annonces ? Elle pourra faire ouvrir inwink-differendum:// et https."]);
     expect(got.at(-1)).toMatchObject({ text: "Differendum est autorisée.", importance: "normal" });
     expect(await post(hello)).toBe(204);
     expect(await post(msg())).toBe(204);
@@ -140,6 +140,67 @@ describe("boîte aux lettres", () => {
     expect(await again.post(msg())).toBe(204);
   });
 
+  it("un accord donné sur une vieille carte ne vaut pas pour des liens ajoutés depuis", async () => {
+    const { k, post } = await start();
+    const reqs: { id: string; summary: string }[] = [];
+    k.bus.on("approval.request", (r) => { reqs.push(r); });
+    await post({ ...hello, schemes: [] });
+    await vi.waitFor(() => expect(reqs).toHaveLength(1));
+    await post({ ...hello, schemes: ["rdp-app"] });
+    k.approvals.respond(reqs[0]!.id, true, "hub:fenetre");
+    await vi.waitFor(() => expect(reqs).toHaveLength(2));
+    expect(reqs[1]!.summary).toContain("rdp-app://");
+    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non");
+    k.approvals.respond(reqs[1]!.id, true, "hub:fenetre");
+    await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("app"));
+  });
+
+  it("une seule carte à la fois ; un nouveau nom demande un nouvel accord", async () => {
+    const { k, post } = await start();
+    const reqs: { id: string; summary: string }[] = [];
+    k.bus.on("approval.request", (r) => { reqs.push(r); });
+    await post(hello);
+    await post({ ...hello, app: "autre-app", name: "Autre", schemes: [] });
+    await vi.waitFor(() => expect(reqs).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(reqs).toHaveLength(1);
+    k.approvals.respond(reqs[0]!.id, true, "hub:fenetre");
+    await vi.waitFor(() => expect(reqs).toHaveLength(2));
+    expect(reqs[1]!.summary).toContain("« Autre »");
+    k.approvals.respond(reqs[1]!.id, false, "hub:fenetre");
+    expect(await post(hello)).toBe(204);
+    expect(await post({ ...hello, name: "Differendum 2" })).toBe(403);
+    await vi.waitFor(() => expect(reqs).toHaveLength(3));
+    expect(k.settings.list().find((s) => s.key === KEY)?.label).toEqual({ fr: "Application : Differendum 2", en: "App: Differendum 2" });
+  });
+
+  it("liste pleine : la plus ancienne app jamais autorisée est oubliée, jamais une app autorisée", async () => {
+    let t = 0;
+    const home = mkdtempSync(join(tmpdir(), "inbox-"));
+    const k = new Kernel({ logger: () => {}, plugins: [createInboxPlugin({ opener: async () => {}, now: () => ++t * 1000 })], home });
+    kernels.push(k);
+    await k.applyConfig({ plugins: [{ id: "inbox", plugin: "inbox" }] });
+    await vi.waitFor(() => expect(existsSync(join(home, "inbox.json"))).toBe(true));
+    const info = JSON.parse(readFileSync(join(home, "inbox.json"), "utf8")) as { port: number; token: string };
+    const post = async (body: unknown) => (await fetch(`http://127.0.0.1:${info.port}/inbox`, { method: "POST", headers: { Authorization: `Bearer ${info.token}` }, body: JSON.stringify(body) })).status;
+    await post(hello);
+    await k.settings.change(KEY, "app", "ui");
+    for (let i = 1; i < MAX_APPS; i++) await post({ kind: "hello", app: `app-${i}`, name: `App ${i}`, schemes: [] });
+    expect(await post({ kind: "hello", app: "nouvelle", name: "Nouvelle", schemes: [] })).toBe(403);
+    const keys = k.settings.list().map((s) => s.key);
+    expect(keys).toContain(settingKey("nouvelle"));
+    expect(keys).not.toContain(settingKey("app-1"));
+    expect(keys).toContain(KEY);
+  });
+
+  it("un fichier des apps abîmé : les entrées invalides sont écartées, la boîte s'ouvre", async () => {
+    const home = mkdtempSync(join(tmpdir(), "inbox-"));
+    writeFileSync(join(home, "inbox-apps.json"), JSON.stringify({ apps: { [APP]: { name: "Differendum", schemes: ["inwink-differendum"], seen: "x", trust: "app" }, casse: { name: "Cassée", schemes: "pas une liste" }, "Pas Bon": { name: "x", schemes: [] } } }));
+    const { k, post } = await start(home);
+    expect(await post(msg())).toBe(204);
+    expect(k.settings.list().filter((s) => s.key.startsWith("inbox_app_")).map((s) => s.key)).toEqual([KEY]);
+  });
+
   it("rien à ouvrir : réponse claire, rien lancé", async () => {
     const { k, opened } = await start();
     k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, true, "test"); });
@@ -153,6 +214,9 @@ describe("protocole", () => {
     expect(parseHello(hello)).toEqual({ app: APP, name: "Differendum", schemes: ["inwink-differendum"] });
     expect(parseHello({ ...hello, app: "Pas Bon" })).toBeTypeOf("string");
     for (const s of ["file", "javascript", "ms-settings", "https", "search-ms"]) expect(parseHello({ ...hello, schemes: [s] })).toBeTypeOf("string");
+    // Un nom est un nom : pas une phrase qui pousse à cliquer, pas de caractère de contrôle.
+    for (const name of ["Floppy. Mise à jour prête ! Cliquez Oui", "Floppy[31m", "<b>x</b>"]) expect(parseHello({ ...hello, name })).toBeTypeOf("string");
+    expect(parseHello({ ...hello, name: "Contoso Tracker (dev) 2.0" })).toMatchObject({ name: "Contoso Tracker (dev) 2.0" });
   });
 
   it("lien d'action : schéma déclaré ou https", () => {
@@ -160,6 +224,10 @@ describe("protocole", () => {
     expect(checkActionUrl("inwink-differendum://pr?url=x", ["inwink-differendum"])).toBe("inwink-differendum://pr?url=x");
     expect(checkActionUrl("autre://x", ["inwink-differendum"])).toHaveProperty("error");
     expect(checkActionUrl("http://x", [])).toHaveProperty("error");
+    // Rien qui puisse sortir des guillemets de la commande qui ouvre le lien.
+    for (const u of ['contoso:x y"z', "contoso:\\x"]) expect(checkActionUrl(u, ["contoso"])).toHaveProperty("error");
+    expect(checkActionUrl("https://x/a b", [])).toBe("https://x/a%20b");
+    expect(checkActionUrl("contoso://xé", ["contoso"])).toBe("contoso://x%C3%A9");
   });
 
   it("textes : simple ou fr/en, nettoyés et bornés", () => {
