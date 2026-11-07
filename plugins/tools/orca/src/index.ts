@@ -294,7 +294,10 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const run = opts.run ?? runnerOf(cli);
       const now = opts.now ?? Date.now;
       let notifications = ctx.settings.saved<Config["notifications"]>("orca_notifications") ?? cfg.notifications;
-      let surveillance = ctx.settings.saved<boolean>("orca_surveillance") ?? cfg.surveillance;
+      // Ancien réglage « Surveillance Orca » (ou `surveillance: false` dans la config) : coupé = « Rien ».
+      // Un choix fait dans le nouveau réglage l'emporte sur l'ancien.
+      if (ctx.settings.saved("orca_notifications") === undefined && !(ctx.settings.saved<boolean>("orca_surveillance") ?? cfg.surveillance)) notifications = "aucune";
+      let surveillance = notifications !== "aucune";
       const states = new Map<string, string>();
       let baseline = false;
       let warned = false;
@@ -310,22 +313,24 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const t = (fr: string, en: string): Text => ({ fr, en });
       const group = t("Orca", "Orca");
       ctx.settings.declare([
+        // Un seul réglage : « Rien » coupe aussi la surveillance (avant : deux réglages qui se recouvraient).
         {
-          key: "orca_notifications", label: t("Notifications Orca", "Orca notifications"), group, section: "connecteurs", type: "enum", risk: "free",
-          description: t("Quand annoncer à la voix qu'un agent Orca a fini.", "When to announce by voice that an Orca agent has finished."),
+          key: "orca_notifications", label: t("Annonces des agents Orca", "Orca agent announcements"), group, section: "connecteurs", type: "enum", risk: "free",
+          description: t(
+            "Tout dire : chaque fin est dite à voix haute. Si un agent attend : à voix haute seulement quand un agent attend ta réponse ; les fins s'affichent par écrit. Rien : Floppy ne surveille plus Orca (tu peux toujours lui poser des questions).",
+            "Say everything: every finished job is said aloud. If an agent waits: aloud only when an agent waits for your answer; finished jobs are shown in writing. Nothing: Floppy stops watching Orca (you can still ask it questions)."),
           options: [
-            { value: "toutes", label: t("Toutes", "All"), aliases: ["tout", "chaque fin", "all", "every"] },
-            { value: "importantes", label: t("Importantes", "Important"), aliases: ["important", "quand il attend", "when waiting"] },
-            { value: "aucune", label: t("Aucune", "None"), aliases: ["rien", "silence", "none", "nothing", "off"] },
+            { value: "toutes", label: t("Tout dire", "Say everything"), aliases: ["toutes", "tout", "chaque fin", "all", "every"] },
+            { value: "importantes", label: t("Si un agent attend", "If an agent waits"), aliases: ["importantes", "important", "quand il attend", "when waiting"] },
+            { value: "aucune", label: t("Rien", "Nothing"), aliases: ["aucune", "silence", "coupe la surveillance", "none", "off", "stop monitoring"] },
           ],
-          get: () => notifications,
-          set: (v) => { notifications = v as Config["notifications"]; },
-        },
-        {
-          key: "orca_surveillance", label: t("Surveillance Orca", "Orca monitoring"), group, section: "connecteurs", type: "boolean", risk: "free",
-          description: t("Surveiller les agents Orca pour prévenir à la fin d'un job.", "Watch Orca agents to warn when a job ends."),
-          get: () => surveillance,
-          set: (v) => { surveillance = Boolean(v); if (!surveillance) { states.clear(); baseline = false; } showStatus(); },
+          get: () => (surveillance ? notifications : "aucune"),
+          set: (v) => {
+            notifications = v as Config["notifications"];
+            surveillance = notifications !== "aucune";
+            if (!surveillance) { states.clear(); baseline = false; }
+            showStatus();
+          },
         },
       ]);
 
@@ -429,10 +434,14 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const pluginCli = opts.pluginCli ?? rawCli(cfg.command);
       const showStatus = (): void => {
         if (warned) ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
-        else if (!surveillance) ctx.items.status(t("surveillance coupée", "monitoring off"));
-        else if (bridgeLive()) ctx.items.status(t("surveillance en direct", "live monitoring"));
-        else if (copyState(ctx.home, pluginSrc) === "absent") ctx.items.status(t("surveillance active · plugin Orca à installer pour être prévenu aussitôt", "monitoring on · install the Orca plugin to hear at once"));
-        else ctx.items.status(t("surveillance active", "monitoring on"));
+        else if (!surveillance) ctx.items.status(t("annonces coupées", "announcements off"));
+        else if (bridgeLive()) ctx.items.status(t("prévenu tout de suite (plugin Orca actif)", "told at once (Orca plugin active)"));
+        else {
+          const every = Math.round(cfg.pollSeconds);
+          ctx.items.status(copyState(ctx.home, pluginSrc) === "absent"
+            ? t(`vérifie toutes les ${every} s · installe le plugin Orca pour être prévenu tout de suite`, `checks every ${every} s · install the Orca plugin to be told at once`)
+            : t(`vérifie toutes les ${every} s · le plugin Orca prend le relais au prochain changement d'un agent`, `checks every ${every} s · the Orca plugin takes over at the next agent change`));
+        }
       };
       showStatus();
 

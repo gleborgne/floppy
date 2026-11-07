@@ -84,7 +84,7 @@ sequenceDiagram
 ```
 
 - Premier passage : on note seulement les états (pas d'annonce pour les jobs déjà finis au démarrage).
-- Réglage `orca_notifications` : `toutes` (chaque fin est dite), `importantes` (par défaut : dite seulement si l'agent attend une réponse, sinon carte), `aucune`.
+- Réglage unique `orca_notifications` (« Annonces des agents Orca ») : `toutes` « Tout dire » (chaque fin est dite), `importantes` « Si un agent attend » (par défaut : dite seulement si l'agent attend une réponse, sinon carte écrite), `aucune` « Rien » (plus de surveillance du tout : ni vérification, ni pont ; les outils restent). L'ancien réglage `orca_surveillance` (et `surveillance: false` dans la config) n'est plus montré : coupé, il vaut « Rien » tant que l'utilisateur n'a rien choisi dans le nouveau réglage.
 - Si l'utilisateur pose une question juste après (moins de 2 min), le cerveau reçoit la dernière annonce en contexte (« c'est quoi ce job ? »).
 - Si Orca ne tourne pas : un seul avertissement au journal, puis le plugin réessaie sans bruit.
 - **Pas encore vérifié en vrai** : aucun job Orca n'a fini pendant les essais. La logique est couverte par les tests (`plugins/tools/orca/test`, `plugins/conversation/default/test`).
@@ -119,7 +119,7 @@ sequenceDiagram
   - À la main (développement) : `orca plugin dev load plugins/tools/orca/orca-plugin`, puis la même commande avec `--approve <empreinte>`. Orca recharge un dossier de dev quand ses fichiers changent, sans nouvel accord tant que l'accès ne change pas.
 - **Dossier de Floppy vu d'Orca** : `FLOPPY_HOME`, sinon `LOCALAPPDATA/floppy`, sinon (Windows) `~/AppData/Local/floppy`, sinon `~/.local/share/floppy`. Orca lance ses workers **sans** `LOCALAPPDATA` : d'où le chemin Windows écrit en dur à partir du dossier personnel.
 - **Orca démarre le worker au premier événement**, pas au lancement. Floppy passe « en direct » au premier message reçu.
-- **Pont en direct** (un message depuis moins de 10 min) : la vérification régulière tombe à une par minute (filet de sécurité). État affiché : « surveillance en direct ».
+- **Pont en direct** (un message depuis moins de 10 min) : la vérification régulière tombe à une par minute (filet de sécurité). État affiché : « prévenu tout de suite (plugin Orca actif) » ; sinon « vérifie toutes les N s » (+ « installe le plugin Orca… » si pas de copie) ; « annonces coupées » si le réglage vaut « Rien ».
 - **Pont et vérification tiennent le même tableau d'états** ; le premier qui voit une fin l'annonce. Un état reçu du pont gagne 30 s sur la vérification, qui peut lire un état plus ancien. La clé d'annonce est le type d'état (`orca:<worktree>:<pane>:termines`), donc la même fin vue deux fois n'est dite qu'une fois (anti-doublon de la conversation, 10 min).
 - **États** : `working` → en cours ; `blocked`, `waiting` → en attente (annonce importante) ; `done` → terminé, ou interrompu si `outcome` vaut `interruption` / `cancellation`.
 - **Sécurité** : 127.0.0.1 seulement, jeton comparé en temps constant, corps ≤ 64 Kio, JSON objet, chaque champ vérifié. Le contenu reste une donnée (jamais une consigne).

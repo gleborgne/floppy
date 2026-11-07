@@ -25,7 +25,7 @@ Le plugin demande à Orca un seul accès : **être prévenu quand l'état d'un a
 Ensuite :
 
 - Le plugin démarre au **premier changement d'état d'un agent**, pas avant.
-- Dès qu'il parle à Floppy, l'état d'Orca dans les Réglages devient **« surveillance en direct »**.
+- Dès qu'il parle à Floppy, l'état d'Orca dans les Réglages devient **« prévenu tout de suite (plugin Orca actif) »**. Avant, il affiche « vérifie toutes les 15 s ».
 
 À la voix, dis **« Installe le plugin Orca »** ou **« Ouvre les réglages d'Orca »**. Floppy n'installe rien lui-même : il ouvre la bonne page des réglages et te dit sur quel bouton cliquer.
 
@@ -33,7 +33,19 @@ Ensuite :
 
 Si le plugin a changé, le bouton devient **« Mettre à jour dans Orca »**. Clique dessus.
 
-## 3. Ce que tu peux demander
+## 3. Choisir ce que Floppy te dit
+
+Dans **Réglages → Connecteurs → Orca**, le réglage **« Annonces des agents Orca »** a trois choix :
+
+| Choix | Ce qui se passe |
+|---|---|
+| **Tout dire** | Chaque fin d'agent est dite à voix haute. |
+| **Si un agent attend** (par défaut) | À voix haute seulement quand un agent attend ta réponse. Les fins s'affichent par écrit, sans voix. |
+| **Rien** | Floppy ne surveille plus Orca. Tu peux toujours lui poser des questions sur tes agents. |
+
+L'interrupteur en haut de la page allume ou éteint Orca entier dans Floppy : les annonces **et** les questions.
+
+## 4. Ce que tu peux demander
 
 - « Où en sont mes agents ? »
 - « Qu'est-ce qu'il demande ? » : Floppy prend l'agent qu'il vient d'annoncer, ou le seul qui attend.
@@ -49,7 +61,7 @@ Floppy **ne fait rien** dans Orca. Il ne tape rien dans les terminaux et ne chan
 | Ce que tu vois | Quoi faire |
 |---|---|
 | « Orca ne répond pas » | Ouvre Orca. |
-| Pas de « surveillance en direct » | Le plugin attend le premier changement d'état d'un agent. Lance un agent, puis regarde à nouveau. |
+| Pas de « prévenu tout de suite » | Le plugin attend le premier changement d'état d'un agent. Lance un agent, puis regarde à nouveau. |
 | Toujours rien | Dans un terminal, tape `orca plugin logs local.floppy`. Le plugin y écrit pourquoi il ne joint pas Floppy. |
 
 Pour savoir comment ça marche à l'intérieur : [spec, section Orca](../spec/outils-reels.md#orca-plugin-orca).

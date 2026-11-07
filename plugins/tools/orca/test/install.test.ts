@@ -124,12 +124,12 @@ describe("bouton dans les réglages", () => {
     await k.applyConfig({ plugins: [{ id: "orca", plugin: "orca", config: {} }] });
     const entry = async () => (await k!.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!;
     expect(JSON.stringify((await entry()).actions)).toContain("Installer dans Orca");
-    expect(JSON.stringify((await entry()).statusText)).toContain("plugin Orca à installer");
+    expect(JSON.stringify((await entry()).statusText)).toContain("installe le plugin Orca");
     expect((await k.items.run({ op: "action", provider: "apps-connecteurs", id: "orca", action: "orca-plugin" }, "voice")).ok).toBe(false);
     expect(o.calls).toHaveLength(0);
     const r = await k.items.run({ op: "action", provider: "apps-connecteurs", id: "orca", action: "orca-plugin" }, "ui");
     expect(r.ok).toBe(true);
     expect(JSON.stringify((await entry()).actions)).toContain("Réinstaller dans Orca");
-    expect(JSON.stringify((await entry()).statusText)).not.toContain("à installer");
+    expect(JSON.stringify((await entry()).statusText)).not.toContain("installe le plugin");
   });
 });

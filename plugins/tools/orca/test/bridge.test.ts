@@ -47,7 +47,7 @@ describe("pont Orca → Floppy", () => {
     const data = { calls: 0, v: wt([ag("p1", "working")]) };
     const { k, got, info } = await start(data);
     const orca = orcaWorker(info);
-    await vi.waitFor(async () => expect(JSON.stringify((await statusOf(k)).statusText)).toContain("en direct"));
+    await vi.waitFor(async () => expect(JSON.stringify((await statusOf(k)).statusText)).toContain("prévenu tout de suite"));
     await orca.emit("p1", "working");
     data.v = wt([ag("p1", "done", { taskTitle: "Migration des dates" })]);
     await orca.emit("p1", "done", "success");

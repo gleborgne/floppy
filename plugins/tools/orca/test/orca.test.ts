@@ -96,21 +96,24 @@ describe("surveillance", () => {
     }
   });
 
-  it("aucune : pas d'initiative", async () => {
-    const data = { calls: 0, v: mk("working") };
-    const { got } = await start(data, { notifications: "aucune" });
-    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
-    data.v = mk("done");
-    const n = data.calls;
-    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(n + 3));
-    expect(got).toEqual([]);
+  it("rien : pas d'initiative, Orca n'est plus surveillé ; l'ancien « surveillance : non » vaut « rien »", async () => {
+    for (const cfg of [{ notifications: "aucune" }, { surveillance: false }]) {
+      const data = { calls: 0, v: mk("working") };
+      const { k, got } = await start(data, cfg);
+      data.v = mk("done");
+      await new Promise((r) => setTimeout(r, 120));
+      expect(data.calls).toBe(0);
+      expect(got).toEqual([]);
+      expect(k.settings.list().find((x) => x.key === "orca_notifications")!.value).toBe("aucune");
+      expect(JSON.stringify((await k.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!.statusText)).toContain("annonces coupées");
+    }
   });
 
   it("surveillance coupée : plus d'appels", async () => {
     const data = { calls: 0, v: mk("working") };
     const { k } = await start(data);
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
-    expect((await k.settings.change("orca_surveillance", "non", "cli")).ok).toBe(true);
+    expect((await k.settings.change("orca_notifications", "rien", "cli")).ok).toBe(true);
     await new Promise((r) => setTimeout(r, 60));
     const n = data.calls;
     await new Promise((r) => setTimeout(r, 120));
@@ -138,7 +141,7 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     const it = await orca(k);
     expect(it).toMatchObject({ id: "orca", enabled: true, status: "ok", removable: true });
     // Ses réglages sont montrés dans l'élément (« Configurer »), pas dans la rubrique.
-    expect(it.settings).toEqual(["orca_notifications", "orca_surveillance"]);
+    expect(it.settings).toEqual(["orca_notifications"]);
     expect(it.children!.map((c) => c.id)).toEqual(["orca_agents", "orca_detail", "orca_ecran", "orca_recherche"]);
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
 
@@ -167,7 +170,7 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     expect(k.tools.list().some((t) => t.name === "orca_detail")).toBe(false);
     expect((await k.tools.call("orca_detail", { nom: "x" })).status).toBe("failed");
     expect(k.tools.list().some((t) => t.name === "orca_agents")).toBe(true);
-    for (const key of ["orca_notifications", "orca_surveillance"]) {
+    for (const key of ["orca_notifications"]) {
       const s = k.settings.list().find((x) => x.key === key)!;
       expect(s.section).toBe("connecteurs");
       expect(typeof s.label).toBe("object");
