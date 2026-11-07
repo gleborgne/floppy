@@ -205,40 +205,27 @@ function singleItem(slot: SettingsSlot, p: ItemProvider, it: ProviderItem, page:
 }
 
 /**
- * Éléments rangés par groupe (ex. des voix, rangées sous leur modèle) : d'abord TOUS les éléments, ce qu'on choisit ;
- * puis les groupes, avec ce qui les décrit (taille, matériel) et leur état (chargé, en veille). Un groupe de plus de
- * FOLD éléments (ex. les 26 voix intégrées d'un modèle) est replié : on voit celui en service, et « N autres · Voir ».
+ * Une carte par groupe (ex. des voix sous leur modèle), avec sa description et son état en tête.
+ * Tous les éléments restent visibles, quel que soit le nombre de voix d'un modèle.
  */
-const FOLD = 6;
-const uiFold = new Set<string>(); // « slot/groupe » dépliés
 function groupedRows(slot: SettingsSlot, rows: [ItemProvider, ProviderItem][], page: string): VNode[] {
   const groups: ItemGroup[] = [];
   for (const [, it] of rows) if (it.group && !groups.some((g) => g.id === it.group?.id)) groups.push(it.group);
   const here = rows.find(([p, it]) => slot.value === valueOf(p, it));
   const hereGroup = here?.[1].group?.id;
-  const size = (g: ItemGroup): number => rows.filter(([, i]) => i.group?.id === g.id).length;
-  // Les petits groupes d'abord (souvent les voix de l'utilisateur), les grands repliés à la fin.
-  const order = [...groups].sort((a, b) => Number(size(a) > FOLD) - Number(size(b) > FOLD));
-  const voices = rows.filter(([, it]) => !it.group).map(([p, it]) => itemRow(slot, p, it, page));
-  for (const g of order) {
-    const inG = rows.filter(([, it]) => it.group?.id === g.id);
-    const fk = `${slot.id}/${g.id}`;
-    const folded = inG.length > FOLD && !uiFold.has(fk);
-    const shown = folded ? inG.filter(([p, it]) => slot.value === valueOf(p, it)) : inG;
-    voices.push(...shown.map(([p, it]) => itemRow(slot, p, it, page)));
-    if (inG.length > FOLD) {
-      const label = folded ? t("foldMore").replace("{n}", String(inG.length - shown.length)).replace("{g}", tr(g.label)) : tr(g.label);
-      voices.push(h("div", { class: "sfold", key: `fold:${g.id}` }, h("span", { text: label }),
-        h("button", { type: "button", class: "btn small", "aria-expanded": String(!folded), text: folded ? t("seeItems") : t("foldLess"), onclick: () => { if (folded) uiFold.add(fk); else uiFold.delete(fk); render(); } })));
-    }
-  }
-  const models = groups.map((g) => {
+  const ungrouped = rows.filter(([, it]) => !it.group);
+  const cards = groups.map((g) => {
     const isHere = g.id === hereGroup;
-    return row({ key: g.id, name: tr(g.label), detail: tr(g.detail), state: isHere ? (slotStateText(slot) || t("loadedShort")) : t("idleShort"), stateCls: isHere ? "use" : "" });
+    return h("section", { class: "scard voice-group", key: g.id, "aria-label": tr(g.label) },
+      h("header", { class: "voice-group-head" },
+        h("div", { class: "rt" }, h("h4", { text: tr(g.label) }), h("div", { class: "rd", text: tr(g.detail) })),
+        h("span", { class: `rs${isHere ? " use" : ""}`, text: isHere ? (slotStateText(slot) || t("loadedShort")) : t("idleShort") })),
+      rows.filter(([, it]) => it.group?.id === g.id).map(([p, it]) => itemRow(slot, p, it, page)));
   });
   return [
-    h("section", { class: "ssec" }, secHead(tr(slot.label), t("itemsNote")), h("div", { class: "scard" }, voices)),
-    h("section", { class: "ssec" }, secHead(t("groupsTitle"), t("stepModelNote")), h("div", { class: "scard" }, models)),
+    h("section", { class: "ssec" }, secHead(tr(slot.label), t("itemsNote")),
+      ungrouped.length ? h("div", { class: "scard" }, ungrouped.map(([p, it]) => itemRow(slot, p, it, page))) : null,
+      cards),
   ];
 }
 
@@ -260,6 +247,8 @@ export function slotPage(page: string, nodes: Child[], restSettings: SettingInfo
   const chain = chainOf(slotsOn(page).filter((x) => x !== mode));
   chainNow = new Map((chain ?? []).map((x, i) => [x.id, i + 1]));
   const others = chain ?? slotsOn(page).filter((x) => x !== mode);
+  // Les réglages communs (ex. Général / Ton) précèdent les onglets des moteurs.
+  if (restSettings.length) nodes.push(...settingsBlocks(restSettings));
   // Fournisseurs de la page qui n'offrent rien (ni slot, ni application) : le contenu propre de la rubrique (ex. les
   // centres d'intérêt de la Veille). En premier : c'est ce qu'on vient régler.
   for (const p of S.items.providers) {
@@ -284,7 +273,6 @@ export function slotPage(page: string, nodes: Child[], restSettings: SettingInfo
     nodes.push(...others.map(slotNode));
     listed = others.filter((s) => s.display !== "tabs").map((s) => s.service);
   }
-  if (restSettings.length) nodes.push(...settingsBlocks(restSettings));
   if (listed.length && !embedded) nodes.push(pluginCards(listed, page, t("pluginsOf")));
 }
 

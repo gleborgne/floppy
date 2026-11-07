@@ -62,7 +62,7 @@ export function tabify(key: string, nodes: Child[]): VNode[] {
   const top = list.filter((n) => !dataOf(n, "tab") && dataOf(n, "place") !== "end");
   const light = list.filter((n) => dataOf(n, "tab") && dataOf(n, "light"));
   const end = list.filter((n) => dataOf(n, "place") === "end");
-  return [...top, bar, panel, ...light, ...end];
+  return [...top, ...light, bar, panel, ...end];
 }
 
 // ------------------------------------------------------------------ petites briques

@@ -216,9 +216,9 @@ de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partag�
 <https://claude.ai/artifact/S8bjdyUCVGTL19pbDn31YB>.
 
 - Chaque élément de `voix-locale` reste un couple « voix + modèle » (l'élément offert au slot), mais il est toujours
-  rangé sous son modèle (`group` = le fichier GGUF). La page montre d'abord **les voix** (taille absente), puis **les
-  modèles** (taille, format, carte graphique ou processeur, chargé ou en veille). Les 26 voix intégrées d'un modèle
-  sont repliées : on voit celle en service, et « 25 autres dans Pocket TTS · Voir ».
+  rangé sous son modèle (`group` = le fichier GGUF). La page montre **une carte par modèle** : en tête, son nom, sa taille,
+  son format, son matériel (carte graphique ou processeur) et son état (chargé ou en veille), puis toutes ses voix.
+  Toutes les voix intégrées sont visibles dès l'ouverture, sans repli ni bouton « Voir ».
 - **Nouvelle voix** : la fenêtre fait lire une phrase au micro (ou importe un fichier), vérifie l'enregistrement, puis
   le plugin le **copie** dans `<dossier de Floppy>/tts-audiocpp/voices/<uuid>.wav` : l'original peut disparaître. Un
   nouvel enregistrement remplace l'ancien fichier ; supprimer la voix efface son fichier. Un fichier de l'utilisateur
@@ -393,10 +393,12 @@ des fournisseurs (`offers`, `source`) et des applications (`apps-<rubrique>`).
 | **Actif** (interrupteur) | seulement sur un plugin (application) : éteint = l'entrée s'arrête, rien n'est supprimé. Dans l'onglet d'un plugin, Retirer / Actif n'apparaissent que si la page n'a pas d'onglet Plugins, ou pour rallumer un plugin éteint |
 | **+ Ajouter un plugin** | ouvre le catalogue. Depuis un rôle (ex. mot d'activation) ou l'onglet Plugins d'une page : seulement les plugins dont le manifeste fournit (`provides`) un service de ce rôle, aussi pour « Créer le tien » ; la pastille « Pour : … » enlève le filtre. Ailleurs : filtré sur la rubrique ; « + Ajouter un modèle / une voix » ouvre le formulaire du plugin |
 
+Les blocs de réglages communs légers (un ou deux réglages, ex. Général / Ton) restent visibles au-dessus des onglets.
+
 Affichage d'un slot (`SlotDef.display`) :
 
 - `"mode"` : onglets de mode en haut de la rubrique. « aucun » = le mode par défaut (`none`, ex. **Local**), l'autre = le libellé du slot (ex. **Live**). L'onglet Local montre les autres slots de la rubrique ; l'onglet Live montre les moteurs. Activer dans l'onglet d'un mode qui n'est pas en service passe Floppy dans ce mode.
-- `"tabs"` : un onglet par plugin qui offre le service (Voix, mot d'activation), plus « aucun » si le slot le permet. Un plugin qui n'offre qu'un élément (ex. « Dans le texte transcrit ») : pas de ligne qui répète l'onglet ; son formulaire est directement dans l'onglet, puis sa ligne de détail. S'il n'est pas en service, sa ligne reste au-dessus, pour l'activer. Un plugin « Installé » dans le catalogue a toujours son onglet : qu'il déclare ses éléments (`ctx.items.declare` avec `offers`), qu'il n'offre ses choix que par `ctx.offer` (ex. Voix du système : ses choix viennent des options du slot), ou qu'il soit éteint (l'onglet dit alors « éteint » et garde l'interrupteur Actif). Si les éléments ont un `group` (ex. le modèle d'une voix) : d'abord tous les éléments (ce qu'on choisit), puis les groupes avec leur description et leur état ; un groupe de plus de 6 éléments est replié (« N autres dans … · Voir »).
+- `"tabs"` : un onglet par plugin qui offre le service (Voix, mot d'activation), plus « aucun » si le slot le permet. Un plugin qui n'offre qu'un élément (ex. « Dans le texte transcrit ») : pas de ligne qui répète l'onglet ; son formulaire est directement dans l'onglet, puis sa ligne de détail. S'il n'est pas en service, sa ligne reste au-dessus, pour l'activer. Un plugin « Installé » dans le catalogue a toujours son onglet : qu'il déclare ses éléments (`ctx.items.declare` avec `offers`), qu'il n'offre ses choix que par `ctx.offer` (ex. Voix du système : ses choix viennent des options du slot), ou qu'il soit éteint (l'onglet dit alors « éteint » et garde l'interrupteur Actif). Si les éléments ont un `group` (ex. le modèle d'une voix) : une carte par groupe, avec son nom, sa description et son état en tête, puis tous ses éléments, sans repli.
 - sans : une liste groupée par plugin (cerveau principal, délégation), puis les cartes des plugins.
 
 Chaîne d'étapes (`SlotDef.step`, 2026-11-07) : quand **tous** les slots d'une rubrique (hors mode) ont un `step` et qu'il
