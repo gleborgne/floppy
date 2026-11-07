@@ -82,7 +82,7 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
       version: "0.1.0",
       licence: "MIT",
       description: "Ouvre une session Claude Code, Codex ou Antigravity dans un terminal, sur une consigne dictée.",
-      permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["workspaces/sessions"] },
+      permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["workspaces/agent-sessions"] },
       addable: {
         section: "cerveau",
         label: t("Sessions d'agent", "Agent sessions"),

@@ -123,15 +123,21 @@ describe("pannes attribuées", () => {
     expect(k.blame("unhandledRejection", new Error("hors plugin"))).toBeUndefined();
   });
 
-  it("un middleware qui plante est sauté ; la chaîne continue", async () => {
+  it("un middleware qui plante avant next() bloque l'action ; après next() réussi, le résultat est gardé", async () => {
     const p = definePlugin({
       manifest: { id: "p", version: "0", licence: "MIT" },
-      apply(ctx) { ctx.hook("h", async () => { throw new Error("raté"); }); ctx.hook<number, number>("h", async (n, next) => next(n + 1)); },
+      apply(ctx) {
+        ctx.hook("refuse", async () => { throw new Error("interdit"); });
+        ctx.hook<number, number>("apres", async (n, next) => { await next(n + 1); throw new Error("raté après coup"); });
+      },
     });
     const { k, logs } = kernel([p]);
     await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
-    expect(await k.hooks.run<number, number>("h", 1, async (n) => n * 10)).toBe(20);
-    expect(logs.some((l) => l.includes("middleware h sauté"))).toBe(true);
+    let ran = false;
+    await expect(k.hooks.run("refuse", 1, async () => { ran = true; return 0; })).rejects.toThrow(/interdit/);
+    expect(ran).toBe(false);
+    expect(await k.hooks.run<number, number>("apres", 1, async (n) => n * 10)).toBe(20);
+    expect(logs.some((l) => l.includes("middleware apres : erreur après la suite"))).toBe(true);
     await k.stopAll();
   });
 });
@@ -271,5 +277,74 @@ describe("canal de l'hôte", () => {
     await k2.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
     expect(ctx.host).toBeUndefined();
     await k2.stopAll();
+  });
+});
+
+describe("revue adversariale : arrêt, attribution, délai", () => {
+  it("l'arrêt de Floppy est définitif : les entrées suivantes ne démarrent pas, l'annulée n'est pas en panne", async () => {
+    const applied: string[] = [];
+    const slow = (id: string) => definePlugin({ manifest: { id, version: "0", licence: "MIT" }, async apply() { applied.push(id); await wait(300); } });
+    const { k } = kernel([slow("a"), slow("b"), slow("c")]);
+    void k.applyConfig({ plugins: [{ id: "a", plugin: "a" }, { id: "b", plugin: "b" }, { id: "c", plugin: "c" }] });
+    await wait(30);
+    const t = Date.now();
+    await k.stopAll();
+    expect(Date.now() - t).toBeLessThan(250);
+    expect(applied).toEqual(["a"]);
+    expect(state(k, "a")?.state).toBe("loaded");
+    // Une relance de la même config redémarre tout, l'entrée annulée comprise.
+    await k.applyConfig({ plugins: [{ id: "a", plugin: "a" }, { id: "b", plugin: "b" }, { id: "c", plugin: "c" }] });
+    expect(["a", "b", "c"].map((id) => state(k, id)?.state)).toEqual(["active", "active", "active"]);
+    await k.stopAll();
+  });
+
+  it("après l'arrêt, un emprunt rendu ne relance rien", async () => {
+    const models = definePlugin({
+      manifest: { id: "models", version: "0", licence: "MIT", provides: ["llm"] },
+      apply(c) { c.offer("llm", { items: () => [{ id: "a", label: "A" }], start(f) { f.provide("llm", { baseURL: "x", model: "a" }); } }); },
+    });
+    let ctx!: Context;
+    const user = definePlugin({ manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "s", service: "llm", section: "x", label: "S" }] }, apply(c) { ctx = c; } });
+    const { k } = kernel([models, user]);
+    await k.applyConfig({ plugins: [{ id: "models", plugin: "models" }, { id: "user", plugin: "user" }] });
+    await ctx.borrow("s");
+    await k.stopAll();
+    await wait(50);
+    await k.idle();
+    expect(k.status().every((s) => s.state !== "active")).toBe(true);
+  });
+
+  it("le travail du noyau demandé par un plugin ne tourne pas à son nom", async () => {
+    let blamed: string | undefined = "pas appelé";
+    let k!: Kernel;
+    // p tombe depuis son propre code (une minuterie : elle tourne à son nom).
+    const p = definePlugin({ manifest: { id: "p", version: "0", licence: "MIT", provides: ["svc"] }, apply(c) { c.provide("svc", {}); c.timeout(() => c.fail("crash"), 5); } });
+    // q s'arrête parce que p tombe ; une erreur dans sa fermeture est à q (ou à personne), jamais à p.
+    const q = definePlugin({ manifest: { id: "q", version: "0", licence: "MIT", inject: ["svc"] }, apply(c) { c.effect(() => { blamed = k.blame("unhandledRejection", new Error("fermeture de q")); }); } });
+    ({ k } = kernel([p, q], { retryDelays: [] }));
+    await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }, { id: "q", plugin: "q" }] });
+    await wait(30);
+    await k.idle();
+    expect(blamed).toBe("q");
+    await k.stopAll();
+  });
+});
+
+describe("délai d'un démarrage", () => {
+  it("une reprise sans pause en cours est ignorée, et rien ne se déclenche après stop()", async () => {
+    const { Deadline } = await import("../src/plugin/lifecycle-util.ts");
+    let fired = 0;
+    const d = new Deadline(30, () => { fired++; });
+    d.resume();
+    d.stop();
+    await wait(60);
+    expect(fired).toBe(0);
+    const d2 = new Deadline(30, () => { fired++; });
+    d2.pause(); d2.pause(); d2.resume();
+    await wait(60);
+    expect(fired).toBe(0); // encore une pause en cours
+    d2.resume();
+    await wait(60);
+    expect(fired).toBe(1);
   });
 });

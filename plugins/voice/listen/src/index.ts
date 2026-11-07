@@ -3,7 +3,7 @@
 // - Les modèles sont empruntés (ctx.borrow) à l'ouverture du premier flux et rendus à la fermeture du dernier.
 // - Un flux par corps (son propre détecteur) ; la transcription est partagée, une demande à la fois.
 // - Les règles d'écoute (interruption, recollage, bouton, dictée) sont dans stream.ts, reprises du service Python.
-import { definePlugin, T, TextError, type Borrowed, type SttService, type VadService, type VoiceService } from "@floppy/core";
+import { definePlugin, T, TextError, type Borrowed, type SttService, type VadService, type VadStream, type VoiceService } from "@floppy/core";
 import { ListenStream } from "./stream.ts";
 
 export { ListenStream } from "./stream.ts";
@@ -27,6 +27,8 @@ export default definePlugin({
   apply(ctx) {
     let held: Promise<{ vad: Borrowed<VadService>; stt: Borrowed<SttService> }> | undefined;
     let users = 0;
+    /** Flux ouverts : chacun reprend le détecteur de parole en service après un nouvel emprunt. */
+    const followers = new Set<() => void>();
     /** File unique de transcription : une demande à la fois, tous corps confondus. */
     let sttQueue: Promise<unknown> = Promise.resolve();
 
@@ -47,7 +49,8 @@ export default definePlugin({
           if (held !== mine || !ctx.alive) return;
           ctx.log("warn", "écoute : un modèle s'est arrêté, nouvel emprunt");
           held = users > 0 ? borrowBoth() : undefined;
-          held?.catch((e: unknown) => ctx.log("warn", `écoute : nouvel emprunt impossible : ${String(e)}`));
+          // Les flux ouverts passent tout de suite au nouveau détecteur de parole.
+          held?.then(() => { for (const f of [...followers]) f(); }, (e: unknown) => ctx.log("warn", `écoute : nouvel emprunt impossible : ${String(e)}`));
         });
         return { vad, stt };
       })();
@@ -74,8 +77,26 @@ export default definePlugin({
         const { vad, stt } = await acquire();
         const language = ctx.assistant.language;
         let closed = false;
+        // Le détecteur de parole de ce flux suit celui en service : après une panne, l'écoute le réemprunte
+        // et ce flux ouvre le nouveau (sinon il n'entendrait plus jamais le début d'une phrase).
+        let curVad = vad;
+        let vadStream = vad.service.open();
+        const follow = () => {
+          void held?.then(({ vad: v }) => {
+            if (closed || v === curVad) return;
+            try { vadStream.close(); } catch { /* déjà fermé */ }
+            curVad = v;
+            vadStream = v.service.open();
+          }, () => {});
+        };
+        followers.add(follow);
+        const proxy: VadStream = {
+          push: (f) => vadStream.push(f),
+          reset: () => vadStream.reset(),
+          close: () => { followers.delete(follow); vadStream.close(); },
+        };
         return new ListenStream({
-          vad: vad.service.open(),
+          vad: proxy,
           minSilenceMs: vad.service.minSilenceMs,
           transcribe: (audio) => {
             // La transcription en service au moment de la demande (elle a pu être réempruntée après une panne).

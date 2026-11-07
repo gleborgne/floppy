@@ -2,7 +2,7 @@
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, defaultConfigPath, onboardingFor, type HostChannel, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
+import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, pendingMoveFrom, defaultConfigPath, tr, T, onboardingFor, type HostChannel, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
 import { loadCatalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
@@ -49,9 +49,20 @@ export interface Running {
   stop(): Promise<void>;
 }
 
+/** Arrête les programmes restés en vie après un arrêt forcé (llama-server, voix locale…) : ils gardent la mémoire du GPU. */
+async function reap(file: string): Promise<void> {
+  for (const r of await reapOrphans(file).catch(() => [])) {
+    console.warn(`[kernel] programme resté d'une session précédente arrêté : ${r.name} (pid ${r.pid}, ${r.owner})`);
+  }
+}
+
 export async function boot(opts: BootOptions = {}): Promise<Running> {
   // Nouveau répertoire de travail choisi à la dernière session : les données y sont déplacées avant tout le reste.
-  applyPendingMove((m) => console.log(`[home] ${m}`));
+  // D'abord, les programmes restés d'un arrêt forcé dans l'ancien dossier : un modèle encore ouvert bloquerait le déplacement.
+  const moveFrom = pendingMoveFrom();
+  if (moveFrom && opts.reapOrphans !== false) await reap(join(moveFrom, "children.json"));
+  const move = applyPendingMove((m) => console.log(`[home] ${m}`));
+  if (move.error) console.error(`[home] le répertoire de travail n'a pas changé : ${move.error}`);
   const home = floppyHome();
   // La config vit dans le répertoire de travail. Une ancienne config à la racine du dépôt y est copiée une fois.
   const configPath = resolve(opts.configPath ?? defaultConfigPath(home, [join(APP_ROOT, "floppy.yml")], (m) => console.log(`[home] ${m}`)));
@@ -63,11 +74,7 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
     console.log(sayer(cliLang(home))(`config créée depuis ${example} : ${configPath}`, `config created from ${example}: ${configPath}`));
   }
   // Programmes restés en vie après un arrêt forcé du noyau (llama-server, voix locale…) : ils gardent la mémoire du GPU.
-  if (opts.reapOrphans !== false) {
-    for (const r of await reapOrphans(join(home, "children.json")).catch(() => [])) {
-      console.warn(`[kernel] programme resté d'une session précédente arrêté : ${r.name} (pid ${r.pid}, ${r.owner})`);
-    }
-  }
+  if (opts.reapOrphans !== false) await reap(join(home, "children.json"));
   // Plugins livrés : chacun chargé à part ; un module qui plante ne bloque pas le démarrage (ses entrées sont en erreur).
   const loaded = opts.plugins ? { plugins: opts.plugins, failed: [] } : await loadCatalog();
   for (const f of loaded.failed) console.error(`[catalog] ${f.pkg} ne se charge pas : ${f.error}`);
@@ -107,6 +114,14 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
   });
   try { await kernel.applyConfig(loadConfigFile(configPath)); } catch (e) { await stopControl(); offSafety(); throw e; }
   const unwatch = opts.watch === false ? () => {} : watchConfig(configPath, kernel);
+  if (move.error) {
+    const why = move.error;
+    setTimeout(() => kernel.bus.emit("initiative", {
+      source: "home", importance: "normal", key: "home-move",
+      text: tr(T(`Le répertoire de travail n'a pas pu changer : ${why}. Floppy reste dans l'ancien dossier et réessaiera au prochain démarrage.`,
+        `The working folder could not change: ${why}. Floppy stays in the old folder and will try again at the next start.`), kernel.uiLang),
+    }), 5000).unref();
+  }
   const onboarding = onboardingFor(kernel);
   if (created) onboarding.begin();
   // Floppy fermé pendant l'installation de départ : elle reprend (les blocs déjà téléchargés sont prêts tout de suite).

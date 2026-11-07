@@ -1,6 +1,7 @@
 // Hooks en cascade : des middlewares avec next(), appelés dans l'ordre d'enregistrement.
 // Exemple : `tool.before` (règles → accord → journal) avant chaque appel d'outil.
-// Un middleware qui plante est sauté (et signalé) : la chaîne continue comme s'il avait appelé next().
+// Un middleware qui plante AVANT next() arrête la chaîne : l'erreur remonte (un contrôle qui refuse en levant une
+// erreur bloque l'action). Un middleware qui plante APRÈS next() réussi est signalé, et le résultat de la suite est gardé.
 
 export type Next<I, O> = (input: I) => Promise<O>;
 export type Middleware<I, O> = (input: I, next: Next<I, O>) => Promise<O>;
@@ -49,8 +50,7 @@ export class Hooks {
         // La suite de la chaîne a échoué (un autre middleware, l'outil) : l'erreur remonte telle quelle.
         // Elle a réussi, puis ce middleware a planté : on le signale et on garde le résultat de la suite.
         if (downstream) return downstream.then((v) => { this.onError(link.owner, name, err); return v; }, () => { throw err; });
-        this.onError(link.owner, name, err);
-        return step(i + 1, value);
+        throw err;
       });
     };
     return step(0, input);

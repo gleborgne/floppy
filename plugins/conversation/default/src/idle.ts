@@ -27,6 +27,8 @@ export async function* withIdleTimeout<E>(src: AsyncIterable<E>, ms: number, sta
       yield r.value;
     }
   } finally {
-    if (stall.signal.aborted) void it.return?.(undefined)?.catch?.(() => {});
+    // Toujours fermer le générateur du cerveau (délai, `break` du tour, erreur) : son propre nettoyage tourne
+    // (flux HTTP, processus du CLI). Pendant une attente, la fermeture prend effet à son prochain `yield`.
+    void it.return?.(undefined)?.catch?.(() => {});
   }
 }

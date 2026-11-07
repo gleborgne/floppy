@@ -38,7 +38,7 @@ export class Deadline {
   }
 
   resume(): void {
-    if (this.done || --this.paused > 0) return;
+    if (this.done || this.paused <= 0 || --this.paused > 0) return;
     this.arm();
   }
 
@@ -49,7 +49,8 @@ export class Deadline {
 
   private arm(): void {
     this.since = Date.now();
-    this.timer = setTimeout(() => { this.done = true; this.onTimeout(); }, Math.max(0, this.left));
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => { if (this.done) return; this.done = true; this.onTimeout(); }, Math.max(0, this.left));
     this.timer.unref?.();
   }
 }

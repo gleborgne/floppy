@@ -1,6 +1,6 @@
 // Répertoire de travail : dossier par défaut, dossier choisi (pointeur), déplacement des données, config, réglage.
 import { describe, it, expect, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyPendingMove, chooseHome, defaultConfigPath, defaultHome, floppyHome, Kernel, tr, errorText } from "../src/index.ts";
@@ -28,14 +28,15 @@ describe("répertoire de travail", () => {
     writeFileSync(join(def, "models", "m.gguf"), "x");
     const target = join(root, "D", "Floppy");
     expect(chooseHome(target, env)).toBe("move");
-    expect(floppyHome(env)).toBe(target);
-    const moved = applyPendingMove(() => {}, env);
+    expect(floppyHome(env)).toBe(def); // tant que le déplacement n'est pas fait, les données sont dans l'ancien dossier
+    const moved = applyPendingMove(() => {}, env).moved;
     expect(moved.sort()).toEqual(["models", "settings.json"]);
+    expect(floppyHome(env)).toBe(target);
     expect(readFileSync(join(target, "settings.json"), "utf8")).toBe('{"a":1}');
     expect(existsSync(join(target, "models", "m.gguf"))).toBe(true);
     expect(existsSync(join(def, "settings.json"))).toBe(false);
     expect(JSON.parse(readFileSync(join(def, "home.json"), "utf8"))).toEqual({ home: target });
-    expect(applyPendingMove(() => {}, env)).toEqual([]); // une seule fois
+    expect(applyPendingMove(() => {}, env)).toEqual({ moved: [] }); // une seule fois
   });
 
   it("choisir un dossier qui a déjà des données de Floppy : il est repris tel quel", () => {
@@ -46,9 +47,41 @@ describe("répertoire de travail", () => {
     mkdirSync(target);
     writeFileSync(join(target, "settings.json"), '{"repris":1}');
     expect(chooseHome(target, env)).toBe("use");
-    expect(applyPendingMove(() => {}, env)).toEqual([]);
+    expect(applyPendingMove(() => {}, env)).toEqual({ moved: [] });
     expect(readFileSync(join(target, "settings.json"), "utf8")).toBe('{"repris":1}');
     expect(readFileSync(join(def, "settings.json"), "utf8")).toBe('{"ancien":1}');
+  });
+
+  it("un élément impossible à déplacer : tout revient à sa place, Floppy reste dans l'ancien dossier et réessaiera", () => {
+    const { env, def, root } = sys();
+    mkdirSync(def, { recursive: true });
+    writeFileSync(join(def, "settings.json"), '{"a":1}');
+    writeFileSync(join(def, "tasks.json"), "{}");
+    const target = join(root, "D");
+    expect(chooseHome(target, env)).toBe("move");
+    // « tasks.json » est tenu par un programme : son renommage échoue (EPERM).
+    const ops = { renameSync: (a: string, b: string) => {
+      if (a.endsWith("tasks.json") && b.includes(".floppy-move")) throw Object.assign(new Error("EPERM: fichier tenu"), { code: "EPERM" });
+      renameSync(a, b);
+    } };
+    const r = applyPendingMove(() => {}, env, ops);
+    expect(r.error).toMatch(/tasks.json/);
+    expect(readFileSync(join(def, "settings.json"), "utf8")).toBe('{"a":1}'); // revenu à sa place
+    expect(existsSync(join(def, "tasks.json"))).toBe(true);
+    expect(existsSync(join(target, "settings.json"))).toBe(false);
+    expect(floppyHome(env)).toBe(def);
+    expect(JSON.parse(readFileSync(join(def, "home.json"), "utf8")).moveFrom).toBe(def);
+    // Au démarrage suivant, sans blocage : le déplacement va au bout.
+    expect(applyPendingMove(() => {}, env).moved.sort()).toEqual(["settings.json", "tasks.json"]);
+    expect(floppyHome(env)).toBe(target);
+  });
+
+  it("refuse un dossier personnel qui n'est ni vide ni un dossier de Floppy", () => {
+    const { env, root } = sys();
+    const docs = join(root, "Documents");
+    mkdirSync(docs);
+    writeFileSync(join(docs, "these.docx"), "x");
+    expect(() => chooseHome(docs, env)).toThrow(/autres fichiers/);
   });
 
   it("refuse un chemin relatif, un dossier dans l'autre, et rien ne change pour le même dossier", () => {
@@ -105,6 +138,9 @@ describe("réglage « répertoire de travail »", () => {
     const r = await k.settings.change("dossier_floppy", join(root, "nouveau"), "ui");
     expect(r.ok).toBe(true);
     await restart;
+    // Noté, puis fait au prochain démarrage : d'ici là, les données restent dans l'ancien dossier.
+    expect(floppyHome(env)).toBe(home);
+    applyPendingMove(() => {}, env);
     expect(floppyHome(env)).toBe(join(root, "nouveau"));
     const bad = await k.settings.change("dossier_floppy", "relatif", "ui");
     expect(bad.ok).toBe(false);

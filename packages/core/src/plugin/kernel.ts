@@ -237,7 +237,7 @@ export class Kernel {
     this.retryDelays = opts.retryDelays ?? [5_000, 30_000, 120_000];
     this.unloaded = opts.unloaded ?? [];
     this.host = opts.host;
-    this.hooks.onError = (owner, name, err) => this.log("error", owner ?? "hooks", `middleware ${name} sauté : ${err instanceof Error ? err.message : String(err)}`);
+    this.hooks.onError = (owner, name, err) => this.log("error", owner ?? "hooks", `middleware ${name} : erreur après la suite, son résultat est gardé : ${err instanceof Error ? err.message : String(err)}`);
     this.children = new ChildRegistry(join(this.home, "children.json"));
     this.approvals = new ApprovalManager(this.bus, this.audit, base.approvals);
     this.tools = new ToolRegistry(this.approvals, this.audit, this.hooks);
@@ -588,6 +588,7 @@ export class Kernel {
         const old = this.entries.get(w.id);
         next.set(w.id, old && sameEntry(w, old.cfg) ? old : this.makeEntry(w));
       }
+      for (const old of this.entries.values()) if (![...next.values()].includes(old)) { clearTimeout(old.retryTimer); delete old.retryTimer; }
       this.entries = next;
       this.selection = cfg.services;
       this.slotDefaults = cfg.slots;
@@ -619,6 +620,7 @@ export class Kernel {
       if (f) { await this.stopEntry(f, "loaded"); this.forks.delete(id); await this.reconcile(); return; }
       const e = this.entries.get(id);
       if (!e) throw new TextError(T(`entrée inconnue : ${id}`, `unknown entry: ${id}`));
+      clearTimeout(e.retryTimer);
       await this.stopEntry(e, "loaded");
       const fresh = this.makeEntry(e.cfg);
       this.entries.set(id, fresh);
@@ -633,6 +635,8 @@ export class Kernel {
     // Un démarrage en cours (modèle qui charge) ne doit pas retarder l'arrêt : il est annulé tout de suite.
     for (const e of this.all()) if (e.state === "starting") this.abortStart(e, T("arrêt de Floppy", "Floppy is stopping"), { cancelled: true });
     return this.enqueue(async () => {
+      // Un démarrage commencé entre-temps (la file finissait un travail) est annulé aussi.
+      for (const e of this.all()) if (e.state === "starting") this.abortStart(e, T("arrêt de Floppy", "Floppy is stopping"), { cancelled: true });
       this.approvals.cancelAll();
       for (const e of [...this.entries.values()].reverse()) await this.stopEntry(e, "loaded");
     });
@@ -750,7 +754,10 @@ export class Kernel {
   // ------------------------------------------------------------------ interne
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+    // Le travail du noyau ne tourne au nom d'aucun plugin, même demandé par le code d'un plugin (ctx.fail, emprunt…) :
+    // une panne pendant l'arrêt d'un autre plugin ne doit pas être rendue à celui qui a demandé.
+    const job = () => this.als.exit(fn);
+    const run = this.queue.then(job, job);
     this.queue = run.catch(() => {});
     return run;
   }
@@ -999,6 +1006,8 @@ export class Kernel {
    * sinon arrête ce qui ne sert plus (plugins lazy, forks). Rend vrai si quelque chose a changé.
    */
   private async step(): Promise<boolean> {
+    // Floppy s'arrête : plus rien ne démarre ni ne redémarre (un emprunt rendu ne relance pas tout).
+    if (this.stopped) return false;
     for (const e of this.all()) {
       if (e.state !== "active" || !this.drifted(e)) continue;
       this.log("info", e.cfg.id, "un fournisseur ou un choix a changé : redémarrage");
@@ -1086,7 +1095,14 @@ export class Kernel {
       if (!scope.isClosed && e.fork && !pending.has(e.fork.service)) throw new Error(`l'élément ${e.fork.item} n'a pas fourni ${e.fork.service}`);
       if (scope.isClosed) { // ctx.fail(), délai ou arrêt pendant apply : les effets sont fermés, l'erreur est posée ici, une seule fois
         for (const err of (await (e.disposing as Promise<Error[]> | undefined)) ?? []) this.log("warn", e.cfg.id, `fermeture : ${err.message}`);
+        delete e.disposing;
         e.scope = undefined;
+        if (this.stopped && e.cancelled) {
+          // Annulé par l'arrêt de Floppy : pas une panne. L'entrée repart normalement au prochain applyConfig.
+          e.state = "loaded";
+          this.emitState(e);
+          return;
+        }
         this.setError(e, e.failReason ?? T("arrêté pendant apply", "stopped during apply"));
         this.scheduleRetry(e);
         return;
@@ -1187,7 +1203,8 @@ export class Kernel {
     const provided = [...e.provided.keys()];
     e.provided = new Map();
     e.offers = new Map();
-    const errors = await (e.disposing ?? e.scope.dispose({ timeoutMs: this.disposeTimeoutMs }));
+    const scope = e.scope;
+    const errors = await (e.disposing ?? this.als.run(e.cfg.id, () => scope.dispose({ timeoutMs: this.disposeTimeoutMs })));
     delete e.disposing;
     e.scope = undefined;
     if (e.fork) this.loseBorrowers(e.cfg.id);
@@ -1389,23 +1406,29 @@ export class Kernel {
         if (!e.fork && !allowed.has(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans inject/optional`);
         e.used.add(name);
         // Le temps passé à démarrer un autre plugin ne compte pas dans le délai de celui-ci.
-        e.deadline?.pause();
+        const deadline = e.deadline;
+        deadline?.pause();
         try {
           const x = await kernel.ensureActive(kernel.candidateOf(name));
+          // Démarrage abandonné entre-temps (ctx.fail, délai, arrêt) : ce contexte est fermé, il ne lie plus rien.
+          // Le service a pu démarrer pour rien : le noyau revoit l'état (il l'arrête s'il ne sert à personne).
+          if (scope.isClosed) { void kernel.enqueue(() => kernel.reconcile()).catch(() => {}); return undefined as never; }
           e.bound.set(name, x?.cfg.id);
           return x?.provided.get(name) as never;
-        } finally { e.deadline?.resume(); }
+        } finally { deadline?.resume(); }
       },
       async slot(id) {
         if (e.state !== "starting" || scope.isClosed) throw new Error(`${e.cfg.id} : ctx.slot(${id}) se fait pendant apply`);
         if (!(def.manifest.slots ?? []).some((x) => x.id === id)) throw new Error(`${e.cfg.id} : slot ${id} non déclaré dans le manifeste`);
         const key = kernel.slotKey(id);
         e.slotBound.set(id, key);
-        e.deadline?.pause();
+        const deadline = e.deadline;
+        deadline?.pause();
         try {
           const f = key ? await kernel.ensureFork(key) : undefined;
+          if (scope.isClosed) { void kernel.enqueue(() => kernel.reconcile()).catch(() => {}); return undefined as never; }
           return f?.provided.get(kernel.slotDefs.get(id)!.def.service) as never;
-        } finally { e.deadline?.resume(); }
+        } finally { deadline?.resume(); }
       },
       offers(service) {
         if (!allowed.has(service)) throw new Error(`${e.cfg.id} : service ${service} non déclaré dans inject/optional`);
@@ -1510,15 +1533,21 @@ export class Kernel {
         if (closed(`exec(${programName(command)})`)) return Promise.reject(stoppedError());
         const timeoutMs = options.timeoutMs ?? 30_000;
         return new Promise((resolve, reject) => {
+          let timedOut = false;
+          // Délai : tout l'arbre du programme est arrêté (killTree), pas seulement le premier processus
+          // (`cmd.exe /c az …` laisserait az tourner).
+          const timer = setTimeout(() => { timedOut = true; void killTree(child, 1000); }, timeoutMs);
+          timer.unref?.();
           const child = execFile(command, args, {
-            timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: options.maxBuffer ?? 16 * 1024 * 1024, windowsHide: true, encoding: "utf8",
+            maxBuffer: options.maxBuffer ?? 16 * 1024 * 1024, windowsHide: true, encoding: "utf8",
             ...(options.cwd ? { cwd: options.cwd } : {}), ...(options.env ? { env: options.env } : {}),
             ...(options.verbatim ? { windowsVerbatimArguments: true } : {}), ...(options.signal ? { signal: options.signal } : {}),
           }, (err, stdout, stderr) => {
+            clearTimeout(timer);
             void close();
             const code = typeof (err as { code?: unknown } | null)?.code === "number" ? (err as { code: number }).code : err ? -1 : 0;
-            if (err && (!options.allowFailure || code === -1 || (err as { killed?: boolean }).killed)) {
-              const why = (err as { killed?: boolean }).killed ? `délai dépassé (${Math.round(timeoutMs / 1000)} s)` : String(stderr || err.message).trim().slice(0, 500);
+            if (timedOut || (err && (!options.allowFailure || code === -1 || (err as { killed?: boolean }).killed))) {
+              const why = timedOut ? `délai dépassé (${Math.round(timeoutMs / 1000)} s)` : String(stderr || err!.message).trim().slice(0, 500);
               reject(new Error(`${programName(command)} : ${why}`));
               return;
             }

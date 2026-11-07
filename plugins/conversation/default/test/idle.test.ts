@@ -23,3 +23,19 @@ describe("silence du cerveau", () => {
     expect(stall.signal.aborted).toBe(false);
   });
 });
+
+describe("fermeture du cerveau", () => {
+  it("un tour arrêté (break) ou une erreur ferme le générateur du cerveau", async () => {
+    for (const how of ["break", "throw"] as const) {
+      let closed = false;
+      async function* brain() { try { yield 1; yield 2; await new Promise(() => {}); } finally { closed = true; } }
+      try {
+        for await (const e of withIdleTimeout(brain(), 1000, new AbortController())) {
+          if (e === 2) { if (how === "break") break; throw new Error("dans le tour"); }
+        }
+      } catch { /* l'erreur du tour */ }
+      await new Promise((r) => setTimeout(r, 5));
+      expect(closed, how).toBe(true);
+    }
+  });
+});

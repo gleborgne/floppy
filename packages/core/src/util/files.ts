@@ -42,21 +42,31 @@ export function onCorruptFile(fn: CorruptReport): CorruptReport { const old = re
 export function corruptFiles(): readonly { file: string; movedTo: string; at: string }[] { return corrupt; }
 
 /**
- * Lit un fichier JSON. Absent : `undefined`. Illisible : le fichier est renommé en `<nom>.corrupt-<date>`
+ * Lit un fichier JSON. Absent : `undefined`. Abîmé (pas du JSON) : le fichier est renommé en `<nom>.corrupt-<date>`
  * (jamais écrasé par la sauvegarde suivante), le problème est signalé, et on rend `undefined`.
+ * Fichier tenu un instant par un autre programme (antivirus, indexeur) : on réessaie un peu, puis on LÈVE l'erreur.
+ * Rendre `undefined` ferait repartir l'appelant de zéro, et sa sauvegarde suivante écraserait le vrai fichier.
  */
 export function readJsonFile<T>(file: string): T | undefined {
   if (!existsSync(file)) return undefined;
-  let text: string;
-  try { text = readFileSync(file, "utf8"); } catch (e) { setAside(file, e); return undefined; }
+  let text = "";
+  for (let i = 0; ; i++) {
+    try { text = readFileSync(file, "utf8"); break; } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return undefined;
+      if (i >= 5) throw new Error(`lecture impossible de ${file} : ${(e as Error).message}`);
+      Atomics.wait(pause, 0, 0, 50 * (i + 1));
+    }
+  }
   if (!text.trim()) return undefined;
-  try { return JSON.parse(text) as T; } catch (e) { setAside(file, e); return undefined; }
+  try { return JSON.parse(text) as T; } catch (e) { setAside(file, e, text); return undefined; }
 }
 
-function setAside(file: string, error: unknown): void {
+function setAside(file: string, error: unknown, text: string): void {
   const at = new Date().toISOString();
   const movedTo = `${file}.corrupt-${at.replace(/[:.]/g, "-")}`;
-  try { renameSync(file, movedTo); } catch { /* fichier verrouillé : on le laisse, il sera réécrit plus tard */ }
+  // Renommé ; sinon (fichier tenu), une copie de son contenu : il sera réécrit par la sauvegarde suivante.
+  try { renameSync(file, movedTo); } catch { try { writeFileSync(movedTo, text, "utf8"); } catch { /* disque plein : signalé quand même */ } }
   corrupt.push({ file, movedTo, at });
   try { report(file, movedTo, error); } catch { /* rien */ }
 }

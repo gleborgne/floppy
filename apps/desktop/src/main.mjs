@@ -113,8 +113,14 @@ function homeDir() {
   if (process.env.FLOPPY_HOME) return process.env.FLOPPY_HOME;
   const base = join(dataParent, "floppy");
   try {
-    const chosen = JSON.parse(readFileSync(join(base, "home.json"), "utf8"))?.home;
-    if (typeof chosen === "string" && chosen) return chosen;
+    const p = JSON.parse(readFileSync(join(base, "home.json"), "utf8"));
+    // Déplacement pas encore fait : les données sont encore dans l'ancien dossier (comme le noyau).
+    if (typeof p?.moveFrom === "string" && p.moveFrom && existsSync(p.moveFrom)) return p.moveFrom;
+    const chosen = p?.home;
+    // Dossier choisi absent (disque débranché) : dossier par défaut, comme le noyau.
+    if (typeof chosen === "string" && chosen) {
+      try { mkdirSync(chosen, { recursive: true }); return chosen; } catch { /* dossier par défaut */ }
+    }
   } catch { /* pas de pointeur : dossier par défaut */ }
   if (!existsSync(base) && existsSync(join(dataParent, "assistant"))) {
     try { renameSync(join(dataParent, "assistant"), base); } catch { return join(dataParent, "assistant"); }
@@ -125,7 +131,10 @@ function openLog(dir) {
   try { mkdirSync(dir, { recursive: true }); } catch { /* disque absent : le noyau choisira le dossier par défaut */ }
   // Au-delà de 20 Mo, le journal devient kernel.1.log (l'ancien est remplacé) : il ne grossit jamais sans limite.
   try { if (statSync(join(dir, "kernel.log")).size > 20 * 1024 * 1024) renameSync(join(dir, "kernel.log"), join(dir, "kernel.1.log")); } catch { /* absent */ }
-  return createWriteStream(join(dir, "kernel.log"), { flags: "a" });
+  const stream = createWriteStream(join(dir, "kernel.log"), { flags: "a" });
+  // Journal impossible à ouvrir ou à écrire : l'app continue sans lui (jamais une erreur qui l'arrête).
+  stream.on("error", (e) => { try { process.stderr.write(`[app] journal : ${e?.message ?? e}\n`); } catch { /* rien */ } });
+  return stream;
 }
 let logDir = homeDir();
 let kernelLog = openLog(logDir);

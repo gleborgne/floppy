@@ -86,7 +86,7 @@ Montage A : quand Gemma délègue, il dit d'abord une phrase d'attente (~0,7 s),
 
 - **Pas de bridage ici** : la session a les droits, les serveurs MCP et les connecteurs propres du CLI (artefacts claude.ai compris). C'est le CLI qui demande ses autorisations, dans le terminal. Différent du cerveau et de la délégation, qui restent bridés au MCP Floppy.
 - **La consigne ne passe jamais par la ligne de commande** : elle est écrite dans `<home>/sessions/<horodatage>-<agent>.md` ; le CLI reçoit une phrase fixe qui désigne ce fichier. Le nom du modèle est filtré (`[a-z0-9._:-]`), le dossier donné doit exister.
-- Sans dossier, chaque session a son sous-dossier dans le réglage « Dossier des sessions » (défaut `~/Documents/Floppy`).
+- Sans dossier, chaque session a son sous-dossier dans le réglage « Dossier des sessions » (défaut : l'espace de travail du plugin dans le répertoire de travail de Floppy, `<dossier de Floppy>/workspaces/agent-sessions` ; avant le 7 novembre 2026 : `~/Documents/Floppy`, à remettre dans ce réglage pour retrouver les anciennes sessions).
 - Vérifié le 6 novembre 2026 : Claude Code s'ouvre dans Windows Terminal avec `--model haiku` et la phrase entière.
 
 ### Mémoire et tâches planifiées dans le montage B

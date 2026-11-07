@@ -8,13 +8,15 @@ import { EventEmitter } from 'node:events';
 // Le vrai processus principal, dans un bac sans Electron ni processus/fichiers réels.
 function desktop(argv: string[] = []) {
   const events = new EventEmitter();
-  const child = Object.assign(new EventEmitter(), { postMessage: vi.fn(), kill: vi.fn() });
+  // Un nouveau processus du noyau à chaque lancement (comme utilityProcess.fork) ; `child` est le dernier.
+  const forked: (EventEmitter & { postMessage: ReturnType<typeof vi.fn>; kill: ReturnType<typeof vi.fn> })[] = [];
+  const fork = () => { const c = Object.assign(new EventEmitter(), { postMessage: vi.fn(), kill: vi.fn() }); forked.push(c); return c; };
   const app = { quit:vi.fn(), requestSingleInstanceLock:()=>true, commandLine:{appendSwitch(){}}, whenReady:()=>new Promise(()=>{}), on:events.on.bind(events), getAppPath:()=>'.', getLoginItemSettings:()=>({executableWillLaunchAtLogin:false}), setLoginItemSettings(){} };
   const source = readFileSync(new URL('../src/main.mjs', import.meta.url),'utf8')
     .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.mjs',import.meta.url).href));
-  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){}}),setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork:()=>child}, console };
+  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console };
   runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,problems:()=>problems,setWindow:w=>{win=w;}};',context);
-  return { api:context.api,events,child,app,env:context.process.env as Record<string,string> };
+  return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
 
 it('ignore un affichage reçu pour une fenêtre déjà détruite',()=>{
@@ -59,9 +61,22 @@ it('relance le noyau avec une attente qui grandit, puis arrête après 5 pannes 
 
 it("un démarrage impossible devient un problème visible, et la relance s'arrête après trop de pannes",()=>{
   const d=desktop();
+  const relaunches = () => d.timers.mock.calls.filter((c) => [2000, 5000, 15000, 60000].includes(c[1] as number));
   d.api.startKernel();
+  // Chaque noyau rate son démarrage : il envoie la raison, puis s'arrête ; l'app le relance après l'attente prévue.
+  for (let i=0;i<4;i++) {
+    d.child.emit('message',{type:'kernel.failed',text:{fr:'config invalide',en:'invalid config'}});
+    d.child.emit('exit',2);
+    expect(relaunches()).toHaveLength(i+1);
+    (relaunches().at(-1)![0] as () => void)(); // l'attente est finie : nouveau noyau
+  }
+  expect(relaunches().map((c) => c[1])).toEqual([2000, 5000, 15000, 60000]);
+  // 5e panne en moins de 2 minutes : plus de relance, et la raison reste visible.
   d.child.emit('message',{type:'kernel.failed',text:{fr:'config invalide',en:'invalid config'}});
-  for (let i=0;i<5;i++) { d.child.emit('exit',2); d.api.startKernel(); }
+  const timersBefore = d.timers.mock.calls.length;
   d.child.emit('exit',2);
+  expect(d.timers.mock.calls.length).toBe(timersBefore); // aucune relance programmée
+  expect(relaunches()).toHaveLength(4);
+  expect(d.forked).toHaveLength(5);
   expect(d.api.problems().get('noyau')).toEqual({fr:'config invalide',en:'invalid config'});
 });

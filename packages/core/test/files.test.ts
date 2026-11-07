@@ -1,6 +1,6 @@
 // Fichiers de l'utilisateur : écriture atomique, fichier abîmé mis de côté (jamais remis à zéro en silence).
 import { describe, it, expect, beforeEach } from "vitest";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ItemStore, readJsonFile, writeJsonAtomic, onCorruptFile, corruptFiles, Kernel, definePlugin } from "../src/index.ts";
@@ -29,6 +29,17 @@ describe("fichiers de l'utilisateur", () => {
     const moved = readdirSync(dir).find((n) => n.startsWith("b.json.corrupt-"));
     expect(moved && readFileSync(join(dir, moved), "utf8")).toBe("{ cassé");
     expect(corruptFiles().some((c) => c.file === f)).toBe(true);
+  });
+
+  it("un fichier impossible à lire (pas abîmé) lève une erreur : jamais remis à zéro en silence", () => {
+    const dir = mkdtempSync(join(tmpdir(), "floppy-files-"));
+    const f = join(dir, "settings.json");
+    mkdirSync(f); // un dossier à cet endroit : la lecture échoue à chaque essai, comme un fichier tenu
+    const seen: string[] = [];
+    onCorruptFile((file) => seen.push(file));
+    expect(() => readJsonFile(f)).toThrow(/lecture impossible/);
+    expect(seen).toEqual([]);
+    expect(existsSync(f)).toBe(true);
   });
 
   it("absent ou vide : rien à signaler", () => {

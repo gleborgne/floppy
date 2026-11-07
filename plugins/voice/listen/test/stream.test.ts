@@ -224,4 +224,38 @@ describe("plugin dans le noyau", () => {
       a.close();
     } finally { await k.stopAll(); }
   });
+
+  it("le détecteur de parole tombe en panne pendant qu'un flux est ouvert : le flux suit le nouveau", async () => {
+    let vadGen = 0;
+    let vadFork!: { fail(r: string): void };
+    const runtime = definePlugin({
+      manifest: { id: "fake-runtime", version: "0", licence: "MIT", provides: ["vad", "stt"] },
+      apply(ctx) {
+        ctx.offer("vad", { items: () => [{ id: "silero", label: "Silero" }], start(f) {
+          const mine = ++vadGen;
+          vadFork = f;
+          // Le premier détecteur n'entend rien ; celui d'après une panne entend une phrase.
+          f.provide("vad", { name: "silero", minSilenceMs: 500, open: () => fakeVad(mine === 1 ? {} : { 12: "start", 40: "end" }).stream } satisfies VadService);
+        } });
+        ctx.offer("stt", { items: () => [{ id: "parakeet", label: "Parakeet" }], start(f) {
+          f.provide("stt", { name: "parakeet", transcribe: async () => ({ text: "entendu" }) } satisfies SttService);
+        } });
+      },
+    });
+    let voice: VoiceService | undefined;
+    const consumer = definePlugin({ manifest: { id: "consumer", version: "0", licence: "MIT", optional: ["voice"] }, apply(c) { voice = c.maybe("voice"); } });
+    const k = new Kernel({ logger: () => {}, home: mkdtempSync(join(tmpdir(), "listen-")), plugins: [listen, runtime, consumer], retryDelays: [] });
+    try {
+      await k.applyConfig({ plugins: [{ id: "rt", plugin: "fake-runtime" }, { id: "listen", plugin: "voice-listen" }, { id: "c", plugin: "consumer" }] });
+      const a = await voice!.open("a");
+      const got: VoiceEvent[] = [];
+      a.on((e) => got.push(e));
+      vadFork.fail("panne");
+      await vi.waitFor(() => expect(vadGen).toBe(2));
+      await new Promise((r) => setTimeout(r, 10));
+      for (let i = 0; i < 52; i++) a.pushAudio(new Float32Array(FRAME));
+      await vi.waitFor(() => expect(got.find((e) => e.type === "transcript")).toMatchObject({ text: "entendu" }));
+      a.close();
+    } finally { await k.stopAll(); }
+  });
 });

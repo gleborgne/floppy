@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { errorText, imageLogo, T, TextError, tr, type Context, type Level, type Rule, type Text, type ToolDef, type ToolResult } from "@floppy/core";
+import { errorText, imageLogo, T, TextError, tr, type Context, type Level, type Rule, type Text, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
 import { resolveLevel, type LevelSetting } from "./levels.ts";
 import { azTokenProvider, bearerFetch, runAz } from "./azcli.ts";
 
@@ -50,7 +50,8 @@ export interface Opened {
   tools: RawTool[];
   /** Icône que le serveur envoie (serverInfo.icons), en adresse data:image/… seulement (rien n'est téléchargé). */
   icon?: string;
-  call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>;
+  /** Le texte peut être en français et en anglais (le noyau choisit la langue). */
+  call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolOutput>;
   close(): Promise<void>;
 }
 
@@ -103,11 +104,11 @@ function commandTool(spec: Spec, id: string, exec: Context["exec"] | undefined):
       : { type: "object", properties: {} },
     level: spec.level ?? "write", // sans choix explicite : avec accord
   };
-  const run: Opened["call"] = (_n, args, signal) => new Promise<ToolResult>((ok) => {
+  const run: Opened["call"] = (_n, args, signal) => new Promise<ToolOutput>((ok) => {
     const texte = typeof args.texte === "string" ? args.texte : "";
     const bad = texteError(spec.args, texte);
     if (bad) return ok({ status: "failed", text: bad });
-    if (!exec) return ok({ status: "failed", text: "Commande indisponible (plugin arrêté)." });
+    if (!exec) return ok({ status: "failed", text: T("Commande indisponible (plugin arrêté).", "Command unavailable (plugin stopped).") });
     // Par ctx.exec : sans shell, avec un délai, arrêtée avec le plugin.
     exec(spec.command!, fillArgs(spec.args, texte), {
       timeoutMs: timeout, maxBuffer: 4 * 1024 * 1024, allowFailure: true,
@@ -115,10 +116,12 @@ function commandTool(spec: Spec, id: string, exec: Context["exec"] | undefined):
     }).then((r) => {
       const out = clipOut(`${r.stdout}${r.stderr ? `${r.stdout ? "\n" : ""}${r.stderr}` : ""}`);
       if (r.code === 0) return ok({ status: "done", text: out || "(pas de sortie)" });
-      ok({ status: "failed", text: out || `La commande a échoué (code ${r.code}).` });
+      ok({ status: "failed", text: out || T(`La commande a échoué (code ${r.code}).`, `The command failed (code ${r.code}).`) });
     }, (e: unknown) => {
       const msg = e instanceof Error ? e.message : String(e);
-      ok({ status: "failed", text: /délai dépassé/.test(msg) ? `Délai dépassé (${timeout / 1000} s).` : `La commande a échoué : ${msg}` });
+      ok({ status: "failed", text: /délai dépassé/.test(msg)
+        ? T(`Délai dépassé (${timeout / 1000} s).`, `Timed out (${timeout / 1000} s).`)
+        : T(`La commande a échoué : ${msg}`, `The command failed: ${msg}`) });
     });
   });
   return { tool, run };

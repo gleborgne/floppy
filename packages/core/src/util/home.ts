@@ -39,7 +39,10 @@ function readPointer(env: NodeJS.ProcessEnv = process.env): Pointer {
 /** Le répertoire de travail en usage (créé s'il manque). */
 export function floppyHome(env: NodeJS.ProcessEnv = process.env): string {
   if (env.FLOPPY_HOME) { mkdirSync(env.FLOPPY_HOME, { recursive: true }); return env.FLOPPY_HOME; }
-  const chosen = readPointer(env).home;
+  const pointer = readPointer(env);
+  // Déplacement demandé mais pas encore fait (ou raté) : les données sont encore entières dans l'ancien dossier.
+  if (pointer.moveFrom && isAbsolute(pointer.moveFrom) && existsSync(pointer.moveFrom)) return pointer.moveFrom;
+  const chosen = pointer.home;
   if (chosen && isAbsolute(chosen)) {
     try { mkdirSync(chosen, { recursive: true }); return chosen; } catch { /* disque absent (clé USB débranchée) : dossier par défaut */ }
   }
@@ -88,6 +91,12 @@ export function chooseHome(dir: string, env: NodeJS.ProcessEnv = process.env): "
   }
   const use = hasFloppyData(target);
   const back = target.toLowerCase() === resolve(defaultHome(env)).toLowerCase();
+  // Un dossier personnel (Documents…) ne devient jamais le dossier de Floppy : un déplacement suivant emporterait
+  // les fichiers de l'utilisateur avec ceux de Floppy.
+  if (!use && !back && readdirSync(target).some((n) => !n.startsWith(".floppy-"))) {
+    throw new TextError(T("Ce dossier contient déjà d'autres fichiers. Choisis un dossier vide, ou un dossier qui contient déjà les données de Floppy.",
+      "This folder already holds other files. Choose an empty folder, or a folder that already holds Floppy's data."));
+  }
   writeJsonAtomic(pointerFile(env), {
     ...(back ? {} : { home: target }),
     ...(use ? {} : { moveFrom: current }),
@@ -95,38 +104,85 @@ export function chooseHome(dir: string, env: NodeJS.ProcessEnv = process.env): "
   return use ? "use" : "move";
 }
 
+/** Fichiers laissés en place : ouverts par l'app pendant le déplacement, ou propres à une session. */
+const LEFT_BEHIND = new Set(["kernel.log", "kernel.1.log", "control.json"]);
+const STAGING = ".floppy-move";
+
+export interface MoveResult {
+  /** Éléments déplacés (vide : rien à faire, ou échec). */
+  moved: string[];
+  /** Raison d'un échec : rien n'a changé, Floppy reste dans l'ancien dossier et réessaiera au prochain démarrage. */
+  error?: string;
+}
+
+/** Dossier d'origine d'un déplacement pas encore fait (pour arrêter ses programmes restés en vie avant de déplacer). */
+export function pendingMoveFrom(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (env.FLOPPY_HOME) return undefined;
+  const from = readPointer(env).moveFrom;
+  return from && isAbsolute(from) ? from : undefined;
+}
+
 /**
- * Au démarrage, avant d'ouvrir quoi que ce soit : fait le déplacement demandé par chooseHome.
- * Chaque élément est renommé (même disque) ou copié puis supprimé (autre disque). Rend ce qui a été déplacé.
+ * Au démarrage, avant d'ouvrir quoi que ce soit : fait le déplacement demandé par chooseHome, tout ou rien.
+ * 1. Chaque élément passe dans un dossier d'attente du nouveau dossier (renommé sur le même disque ; copié dans
+ *    `<nom>.part` puis renommé sur un autre disque).
+ * 2. Un élément impossible (fichier tenu par un programme, disque plein) : tout ce qui a été renommé revient à sa place,
+ *    les copies sont effacées, `moveFrom` reste. Floppy démarre dans l'ancien dossier, entier, et réessaiera.
+ * 3. Tout est passé : les éléments sortent du dossier d'attente, le pointeur ne garde que le nouveau dossier, puis
+ *    les originaux copiés sont effacés (un arrêt à ce moment laisse seulement des restes dans l'ancien dossier).
  */
-export function applyPendingMove(log: (msg: string) => void = () => {}, env: NodeJS.ProcessEnv = process.env): string[] {
-  if (env.FLOPPY_HOME) return [];
+export function applyPendingMove(
+  log: (msg: string) => void = () => {}, env: NodeJS.ProcessEnv = process.env,
+  ops: { renameSync: (a: string, b: string) => void } = { renameSync },
+): MoveResult {
+  if (env.FLOPPY_HOME) return { moved: [] };
   const p = readPointer(env);
-  if (!p.moveFrom) return [];
+  if (!p.moveFrom) return { moved: [] };
   const from = resolve(p.moveFrom);
   const to = resolve(p.home ?? defaultHome(env));
-  const done: string[] = [];
-  const keep = new Set([POINTER]); // le pointeur reste dans le dossier par défaut
-  if (existsSync(from) && !hasFloppyData(to)) {
-    mkdirSync(to, { recursive: true });
-    for (const name of readdirSync(from)) {
-      if (keep.has(name) && from.toLowerCase() === resolve(defaultHome(env)).toLowerCase()) continue;
+  const finish = () => writeJsonAtomic(pointerFile(env), { ...(p.home ? { home: p.home } : {}) } satisfies Pointer);
+  if (!existsSync(from)) { finish(); return { moved: [] }; }
+  const fromIsDefault = from.toLowerCase() === resolve(defaultHome(env)).toLowerCase();
+  const staging = join(to, STAGING);
+  const names = readdirSync(from).filter((n) => !LEFT_BEHIND.has(n) && !(fromIsDefault && n === POINTER));
+  const renamed: string[] = [];   // passés par renommage : à remettre en place en cas d'échec
+  const copied: string[] = [];    // passés par copie : l'original est encore dans l'ancien dossier
+  try {
+    mkdirSync(staging, { recursive: true });
+    for (const name of names) {
       const a = join(from, name);
-      const b = join(to, name);
-      if (existsSync(b)) continue;
-      try { renameSync(a, b); }
-      catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "EXDEV") { log(`déplacement impossible : ${name} (${String(e)})`); continue; }
-        log(`copie vers l'autre disque : ${name}${statSync(a).isDirectory() ? " (dossier)" : ""}`);
-        cpSync(a, b, { recursive: true, errorOnExist: false });
-        rmSync(a, { recursive: true, force: true });
-      }
-      done.push(name);
+      const b = join(staging, name);
+      rmSync(`${b}.part`, { recursive: true, force: true });
+      if (existsSync(b)) rmSync(b, { recursive: true, force: true }); // reste d'un essai interrompu : on refait
+      try { ops.renameSync(a, b); renamed.push(name); continue; }
+      catch (e) { if ((e as NodeJS.ErrnoException).code !== "EXDEV") throw new Error(`${name} : ${(e as Error).message}`); }
+      log(`copie vers l'autre disque : ${name}${statSync(a).isDirectory() ? " (dossier)" : ""}`);
+      cpSync(a, `${b}.part`, { recursive: true, errorOnExist: true, force: false });
+      ops.renameSync(`${b}.part`, b);
+      copied.push(name);
     }
-    log(`répertoire de travail déplacé : ${from} → ${to} (${done.length} éléments)`);
+    for (const name of [...renamed, ...copied]) {
+      const b = join(to, name);
+      if (existsSync(b)) renameSync(b, `${b}.avant-${Date.now()}`); // jamais écrasé : mis de côté
+      renameSync(join(staging, name), b);
+    }
+    rmSync(staging, { recursive: true, force: true });
+  } catch (e) {
+    // Retour en arrière : l'ancien dossier redevient entier, le nouveau ne garde rien du déplacement.
+    for (const name of renamed) {
+      const back = existsSync(join(staging, name)) ? join(staging, name) : join(to, name);
+      try { if (!existsSync(join(from, name))) renameSync(back, join(from, name)); } catch (r) { log(`retour impossible : ${name} (${String(r)})`); }
+    }
+    for (const name of copied) { try { rmSync(join(to, name), { recursive: true, force: true }); } catch { /* reste */ } }
+    try { rmSync(staging, { recursive: true, force: true }); } catch { /* reste */ }
+    const error = e instanceof Error ? e.message : String(e);
+    log(`déplacement du répertoire de travail impossible, rien n'a changé (nouvel essai au prochain démarrage) : ${error}`);
+    return { moved: [], error };
   }
-  writeJsonAtomic(pointerFile(env), { ...(p.home ? { home: p.home } : {}) } satisfies Pointer);
-  return done;
+  finish();
+  for (const name of copied) { try { rmSync(join(from, name), { recursive: true, force: true }); } catch (e) { log(`reste dans l'ancien dossier : ${name} (${String(e)})`); } }
+  log(`répertoire de travail déplacé : ${from} → ${to} (${renamed.length + copied.length} éléments)`);
+  return { moved: [...renamed, ...copied] };
 }
 
 /**

@@ -31,8 +31,9 @@ export class FileAudit implements Audit {
     const line = JSON.stringify({ t: new Date().toISOString(), ...rec }) + "\n";
     try {
       if (this.size > 0 && this.size + line.length > this.maxBytes) {
-        renameSync(this.path, this.path.replace(/(\.jsonl)?$/, ".1.jsonl"));
-        this.size = 0;
+        // Rotation impossible (fichier tenu par un lecteur) : on écrit quand même, la rotation sera retentée.
+        try { renameSync(this.path, this.path.replace(/(\.jsonl)?$/, ".1.jsonl")); this.size = 0; }
+        catch (e) { console.error(`[audit] rotation impossible : ${e instanceof Error ? e.message : String(e)}`); }
       }
       appendFileSync(this.path, line, "utf8");
       this.size += Buffer.byteLength(line);

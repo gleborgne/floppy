@@ -24,19 +24,28 @@ describe("programmes lancés", () => {
     await k.stopAll();
   });
 
-  it("arrête seulement un programme qui tourne encore sous le même nom", async () => {
+  it("arrête seulement un programme au même nom, démarré au même moment, dont le noyau n'est plus là", async () => {
     const home = mkdtempSync(join(tmpdir(), "floppy-children-"));
     const file = join(home, "children.json");
+    const t = Date.parse("2026-11-07T10:00:00Z");
+    const at = new Date(t).toISOString();
     writeFileSync(file, JSON.stringify([
-      { pid: 101, name: "llama-server", owner: "llm", at: "" },   // tourne encore : arrêté
-      { pid: 102, name: "audio-server", owner: "tts", at: "" },   // numéro repris par un autre programme : laissé
-      { pid: 103, name: "llama-server", owner: "llm", at: "" },   // fini : rien à faire
+      { pid: 101, name: "llama-server", owner: "llm", at, kernel: 9001 },   // noyau mort, même programme : arrêté
+      { pid: 102, name: "audio-server", owner: "tts", at, kernel: 9001 },   // numéro repris par un autre programme : laissé
+      { pid: 103, name: "llama-server", owner: "llm", at, kernel: 9001 },   // fini : rien à faire
+      { pid: 104, name: "claude", owner: "claude", at, kernel: 9001 },      // même nom, mais démarré une heure après : laissé
+      { pid: 105, name: "llama-server", owner: "llm", at, kernel: 9002 },   // noyau d'une autre instance en marche : laissé
     ]));
-    const running: Record<number, string> = { 101: "llama-server", 102: "notepad" };
+    const running: Record<number, { name: string; startedAt?: number }> = {
+      101: { name: "llama-server", startedAt: t + 800 }, 102: { name: "notepad", startedAt: t },
+      104: { name: "claude", startedAt: t + 3_600_000 }, 105: { name: "llama-server", startedAt: t },
+    };
     const killed: number[] = [];
-    const out = await reapOrphans(file, { nameOf: async (pid) => running[pid], kill: async (pid) => { killed.push(pid); } });
+    const out = await reapOrphans(file, { infoOf: async (pid) => running[pid], alive: (pid) => pid === 9002, kill: async (pid) => { killed.push(pid); } });
     expect(killed).toEqual([101]);
     expect(out.map((r) => r.pid)).toEqual([101]);
+    // La liste ne garde que les programmes de l'instance encore en marche : rien n'est arrêté deux fois.
+    expect(JSON.parse(readFileSync(file, "utf8")).map((r: { pid: number }) => r.pid)).toEqual([105]);
   });
 
   it("nom du programme : sans dossier ni extension", () => {
