@@ -7,6 +7,11 @@ const threads = new Map();
 createInterface({ input: process.stdin }).on("line", (l) => {
   const m = JSON.parse(l);
   if (m.method === "initialize") send({ id: m.id, result: {} });
+  else if (m.method === "model/list") send({ id: m.id, result: m.params.cursor ? {
+    data: [{ id: "opaque-id", model: "future-model", displayName: "Future model" }], nextCursor: null,
+  } : {
+    data: [{ model: "gpt-6-luna", displayName: "GPT-6 Luna" }, { model: "hidden-model", displayName: "Hidden", hidden: true }], nextCursor: "page2",
+  } });
   else if (m.method === "thread/start") { const id = `t${++thread}`; threads.set(id, m.params); send({ id: m.id, result: { thread: { id } } }); }
   else if (m.method === "turn/start") {
     const th = threads.get(m.params.threadId);

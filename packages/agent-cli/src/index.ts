@@ -7,6 +7,8 @@ import { join } from "node:path";
 export { offerAgent, borrowAgent, validAgentModel, agentTools, type AgentDefinition } from "./offers.ts";
 export { createExternalAgent } from "./plugin.ts";
 export { scopedAgentRun } from "./scoped-run.ts";
+export { createModelCatalog, type AgentModel } from "./model-catalog.ts";
+export { discoverCodexModels, discoverClaudeModels, discoverAgyModels } from "./model-discovery.ts";
 
 /** Variables du système gardées pour un agent : rien d'une session Claude parente, d'Orca ou d'une clé en trop. */
 const BASE_ENV = [

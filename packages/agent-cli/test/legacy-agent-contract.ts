@@ -22,6 +22,9 @@ export function legacyAgentContract(plugin: PluginDef<any>, id: string, fixture:
     try {
       await k.applyConfig({ plugins: [{ id: "mcp", plugin: "test-mcp" }, { id: "a", plugin: plugin.manifest.id,
         config: { exe: process.execPath, exeArgs: [fixture], userMcp: false, timeout_s: 5 } }, { id: "p", plugin: "probe" }] });
+      // Stabilise le catalogue : sa découverte est indépendante des missions et peut finir pendant un tour.
+      const provider = k.items.provider(id === "antigravity" ? "agy-cli" : `${id}-cli`)!;
+      await provider.action!(id, "refresh-models");
       const before = await k.items.snapshot();
       const b = await borrowAgent(consumer!, id); expect(b?.service.run).toBeDefined();
       try {

@@ -4,6 +4,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 const args = process.argv.slice(2);
 const send = (o) => process.stdout.write(JSON.stringify(o) + "\n");
+if (args.includes("models")) {
+  if (args.join(" ") !== "--output-format json models") throw new Error("arguments de découverte incorrects");
+  send({ status: "SUCCESS", command: { name: "models", data: { models: [
+    { id: "gemini-future", label: "Gemini Future" },
+  ] } } });
+  process.exit(0);
+}
 createInterface({ input: process.stdin }).once("line", (l) => {
   const text = JSON.parse(l).message.content;
   const home = process.env.USERPROFILE;

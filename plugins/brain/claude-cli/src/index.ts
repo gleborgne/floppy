@@ -13,7 +13,7 @@ import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@flo
 import type { BrainEvent, BrainService, CompletionService } from "@floppy/contracts";
 import type { McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, parseModelJson, offerAgent, scopedAgentRun } from "@floppy/agent-cli";
+import { agentEnv, parseModelJson, offerAgent, scopedAgentRun, createModelCatalog, discoverClaudeModels } from "@floppy/agent-cli";
 const Config = z.object({
   exe: z.string().default(() => process.env.CLAUDE_EXE ?? findExe("claude") ?? "claude"),
   /** Arguments ajoutés avant les autres (pour les tests : un script devant un faux CLI). */
@@ -266,9 +266,9 @@ export default definePlugin<Config>({
   apply(ctx, cfg) {
     const mcp = ctx.get("mcp");
     // Modèles proposés : `models`, plus l'ancien `completionModels` et `model` s'ils n'y sont pas.
-    const models = [...cfg.models];
-    for (const m of [...(cfg.completionModels ?? []), { id: cfg.model, label: labelOf(cfg.model) }]) {
-      if (!models.some((x) => x.id === m.id)) models.push(m);
+    const initialModels = [...cfg.models];
+    for (const m of [...(cfg.completionModels ?? []), { id: cfg.model, label: labelOf(cfg.model) }, { id: cfg.delegateModel, label: labelOf(cfg.delegateModel) }]) {
+      if (!initialModels.some((x) => x.id === m.id)) initialModels.push(m);
     }
     const find = (id: string) => models.find((m) => m.id === id);
     // Un seul élément « Claude Code » dans la rubrique Cerveau. Son modèle se choisit dans sa page (formulaire) :
@@ -283,13 +283,21 @@ export default definePlugin<Config>({
     };
     const pick = pickOf("model", cfg.model);
     const pickDelegate = pickOf("delegateModel", cfg.delegateModel);
+    const catalog = createModelCatalog(ctx, initialModels, () => [pick(), pickDelegate()], () => discoverClaudeModels(ctx, {
+      exe: cfg.exe, args: [...cfg.exeArgs, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+        "--tools", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--permission-mode", "dontAsk",
+        "--setting-sources", "project", "--disable-slash-commands", "--no-session-persistence"],
+      cwd: ctx.workspace("model-catalog"), env: cleanEnv({ CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", DISABLE_AUTOUPDATER: "1" }),
+    }));
+    const models = catalog.models;
+    catalog.touch(false);
     offerAgent(ctx, {
       id: "claude", label: "Claude Code", program: "claude", aliases: ["claude", "claude code"],
       args: (prompt, model) => [...(model ? ["--model", model] : []), prompt],
     }, { exe: () => cfg.exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
       makeBrain(f, { ...cfg, cwd }, scope, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
     const brains = new Set<{ renew(): void }>();
-    const options = models.map((m) => ({ value: m.id, label: m.label }));
+    const options = catalog.options;
     const fields = [
       { key: "model", label: T("Modèle du cerveau principal", "Main brain model"), type: "select" as const, required: true, options,
         hint: T("Quand il répond lui-même. S'applique à la demande suivante.", "When it answers itself. Applies from the next request.") },
@@ -304,17 +312,21 @@ export default definePlugin<Config>({
       kinds: [{ id: "cli", label: T("Claude Code (CLI)", "Claude Code (CLI)"), fields }],
       list: () => {
         const on = store.isEnabled(itemId);
+        catalog.touch(on);
         const m = pick();
         const d = pickDelegate();
         return [{
           id: itemId, kind: "cli", label: T("Claude Code (CLI)", "Claude Code (CLI)"), enabled: on, cloud: true,
           aliases: ["claude", "claude code", m.id], values: { model: m.id, delegateModel: d.id },
           detail: T(`principal : ${m.label} · délégation : ${d.label}`, `main: ${m.label} · delegation: ${d.label}`),
-          status: on ? "ok" : "off",
-          statusText: on ? undefined : T("désactivé : plus proposé", "disabled: no longer offered"),
+          actions: catalog.actions,
+          status: on ? catalog.warning ? "warn" : "ok" : "off",
+          statusText: on ? catalog.warning : T("désactivé : plus proposé", "disabled: no longer offered"),
           editable: true, removable: false, toggleable: true,
         }];
       },
+      action: async (id, action) => id === itemId && action === "refresh-models" ? catalog.refresh()
+        : { ok: false, text: T("Action inconnue.", "Unknown action.") },
       update: async (id, values) => {
         if (id !== itemId) return { ok: false, text: T(`Élément inconnu : ${id}`, `Unknown item: ${id}`) };
         const m = find(String(values.model ?? pick().id));

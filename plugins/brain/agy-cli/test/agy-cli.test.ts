@@ -99,4 +99,15 @@ describe("brain agy-cli", () => {
     expect(r.out).toBe("Rien aujourd'hui.");
     expect(b.audit.records).toContainEqual(expect.objectContaining({ kind: "cli.unexpected_tools", cli: "agy", tools: ["search_web"] }));
   });
+
+  it("actualise les deux menus depuis agy models et utilise le nouveau modèle", async () => {
+    const b = await boot({ "brain.main": "g/antigravity", "brain.delegate": "g/antigravity" });
+    const prov = b.k.items.provider("agy-cli")!;
+    expect((await prov.action!("antigravity", "refresh-models")).ok).toBe(true);
+    for (const field of prov.kinds![0]!.fields) expect(field.options).toContainEqual({ value: "gemini-future", label: "Gemini Future" });
+    expect((await prov.update!("antigravity", { model: "gemini-future", delegateModel: "gemini-future" })).ok).toBe(true);
+    const got = JSON.parse((await collect(b.main()!.agent!, "bonjour")).out);
+    expect(got.args[got.args.indexOf("--model") + 1]).toBe("gemini-future");
+    expect(b.dlg()!.name).toBe("agy:gemini-future");
+  });
 });

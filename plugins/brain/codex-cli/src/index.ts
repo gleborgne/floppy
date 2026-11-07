@@ -15,16 +15,17 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun } from "@floppy/agent-cli";
+import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun, createModelCatalog, discoverCodexModels } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `codex` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
   /** Arguments ajoutés avant les autres (pour les tests : un script devant un faux CLI). */
   exeArgs: z.array(z.string()).default([]),
-  /** Modèles proposés : `id` = nom du modèle pour Codex (liste : `codex` puis /model). */
+  /** Modèles de secours et ajouts personnels ; complétés par le catalogue de Codex (`model/list`). */
   models: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) })).min(1).default([
     { id: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
     { id: "gpt-6.1-terra", label: "GPT-6.1 Terra" },
+    { id: "gpt-6-luna", label: "GPT-6 Luna" },
   ]),
   /** Effort de réflexion (low, medium, high…). Vide : celui du modèle. */
   effort: z.string().optional(),
@@ -234,7 +235,7 @@ export default definePlugin<Config>({
   apply(ctx, cfg) {
     const mcp = ctx.get("mcp");
     const exe = cfg.exe ?? findExe("codex");
-    const find = (id: string) => cfg.models.find((m) => m.id === id);
+    const find = (id: string) => catalog.find(id);
     // Un seul élément dans la rubrique Cerveau. Son modèle se choisit dans sa page (formulaire) : gardé dans
     // <home>/items/<entrée>.json, appliqué à la demande suivante sans rien redémarrer.
     const store = ctx.items.store();
@@ -247,6 +248,14 @@ export default definePlugin<Config>({
     };
     const pick = pickOf("model", cfg.models[0]!.id);
     const pickDelegate = pickOf("delegateModel", cfg.models[0]!.id);
+    const catalog = createModelCatalog(ctx, cfg.models, () => [pick(), pickDelegate()], () => {
+      if (!exe) throw new Error("programme codex introuvable");
+      return discoverCodexModels(ctx, {
+        exe, args: [...cfg.exeArgs, "app-server", ...codexOverrides(mcp.url, [], cfg.userMcp ? userCodexMcpNames() : []), "-c", "mcp_servers.floppy.enabled=false"],
+        cwd: ctx.workspace("model-catalog"), env: cleanEnv({ RUST_LOG: "warn" }),
+      });
+    });
+    catalog.touch(false);
     offerAgent(ctx, {
       id: "codex", label: "Codex", program: "codex", aliases: ["codex"],
       args: (prompt, model) => [...(model ? ["-m", model] : []), prompt],
@@ -261,25 +270,29 @@ export default definePlugin<Config>({
       badge: T("cloud", "cloud"),
       kinds: [{ id: "cli", label: name, fields: [
         { key: "model", label: T("Modèle du cerveau principal", "Main brain model"), type: "select", required: true,
-          options: cfg.models.map((m) => ({ value: m.id, label: m.label })),
+          options: catalog.options,
           hint: T("Quand il répond lui-même. S'applique à la demande suivante.", "When it answers itself. Applies from the next request.") },
         { key: "delegateModel", label: T("Modèle de délégation", "Delegation model"), type: "select", required: true,
-          options: cfg.models.map((m) => ({ value: m.id, label: m.label })),
+          options: catalog.options,
           hint: T("Pour les tâches complexes que le cerveau principal lui confie.", "For the complex tasks the main brain hands over.") },
       ] }],
       list: () => {
         const on = store.isEnabled(itemId);
+        catalog.touch(on && !!exe);
         const m = pick();
         const d = pickDelegate();
         return [{
           id: itemId, kind: "cli", label: name, enabled: on, cloud: true, aliases: ["codex", "openai", "chatgpt", m.id], values: { model: m.id, delegateModel: d.id },
           detail: T(`principal : ${m.label} · délégation : ${d.label}`, `main: ${m.label} · delegation: ${d.label}`),
-          status: !exe ? "warn" : on ? "ok" : "off",
+          actions: exe ? catalog.actions : [],
+          status: !exe || catalog.warning ? "warn" : on ? "ok" : "off",
           statusText: !exe ? T("programme codex introuvable : installe Codex", "codex program not found: install Codex")
-            : on ? undefined : T("désactivé : plus proposé", "disabled: no longer offered"),
+            : on ? catalog.warning : T("désactivé : plus proposé", "disabled: no longer offered"),
           editable: true, removable: false, toggleable: true,
         }];
       },
+      action: async (id, action) => id === itemId && action === "refresh-models" ? catalog.refresh()
+        : { ok: false, text: T("Action inconnue.", "Unknown action.") },
       update: async (id, values) => {
         if (id !== itemId) return { ok: false, text: T(`Élément inconnu : ${id}`, `Unknown item: ${id}`) };
         const m = find(String(values.model ?? pick().id));

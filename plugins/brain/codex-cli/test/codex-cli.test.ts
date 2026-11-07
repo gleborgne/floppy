@@ -95,6 +95,20 @@ describe("brain codex-cli", () => {
     expect(JSON.parse((await collect(a, "quatre", "s1")).out).thread).not.toBe(t1);
   });
 
+  it("découvre Luna et les pages suivantes du catalogue, puis transmet le choix au cerveau", async () => {
+    const b = await boot({ "brain.main": "x/codex", "brain.delegate": "x/codex" });
+    const prov = b.k.items.provider("codex-cli")!;
+    expect((await prov.action?.("codex", "refresh-models"))?.ok).toBe(true);
+    for (const field of prov.kinds![0]!.fields) {
+      expect(field.options).toContainEqual({ value: "gpt-6-luna", label: "GPT-6 Luna" });
+      expect(field.options).toContainEqual({ value: "future-model", label: "Future model" });
+      expect(field.options?.some((o) => o.value === "hidden-model")).toBe(false);
+    }
+    expect((await prov.update!("codex", { model: "gpt-6-luna", delegateModel: "future-model" })).ok).toBe(true);
+    expect(JSON.parse((await collect(b.main()!.agent!, "bonjour")).out).model).toBe("gpt-6-luna");
+    expect(b.dlg()!.name).toBe("codex:future-model");
+  });
+
   it("outil MCP signalé ; demande d'accord du CLI refusée", async () => {
     const a = (await boot({ "brain.main": "x/codex" })).main()!.agent!;
     const r = await collect(a, "outil");
