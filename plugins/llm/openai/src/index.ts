@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { parseModelJson } from "@floppy/agent-cli";
 import {
-  definePlugin, SECRET_SET, T, TextError, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text,
+  definePlugin, itemSecret, T, TextError, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text,
 } from "@floppy/core";
 
 const ModelEntry = z.object({
@@ -94,7 +94,7 @@ export default definePlugin<Config>({
     const store = ctx.items.store();
     const base: Record<string, Values> = {};
     for (const [id, e] of Object.entries(cfg.models)) base[id] = clean(e);
-    const secretName = (id: string) => `llm-openai/${id}/apiKey`;
+    const secret = itemSecret(ctx, (id) => `llm-openai/${id}/apiKey`);
     const all = (): Entry[] => Object.entries(store.merge(base as unknown as Record<string, Record<string, unknown>>))
       .map(([id, v]) => ({ ...clean(v as unknown as Record<string, unknown>), id }));
     const changed = () => ctx.items.changed();
@@ -106,7 +106,7 @@ export default definePlugin<Config>({
       start(f, id) {
         const m = all().find((x) => x.id === id && store.isEnabled(x.id));
         if (!m) throw new Error(`modèle distant inconnu ou désactivé : ${id}`);
-        f.provide("llm", { label: m.label, baseURL: m.baseURL, model: m.model, cloud: m.cloud, apiKey: () => ctx.secrets.get(secretName(m.id)) });
+        f.provide("llm", { label: m.label, baseURL: m.baseURL, model: m.model, cloud: m.cloud, apiKey: () => secret.get(m.id) });
       },
     });
 
@@ -119,7 +119,7 @@ export default definePlugin<Config>({
         f.provide("completion", {
           label: m.label, cloud: m.cloud,
           async complete(req) {
-            const key = ctx.secrets.get(secretName(m.id));
+            const key = secret.get(m.id);
             const system = req.schema ? `${req.system}\nRéponds seulement avec un JSON valide qui suit ce schéma : ${JSON.stringify(req.schema)}` : req.system;
             const body: Record<string, unknown> = { model: m.model, messages: [{ role: "system", content: system }, { role: "user", content: req.prompt }] };
             if (req.schema) body.response_format = { type: "json_schema", json_schema: { name: "reponse", schema: req.schema, strict: false } };
@@ -156,20 +156,14 @@ export default definePlugin<Config>({
       return {
         id: m.id, label: m.label, kind: "openai", aliases: m.aliases, enabled: on, cloud: m.cloud,
         detail: `${m.model} · ${hostOf(m.baseURL)}`,
-        status: !on ? "off" : ctx.secrets.has(secretName(m.id)) ? "ok" : "warn",
+        status: !on ? "off" : secret.has(m.id) ? "ok" : "warn",
         statusText: !on ? T("désactivé : Floppy ne le voit plus", "disabled: Floppy no longer sees it")
-          : ctx.secrets.has(secretName(m.id)) ? undefined : T("pas de clé d'API", "no API key"),
-        values: { ...m, apiKey: ctx.secrets.has(secretName(m.id)) ? SECRET_SET : "" } as unknown as Record<string, unknown>,
+          : secret.has(m.id) ? undefined : T("pas de clé d'API", "no API key"),
+        values: { ...m, apiKey: secret.shown(m.id) } as unknown as Record<string, unknown>,
         editable: true, removable: true, toggleable: true,
       };
     };
 
-    /** Applique la clé du formulaire : SECRET_SET ou absent = inchangée, vide = effacée. */
-    const applyKey = (id: string, key: unknown) => {
-      if (key === undefined || key === SECRET_SET) return;
-      const k = String(key).trim();
-      if (k) ctx.secrets.set(secretName(id), k); else ctx.secrets.delete(secretName(id));
-    };
 
     const check = (v: Values): Text | undefined => {
       if (!v.label) return T("Il faut un nom.", "A name is required.");
@@ -192,7 +186,7 @@ export default definePlugin<Config>({
         const bad = check(v);
         if (bad) return { ok: false, text: bad };
         const id = store.add("openai", v as unknown as Record<string, unknown>, v.label, Object.keys(base));
-        applyKey(id, values.apiKey);
+        secret.apply(id, values.apiKey);
         changed();
         return { ok: true, id, text: T(`${v.label} ajouté. Active-le comme cerveau quand tu veux.`, `${v.label} added. Activate it as the brain whenever you like.`) };
       },
@@ -203,7 +197,7 @@ export default definePlugin<Config>({
         const bad = check(v);
         if (bad) return { ok: false, text: bad };
         store.update(id, v as unknown as Record<string, unknown>);
-        applyKey(id, values.apiKey);
+        secret.apply(id, values.apiKey);
         changed();
         return { ok: true, id, text: T(`${v.label} modifié.`, `${v.label} updated.`) };
       },
@@ -211,7 +205,7 @@ export default definePlugin<Config>({
         const cur = all().find((m) => m.id === id);
         if (!cur) return { ok: false, text: T(`Modèle inconnu : ${id}`, `Unknown model: ${id}`) };
         store.remove(id);
-        ctx.secrets.delete(secretName(id));
+        secret.remove(id);
         changed();
         return { ok: true, text: T(`${cur.label} supprimé.`, `${cur.label} deleted.`) };
       },
@@ -228,7 +222,7 @@ export default definePlugin<Config>({
         const bad = check(v);
         if (bad) return { ok: false, text: bad };
         const typed = values.apiKey;
-        const key = typed === undefined || typed === SECRET_SET ? (id ? ctx.secrets.get(secretName(id)) : undefined) : String(typed).trim() || undefined;
+        const key = secret.typedOr(id, typed);
         const headers: Record<string, string> = { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) };
         const signal = () => AbortSignal.timeout(cfg.timeout_s * 1000);
         try {

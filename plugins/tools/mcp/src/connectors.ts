@@ -2,12 +2,12 @@
 // Les serveurs de floppy.yml sont la base ; ItemStore garde les ajouts, modifications, désactivations
 // et le choix des outils de l'utilisateur. Tout se change à chaud, un connecteur à la fois.
 import {
-  ItemStore, SECRET_SET, TextError, tr,
+  ItemStore, TextError, tr,
   type Context, type FieldDef, type ItemChild, type ItemInfo, type ItemKind, type OpResult, type ProviderDef, type Text,
 } from "@floppy/core";
 import { matchesAny } from "./levels.ts";
 import { AZURE_DEVOPS, OBSIDIAN } from "./logos.ts";
-import { errText, makeConnection, open, secretName, wrap, type Connection, type RawTool, type Spec } from "./connection.ts";
+import { connectorSecrets, errText, makeConnection, open, wrap, type Connection, type RawTool, type Spec } from "./connection.ts";
 
 type Raw = Record<string, unknown>;
 type Values = Record<string, unknown>;
@@ -239,6 +239,7 @@ export const TEST_LIMIT = { ms: 30_000 };
 
 export function declareConnectors(ctx: Context, base: Record<string, Raw>): ConnectorsHandle {
   const store = ctx.items.store();
+  const sec = connectorSecrets(ctx);
   const baseIds = Object.keys(base);
   const x = store.data.extra as { migrated?: boolean; enabled?: string[]; tools?: Record<string, Cached[]> };
 
@@ -287,18 +288,13 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
   };
 
   const saveSecrets = (id: string, kind: string, v: Values): void => {
-    const put = (what: "env" | "token", value: unknown): void => {
-      if (value === SECRET_SET || value === undefined) return;
-      if (typeof value === "string" && value) ctx.secrets.set(secretName(id, what), value);
-      else ctx.secrets.delete(secretName(id, what));
-    };
     if (kind === "mcp-local") {
-      if (str(v.secretEnvName)) put("env", v.secretEnvValue);
-      else ctx.secrets.delete(secretName(id, "env"));
+      if (str(v.secretEnvName)) sec.env.apply(id, v.secretEnvValue);
+      else sec.env.remove(id);
     }
     if (kind === "mcp-remote") {
-      if (str(v.connection) === "token") put("token", v.token);
-      else ctx.secrets.delete(secretName(id, "token"));
+      if (str(v.connection) === "token") sec.token.apply(id, v.token);
+      else sec.token.remove(id);
     }
   };
 
@@ -317,7 +313,7 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
       return {
         label: spec.label ?? id, url: spec.url ?? "", cloud: spec.cloud,
         connection: spec.auth?.type ?? "none",
-        ...(spec.auth?.type === "token" ? { token: ctx.secrets.has(secretName(id, "token")) ? SECRET_SET : "" } : {}),
+        ...(spec.auth?.type === "token" ? { token: sec.token.shown(id) } : {}),
         ...(spec.auth?.type === "azcli" ? { resource: spec.auth.resource } : {}),
         toolFilter: spec.include ?? [], levels: spec.levels, trustAnnotations: spec.trustAnnotations === true, note: spec.note ?? "",
       };
@@ -325,7 +321,7 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
     return {
       label: spec.label ?? id, command: spec.command ?? "", args: spec.args, env: spec.env, cloud: spec.cloud,
       secretEnvName: spec.secretEnvName ?? "",
-      ...(spec.secretEnvName ? { secretEnvValue: ctx.secrets.has(secretName(id, "env")) ? SECRET_SET : "" } : {}),
+      ...(spec.secretEnvName ? { secretEnvValue: sec.env.shown(id) } : {}),
       toolFilter: spec.include ?? [], levels: spec.levels, note: spec.note ?? "",
     };
   };
@@ -420,8 +416,8 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
       x.enabled = x.enabled!.filter((d) => d !== id);
       delete x.tools![id];
       store.save();
-      ctx.secrets.delete(secretName(id, "env"));
-      ctx.secrets.delete(secretName(id, "token"));
+      sec.env.remove(id);
+      sec.token.remove(id);
       afterChange();
       return { ok: true, text: t("Connecteur supprimé.", "Connector removed.") };
     },
@@ -456,8 +452,8 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
       try { spec = toSpec(formToPatch(kind, values)); } catch (e) { return { ok: false, text: errText(e) }; }
       // Secret non modifié : on prend celui déjà rangé.
       let secret: string | undefined;
-      if (spec.auth?.type === "token") secret = typeof values.token === "string" && values.token !== SECRET_SET ? values.token : id ? ctx.secrets.get(secretName(id, "token")) : undefined;
-      else if (spec.secretEnvName) secret = typeof values.secretEnvValue === "string" && values.secretEnvValue !== SECRET_SET ? values.secretEnvValue : id ? ctx.secrets.get(secretName(id, "env")) : undefined;
+      if (spec.auth?.type === "token") secret = sec.token.typedOr(id, values.token);
+      else if (spec.secretEnvName) secret = sec.env.typedOr(id, values.secretEnvValue);
       const tid = id ?? "essai";
       let timer: NodeJS.Timeout | undefined;
       const limit = TEST_LIMIT.ms;

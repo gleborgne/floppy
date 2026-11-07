@@ -3,11 +3,10 @@
 // - Chaque modèle choisi tourne dans un fork : le serveur vit et meurt avec lui. max 1 : un seul modèle dans la mémoire du GPU.
 // - Le fork écrit son dossier de travail (server.json + voices/), lance le serveur, attend qu'il réponde, puis parle en flux (SSE).
 import { z } from "zod";
-import type { ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, killTree, watchHealth, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, httpHealthy, startLocalServer, scanGguf as scanAll, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
 import type { TtsChunk, TtsService } from "@floppy/contracts";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
@@ -275,22 +274,10 @@ function sizeOf(file: string): number | undefined {
 const gbNum = (bytes: number) => Math.round((bytes / 1024 ** 3) * 10) / 10;
 const gb = (bytes: number) => String(gbNum(bytes)).replace(".", ",");
 
-/** Cherche des .gguf (profondeur limitée), sans les fichiers « mmproj ». Les noms de voix d'abord. */
+/** Fichiers .gguf des dossiers (lecture commune du noyau), les noms de voix d'abord. */
 export function scanGguf(dirs: string[], max = 60): string[] {
-  const out: string[] = [];
-  const walk = (d: string, depth: number) => {
-    if (depth > 6 || out.length >= max) return;
-    let names: import("node:fs").Dirent[];
-    try { names = readdirSync(d, { withFileTypes: true }); } catch { return; }
-    for (const e of names) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p, depth + 1);
-      else if (/\.gguf$/i.test(e.name) && !/mmproj/i.test(e.name)) out.push(p);
-    }
-  };
-  for (const d of dirs) if (existsSync(d)) walk(d, 0);
   const voice = (p: string) => (/tts|voxcpm|kokoro/i.test(basename(p)) ? 0 : 1);
-  return out.sort((a, b) => voice(a) - voice(b));
+  return scanAll(dirs, max).sort((a, b) => voice(a) - voice(b));
 }
 
 import { KNOWN_VOICE_MODELS, type KnownVoiceModel } from "./known-voices.ts";
@@ -334,10 +321,6 @@ return definePlugin<Config>({
     const enabled = (): Entry[] => all().filter((m) => store.isEnabled(m.id));
     /** Modèles chargés (ou en chargement) : id -> prêt ou non. */
     const running = new Map<string, boolean>();
-
-    const healthy = async (timeoutMs = 1500): Promise<boolean> => {
-      try { return (await fetch(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) })).ok; } catch { return false; }
-    };
 
     // ---- Chemins propres à chaque PC : réglages (fenêtre ou CLI), jamais à la voix (ils lancent un programme).
     let exeSetting = ctx.settings.saved<string>("tts_local_programme") ?? "";
@@ -395,36 +378,18 @@ return definePlugin<Config>({
       if (!existsSync(e.model)) throw new TextError(T(`fichier du modèle introuvable : ${e.model}`, `model file not found: ${e.model}`));
       if (e.voix === "clone" && !e.refWav) throw new TextError(T("voix clonée : choisis l'enregistrement de la voix (WAV) dans les réglages", "cloned voice: pick the voice recording (WAV) in the settings"));
       if (e.voix === "clone" && !existsSync(e.refWav)) throw new TextError(T(`enregistrement de la voix introuvable : ${e.refWav}`, `voice recording not found: ${e.refWav}`));
-      if (await healthy()) throw new TextError(T(`le port ${cfg.port} est déjà pris par un autre serveur : arrête-le d'abord (ou change le port)`, `port ${cfg.port} is already taken by another server: stop it first (or change the port)`));
+      if (await httpHealthy(base)) throw new TextError(T(`le port ${cfg.port} est déjà pris par un autre serveur : arrête-le d'abord (ou change le port)`, `port ${cfg.port} is already taken by another server: stop it first (or change the port)`));
       const dir = join(f.home, "tts-audiocpp", e.id);
       mkdirSync(dir, { recursive: true });
       const file = prepareDir(dir, e, { ...cfg, backend: await backend() });
       f.log("info", `lancement d'audio.cpp : ${e.label}`, { model: e.model });
       const exe = exePath();
       if (!exe) throw new TextError(missingExe);
-      const p: ChildProcess = f.spawn(exe, ["--config", file], { stdio: ["ignore", "pipe", "pipe"], cwd: dirname(exe) });
-      let tail = "";
-      const keep = (d: Buffer) => { tail = (tail + d.toString()).slice(-3000); };
-      p.stdout?.on("data", keep);
-      p.stderr?.on("data", keep);
-      let exited = false;
-      let stopping = false;
-      const last = () => tail.trim().split("\n").slice(-3).join(" | ");
-      p.on("exit", (code) => { exited = true; if (!stopping && f.alive) f.fail(`audio.cpp s'est arrêté (code ${code}) : ${last()}`); });
-      p.on("error", (err) => { exited = true; if (!stopping && f.alive) f.fail(`audio.cpp : ${err.message}`); });
-      const stop = () => { stopping = true; if (p.pid) killTree(p); else p.kill?.(); };
-      f.effect(stop);
-      const deadline = Date.now() + cfg.startTimeout_s * 1000;
-      while (!(await healthy())) {
-        if (exited || !f.alive) { stop(); throw new Error(`audio.cpp n'a pas démarré : ${last()}`); }
-        if (Date.now() > deadline) { stop(); throw new Error(`audio.cpp pas prêt après ${cfg.startTimeout_s} s : ${last()}`); }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      // Prêt : un audio.cpp figé (il ne répond plus, sans s'arrêter) met la voix en panne ; le noyau la relance.
-      watchHealth(f, {
-        check: () => healthy(5000),
-        onDead: (n) => { if (stopping || exited || !f.alive) return; stop(); f.fail(`audio.cpp ne répond plus (${n} vérifications ratées)`); },
-      });
+      // Le serveur est arrêté avec le fork ; une panne une fois prêt met la voix en panne (le noyau la relance).
+      f.effect(await startLocalServer(f, {
+        name: "audio.cpp", exe, args: ["--config", file], base, cwd: dirname(exe), stdout: true, tailLines: 3,
+        startTimeout_s: cfg.startTimeout_s, onCrash: (why) => f.fail(why),
+      }));
     };
 
     const makeService = (f: Context, e: Entry): TtsService => {
@@ -602,7 +567,7 @@ return definePlugin<Config>({
       if (!wav && !(v.refWav && existsSync(v.refWav))) return { ok: false, text: T("Enregistre la voix d'abord.", "Record the voice first.") };
       const loadedId = [...running].find(([, ok]) => ok)?.[0];
       const loaded = loadedId ? all().find((m) => m.id === loadedId) : undefined;
-      if (!loaded || !(await healthy())) return { ok: true, text: T("Aucune voix audio.cpp n'est chargée en ce moment. Garde la voix puis choisis-la : Floppy charge son modèle (environ 20 s), et tu l'entends.", "No audio.cpp voice is loaded right now. Keep the voice and choose it: Floppy loads its model (about 20 s), and you hear it.") };
+      if (!loaded || !(await httpHealthy(base))) return { ok: true, text: T("Aucune voix audio.cpp n'est chargée en ce moment. Garde la voix puis choisis-la : Floppy charge son modèle (environ 20 s), et tu l'entends.", "No audio.cpp voice is loaded right now. Keep the voice and choose it: Floppy loads its model (about 20 s), and you hear it.") };
       const fam = familyOf(loaded);
       const name = modelLabel(loaded.model);
       const nameFr = typeof name === "string" ? name : name.fr, nameEn = typeof name === "string" ? name : name.en;

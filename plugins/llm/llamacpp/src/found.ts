@@ -3,6 +3,7 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, relative, sep } from "node:path";
+import { scanGguf } from "@floppy/core";
 
 export interface FoundModel {
   /** Id stable (d'où il vient + son nom). */
@@ -13,22 +14,7 @@ export interface FoundModel {
   from: "lmstudio" | "ollama";
 }
 
-/** Cherche des .gguf (profondeur limitée), sans les fichiers « mmproj » (vision). */
-export function scanGguf(dirs: string[], max = 60): string[] {
-  const out: string[] = [];
-  const walk = (d: string, depth: number) => {
-    if (depth > 6 || out.length >= max) return;
-    let names: Dirent[];
-    try { names = readdirSync(d, { withFileTypes: true }); } catch { return; }
-    for (const e of names) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p, depth + 1);
-      else if (/\.gguf$/i.test(e.name) && !/mmproj/i.test(e.name)) out.push(p);
-    }
-  };
-  for (const d of dirs) if (existsSync(d)) walk(d, 0);
-  return out;
-}
+export { scanGguf };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 const sizeOf = (f: string): number => { try { return statSync(f).size; } catch { return 0; } };

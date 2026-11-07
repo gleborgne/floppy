@@ -23,10 +23,10 @@ Before changing the kernel or how a plugin starts, stops or fails, read `docs/sp
 - **Host through `ctx.host`.** A plugin talks to the desktop app only through `ctx.host` (undefined on the command line), never through a process global.
 - **Short `apply`.** `apply` declares and returns. Slow work (remote connections, model loading) runs in an `ctx.offer` fork or in the background after `apply`.
 - **Heavy resources on demand.** A model on the GPU or a local voice is offered with `ctx.offer` and runs only while a slot uses it.
-- **Fail loudly, recover alone.** A plugin that loses its resource calls `ctx.fail(T(…))`; the error shows in the app and the kernel retries with backoff. A local server is watched once ready with `watchHealth`. A borrower listens to `lost` and borrows again.
+- **Fail loudly, recover alone.** A plugin that loses its resource calls `ctx.fail(T(…))`; the error shows in the app and the kernel retries with backoff. A local server starts with `startLocalServer` (waits for `/health`, then watches it). A borrower listens to `lost` and borrows again.
 - **Network through `ctx.fetch`.** It adds a 30 s default timeout and reports hosts missing from `permissions.net`.
 - **Bounded waits.** Every wait has a limit: `ctx.exec` and `ctx.fetch` set one, other waits use `AbortSignal.timeout`. `apply` has 60 s (`manifest.startTimeout_s`), a fork's `start` 600 s (`OfferDef.startTimeout_s`).
-- **Reuse first.** Agents launched from a plugin take their environment, Codex overrides and JSON parsing from `@floppy/agent-cli`; files, health checks and processes from `@floppy/core` (`writeJsonAtomic`, `watchHealth`, `findExe`, `killTree`).
+- **Reuse first.** Agents launched from a plugin take their environment, Codex overrides and JSON parsing from `@floppy/agent-cli`; files, local servers, item secrets and processes from `@floppy/core` (`writeJsonAtomic`, `startLocalServer`, `itemSecret`, `findExe`, `killTree`).
 - **Safe files.** User data is written with `writeFileAtomic` / `writeJsonAtomic` and read with `readJsonFile`: a crash never leaves half a file, and a file that does not parse is set aside and reported.
 
 ## Two languages, everywhere
@@ -44,7 +44,7 @@ Every text a user reads or hears exists in French and English.
 
 - Text the user sees names no operating system: "the system password vault", "start with the computer", "the program". Shortcuts read `Ctrl+Alt+…` and the app shows `⌃⌥` on macOS.
 - Paths to programs and models are settings with a portable default (`findExe("llama-server")` looks in the PATH). Code and committed config hold no absolute or machine-specific path.
-- Secrets go through `ctx.secrets` / `providerConfig` into the OS keychain, never into YAML or logs.
+- Secrets go through `ctx.secrets` / `providerConfig` / `itemSecret` into the OS keychain, never into YAML or logs.
 - Everything Floppy keeps lives in its working folder (`ctx.home`; default `%LOCALAPPDATA%\floppy`, chosen in Welcome or Settings, see `packages/core/src/util/home.ts`): `floppy.yml`, settings, models, third-party plugins, logs. A plugin writes its files there, and an agent it launches works in `ctx.workspace()`.
 - `floppy.yml` is the user's own config, created in the working folder from `floppy.example.yml`. Defaults change in `floppy.example.yml`; `apps/cli/test/example-config.test.ts` validates it.
 - Examples use neutral placeholders (`contoso`, `C:/models/…`, `~/Notes`).

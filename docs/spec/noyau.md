@@ -205,7 +205,7 @@ Règles « le noyau ne se bloque jamais » (toutes testées dans `packages/core/
 19. **Emprunts.** Un élément emprunté (`ctx.borrow`, `ctx.borrowItem`) qui s'arrête prévient l'emprunteur (`lost`) et rend sa place. Exemple : l'écoute réemprunte le détecteur de parole et la transcription tombés en panne ; les flux ouverts passent au nouveau détecteur sans se fermer.
 20. **L'arrêt est définitif.** Après `stopAll`, plus rien ne démarre (un emprunt rendu, une reprise, un rechargement en attente ne relancent rien) ; un démarrage annulé par l'arrêt repart normalement au `applyConfig` suivant. Un démarrage abandonné ne lie plus de service à l'entrée.
 
-Les plugins qui lancent un serveur local (llama-server, audio.cpp) le surveillent une fois prêt (`watchHealth` : `/health` toutes les 30 s ; après 3 échecs d'affilée, `ctx.fail`), et la reprise automatique le relance. La conversation arrête un tour quand le cerveau se tait plus de `turn_idle_s` (300 s par défaut) et le dit. Une tâche qui ignore le signal d'arrêt n'est plus attendue 10 s après l'arrêt.
+Les plugins qui lancent un serveur local (llama-server, audio.cpp) passent par `startLocalServer` (`packages/core/src/util/local-server.ts`) : il lance le programme par `ctx.spawn`, attend qu'il réponde sur `/health` (l'erreur donne la fin de son journal), puis le surveille (`watchHealth` : `/health` toutes les 30 s ; après 3 échecs d'affilée, il l'arrête et le signale). La reprise automatique le relance. Les éléments qui ont un secret (modèles distants, boîtes mail, canaux Telegram, connecteurs MCP) le rangent par `itemSecret` : une seule règle pour le formulaire (SECRET_SET ou rien = inchangé, vide = effacé). La conversation arrête un tour quand le cerveau se tait plus de `turn_idle_s` (300 s par défaut) et le dit. Une tâche qui ignore le signal d'arrêt n'est plus attendue 10 s après l'arrêt.
 
 ### Exemple : passer en mode Live
 
@@ -341,7 +341,7 @@ Ce qui reste de la revue d'architecture, par ordre d'intérêt :
 2. **Code produit hors du noyau.** Premier lancement, lecture de la machine, bibliothèques de modèles et de programmes vivent dans `packages/core` ; cible : un paquet à part, ou des plugins.
 3. **Découper `kernel.ts`** (environ 1 550 lignes) : la fabrique du `ctx` et les réglages du noyau (langues, dossiers) en modules à part, ou en plugins internes posés au démarrage. Les pièces sans état sont déjà dans `plugin/lifecycle-util.ts`.
 4. **Fichiers trop gros côté app** : `apps/desktop/src/main.mjs`, `renderer/settings.js`, `plugins/conversation/default/src/index.ts`.
-5. **Doublons restants** : lecteur de fichiers GGUF et lancement d'un serveur local (llamacpp, audiocpp), éléments à secret recopiés (llm-openai, mail, telegram, mcp : à faire entrer dans `providerConfig`), normalisation de texte et `hostOf`.
+5. **Doublons restants** : la normalisation de texte (une dizaine de petites fonctions proches mais pas identiques : accents, casse, ponctuation). Le serveur local (`startLocalServer`) et les secrets des éléments (`itemSecret`) sont partagés depuis le 7 novembre 2026.
 6. **Réseau** : faire passer tous les appels par `ctx.fetch`, puis refuser (et non plus signaler) un hôte hors `permissions.net`.
 
 ## Le noyau dans l'app Electron (vérifié)

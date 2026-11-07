@@ -7,11 +7,10 @@
 // - Un seul llama-server, PARTAGÉ par tous les forks qui veulent le même modèle : le cerveau (service llm) et le tri
 //   d'une tâche (service completion, élément « cerveau » = le modèle du cerveau principal). Jamais deux modèles sur le GPU.
 import { z } from "zod";
-import type { ChildProcess } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, killTree, watchHealth, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, httpHealthy, startLocalServer, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult } from "@floppy/core";
 import type { CompletionService, LlmService } from "@floppy/contracts";
 
 import { LLAMA_BUILDS, LLAMA_VERSION } from "./known-builds.ts";
@@ -68,15 +67,6 @@ const Config = z.object({
   ollama: z.boolean().default(true),
 });
 type Config = z.infer<typeof Config>;
-
-async function healthy(base: string, timeoutMs = 1500): Promise<boolean> {
-  try {
-    const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) });
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
 
 async function modelId(base: string): Promise<string | undefined> {
   try {
@@ -367,7 +357,7 @@ return definePlugin<Config>({
         const srv: Server = { id: e.id, label: e.label, users: new Set(), ready: false, starting: Promise.resolve() };
         server = srv;
         srv.starting = (async () => {
-          if (await healthy(base)) {
+          if (await httpHealthy(base)) {
             // Un llama-server lancé hors de Floppy : réutilisé tel quel s'il a ce modèle, jamais arrêté par nous.
             const other = await modelId(base);
             if (!cfg.reuse || other !== e.id) throw new TextError(T(`le port ${cfg.port} est pris par un autre llama-server (modèle ${other ?? "?"}) : arrête-le d'abord`, `port ${cfg.port} is taken by another llama-server (model ${other ?? "?"}): stop it first`));
@@ -483,30 +473,8 @@ return definePlugin<Config>({
 
     /** Lance llama-server (tué à l'arrêt du plugin, ou par stop()) et attend qu'il réponde. */
     const launch = async (e: Entry, onCrash: (why: string) => void): Promise<() => void> => {
-      const args = buildArgs(e, cfg.port);
       ctx.log("info", `lancement de llama-server : ${e.label}`, { model: e.model });
-      const p: ChildProcess = ctx.spawn(exeFor(e), args, { stdio: ["ignore", "ignore", "pipe"] });
-      let tail = "";
-      p.stderr?.on("data", (d: Buffer) => { tail = (tail + d.toString()).slice(-3000); });
-      let exited = false;
-      let stopping = false;
-      const last = () => tail.trim().split("\n").slice(-2).join(" | ");
-      p.on("exit", (code) => { exited = true; if (!stopping && ctx.alive) onCrash(`llama-server s'est arrêté (code ${code}) : ${last()}`); });
-      p.on("error", (err) => { exited = true; if (!stopping && ctx.alive) onCrash(`llama-server : ${err.message}`); });
-      let unwatch = () => {};
-      const stop = () => { stopping = true; unwatch(); if (p.pid) killTree(p); else p.kill?.(); };
-      const deadline = Date.now() + cfg.startTimeout_s * 1000;
-      while (!(await healthy(base))) {
-        if (exited || !ctx.alive) { stop(); const l = last(); throw new TextError(T(`llama-server n'a pas démarré : ${l}`, `llama-server didn't start: ${l}`)); }
-        if (Date.now() > deadline) { stop(); throw new TextError(T(`llama-server pas prêt après ${cfg.startTimeout_s} s`, `llama-server not ready after ${cfg.startTimeout_s} s`)); }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      // Prêt : un llama-server figé (il ne répond plus, sans s'arrêter) met le modèle en panne ; le noyau le relance.
-      unwatch = watchHealth(ctx, {
-        check: () => healthy(base, 5000),
-        onDead: (n) => { if (stopping || exited || !ctx.alive) return; stop(); onCrash(`llama-server ne répond plus (${n} vérifications ratées)`); },
-      });
-      return stop;
+      return startLocalServer(ctx, { name: "llama-server", exe: exeFor(e), args: buildArgs(e, cfg.port), base, startTimeout_s: cfg.startTimeout_s, onCrash });
     };
 
     // ---- Fenêtre des réglages : rubrique « Cerveau », fournisseur « LLM local »

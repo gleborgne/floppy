@@ -3,7 +3,7 @@
 // - Le jeton va dans le coffre des secrets (ctx.secrets), jamais dans un fichier, ni dans un log, ni dans un message d'erreur.
 // - Chaque destination active est offerte comme service `notify` : un plugin (ex. le planificateur) en emprunte une pour envoyer.
 import { z } from "zod";
-import { definePlugin, errorText, SECRET_SET, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text } from "@floppy/core";
+import { definePlugin, errorText, itemSecret, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text } from "@floppy/core";
 import type { NotifyMessage } from "@floppy/contracts";
 import { telegramMessages } from "./markdown.ts";
 
@@ -132,7 +132,7 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
     config: Config,
     apply(ctx, cfg) {
       const store = ctx.items.store();
-      const secretName = (id: string) => `notify-telegram/${id}/token`;
+      const secret = itemSecret(ctx, (id) => `notify-telegram/${id}/token`);
       const all = (): Entry[] => Object.entries(store.merge({}))
         .map(([id, v]) => ({ ...clean(v as unknown as Record<string, unknown>), id }));
       const changed = () => ctx.items.changed();
@@ -148,7 +148,7 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
           f.provide("notify", {
             label: `Telegram · ${d.label}`, cloud: true,
             async send(msg, opts) {
-              const token = ctx.secrets.get(secretName(d.id));
+              const token = secret.get(d.id);
               if (!token) throw new TextError(T(`Telegram « ${d.label} » : pas de jeton de bot. Ajoute-le dans les réglages.`, `Telegram "${d.label}": no bot token. Add it in the settings.`));
               const signals = [signal(), ...(opts?.signal ? [opts.signal] : [])];
               await sendTelegram(doFetch, token, d.chat, msg, AbortSignal.any(signals));
@@ -159,14 +159,14 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
 
       const info = (d: Entry): ItemInfo => {
         const on = store.isEnabled(d.id);
-        const hasToken = ctx.secrets.has(secretName(d.id));
+        const hasToken = secret.has(d.id);
         return {
           id: d.id, label: d.label, kind: "telegram", enabled: on, cloud: true,
           detail: `Telegram · ${d.chat}`,
           status: !on ? "off" : hasToken ? "ok" : "warn",
           statusText: !on ? T("désactivé : Floppy ne le voit plus", "disabled: Floppy no longer sees it")
             : hasToken ? undefined : T("pas de jeton de bot", "no bot token"),
-          values: { ...d, token: hasToken ? SECRET_SET : "" } as unknown as Record<string, unknown>,
+          values: { ...d, token: secret.shown(d.id) } as unknown as Record<string, unknown>,
           editable: true, removable: true, toggleable: true,
           actions: [
             { id: "test", label: T("Envoyer un test", "Send a test") },
@@ -175,12 +175,6 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
         };
       };
 
-      /** Applique le jeton du formulaire : SECRET_SET ou absent = inchangé, vide = effacé. */
-      const applyToken = (id: string, token: unknown) => {
-        if (token === undefined || token === SECRET_SET) return;
-        const k = String(token).trim();
-        if (k) ctx.secrets.set(secretName(id), k); else ctx.secrets.delete(secretName(id));
-      };
 
       const check = (v: Values): Text | undefined => {
         if (!v.label) return T("Il faut un nom.", "A name is required.");
@@ -212,7 +206,7 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
           const id = store.add("telegram", v as unknown as Record<string, unknown>, v.label, []);
-          applyToken(id, values.token);
+          secret.apply(id, values.token);
           changed();
           return { ok: true, id, text: T(`${v.label} ajouté.`, `${v.label} added.`) };
         },
@@ -223,7 +217,7 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
           store.update(id, v as unknown as Record<string, unknown>);
-          applyToken(id, values.token);
+          secret.apply(id, values.token);
           changed();
           return { ok: true, id, text: T(`${v.label} modifié.`, `${v.label} updated.`) };
         },
@@ -231,7 +225,7 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
           const cur = all().find((d) => d.id === id);
           if (!cur) return { ok: false, text: T(`Destination inconnue : ${id}`, `Unknown destination: ${id}`) };
           store.remove(id);
-          ctx.secrets.delete(secretName(id));
+          secret.remove(id);
           changed();
           return { ok: true, text: T(`${cur.label} supprimé.`, `${cur.label} removed.`) };
         },
@@ -247,13 +241,13 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
           const typed = values.token;
-          const token = typed === undefined || typed === SECRET_SET ? (id ? ctx.secrets.get(secretName(id)) : undefined) : String(typed).trim() || undefined;
+          const token = secret.typedOr(id, typed);
           return sendTest(token, v.chat);
         },
         action: async (id, action): Promise<OpResult> => {
           const cur = all().find((d) => d.id === id);
           if (!cur) return { ok: false, text: T(`Destination inconnue : ${id}`, `Unknown destination: ${id}`) };
-          const token = ctx.secrets.get(secretName(id));
+          const token = secret.get(id);
           if (action === "test") return sendTest(token, cur.chat);
           if (action === "chats") {
             if (!token) return { ok: false, text: T("Il faut d'abord le jeton du bot.", "The bot token is needed first.") };

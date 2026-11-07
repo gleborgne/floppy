@@ -61,3 +61,36 @@ export function providerConfig<C extends Record<string, unknown>>(ctx: Context, 
     return value;
   } };
 }
+
+/**
+ * Le secret de chaque élément d'une liste (une clé d'API par modèle distant, un mot de passe par boîte mail…),
+ * rangé dans le coffre sous `name(id)`. Une seule règle pour le formulaire : la fenêtre montre SECRET_SET quand
+ * le secret existe ; SECRET_SET ou rien = inchangé, vide = effacé, sinon gardé.
+ */
+export interface ItemSecret {
+  has(id: string): boolean;
+  get(id: string): string | undefined;
+  /** Valeur montrée dans le formulaire : SECRET_SET si le secret existe, sinon vide. */
+  shown(id: string): string;
+  /** Applique la valeur du formulaire. */
+  apply(id: string, value: unknown): void;
+  /** Bouton « Tester » : la valeur tapée, sinon celle du coffre (élément déjà enregistré). */
+  typedOr(id: string | undefined, typed: unknown): string | undefined;
+  remove(id: string): void;
+}
+
+export function itemSecret(ctx: Pick<Context, "secrets">, name: (id: string) => string): ItemSecret {
+  const s = ctx.secrets;
+  return {
+    has: (id) => s.has(name(id)),
+    get: (id) => s.get(name(id)),
+    shown: (id) => (s.has(name(id)) ? SECRET_SET : ""),
+    apply(id, value) {
+      if (value === undefined || value === SECRET_SET) return;
+      const v = String(value).trim();
+      if (v) s.set(name(id), v); else s.delete(name(id));
+    },
+    typedOr: (id, typed) => (typed === undefined || typed === SECRET_SET ? (id ? s.get(name(id)) : undefined) : String(typed).trim() || undefined),
+    remove: (id) => s.delete(name(id)),
+  };
+}

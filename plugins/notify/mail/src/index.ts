@@ -5,7 +5,7 @@
 import { z } from "zod";
 import nodemailer from "nodemailer";
 import {
-  definePlugin, errorText, SECRET_SET, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type PluginDef, type Text,
+  definePlugin, errorText, itemSecret, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type PluginDef, type Text,
 } from "@floppy/core";
 import { mailHtml } from "./html.ts";
 
@@ -150,7 +150,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
     config: Config,
     apply(ctx, cfg) {
       const store = ctx.items.store();
-      const secretName = (id: string) => `notify-mail/${id}/password`;
+      const secret = itemSecret(ctx, (id) => `notify-mail/${id}/password`);
       const all = (): Entry[] => Object.entries(store.merge({}))
         .map(([id, v]) => ({ ...clean(v as unknown as Record<string, unknown>), id }));
       const changed = () => ctx.items.changed();
@@ -188,7 +188,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
             send: async (msg, opts) => {
               const cur = all().find((x) => x.id === id);
               if (!cur) throw new TextError(T("Mail : cette boîte mail n'existe plus.", "Mail: this mailbox no longer exists."));
-              await sendWith(cur, ctx.secrets.get(secretName(id)), msg.titre, msg.markdown, opts?.signal);
+              await sendWith(cur, secret.get(id), msg.titre, msg.markdown, opts?.signal);
             },
           });
         },
@@ -196,25 +196,19 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
 
       const info = (m: Entry): ItemInfo => {
         const on = store.isEnabled(m.id);
-        const hasPass = ctx.secrets.has(secretName(m.id));
+        const hasPass = secret.has(m.id);
         return {
           id: m.id, label: m.label, kind: "smtp", enabled: on, cloud: true,
           detail: `${NOMS[m.fournisseur]} · ${m.adresse} → ${m.destinataire || m.adresse}`,
           status: !on ? "off" : hasPass ? "ok" : "warn",
           statusText: !on ? T("désactivé : Floppy ne le voit plus", "disabled: Floppy no longer sees it")
             : hasPass ? undefined : T("pas de mot de passe d'application", "no app password"),
-          values: { ...m, motdepasse: hasPass ? SECRET_SET : "" } as unknown as Record<string, unknown>,
+          values: { ...m, motdepasse: secret.shown(m.id) } as unknown as Record<string, unknown>,
           editable: true, removable: true, toggleable: true,
           actions: [{ id: "test-mail", label: T("Envoyer un mail de test", "Send a test email") }],
         };
       };
 
-      /** Applique le mot de passe du formulaire : SECRET_SET ou absent = inchangé, vide = effacé. */
-      const applyPass = (id: string, v: unknown) => {
-        if (v === undefined || v === SECRET_SET) return;
-        const s = String(v).trim();
-        if (s) ctx.secrets.set(secretName(id), s); else ctx.secrets.delete(secretName(id));
-      };
 
       const check = (v: Values): Text | undefined => {
         if (!v.label) return T("Il faut un nom.", "A name is required.");
@@ -238,7 +232,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
           const id = store.add("smtp", v as unknown as Record<string, unknown>, v.label, []);
-          applyPass(id, values.motdepasse);
+          secret.apply(id, values.motdepasse);
           changed();
           return { ok: true, id, text: T(`${v.label} ajouté.`, `${v.label} added.`) };
         },
@@ -249,7 +243,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
           store.update(id, v as unknown as Record<string, unknown>);
-          applyPass(id, values.motdepasse);
+          secret.apply(id, values.motdepasse);
           changed();
           return { ok: true, id, text: T(`${v.label} modifié.`, `${v.label} updated.`) };
         },
@@ -257,7 +251,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
           const cur = all().find((m) => m.id === id);
           if (!cur) return { ok: false, text: T(`Boîte mail inconnue : ${id}`, `Unknown mailbox: ${id}`) };
           store.remove(id);
-          ctx.secrets.delete(secretName(id));
+          secret.remove(id);
           changed();
           return { ok: true, text: T(`${cur.label} supprimé.`, `${cur.label} removed.`) };
         },
@@ -274,7 +268,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
           const typed = values.motdepasse;
-          const pass = typed === undefined || typed === SECRET_SET ? (id ? ctx.secrets.get(secretName(id)) : undefined) : String(typed).trim() || undefined;
+          const pass = secret.typedOr(id, typed);
           if (!pass) return { ok: false, text: T("Il faut le mot de passe d'application.", "The app password is required.") };
           const t = transportOf(v, pass);
           try {
@@ -291,7 +285,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
           if (!cur) return { ok: false, text: T(`Boîte mail inconnue : ${id}`, `Unknown mailbox: ${id}`) };
           if (action !== "test-mail") return { ok: false, text: T(`Action inconnue : ${action}`, `Unknown action: ${action}`) };
           try {
-            await sendWith(cur, ctx.secrets.get(secretName(id)),
+            await sendWith(cur, secret.get(id),
               tr(T("Mail de test de Floppy", "Floppy test email"), lang()),
               tr(T("Bonjour !\n\nSi tu lis ce message, **Floppy sait t'écrire par mail**.", "Hello!\n\nIf you read this message, **Floppy can email you**."), lang()));
             const to = cur.destinataire || cur.adresse;

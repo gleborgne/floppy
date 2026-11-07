@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { errorText, imageLogo, T, TextError, tr, type Context, type Level, type Rule, type Text, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
+import { errorText, imageLogo, itemSecret, T, TextError, tr, type Context, type ItemSecret, type Level, type Rule, type Text, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
 import { resolveLevel, type LevelSetting } from "./levels.ts";
 import { azTokenProvider, bearerFetch, runAz } from "./azcli.ts";
 
@@ -56,6 +56,11 @@ export interface Opened {
 }
 
 export const secretName = (id: string, what: "env" | "token"): string => `tools/${id}/${what}`;
+/** Les deux secrets possibles d'un connecteur : variable d'environnement (local) ou jeton (distant). */
+export const connectorSecrets = (ctx: Pick<Context, "secrets">): Record<"env" | "token", ItemSecret> => ({
+  env: itemSecret(ctx, (id) => secretName(id, "env")),
+  token: itemSecret(ctx, (id) => secretName(id, "token")),
+});
 
 /** Message d'une erreur : bilingue quand c'est une TextError. */
 export function errText(e: unknown): Text {
@@ -228,8 +233,9 @@ export interface Connection {
 }
 
 export function secretFor(ctx: Context, id: string, spec: Spec): string | undefined {
-  if (spec.auth?.type === "token") return ctx.secrets.get(secretName(id, "token"));
-  if (spec.secretEnvName) return ctx.secrets.get(secretName(id, "env"));
+  const sec = connectorSecrets(ctx);
+  if (spec.auth?.type === "token") return sec.token.get(id);
+  if (spec.secretEnvName) return sec.env.get(id);
   return undefined;
 }
 
