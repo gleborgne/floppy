@@ -12,16 +12,15 @@
 // - Un slot (manifest.slots) choisit un élément. Le fork de l'élément choisi démarre quand son consommateur démarre (ctx.slot),
 //   et s'arrête quand plus personne ne s'en sert. Changer le choix redémarre le consommateur sur le nouvel élément.
 // - Aucun plugin n'allume ni n'éteint un autre plugin : seul le noyau le fait, d'après les besoins déclarés.
-import { spawn as nodeSpawn, execFile, type SpawnOptions } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { Bus, type PluginState } from "../bus.ts";
 import { Hooks } from "./hooks.ts";
 import { EffectScope } from "./effects.ts";
-import { manifestError, execAllowed, programName, type Manifest, type PluginDef, type SlotDef } from "./manifest.ts";
-import type { Context, ContextApprovals, LogLevel, OfferDef, OfferItem } from "./context.ts";
+import { manifestError, type Manifest, type PluginDef, type SlotDef } from "./manifest.ts";
+import type { LogLevel, OfferDef } from "./context.ts";
 import type { SettingOption } from "../settings.ts";
 import { ApprovalManager } from "../approval.ts";
 import { MemoryAudit, type Audit } from "../audit.ts";
@@ -29,20 +28,23 @@ import { ToolRegistry } from "../tools.ts";
 import { SettingsRegistry } from "../settings.ts";
 import { SectionRegistry } from "../sections.ts";
 import { settingsTools } from "../settings-tools.ts";
-import { CatalogRegistry, ItemStore } from "../catalog.ts";
+import { CatalogRegistry } from "../catalog.ts";
 import { catalogTools } from "../catalog-tools.ts";
-import { cleanLogo, type Logo } from "../logo.ts";
-import { defaultSecrets, MemorySecrets, scopedSecrets, type Secrets } from "../secrets.ts";
-import { errorText, isLang, LANGS, T, TextError, tr, type Text } from "../i18n.ts";
+import { type Logo } from "../logo.ts";
+import { defaultSecrets, MemorySecrets, type Secrets } from "../secrets.ts";
+import { errorText, T, TextError, tr, type Text } from "../i18n.ts";
 import { Apps } from "../apps.ts";
 import { TaskRegistry, taskTools } from "../tasks.ts";
-import { DownloadManager, downloadsDir, hostAllowed, type DownloadManagerOptions } from "../downloads.ts";
+import { DownloadManager, type DownloadManagerOptions } from "../downloads.ts";
 import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
-import { findExe, killTree, stableStringify } from "../util/process.ts";
+import { findExe, stableStringify } from "../util/process.ts";
 import { ChildRegistry } from "../util/children.ts";
-import { Deadline, KERNEL_EVENTS, offerItems, sameEntry } from "./lifecycle-util.ts";
-import { chooseHome } from "../util/home.ts";
+import { Deadline, offerItems, sameEntry } from "./lifecycle-util.ts";
+import { makeContext } from "./context-factory.ts";
+import type { KernelInternals } from "./kernel-internals.ts";
+import { declareCoreSettings } from "./core-settings.ts";
+import { declareSlots, declareServiceSelection } from "./selection-settings.ts";
 import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
 export type Logger = (rec: { level: LogLevel; source: string; msg: string; data?: Record<string, unknown> }) => void;
@@ -53,7 +55,8 @@ export const consoleLogger: Logger = ({ level, source, msg, data }) => {
   (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
 };
 
-interface Entry {
+/** Une entrée de la config (ou un fork) : son plugin, son état, ce qu'elle fournit. Interne au noyau. */
+export interface Entry {
   cfg: EntryConfig;
   def?: PluginDef<any>;
   parsed?: unknown;
@@ -263,80 +266,12 @@ export class Kernel {
     };
     refreshCatalogTools();
     this.items.onChange(refreshCatalogTools);
-    // Rubriques propres au noyau : « general » (ses réglages) et « plugins » (la liste des plugins chargés). Les autres viennent des plugins.
-    this.sections.declare("core", [
-      { id: "general", order: 0, label: { fr: "Général", en: "General" }, description: { fr: "Langue et réglages de base. Tout se règle aussi à la voix : « Floppy, prends une voix de femme ».", en: "Language and basic settings. Everything can also be set by voice: “Floppy, use a female voice”." } },
-      { id: "plugins", order: 60, view: "plugins", label: { fr: "Plugins", en: "Plugins" }, description: { fr: "Les plugins chargés par le noyau, et les réglages des plugins que tu as créés.", en: "Plugins loaded by the kernel, and settings of the plugins you created." } },
-    ]);
-    // Langue de l'interface (fenêtre des réglages, menus) : réglage du noyau.
-    this.uiLang = this.settings.savedValue<string>("langue_interface") ?? "fr";
-    this.settings.declare("core", [{
-      key: "langue_interface", section: "general", group: { fr: "Langue", en: "Language" },
-      label: { fr: "Langue de l'interface", en: "Interface language" },
-      description: { fr: "Langue de la fenêtre des réglages et des menus.", en: "Language of the settings window and menus." },
-      type: "enum", options: LANGS.map((l) => ({ value: l.value, label: l.label, aliases: [...l.aliases] })), risk: "free",
-      get: () => this.uiLang,
-      set: (v) => { this.uiLang = String(v); },
-    }, {
-      key: "langue_assistant", section: "general", group: { fr: "Langue", en: "Language" },
-      label: { fr: "Langue de l'assistant", en: "Assistant language" },
-      description: {
-        fr: "La langue dans laquelle Floppy écoute et parle. Changer de langue redémarre les plugins (quelques secondes).",
-        en: "The language Floppy listens and speaks in. Changing it restarts the plugins (a few seconds).",
-      },
-      type: "enum", options: LANGS.map((l) => ({ value: l.value, label: l.label, aliases: [...l.aliases] })), risk: "free",
-      get: () => this.assistant.language,
-      set: (v) => {
-        this.assistantLang = String(v);
-        if (this.baseCfg) { const base = this.baseCfg; void this.enqueue(() => this.applyNow(base)).catch(() => {}); }
-      },
-    }]);
     this.downloads = new DownloadManager(opts.downloads);
     this.machineOpts = opts.machine ?? {};
     this.modelsDir = this.settings.savedValue<string>("dossier_modeles") || join(this.home, "models");
-    // Répertoire de travail : config, réglages, modèles, espaces des agents, plugins tiers, journaux (voir util/home.ts).
-    // Le changer relance le noyau ; les données suivent, sauf si le nouveau dossier a déjà des données de Floppy.
-    this.settings.declare("core", [{
-      key: "dossier_floppy", section: "general", group: { fr: "Dossier de Floppy", en: "Floppy's folder" },
-      label: { fr: "Répertoire de travail", en: "Working folder" },
-      description: {
-        fr: "Le dossier où Floppy garde tout : config, réglages, modèles, espaces de travail des agents, plugins, journaux. Le changer relance Floppy et y déplace ses données (un dossier qui a déjà des données de Floppy est repris tel quel).",
-        en: "The folder where Floppy keeps everything: config, settings, models, agents' workspaces, plugins, logs. Changing it restarts Floppy and moves its data there (a folder that already holds Floppy data is used as is).",
-      },
-      type: "text", maxLength: 500, folder: true, risk: "cli",
-      get: () => this.home,
-      set: (v) => {
-        const what = chooseHome(String(v ?? ""));
-        if (what === "same") return;
-        this.log("info", "core", `nouveau répertoire de travail (${what === "move" ? "données déplacées" : "données reprises"}) : ${String(v)}`);
-        // La réponse part d'abord à la fenêtre ; ensuite l'hôte relance le noyau dans le nouveau dossier.
-        setTimeout(() => this.bus.emit("floppy.restart", { reason: T("nouveau répertoire de travail", "new working folder") }), 300).unref?.();
-      },
-    }]);
-    this.settings.declare("core", [{
-      key: "dossier_modeles", section: "general", group: { fr: "Modèles", en: "Models" },
-      label: { fr: "Dossier des modèles téléchargés", en: "Downloaded models folder" },
-      description: {
-        fr: "Où Floppy range les modèles et les voix téléchargés depuis les réglages. Vide : le dossier de données de Floppy. Les modèles déjà téléchargés restent dans l'ancien dossier.",
-        en: "Where Floppy stores the models and voices downloaded from the settings. Empty: Floppy's data folder. Models already downloaded stay in the old folder.",
-      },
-      type: "text", maxLength: 500, folder: true, risk: "cli",
-      get: () => this.modelsDir,
-      set: (v) => { const d = String(v ?? "").trim(); this.modelsDir = d || join(this.home, "models"); },
-    }]);
-    // Fin d'un téléchargement : une carte (sans voix) pour le dire, même si la fenêtre est fermée.
-    this.downloads.onChange((d) => {
-      if (d.state !== "done" && d.state !== "error") return;
-      const name = tr(d.label, this.uiLang);
-      const text = d.state === "done"
-        ? tr({ fr: `${name} est téléchargé.`, en: `${name} is downloaded.` }, this.uiLang)
-        : `${name} : ${tr(d.error, this.uiLang)}`;
-      this.bus.emit("initiative", { source: "downloads", text, importance: "normal", key: `download:${d.key}` });
-    });
-    {
-      const saved = this.settings.savedValue<string>("langue_assistant");
-      if (saved && isLang(saved)) this.assistantLang = saved;
-    }
+    this.uiLang = this.settings.savedValue<string>("langue_interface") ?? "fr";
+    // Langue de l'interface, langue de l'assistant, dossiers : réglages du noyau (core-settings.ts).
+    declareCoreSettings(this as unknown as KernelInternals);
     for (const p of opts.plugins ?? []) this.register(p);
     this.apps = new Apps({
       home: this.home, items: this.items, tools: this.tools,
@@ -418,101 +353,10 @@ export class Kernel {
     if (this.catalog.has(def.manifest.id)) throw new Error(`plugin déjà enregistré : ${def.manifest.id}`);
     this.catalog.set(def.manifest.id, def);
     this.declareSections(def);
-    this.declareServiceSelection(def);
-    this.declareSlots(def);
+    declareServiceSelection(this as unknown as KernelInternals, def);
+    declareSlots(this as unknown as KernelInternals, def);
     this.apps?.refresh();
     this.tasks?.changed();
-  }
-
-  /** Slots du manifeste : un réglage `slot.<id>` par slot (fenêtre, voix, CLI). Le premier plugin qui déclare un id le garde. */
-  private declareSlots(def: PluginDef<any>): void {
-    for (const slot of def.manifest.slots ?? []) {
-      const cur = this.slotDefs.get(slot.id);
-      if (cur) {
-        if (cur.owner === def.manifest.id) cur.def = slot;
-        else this.log("warn", def.manifest.id, `slot ${slot.id} déjà déclaré par ${cur.owner}`);
-        continue;
-      }
-      const holder = { def: slot, owner: def.manifest.id };
-      this.slotDefs.set(slot.id, holder);
-      const kernel = this;
-      const key = `slot.${slot.id}`;
-      this.settings.declare("core", [{
-        key, section: slot.section, label: slot.label, role: slot.id, type: "enum", risk: "free",
-        description: slot.description ?? { fr: "L'élément en service pour ce rôle. Le noyau démarre le nouveau et arrête l'ancien.", en: "The item in use for this role. The kernel starts the new one and stops the old one." },
-        riskFor: (v) => (kernel.slotOptions(holder.def).find((o) => o.value === v)?.cloud ? "ask" : "free"),
-        get options() { return kernel.slotOptions(holder.def); },
-        get: () => kernel.slotValue(slot.id),
-        set: async (v) => {
-          const value = String(v);
-          if (!kernel.slotOptions(holder.def).some((o) => o.value === value)) throw new TextError(T("Choix inconnu ou désactivé", "Unknown or disabled choice"));
-          // L'élément choisi avant charge encore (un gros modèle) : on l'annule, le nouveau choix n'attend pas sa fin.
-          const loading = kernel.slotKey(slot.id);
-          const old = loading ? kernel.forks.get(loading) : undefined;
-          if (old?.state === "starting" && kernel.slotValue(slot.id) !== value) {
-            kernel.abortStart(old, T("remplacé par un autre choix", "replaced by another choice"), { cancelled: true });
-          }
-          await kernel.enqueue(async () => {
-            const before = kernel.selectionEdits.get(key);
-            const restore = async () => {
-              if (before === undefined) kernel.selectionEdits.delete(key); else kernel.selectionEdits.set(key, before);
-              // L'ancien élément a pu être annulé pendant son chargement : il repart.
-              const back = kernel.slotKey(slot.id);
-              if (back && kernel.forks.get(back)?.cancelled) kernel.forks.delete(back);
-              await kernel.reconcile();
-            };
-            kernel.selectionEdits.set(key, value);
-            // Un élément en panne est réessayé quand on le choisit de nouveau.
-            const target = kernel.slotKey(slot.id);
-            if (target && kernel.forks.get(target)?.state === "error") kernel.forks.delete(target);
-            try { await kernel.reconcile(); } catch (e) { await restore(); throw e; }
-            const f = target ? kernel.forks.get(target) : undefined;
-            if (f?.state === "error") {
-              const why = f.error ?? T("démarrage impossible", "could not start");
-              await restore(); // on revient à l'ancien choix : jamais laisser Floppy sans cerveau ni voix
-              throw new TextError(why);
-            }
-          });
-        },
-      }]);
-    }
-  }
-
-  private declareServiceSelection(def: PluginDef<any>): void {
-    const choice = def.manifest.serviceSelection;
-    if (!choice) return;
-    const existing = this.selectable.get(choice.service);
-    if (existing) { if (stableStringify(existing) !== stableStringify(choice)) this.log("warn", def.manifest.id, `sélecteur ${choice.service} déjà déclaré avec d'autres métadonnées`); return; }
-    if (!def.manifest.provides?.includes(choice.service)) throw new Error("serviceSelection doit désigner un service fourni");
-    const name = choice.service;
-    this.selectable.set(name, choice);
-    const kernel = this;
-    const current = () => this.selectionEdits.get(name) ?? this.settings.savedValue<string>(`service.${name}`) ?? this.selection[name] ?? "@none";
-    this.settings.declare("core", [{
-      key: `service.${name}`, section: choice.section, label: choice.label, role: choice.role,
-      description: { fr: "Choisis le fournisseur actif. Les connexions en cours sont fermées lors du changement.", en: "Choose the active provider. Switching closes current connections." },
-      type: "enum", risk: "free",
-      riskFor: (v) => v !== "@none" && this.entries.get(String(v))?.def?.manifest.permissions?.cloud ? "ask" : "free",
-      get options() {
-        return [{ value: "@none", label: choice.none }, ...[...kernel.entries.values()]
-          .filter((e) => e.state === "active" && e.provided.has(name))
-          .map((e) => ({ value: e.cfg.id, label: String((e.provided.get(name) as { name?: string }).name ?? e.cfg.id) }))];
-      },
-      get: current,
-      set: async (v) => {
-        const value = String(v);
-        if (value !== "@none" && !this.entries.get(value)?.provided.has(name)) throw new TextError(T("Fournisseur indisponible", "Provider unavailable"));
-        const before = current();
-        await this.enqueue(async () => {
-          const provider = this.entries.get(value)?.provided.get(name) as { availability?: () => { ready: boolean; reason?: string; reasonText?: Text } } | undefined;
-          const availability = provider?.availability?.();
-          if (availability && !availability.ready) throw new TextError(availability.reasonText ?? availability.reason ?? T("Fournisseur non configuré", "Provider not configured"));
-          this.selectionEdits.set(name, value);
-          try { await this.reconcile(); }
-          catch (e) { this.selectionEdits.set(name, before); await this.reconcile(); throw e; }
-        });
-      },
-    }]);
   }
 
   /** Rubriques déclarées par le manifeste (`manifest.sections`) : visibles dès que le plugin est installé. */
@@ -528,7 +372,7 @@ export class Kernel {
    */
   replacePlugin(def: PluginDef<any>): Promise<void> {
     return this.enqueue(async () => {
-      if (this.checkManifest(def)) { this.catalog.set(def.manifest.id, def); this.declareSections(def); this.declareServiceSelection(def); this.declareSlots(def); }
+      if (this.checkManifest(def)) { this.catalog.set(def.manifest.id, def); this.declareSections(def); declareServiceSelection(this as unknown as KernelInternals, def); declareSlots(this as unknown as KernelInternals, def); }
       else this.sectionOffs.get(String((def?.manifest as { id?: unknown } | undefined)?.id))?.();
       const mine = [...this.entries.values()].filter((e) => e.cfg.plugin === def.manifest.id);
       for (const e of [...mine].reverse()) await this.stopEntry(e, "loaded");
@@ -1073,7 +917,7 @@ export class Kernel {
     e.scope = scope;
     delete e.disposing;
     const pending = new Map<string, unknown>();
-    const ctx = this.makeContext(e, scope, pending);
+    const ctx = makeContext(this as unknown as KernelInternals, e, scope, pending);
     const offer = e.fork ? this.entries.get(e.fork.parent)?.offers.get(e.fork.service) : undefined;
     const limitS = e.fork ? (offer?.startTimeout_s ?? 600) : (def.manifest.startTimeout_s ?? this.startTimeoutMs / 1000);
     e.deadline = new Deadline(limitS * 1000, () => {
@@ -1215,367 +1059,12 @@ export class Kernel {
     if (wasActive) for (const name of provided) this.bus.emit("service.changed", { name, provider: this.providerOf(name) });
   }
 
-  /** Canal de l'hôte pour un plugin : ses écouteurs tournent à son nom et sont retirés à son arrêt. */
-  private hostFor(id: string, scope: EffectScope, as: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R): import("./context.ts").HostChannel {
-    const host = this.host!;
-    const off = (fn: (e: import("./context.ts").HostMessage) => void) => { (host.off ?? host.removeListener)?.call(host, "message", fn); };
-    const wrapped = new Map<(e: import("./context.ts").HostMessage) => void, (e: import("./context.ts").HostMessage) => void>();
-    return {
-      postMessage: (data) => { if (!scope.isClosed) host.postMessage(data); else this.log("warn", id, "host.postMessage après l'arrêt du plugin : refusé"); },
-      on: (_ev, fn) => {
-        const w = as(fn);
-        wrapped.set(fn, w);
-        host.on("message", w);
-        scope.add(() => off(w));
-      },
-      off: (_ev, fn) => { const w = wrapped.get(fn); if (w) { off(w); wrapped.delete(fn); } },
-    };
-  }
-
   /** Prévient ceux qui ont emprunté ce fork : il s'est arrêté (panne, arrêt, nouveau choix). */
   private loseBorrowers(key: string): void {
     const set = this.borrowers.get(key);
     if (!set) return;
     this.borrowers.delete(key);
     for (const fn of set) { try { fn(); } catch { /* rien */ } }
-  }
-
-  /**
-   * Vue des accords pour un plugin : demander pour tous, répondre / lister seulement avec permissions.approvals.
-   * Les demandes d'un plugin qui s'arrête sont annulées ; un plugin arrêté ne peut plus en ouvrir.
-   */
-  private approvalsFor(manifest: PluginDef["manifest"], id: string, scope: EffectScope): ContextApprovals {
-    const may = manifest.permissions?.approvals === "respond";
-    const deny = (what: string): never => { throw new Error(`${id} : ${what} demande permissions.approvals: "respond" dans le manifeste (seuls les corps et la CLI répondent aux accords)`); };
-    const stop = new AbortController();
-    scope.add(() => stop.abort());
-    return {
-      check: (input) => {
-        if (scope.isClosed) return Promise.resolve({ ok: false, reason: "cancelled" as const });
-        return this.approvals.check({ ...input, signal: input.signal ? AbortSignal.any([input.signal, stop.signal]) : stop.signal });
-      },
-      respond: (rid, ok, by) => may ? this.approvals.respond(rid, ok, by) : deny("approvals.respond"),
-      pending: () => may ? this.approvals.pending() : deny("approvals.pending"),
-    };
-  }
-
-  private makeContext(e: Entry, scope: EffectScope, pending: Map<string, unknown>): Context {
-    const def = e.def!;
-    const allowed = new Set(e.fork ? [] : [...(def.manifest.inject ?? []), ...(def.manifest.optional ?? [])]);
-    const kernel = this;
-    let noteOff = false;
-    let logoOff = false;
-    /** Un plugin arrêté ne fait plus rien par le noyau (du code à lui peut encore tourner : il est refusé et signalé). */
-    const warned = new Set<string>();
-    const closed = (what: string): boolean => {
-      if (!scope.isClosed) return false;
-      if (!warned.has(what)) { warned.add(what); kernel.log("warn", e.cfg.id, `${what} après l'arrêt du plugin : refusé`); }
-      return true;
-    };
-    const stoppedError = () => new TextError(T(`${e.cfg.id} est arrêté`, `${e.cfg.id} is stopped`));
-    /** Code du plugin appelé par le noyau (écouteur, minuterie, outil) : il tourne au nom de l'entrée (filet global). */
-    const as = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => kernel.als.run(e.cfg.id, () => fn(...a));
-    /** Minuterie du plugin : une erreur est notée à son nom, sans casser le noyau. */
-    const guarded = (fn: () => unknown, what: string) => as(() => {
-      const report = (err: unknown) => kernel.log("error", e.cfg.id, `${what} : ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
-      try {
-        const r = fn();
-        if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(undefined, report);
-      } catch (err) { report(err); }
-    });
-    const read = (name: string): unknown => {
-      if (!allowed.has(name) && !e.used.has(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans inject/optional`);
-      const p = e.bound.get(name);
-      return p ? kernel.entries.get(p)?.provided.get(name) : undefined;
-    };
-    /** Prête un fork (dans la file du noyau) : démarré si besoin, gardé jusqu'à release(), rendu à l'arrêt du plugin. */
-    const lend = async (key: string, service: string): Promise<never | undefined> => {
-      kernel.hold(key, 1);
-      const f = await kernel.ensureFork(key);
-      const svc = f?.provided.get(service);
-      if (!svc) { kernel.hold(key, -1); await kernel.reconcile(); return undefined; }
-      let done = false;
-      let markLost!: () => void;
-      const lost = new Promise<void>((r) => { markLost = r; });
-      const set = kernel.borrowers.get(key) ?? new Set<() => void>();
-      kernel.borrowers.set(key, set);
-      set.add(markLost);
-      const release = () => {
-        if (done) return;
-        done = true;
-        set.delete(markLost);
-        kernel.hold(key, -1);
-        void kernel.enqueue(() => kernel.reconcile()).catch(() => {});
-      };
-      // Le fork s'arrête pendant l'emprunt : l'emprunteur le sait (lost), et la place est rendue.
-      void lost.then(release);
-      scope.add(release); // le plugin s'arrête : il rend ce qu'il a emprunté
-      return { service: svc, release, lost } as never;
-    };
-    return {
-      id: e.cfg.id,
-      plugin: e.cfg.plugin,
-      assistant: this.assistant,
-      uiLang: () => this.uiLang,
-      machine: () => this.machine(),
-      restartOffers: (service) => this.restartForks(e.fork?.parent ?? e.cfg.id, service),
-      approvals: this.approvalsFor(def.manifest, e.cfg.id, scope),
-      audit: this.audit,
-      home: this.home,
-      workspace: (name) => {
-        const safe = (s: string) => s.replace(/[^a-z0-9._-]/gi, "_").replace(/^\.+/, "_");
-        const dir = join(this.home, "workspaces", safe(def.manifest.id), ...(name ? [safe(name)] : []));
-        mkdirSync(dir, { recursive: true });
-        return dir;
-      },
-      settings: {
-        declare: (defs) => { scope.add(this.settings.declare(e.cfg.id, defs)); },
-        saved: (key) => this.settings.savedValue(key),
-        savedEntries: (prefix) => this.settings.savedEntries(prefix),
-        value: (key) => this.settings.value(key),
-        list: () => this.settings.list(),
-        change: (key, value, origin) => closed("settings.change") ? Promise.reject(stoppedError()) : this.settings.change(key, value, "voice", origin),
-      },
-      items: {
-        declare: (def) => { scope.add(this.items.declare(e.cfg.id, def)); },
-        changed: () => this.items.changed(),
-        store: (name) => ItemStore.in(this.home, name ?? e.cfg.id),
-        snapshot: () => this.items.snapshot(),
-        // Un plugin ne peut pas se faire passer pour la fenêtre (« ui ») ou la CLI : tout sauf « voice » devient « assistant ».
-        run: (op, via) => closed("items.run") ? Promise.reject(stoppedError()) : this.items.run(op, via === "voice" ? "voice" : "assistant"),
-        actions: (list, run) => {
-          this.appActions.set(e.cfg.id, { list, run });
-          scope.add(() => { if (this.appActions.get(e.cfg.id)?.run === run) this.appActions.delete(e.cfg.id); });
-          this.items.changed();
-        },
-        status: (text, tone) => {
-          this.notes.set(e.cfg.id, { text, ...(tone ? { tone } : {}) });
-          if (!noteOff) { noteOff = true; scope.add(() => { this.notes.delete(e.cfg.id); this.items.changed(); }); }
-          this.items.changed();
-        },
-        logo: (logo) => {
-          if (logo === undefined) this.logos.delete(e.cfg.id);
-          else this.logos.set(e.cfg.id, cleanLogo(logo) ?? null);
-          if (!logoOff) { logoOff = true; scope.add(() => { this.logos.delete(e.cfg.id); this.items.changed(); }); }
-          this.items.changed();
-        },
-      },
-      secrets: scopedSecrets(this.secrets, def.manifest.id),
-      downloads: {
-        get dir() { return downloadsDir(kernel.modelsDir, e.cfg.id); },
-        start: (req) => {
-          if (closed("downloads.start")) throw stoppedError();
-          const s = this.downloads.start(`${e.cfg.id}/${req.key}`, req, downloadsDir(this.modelsDir, e.cfg.id), def.manifest.permissions?.net);
-          return { ...s, key: req.key };
-        },
-        get: (key) => { const s = this.downloads.get(`${e.cfg.id}/${key}`); return s && { ...s, key }; },
-        cancel: (key) => this.downloads.cancel(`${e.cfg.id}/${key}`),
-        onChange: (fn) => {
-          const prefix = `${e.cfg.id}/`;
-          scope.add(this.downloads.onChange((s) => { if (s.key.startsWith(prefix)) fn({ ...s, key: s.key.slice(prefix.length) }); }));
-        },
-      },
-      tools: {
-        register: (defs) => {
-          const clean = defs.map(({ selfApproved: _s, ...d }) => ({ ...d, handler: as(d.handler) }));
-          const remove = scope.add(this.tools.register(e.cfg.id, clean));
-          return () => { void remove(); };
-        },
-        list: () => this.tools.list(),
-        call: (name, args, meta) => closed("tools.call") ? Promise.reject(stoppedError()) : this.tools.call(name, args, meta),
-        onChange: (fn) => { scope.add(this.tools.onChange(fn)); },
-      },
-      get alive() { return !scope.isClosed; },
-      ...(e.fork ? { item: e.fork.item } : {}),
-      provide(name, impl) {
-        if (!(def.manifest.provides ?? []).includes(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans provides`);
-        if (e.fork && name !== e.fork.service) throw new Error(`${e.cfg.id} : ce fork fournit seulement ${e.fork.service}`);
-        if (!e.fork && e.offers.has(name)) throw new Error(`${e.cfg.id} : ${name} est déjà offert élément par élément (ctx.offer)`);
-        if (e.state !== "starting" || scope.isClosed) throw new Error(`${e.cfg.id} : ctx.provide(${name}) après la fin de apply (les services se fournissent pendant apply)`);
-        pending.set(name, impl);
-      },
-      get(name) {
-        const v = read(name);
-        if (v === undefined) throw new Error(`${e.cfg.id} : service ${name} absent`);
-        return v as never;
-      },
-      maybe(name) { return read(name) as never; },
-      async use(name) {
-        if (e.state !== "starting" || scope.isClosed) throw new Error(`${e.cfg.id} : ctx.use(${name}) se fait pendant apply`);
-        // Un fork peut demander tout service ; une entrée seulement ceux de son manifeste (transparence des besoins).
-        if (!e.fork && !allowed.has(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans inject/optional`);
-        e.used.add(name);
-        // Le temps passé à démarrer un autre plugin ne compte pas dans le délai de celui-ci.
-        const deadline = e.deadline;
-        deadline?.pause();
-        try {
-          const x = await kernel.ensureActive(kernel.candidateOf(name));
-          // Démarrage abandonné entre-temps (ctx.fail, délai, arrêt) : ce contexte est fermé, il ne lie plus rien.
-          // Le service a pu démarrer pour rien : le noyau revoit l'état (il l'arrête s'il ne sert à personne).
-          if (scope.isClosed) { void kernel.enqueue(() => kernel.reconcile()).catch(() => {}); return undefined as never; }
-          e.bound.set(name, x?.cfg.id);
-          return x?.provided.get(name) as never;
-        } finally { deadline?.resume(); }
-      },
-      async slot(id) {
-        if (e.state !== "starting" || scope.isClosed) throw new Error(`${e.cfg.id} : ctx.slot(${id}) se fait pendant apply`);
-        if (!(def.manifest.slots ?? []).some((x) => x.id === id)) throw new Error(`${e.cfg.id} : slot ${id} non déclaré dans le manifeste`);
-        const key = kernel.slotKey(id);
-        e.slotBound.set(id, key);
-        const deadline = e.deadline;
-        deadline?.pause();
-        try {
-          const f = key ? await kernel.ensureFork(key) : undefined;
-          if (scope.isClosed) { void kernel.enqueue(() => kernel.reconcile()).catch(() => {}); return undefined as never; }
-          return f?.provided.get(kernel.slotDefs.get(id)!.def.service) as never;
-        } finally { deadline?.resume(); }
-      },
-      offers(service) {
-        if (!allowed.has(service)) throw new Error(`${e.cfg.id} : service ${service} non déclaré dans inject/optional`);
-        const out: { value: string; label: Text; cloud?: boolean; entry: string }[] = [];
-        for (const x of kernel.entries.values()) {
-          const offer = x.state === "active" ? x.offers.get(service) : undefined;
-          if (offer) for (const i of offerItems(offer)) out.push({ value: `${x.cfg.id}/${i.id}`, label: i.label, entry: x.cfg.id, ...(i.cloud ? { cloud: true } : {}) });
-        }
-        return out;
-      },
-      borrowItem(service, value) {
-        if (!allowed.has(service)) throw new Error(`${e.cfg.id} : service ${service} non déclaré dans inject/optional`);
-        if (e.state === "starting") throw new Error(`${e.cfg.id} : ctx.borrowItem se fait après apply`);
-        const cut = value.indexOf("/");
-        if (cut < 1) return Promise.resolve(undefined);
-        const entry = value.slice(0, cut);
-        const item = value.slice(cut + 1);
-        return kernel.enqueue(async () => {
-          const p = kernel.entries.get(entry);
-          const offer = p?.state === "active" ? p.offers.get(service) : undefined;
-          if (scope.isClosed || !offer || !offerItems(offer).some((i) => i.id === item)) return undefined;
-          return lend(`${entry}/${service}/${item}`, service);
-        });
-      },
-      borrow(id) {
-        if (!(def.manifest.slots ?? []).some((x) => x.id === id)) throw new Error(`${e.cfg.id} : slot ${id} non déclaré dans le manifeste`);
-        if (e.state === "starting") throw new Error(`${e.cfg.id} : ctx.borrow(${id}) se fait après apply (pendant apply : ctx.slot)`);
-        return kernel.enqueue(async () => {
-          if (scope.isClosed) return undefined;
-          const key = kernel.slotKey(id);
-          if (!key) return undefined;
-          return lend(key, kernel.slotDefs.get(id)!.def.service);
-        });
-      },
-      tasks: {
-        list: () => kernel.tasks.list(),
-        run: (key, raison) => closed("tasks.run") ? Promise.reject(stoppedError()) : kernel.tasks.run(key, raison ?? "manuel"),
-        onChange: (fn) => { scope.add(kernel.tasks.onChange(fn)); },
-      },
-      offer(service, od) {
-        if (e.fork) throw new Error(`${e.cfg.id} : un fork ne peut pas offrir`);
-        if (!(def.manifest.provides ?? []).includes(service)) throw new Error(`${e.cfg.id} : service ${service} non déclaré dans provides`);
-        if (e.offers.has(service) || pending.has(service)) throw new Error(`${e.cfg.id} : ${service} déjà fourni ou offert`);
-        e.offers.set(service, od);
-        scope.add(() => { if (e.offers.get(service) === od) e.offers.delete(service); });
-      },
-      selectedProvider(name) {
-        read(name); // vérifie inject / optional
-        const selected = kernel.selectedProvider(name);
-        return selected === "@none" ? undefined : selected;
-      },
-      effect: (dispose) => scope.add(dispose),
-      on: (event, fn) => { scope.add(this.bus.on(event, as(fn))); },
-      ...(this.host ? { host: this.hostFor(e.cfg.id, scope, as) } : {}),
-      emit: (event, payload) => {
-        if (closed(`emit(${event})`)) return;
-        // Ces événements disent ce que le noyau a décidé : un plugin ne peut pas les imiter (fausse demande d'accord…).
-        if (KERNEL_EVENTS.has(event)) {
-          if (!warned.has(`kernel-event:${event}`)) { warned.add(`kernel-event:${event}`); this.log("warn", e.cfg.id, `emit(${event}) refusé : événement réservé au noyau`); }
-          return;
-        }
-        this.bus.emit(event, payload);
-      },
-      fetch: (url, init = {}) => {
-        if (closed("fetch")) return Promise.reject(stoppedError());
-        const { timeoutMs, ...rest } = init;
-        let host = "";
-        try { host = new URL(String(url)).hostname; } catch { /* adresse invalide : fetch le dira */ }
-        if (host && !hostAllowed(def.manifest.permissions?.net, host) && !warned.has(`net:${host}`)) {
-          warned.add(`net:${host}`);
-          this.log("warn", e.cfg.id, `réseau : ${host} n'est pas dans permissions.net (avertissement : la requête part quand même)`);
-        }
-        const limit = AbortSignal.timeout(timeoutMs ?? 30_000);
-        return fetch(url, { ...rest, signal: rest.signal ? AbortSignal.any([rest.signal, limit]) : limit });
-      },
-      hook: (name, mw) => { scope.add(this.hooks.add(name, as(mw), e.cfg.id)); },
-      runHook: (name, input, final) => closed(`runHook(${name})`) ? Promise.reject(stoppedError()) : this.hooks.run(name, input, final),
-      spawn: (command: string, args: string[], options: SpawnOptions & { keep?: boolean } = {}) => {
-        if (!execAllowed(def.manifest.permissions, command)) {
-          throw new Error(`${e.cfg.id} : lancer « ${programName(command)} » demande permissions.exec dans le manifeste (exec: ["${programName(command)}"])`);
-        }
-        if (closed(`spawn(${programName(command)})`)) throw stoppedError();
-        const { keep, ...opts } = options;
-        if (keep) {
-          // Lancé pour l'utilisateur (navigateur, terminal) : détaché, il reste ouvert après Floppy.
-          const child = nodeSpawn(command, args, { detached: true, stdio: "ignore", ...opts });
-          child.on("error", (err) => this.log("warn", e.cfg.id, `${programName(command)} : ${err.message}`));
-          child.unref();
-          return child;
-        }
-        const child = nodeSpawn(command, args, { windowsHide: true, detached: process.platform !== "win32", ...opts });
-        const close = scope.add(() => killTree(child));
-        this.children.track(child, command, e.cfg.id);
-        // Programme fini tout seul : sa fermeture est retirée (un plugin qui lance un programme par demande ne grossit pas).
-        child.once("exit", () => { void close(); });
-        return child;
-      },
-      exec: (command, args, options = {}) => {
-        if (!execAllowed(def.manifest.permissions, command)) {
-          return Promise.reject(new Error(`${e.cfg.id} : lancer « ${programName(command)} » demande permissions.exec dans le manifeste (exec: ["${programName(command)}"])`));
-        }
-        if (closed(`exec(${programName(command)})`)) return Promise.reject(stoppedError());
-        const timeoutMs = options.timeoutMs ?? 30_000;
-        return new Promise((resolve, reject) => {
-          let timedOut = false;
-          // Délai : tout l'arbre du programme est arrêté (killTree), pas seulement le premier processus
-          // (`cmd.exe /c az …` laisserait az tourner).
-          const timer = setTimeout(() => { timedOut = true; void killTree(child, 1000); }, timeoutMs);
-          timer.unref?.();
-          const child = execFile(command, args, {
-            maxBuffer: options.maxBuffer ?? 16 * 1024 * 1024, windowsHide: true, encoding: "utf8",
-            ...(options.cwd ? { cwd: options.cwd } : {}), ...(options.env ? { env: options.env } : {}),
-            ...(options.verbatim ? { windowsVerbatimArguments: true } : {}), ...(options.signal ? { signal: options.signal } : {}),
-          }, (err, stdout, stderr) => {
-            clearTimeout(timer);
-            void close();
-            const code = typeof (err as { code?: unknown } | null)?.code === "number" ? (err as { code: number }).code : err ? -1 : 0;
-            if (timedOut || (err && (!options.allowFailure || code === -1 || (err as { killed?: boolean }).killed))) {
-              const why = timedOut ? `délai dépassé (${Math.round(timeoutMs / 1000)} s)` : String(stderr || err!.message).trim().slice(0, 500);
-              reject(new Error(`${programName(command)} : ${why}`));
-              return;
-            }
-            resolve({ stdout: String(stdout), stderr: String(stderr), code });
-          });
-          const close = scope.add(() => killTree(child));
-        });
-      },
-      interval: (fn, ms) => { const t = setInterval(guarded(fn, "minuterie"), ms); scope.add(() => clearInterval(t)); },
-      timeout: (fn, ms) => { const t = setTimeout(guarded(fn, "minuterie"), ms); scope.add(() => clearTimeout(t)); },
-      fail: (e.fail = (reason) => {
-        this.log("error", e.cfg.id, `panne : ${tr(reason, "fr")}`);
-        if (e.state === "starting") {
-          // Pendant apply : on ferme les effets ; startEntry cesse d'attendre apply et pose l'erreur (une seule fois).
-          if (e.scope === scope) this.abortStart(e, reason);
-          return;
-        }
-        void this.enqueue(async () => {
-          if (e.scope !== scope) return; // déjà arrêté ou redémarré
-          await this.stopEntry(e, "error");
-          e.error = reason;
-          this.emitState(e);
-          this.scheduleRetry(e);
-          await this.reconcile();
-        });
-      }),
-      log: (level, msg, data) => this.log(level, e.cfg.id, msg, data),
-    };
   }
 
   private emitState(e: Entry): void {
