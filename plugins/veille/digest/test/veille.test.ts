@@ -5,7 +5,7 @@ import { parseFeed } from "../src/feeds.ts";
 import { pretri, normUrl, sameStory, mentions, type Article } from "../src/pretri.ts";
 import { digestMarkdown, triSystem, type PipelineResult } from "../src/pipeline.ts";
 import { emptyPrefs } from "../src/prefs.ts";
-import { createVeillePlugin } from "../src/index.ts";
+import { createVeillePlugin, findArticles } from "../src/index.ts";
 
 const RSS = (items: { t: string; l: string; d?: string; desc?: string }[]) => `<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Blog IA</title>
@@ -144,6 +144,20 @@ function fakeDocs(saved: { titre: string; markdown: string }[]): PluginDef<any> 
   });
 }
 
+describe("trouver un article du digest par ses mots", () => {
+  const art = (numero: number, titre: string, resume = "") => ({ numero, doc: "", interet: "ia", titre, url: `https://x/${numero}`, source: "x", resume });
+  const d = [art(1, "Gemma 5 sort", "un modèle de Google"), art(2, "Kokoro : un TTS local rapide", "synthèse vocale"), art(3, "Benchmark des modèles", "parle aussi de TTS")];
+  it("préfère un mot du titre, ignore accents et casse", () => {
+    expect(findArticles(d, "l'article sur le tts").map((a) => a.numero)).toEqual([2]);
+    expect(findArticles(d, "Synthèse VOCALE").map((a) => a.numero)).toEqual([2]);
+  });
+  it("rend les ex aequo, ou rien", () => {
+    expect(findArticles(d, "modèle").map((a) => a.numero)).toEqual([1]);
+    expect(findArticles(d, "crypto")).toEqual([]);
+    expect(findArticles([art(1, "TTS A"), art(2, "TTS B")], "tts").length).toBe(2);
+  });
+});
+
 describe("plugin veille (avec le noyau)", () => {
   it("passage complet : tri, digest, avis pris en compte au passage suivant", async () => {
     let feed = RSS([
@@ -184,6 +198,15 @@ describe("plugin veille (avec le noyau)", () => {
     expect(a2.text).toMatch(/plus jamais « crypto »/);
     const art = await k.tools.call("veille_article", { article: 2 });
     expect(art.text).toContain("https://blog.ai/3");
+    // Sans numéro : par les mots du sujet, ou la liste des titres.
+    const parMots = await k.tools.call("veille_article", { recherche: "la crypto" });
+    expect(parMots.text).toContain("https://blog.ai/3");
+    const liste = await k.tools.call("veille_article", {});
+    expect(liste.text).toContain("1. A garder : Gemma 5");
+    expect(liste.text).toContain("2. A garder aussi : crypto et IA");
+    const rien = await k.tools.call("veille_article", { recherche: "TTS" });
+    expect(rien.text).toMatch(/Aucun titre ne parle de « TTS »[\s\S]*2\. A garder aussi/);
+    expect((await k.tools.call("veille_interets", {})).text).toContain("1. A garder : Gemma 5");
 
     // Passage suivant : les anciens sont déjà vus ; le nouvel article crypto est retiré avant le modèle.
     feed = RSS([

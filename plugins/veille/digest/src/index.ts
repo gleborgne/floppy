@@ -15,7 +15,7 @@ import { definePlugin, errorText, T, TextError, tr, type ItemInfo, type OpResult
 import type { CompletionService, SearchService } from "@floppy/contracts";
 import { PrefsStore } from "./prefs.ts";
 import { fetchFeed } from "./feeds.ts";
-import { VeilleDb } from "./store.ts";
+import { VeilleDb, type DigestArticle } from "./store.ts";
 import { runPipeline, digestMarkdown, type Interet, type PipelineConfig } from "./pipeline.ts";
 
 /** Texte construit pour chaque langue (fr, en). */
@@ -97,6 +97,23 @@ function changes(a: Record<string, unknown>, l: "fr" | "en"): string {
     list("retirer_requetes", "− recherches", "− searches"), list("retirer_flux", "− flux", "− feeds"),
   ].filter(Boolean);
   return parts.length ? ` (${parts.join(en ? "; " : " ; ")})` : "";
+}
+
+/** Minuscules sans accents, coupé en mots. */
+const words = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
+
+/** Articles qui parlent le plus des mots demandés (titre, résumé, source) : les meilleurs ex aequo, ou aucun. */
+export function findArticles(list: DigestArticle[], query: string): DigestArticle[] {
+  const q = [...new Set(words(query))];
+  if (!q.length) return [];
+  const scored = list.map((a) => {
+    const titre = new Set(words(a.titre));
+    const reste = new Set(words(`${a.resume} ${a.source}`));
+    // Un mot du titre compte double : « TTS » dans le titre désigne mieux l'article que dans un résumé.
+    return { a, score: q.reduce((n, w) => n + (titre.has(w) ? 2 : reste.has(w) ? 1 : 0), 0) };
+  });
+  const best = Math.max(...scored.map((s) => s.score));
+  return best > 0 ? scored.filter((s) => s.score === best).map((s) => s.a) : [];
 }
 
 export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> {
@@ -415,21 +432,41 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
                   ? `- ${i.nom}${i.enabled ? "" : " (off)"}: ${i.flux.length} feeds, searches: ${i.requetes.join(", ") || "none"}${p.aime.length ? `; likes: ${p.aime.join(", ")}` : ""}${p.evite.length ? `; avoids: ${p.evite.join(", ")}` : ""}${p.bannis.length ? `; banned: ${p.bannis.join(", ")}` : ""}`
                   : `- ${i.nom}${i.enabled ? "" : " (désactivé)"} : ${i.flux.length} flux, recherches : ${i.requetes.join(", ") || "aucune"}${p.aime.length ? ` ; aime : ${p.aime.join(", ")}` : ""}${p.evite.length ? ` ; évite : ${p.evite.join(", ")}` : ""}${p.bannis.length ? ` ; bannis : ${p.bannis.join(", ")}` : ""}`;
               });
+              const titres = d.map((x) => `${x.numero}. ${x.titre}`).join("\n");
               return en
-                ? `${lines.join("\n")}\nLatest digest: ${d.length ? `${d.length} articles` : "none"}.`
-                : `${lines.join("\n")}\nDernier digest : ${d.length ? `${d.length} articles` : "aucun"}.`;
+                ? `${lines.join("\n")}\nLatest digest: ${d.length ? `${d.length} articles (details: veille_article)\n${titres}` : "none"}.`
+                : `${lines.join("\n")}\nDernier digest : ${d.length ? `${d.length} articles (détails : veille_article)\n${titres}` : "aucun"}.`;
             }) };
           },
         },
         {
           name: "veille_article",
-          description: "Détails d'un article du dernier digest par son numéro (titre, source, résumé, adresse). Pour en parler ou l'ouvrir avec ouvrir_url.",
-          inputSchema: { type: "object", properties: { article: { type: "integer" } }, required: ["article"] },
+          description: "Articles du dernier digest. Avec article (numéro) ou recherche (mots du sujet ou du titre : « TTS », « Gemma ») : détails de l'article (titre, source, résumé, adresse), pour en parler ou l'ouvrir avec ouvrir_url. Sans rien : la liste numérotée des titres. Appelle-le dès que l'utilisateur parle d'un article de sa veille, sans lui demander le numéro.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              article: { type: "integer", description: "Numéro de l'article dans le dernier digest." },
+              recherche: { type: "string", description: "Mots qui désignent l'article (sujet, outil, titre), si l'utilisateur ne donne pas de numéro." },
+            },
+          },
           level: "read",
           handler: async (a) => {
-            const art = db.article(Number(a.article));
-            if (!art) return { status: "failed", text: T(`Pas d'article ${String(a.article)} dans le dernier digest.`, `No article ${String(a.article)} in the latest digest.`) };
-            return { status: "done", text: T(`${art.numero}. ${art.titre} (${art.source})\n${art.resume}\nAdresse : ${art.url}`, `${art.numero}. ${art.titre} (${art.source})\n${art.resume}\nAddress: ${art.url}`) };
+            const details = (art: DigestArticle) => T(`${art.numero}. ${art.titre} (${art.source})\n${art.resume}\nAdresse : ${art.url}`, `${art.numero}. ${art.titre} (${art.source})\n${art.resume}\nAddress: ${art.url}`);
+            if (a.article !== undefined && a.article !== null) {
+              const art = db.article(Number(a.article));
+              if (!art) return { status: "failed", text: T(`Pas d'article ${String(a.article)} dans le dernier digest.`, `No article ${String(a.article)} in the latest digest.`) };
+              return { status: "done", text: details(art) };
+            }
+            const d = db.digest();
+            if (!d.length) return { status: "failed", text: T("Il n'y a pas encore de digest.", "There is no digest yet.") };
+            const q = typeof a.recherche === "string" ? a.recherche.trim() : "";
+            const found = q ? findArticles(d, q) : [];
+            if (found.length === 1) return { status: "done", text: details(found[0]!) };
+            const list = (found.length ? found : d).map((x) => `${x.numero}. ${x.titre}`).join("\n");
+            const head = !q ? T("Articles du dernier digest :", "Articles in the latest digest:")
+              : found.length ? T(`Plusieurs articles parlent de « ${q} » :`, `Several articles match “${q}”:`)
+              : T(`Aucun titre ne parle de « ${q} ». Articles du dernier digest :`, `No title matches “${q}”. Articles in the latest digest:`);
+            return { status: "done", text: T(`${tr(head, "fr")}\n${list}`, `${tr(head, "en")}\n${list}`) };
           },
         },
         {
