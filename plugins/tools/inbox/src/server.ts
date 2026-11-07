@@ -1,6 +1,6 @@
 // Porte d'entrée de la boîte aux lettres : HTTP sur 127.0.0.1, port libre, jeton aléatoire.
-// Port et jeton sont écrits dans <home>/inbox.json (dossier de l'utilisateur, lisible par lui seul), où les apps
-// les lisent. Même principe que control.ts et le pont Orca.
+// Port et jeton sont écrits dans <home>/inbox.json, où les apps les lisent. Sous Windows, `mode` ne fait rien : ce
+// sont les droits du dossier de Floppy qui protègent le jeton des autres comptes. Même principe que control.ts et le pont Orca.
 import { createServer, type IncomingMessage } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { rmSync } from "node:fs";
@@ -38,7 +38,8 @@ export async function startInbox(home: string, onPost: (body: Record<string, unk
     const reply = (status: number): void => { res.writeHead(status); res.end(); };
     const got = Buffer.from(String(req.headers.authorization ?? ""));
     if (got.length !== want.length || !timingSafeEqual(got, want)) return reply(401);
-    if (req.method !== "POST" || req.url !== INBOX_PATH) return reply(404);    readBody(req).then((raw) => {
+    if (req.method !== "POST" || req.url !== INBOX_PATH) return reply(404);
+    readBody(req).then((raw) => {
       let e: unknown;
       try { e = JSON.parse(raw); } catch { return reply(400); }
       if (!e || typeof e !== "object" || Array.isArray(e)) return reply(400);
@@ -47,6 +48,10 @@ export async function startInbox(home: string, onPost: (body: Record<string, unk
       reply(status);
     }, () => reply(413));
   });
+  // Attentes bornées : un message s'envoie en une fois ; une connexion lente ou muette est coupée.
+  server.headersTimeout = 5_000;
+  server.requestTimeout = 10_000;
+  server.maxConnections = 32;
   try {
     await new Promise<void>((ok, ko) => { server.once("error", ko); server.listen(0, "127.0.0.1", ok); });
   } catch {

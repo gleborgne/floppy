@@ -6,10 +6,13 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, utilityProcess, MessageChannelMain, shell, ipcMain, screen, session, dialog, clipboard } from "electron";
 import { fileURLToPath } from "node:url";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { deflateSync } from "node:zlib";
 import { createWriteStream, mkdirSync, existsSync, readFileSync, renameSync, statSync } from "node:fs";
 import { renderMarkdown } from "./markdown.mjs";
 import { Typer, foregroundRect } from "./typer.mjs";
+import { TEXTS, keysForOS } from "./main-texts.mjs";
+import { dotPng, COLORS } from "./tray-icon.mjs";
+import { safeWindow, bringToFront } from "./windows.mjs";
+import { avatarSpot } from "./placement.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, "..", "..", "..");                     // dossier assistant/
@@ -140,34 +143,7 @@ let logDir = homeDir();
 let kernelLog = openLog(logDir);
 
 // ------------------------------------------------------------------ textes du processus principal (fr / en)
-const TEXTS = {
-  fr: {
-    problem: "problème", idle: "prêt", listening: "écoute", thinking: "réfléchit", speaking: "parle", sleep: "dort", starting: "démarrage…",
-    waits: "attend", pttStop: "Arrêter de parler (Ctrl+Alt+F)", pttStart: "Parler (Ctrl+Alt+F)",
-    dictating: "dictée", dictateStart: "Dicter (Ctrl+Alt+D)", dictateStop: "Arrêter la dictée (Ctrl+Alt+D)", replace: "Remettre en bas à droite", wake: "Réveiller (Ctrl+Alt+M)", mute: "Dormir (Ctrl+Alt+M)",
-    hide: "Cacher l'avatar (Ctrl+Alt+H)", show: "Montrer l'avatar (Ctrl+Alt+H)", settings: "Réglages…", restart: "Relancer le noyau",
-    logs: "Ouvrir le dossier des journaux", quit: "Quitter", settingsTitle: "Floppy — Réglages", panelTitle: "Floppy — Résultats", documentsTitle: "Floppy — Documents", noKernel: "Le noyau n'est pas démarré.", noAnswer: "Le noyau n'a pas répondu.",
-    pickTitle: "Choisir", invalid: "Demande invalide.", taken: "déjà pris",
-    problemNames: { "dictée": "dictée", raccourci: "raccourci", noyau: "noyau" },
-    kernelLoop: "le noyau s'arrête sans cesse. Lis le journal, puis choisis « Relancer le noyau ».",
-    onboardingTitle: "Floppy — Bienvenue", firstSetup: "Réglage de départ…",
-    settingsNotOpened: "Réglages non ouverts", closedWhileLoading: "fenêtre fermée pendant le chargement", loadTooLong: "chargement trop long", notVisible: "fenêtre non visible",
-  },
-  en: {
-    problem: "problem", idle: "ready", listening: "listening", thinking: "thinking", speaking: "speaking", sleep: "asleep", starting: "starting…",
-    waits: "waiting for", pttStop: "Stop talking (Ctrl+Alt+F)", pttStart: "Talk (Ctrl+Alt+F)",
-    dictating: "dictation", dictateStart: "Dictate (Ctrl+Alt+D)", dictateStop: "Stop dictation (Ctrl+Alt+D)", replace: "Move back to bottom right", wake: "Wake up (Ctrl+Alt+M)", mute: "Sleep (Ctrl+Alt+M)",
-    hide: "Hide the avatar (Ctrl+Alt+H)", show: "Show the avatar (Ctrl+Alt+H)", settings: "Settings…", restart: "Restart the kernel",
-    logs: "Open the logs folder", quit: "Quit", settingsTitle: "Floppy — Settings", panelTitle: "Floppy — Results", documentsTitle: "Floppy — Documents", noKernel: "The kernel is not running.", noAnswer: "The kernel did not answer.",
-    pickTitle: "Choose", invalid: "Invalid request.", taken: "already taken",
-    problemNames: { "dictée": "dictation", raccourci: "shortcut", noyau: "kernel" },
-    kernelLoop: "the kernel keeps stopping. Read the log, then choose \"Restart the kernel\".",
-    onboardingTitle: "Floppy — Welcome", firstSetup: "First setup…",
-    settingsNotOpened: "Settings not opened", closedWhileLoading: "window closed while loading", loadTooLong: "loading took too long", notVisible: "window not visible",
-  },
-};
-// Raccourcis affichés selon le système : sur Mac, Ctrl+Alt s'écrit ⌃⌥ (la touche Alt s'appelle Option).
-const keysForOS = (s) => (process.platform === "darwin" && typeof s === "string" ? s.replaceAll("Ctrl+Alt+", "⌃⌥") : s);
+
 // Raccourcis par défaut (les mêmes que plugins/body/electron/src/shortcuts.ts) ; le noyau envoie ceux choisis (display.raccourcis).
 const SHORTCUT_DEFAULTS = { parler: "Ctrl+Alt+F", dicter: "Ctrl+Alt+D", dormir: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
 let shortcuts = { ...SHORTCUT_DEFAULTS };
@@ -197,32 +173,8 @@ function setLang(l) {
 }
 
 // ------------------------------------------------------------------ icône : un rond de couleur (PNG fait main)
-function dotIcon([r, g, b]) {
-  const N = 32;
-  const raw = Buffer.alloc((N * 4 + 1) * N);
-  for (let y = 0; y < N; y++) {
-    raw[y * (N * 4 + 1)] = 0;
-    for (let x = 0; x < N; x++) {
-      const d = Math.hypot(x - N / 2 + 0.5, y - N / 2 + 0.5);
-      const a = Math.max(0, Math.min(1, N / 2 - 2 - d)) * 255;
-      const o = y * (N * 4 + 1) + 1 + x * 4;
-      raw[o] = r; raw[o + 1] = g; raw[o + 2] = b; raw[o + 3] = a;
-    }
-  }
-  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
-  const crc = (buf) => { let c = 0xffffffff; for (const v of buf) c = crcTable[(c ^ v) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-    const td = Buffer.concat([Buffer.from(type), data]);
-    const c = Buffer.alloc(4); c.writeUInt32BE(crc(td));
-    return Buffer.concat([len, td, c]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(N, 0); ihdr.writeUInt32BE(N, 4); ihdr[8] = 8; ihdr[9] = 6;
-  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
-  return nativeImage.createFromBuffer(png);
-}
-const COLORS = { idle: [64, 200, 210], listening: [80, 230, 120], thinking: [250, 200, 60], speaking: [64, 160, 255], dictating: [190, 90, 255], sleep: [120, 120, 130], error: [240, 70, 60], starting: [150, 150, 160] };
+
+const dotIcon = (rgb) => nativeImage.createFromBuffer(dotPng(rgb));
 
 function refreshTray() {
   // À la fermeture, l'icône et la fenêtre sont détruites avant la fin du noyau : ne plus y toucher.
@@ -411,45 +363,26 @@ function displaysInOrder() {
  * Placer l'avatar (outil vocal « placer_avatar »). coin : bas_droite, bas_gauche, haut_droite, haut_gauche, centre.
  * ecran : numéro (1 = principal). cible "fenetre" : dans le coin de la fenêtre active (le terminal, le navigateur…).
  */
-function placeAvatar({ coin = "bas_droite", ecran, cible = "ecran" } = {}) {
+function placeAvatar(opts = {}) {
   if (!win || win.isDestroyed()) throw textError({ fr: "l'avatar n'a pas de fenêtre", en: "the avatar has no window" });
-  const list = displaysInOrder();
-  let area;
-  let where;
-  if (cible === "fenetre") {
+  let active = null;
+  if (opts.cible === "fenetre") {
     const r = process.platform === "win32" ? foregroundRect() : null;
     const dip = r && r.width > 0 && r.height > 0 ? screen.screenToDipRect(null, r) : null;
-    if (!dip) throw textError({ fr: "fenêtre active introuvable", en: "active window not found" });
-    const wa = screen.getDisplayMatching(dip).workArea;
-    // La partie visible de la fenêtre (une fenêtre agrandie déborde un peu de l'écran).
-    const x = Math.max(dip.x, wa.x), y = Math.max(dip.y, wa.y);
-    area = { x, y, width: Math.min(dip.x + dip.width, wa.x + wa.width) - x, height: Math.min(dip.y + dip.height, wa.y + wa.height) - y };
-    where = { fr: "sur la fenêtre active", en: "on the active window" };
-  } else {
-    const n = Number.isInteger(ecran) ? ecran : 1;
-    if (n < 1 || n > list.length) throw textError({
-      fr: `il n'y a que ${list.length} écran${list.length > 1 ? "s" : ""}`,
-      en: `there ${list.length > 1 ? "are" : "is"} only ${list.length} screen${list.length > 1 ? "s" : ""}`,
-    });
-    area = list[n - 1].workArea;
-    where = list.length > 1 ? { fr: `sur l'écran ${n}`, en: `on screen ${n}` } : { fr: "sur l'écran", en: "on the screen" };
+    if (dip) {
+      const wa = screen.getDisplayMatching(dip).workArea;
+      // La partie visible de la fenêtre (une fenêtre agrandie déborde un peu de l'écran).
+      const x = Math.max(dip.x, wa.x), y = Math.max(dip.y, wa.y);
+      active = { x, y, width: Math.min(dip.x + dip.width, wa.x + wa.width) - x, height: Math.min(dip.y + dip.height, wa.y + wa.height) - y };
+    }
   }
-  const m = 12;
-  const left = area.x + m, right = area.x + area.width - W - m, top = area.y + m, bottom = area.y + area.height - H - m;
-  const pos = {
-    bas_droite: [right, bottom], bas_gauche: [left, bottom], haut_droite: [right, top], haut_gauche: [left, top],
-    centre: [area.x + (area.width - W) / 2, area.y + (area.height - H) / 2],
-  }[coin] ?? [right, bottom];
-  win.setBounds({ x: Math.round(pos[0]), y: Math.round(pos[1]), width: W, height: H });
+  let spot;
+  try { spot = avatarSpot(opts, { screens: displaysInOrder().map((d) => d.workArea), active, W, H }); }
+  catch (e) { throw e instanceof Error ? e : textError(e); }
+  win.setBounds({ x: spot.x, y: spot.y, width: W, height: H });
   keepOnScreen();
   showWin();
-  const corner = {
-    bas_droite: { fr: "bas droite", en: "bottom right" }, bas_gauche: { fr: "bas gauche", en: "bottom left" },
-    haut_droite: { fr: "haut droite", en: "top right" }, haut_gauche: { fr: "haut gauche", en: "top left" },
-    centre: { fr: "centre", en: "center" },
-  }[coin] ?? { fr: coin.replace("_", " "), en: coin.replace("_", " ") };
-  // Phrase reprise par Floppy : la page de l'avatar choisit la langue de l'assistant.
-  return { fr: `Avatar placé ${corner.fr} ${where.fr}.`, en: `Avatar moved to ${corner.en} ${where.en}.` };
+  return spot.text;
 }
 
 function createWindow() {
@@ -591,19 +524,6 @@ function kernelRequest(msg) {
 }
 
 // ------------------------------------------------------------------ fenêtre des réglages
-// Windows empêche une app en arrière-plan de prendre le premier plan (demande à la voix : l'utilisateur est dans
-// une autre app). On passe la fenêtre « toujours devant » un instant, puis on rend la main.
-function bringToFront(w) {
-  if (!w || w.isDestroyed()) return;
-  if (w.isMinimized()) w.restore();
-  w.show();
-  w.setAlwaysOnTop(true, "screen-saver");
-  w.moveTop();
-  app.focus({ steal: true });
-  w.focus();
-  setTimeout(() => { if (!w.isDestroyed()) w.setAlwaysOnTop(false); }, 400);
-}
-
 // ------------------------------------------------------------------ fenêtre de résultats (A2UI)
 let panelWin = null;
 function openPanel(data) {
@@ -613,15 +533,8 @@ function openPanel(data) {
     bringToFront(panelWin);
     return;
   }
-  panelWin = new BrowserWindow({
-    width: 620, height: 720, minWidth: 380, minHeight: 300, title: T("panelTitle"), backgroundColor: "#0b0f15",
-    autoHideMenuBar: true, show: false,
-    webPreferences: { preload: join(here, "preload-panel.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
-  });
-  panelWin.setMenu(null);
+  panelWin = safeWindow({ size: { width: 620, height: 720, minWidth: 380, minHeight: 300 }, title: T("panelTitle"), background: "#0b0f15", preload: "preload-panel.cjs" });
   panelWin.loadFile(join(here, "renderer", "panel.html"));
-  panelWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  panelWin.webContents.on("will-navigate", (e) => e.preventDefault());
   panelWin.webContents.once("did-finish-load", () => { panelWin?.webContents.send("panel:show", payload); bringToFront(panelWin); });
   panelWin.on("closed", () => { panelWin = null; });
 }
@@ -642,33 +555,19 @@ function openDocuments(m) {
     bringToFront(docsWin);
     return;
   }
-  docsWin = new BrowserWindow({
-    width: 1020, height: 760, minWidth: 520, minHeight: 320, title: T("documentsTitle"), backgroundColor: "#0b0f15",
-    autoHideMenuBar: true, show: false,
-    webPreferences: { preload: join(here, "preload-documents.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
-  });
-  docsWin.setMenu(null);
+  docsWin = safeWindow({ size: { width: 1020, height: 760, minWidth: 520, minHeight: 320 }, title: T("documentsTitle"), background: "#0b0f15", preload: "preload-documents.cjs" });
   docsWin.loadFile(join(here, "renderer", "documents.html"));
-  docsWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  docsWin.webContents.on("will-navigate", (e) => e.preventDefault());
   docsWin.webContents.once("did-finish-load", () => { docsWin?.webContents.send("documents:show", payload); bringToFront(docsWin); });
   docsWin.on("closed", () => { docsWin = null; });
 }
 
 function openSettings() {
   if (settingsWin) { bringToFront(settingsWin); return settingsWin; }
-  settingsWin = new BrowserWindow({
-    width: 1180, height: 760, minWidth: 480, minHeight: 420, title: T("settingsTitle"), backgroundColor: "#0d1118",
-    autoHideMenuBar: true, show: false,
-    webPreferences: { preload: join(here, "preload-settings.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
-  });
-  settingsWin.setMenu(null);
+  settingsWin = safeWindow({ size: { width: 1180, height: 760, minWidth: 480, minHeight: 420 }, title: T("settingsTitle"), background: "#0d1118", preload: "preload-settings.cjs" });
   // Vérification : FLOPPY_SETTINGS_PAGE=<rubrique> ouvre les réglages sur cette rubrique (avec FLOPPY_SNAPSHOT : image).
   const page = process.env.FLOPPY_SETTINGS_PAGE;
   settingsWin.loadFile(join(here, "renderer", "settings.html"), page ? { hash: page } : undefined);
   settingsWin.once("ready-to-show", () => bringToFront(settingsWin));
-  settingsWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  settingsWin.webContents.on("will-navigate", (e) => e.preventDefault());
   settingsWin.on("closed", () => {
     settingsWin = null;
     for (const id of coderSessions) kernel?.postMessage({ type: "coder.close", sessionId: id });
@@ -682,16 +581,9 @@ function openSettings() {
 // ------------------------------------------------------------------ fenêtre « Bienvenue » (premier lancement)
 function openOnboarding() {
   if (onbWin && !onbWin.isDestroyed()) { bringToFront(onbWin); return onbWin; }
-  onbWin = new BrowserWindow({
-    width: 820, height: 700, minWidth: 420, minHeight: 480, title: T("onboardingTitle"), backgroundColor: "#0b0f15",
-    autoHideMenuBar: true, show: false,
-    webPreferences: { preload: join(here, "preload-onboarding.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
-  });
-  onbWin.setMenu(null);
+  onbWin = safeWindow({ size: { width: 820, height: 700, minWidth: 420, minHeight: 480 }, title: T("onboardingTitle"), background: "#0b0f15", preload: "preload-onboarding.cjs" });
   onbWin.loadFile(join(here, "renderer", "onboarding.html"));
   onbWin.once("ready-to-show", () => bringToFront(onbWin));
-  onbWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  onbWin.webContents.on("will-navigate", (e) => e.preventDefault());
   onbWin.on("closed", () => { onbWin = null; });
   return onbWin;
 }

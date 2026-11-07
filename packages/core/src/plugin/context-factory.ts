@@ -124,7 +124,7 @@ export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pe
       return dir;
     },
     settings: {
-      declare: (defs) => { scope.add(k.settings.declare(e.cfg.id, defs)); },
+      declare: (defs) => { const off = k.settings.declare(e.cfg.id, defs); scope.add(off); return off; },
       saved: (key) => k.settings.savedValue(key),
       savedEntries: (prefix) => k.settings.savedEntries(prefix),
       value: (key) => k.settings.value(key),

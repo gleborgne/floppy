@@ -28,7 +28,8 @@ export interface ContextTasks {
 
 /** Réglages du plugin, modifiables à la voix ou par la CLI (voir settings.ts). */
 export interface ContextSettings {
-  declare(defs: SettingDef[]): void;
+  /** Déclare des réglages ; rend la fonction qui les retire avant l'arrêt du plugin (sinon retirés à l'arrêt). */
+  declare(defs: SettingDef[]): () => void;
   /** Valeur gardée d'un démarrage précédent, à appliquer au démarrage. */
   saved<T>(key: string): T | undefined;
   /** Valeurs gardées dont la clé commence par `prefix` (non vide). */

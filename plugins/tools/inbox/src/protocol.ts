@@ -49,12 +49,22 @@ export function cleanText(x: unknown, max: number): Text | undefined {
   return { fr: fr ?? en!, ...(en ? { en } : {}) };
 }
 
+/**
+ * Nom d'une app, montré dans la carte d'accord et les réglages : lettres, chiffres et ponctuation simple seulement.
+ * Une phrase (« Mise à jour prête ! Cliquez Oui ») ou un caractère de contrôle n'est pas un nom.
+ */
+export const NAME = /^[\p{L}\p{N}][\p{L}\p{N} .,'’&()+_-]*$/u;
+export function cleanName(x: unknown): string | undefined {
+  const n = cleanText(typeof x === "string" ? x : undefined, MAX_NAME);
+  return typeof n === "string" && NAME.test(n) ? n : undefined;
+}
+
 export function parseHello(x: unknown): Hello | string {
   const o = obj(x);
   if (!o) return "message invalide";
   if (typeof o.app !== "string" || !APP_ID.test(o.app)) return "app invalide";
-  const name = typeof o.name === "string" ? o.name.replace(/\s+/g, " ").trim() : "";
-  if (!name || name.length > MAX_NAME) return "name invalide";
+  const name = cleanName(o.name);
+  if (!name) return "name invalide";
   const raw = o.schemes ?? [];
   if (!Array.isArray(raw) || raw.length > MAX_SCHEMES) return "schemes invalide";
   const schemes: string[] = [];
@@ -67,14 +77,18 @@ export function parseHello(x: unknown): Hello | string {
   return { app: o.app, name, schemes };
 }
 
+const SAFE_HREF = /^[^\s"\\<>`^{|}\u0000-\u001f\u007f-\uffff]+$/;
+
 /** Le lien d'une action : un schéma déclaré par l'app, ou https. Rend le lien normalisé, ou la raison du refus. */
 export function checkActionUrl(raw: unknown, schemes: readonly string[]): string | { error: string } {
   if (typeof raw !== "string" || !raw || raw.length > MAX_URL) return { error: "url invalide" };
   let u: URL;
   try { u = new URL(raw); } catch { return { error: "url invalide" }; }
   const s = u.protocol.replace(/:$/, "").toLowerCase();
-  if (s === "https") return u.href;
-  if (!schemes.includes(s) || forbiddenScheme(s)) return { error: `schéma non déclaré : ${s}` };
+  if (s !== "https" && (!schemes.includes(s) || forbiddenScheme(s))) return { error: `schéma non déclaré : ${s}` };
+  // Le lien passe tel quel au programme qui l'ouvre (rundll32 sous Windows) : ni espace, ni guillemet, ni barre
+  // inverse, ni caractère hors ASCII imprimable, qui pourraient sortir des guillemets de la commande de l'app.
+  if (!SAFE_HREF.test(u.href)) return { error: "url : caractères refusés (à encoder)" };
   return u.href;
 }
 

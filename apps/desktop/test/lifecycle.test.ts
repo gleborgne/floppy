@@ -4,6 +4,9 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { EventEmitter } from 'node:events';
+import * as texts from '../src/main-texts.mjs';
+import * as trayIcon from '../src/tray-icon.mjs';
+import * as placement from '../src/placement.mjs';
 
 // Le vrai processus principal, dans un bac sans Electron ni processus/fichiers réels.
 function desktop(argv: string[] = []) {
@@ -14,7 +17,9 @@ function desktop(argv: string[] = []) {
   const app = { quit:vi.fn(), requestSingleInstanceLock:()=>true, commandLine:{appendSwitch(){}}, whenReady:()=>new Promise(()=>{}), on:events.on.bind(events), getAppPath:()=>'.', getLoginItemSettings:()=>({executableWillLaunchAtLogin:false}), setLoginItemSettings(){} };
   const source = readFileSync(new URL('../src/main.mjs', import.meta.url),'utf8')
     .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.mjs',import.meta.url).href));
-  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console };
+  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console,
+    // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
+    ...texts, ...trayIcon, ...placement, safeWindow:()=>{ throw new Error('pas de fenêtre dans le bac'); }, bringToFront(){} };
   runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,problems:()=>problems,setWindow:w=>{win=w;}};',context);
   return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
