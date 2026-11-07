@@ -7,6 +7,7 @@ import { writeFileSync, readFileSync, rmSync, mkdirSync, existsSync, renameSync 
 import { join } from "node:path";
 import type { Kernel } from "./plugin/kernel.ts";
 import { errorText, T, TextError } from "./i18n.ts";
+import { onboardingFor } from "./onboarding.ts";
 
 export function floppyHome(): string {
   if (process.env.FLOPPY_HOME) { mkdirSync(process.env.FLOPPY_HOME, { recursive: true }); return process.env.FLOPPY_HOME; }
@@ -52,6 +53,11 @@ export async function startControl(kernel: Kernel, home: string, handlers: Contr
       case "POST /settings": return send(res, 200, await kernel.settings.change(String(body.key), body.value, "cli"));
       case "POST /settings/undo": return send(res, 200, await kernel.settings.undo("cli"));
       case "GET /items": return send(res, 200, await kernel.items.snapshot());
+      // Ce que Floppy lit de la machine, et les niveaux du premier lancement (CLI `floppy machine`).
+      case "GET /onboarding": {
+        const { candidates: _c, ...plan } = await onboardingFor(kernel).plan({ fresh: true });
+        return send(res, 200, plan);
+      }
       case "POST /items": return send(res, 200, await kernel.items.run(body as never, "cli"));
       case "POST /restart": await kernel.restart(String(body.id)); return send(res, 200, { ok: true });
       // Appel direct d'un outil (CLI `floppy tool`, mode debug) : même chemin que le modèle, accord compris.

@@ -37,8 +37,8 @@ plugins:
         #   label: Azure DevOps
         #   cloud: true
   # --- Brain
-  # Local models (GGUF) run by llama-server. llama-server is looked up in the PATH;
-  # otherwise set `exe` here or Settings → Brain → llama-server program.
+  # Local models (GGUF) run by llama-server. Floppy downloads the right llama.cpp for this computer
+  # (Settings → Brain → Download models, or the first-start window); otherwise it looks in the PATH, or set `exe` here.
   - id: llm
     plugin: llm-llamacpp
     config:
@@ -78,8 +78,8 @@ plugins:
     plugin: tts-audiocpp
     config:
       # exe: C:/audiocpp/audiocpp_server.exe
-      # Models: Settings → Voice → Download models (Pocket TTS, Supertonic, Qwen3-TTS, with their voices).
-      # backend: cpu      # no graphics card: Pocket TTS speaks in real time on the CPU
+      # Models and the audio.cpp program itself: Settings → Voice → Download models (Pocket TTS, Supertonic, Qwen3-TTS).
+      # backend: cpu      # default "auto": the engine of the downloaded audio.cpp (cuda, vulkan, metal), else cuda on NVIDIA, else CPU
       models: {}
       # Models from the Hugging Face repo audio-cpp/audio.cpp-gguf:
       #   femme:          # Floppy's female voice (SIWIS, CC BY 4.0), cloned by Pocket TTS (CPU)

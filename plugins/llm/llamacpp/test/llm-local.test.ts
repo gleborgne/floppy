@@ -37,7 +37,7 @@ beforeAll(async () => {
   await k.applyConfig({
     slots: { "brain.main": "llm/gemma" },
     plugins: [{ id: "probe", plugin: "probe" }, { id: "llm", plugin: "llm-llamacpp", config: {
-      port, scanDirs: [dir],
+      port, scanDirs: [dir], ollama: false,
       models: {
         gemma: { label: "Gemma", aliases: ["gemma"], model: base, args: ["-fa", "on", "--n-cpu-moe", "12"] },
         second: { label: "Second", model: other },

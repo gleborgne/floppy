@@ -226,6 +226,7 @@ export function makePlugin(native: Native, known: KnownModel[] = KNOWN_MODELS): 
         label: T("Modèles sherpa-onnx", "sherpa-onnx models"),
         entries: () => known,
         has: (e) => mine(e as KnownModel).length > 0,
+        itemOf: (e) => mine(e as KnownModel)[0]?.id,
         installed: (e) => {
           const k = e as KnownModel;
           if (mine(k).length) return;

@@ -12,7 +12,7 @@ const configPath = process.argv[2] ?? process.env.FLOPPY_CONFIG ?? "floppy.yml";
 
 const running = await boot({ configPath });
 running.kernel.bus.on("plugin.state", (s) => parent.postMessage({ type: "plugin.state", ...s }));
-parent.postMessage({ type: "kernel.ready", plugins: running.kernel.status() });
+parent.postMessage({ type: "kernel.ready", plugins: running.kernel.status(), firstRun: running.firstRun });
 
 // ------------------------------------------------------------------ réglages (fenêtre des réglages ↔ registre du noyau)
 const k = running.kernel;
@@ -60,6 +60,7 @@ parent.on("message", (e) => {
       .catch((err) => parent.postMessage({ type: "items.result", reqId: d.reqId, ok: false, text: uiError(err) }));
   }
   if (typeof d?.type === "string" && d.type.startsWith("coder.")) handleCoder(d as CoderMsg);
+  if (typeof d?.type === "string" && d.type.startsWith("onboarding.")) handleOnboarding(d as OnboardingMsg);
   if (d?.type === "stop") void running.stop().then(() => process.exit(0));
   if (d?.type === "status") parent.postMessage({ type: "status", plugins: running.kernel.status() });
 });
@@ -100,5 +101,35 @@ function handleCoder(d: CoderMsg) {
     else if (d.type === "coder.close") svc?.close(sid);
   } catch (err) {
     if (d.reqId !== undefined) reply(false, undefined, uiError(err));
+  }
+}
+
+// ------------------------------------------------------------------ premier lancement (fenêtre « Bienvenue »)
+interface OnboardingMsg { type: string; reqId?: number; fresh?: boolean; manualBytes?: number; level?: string; brain?: string; gpus?: unknown }
+const ob = running.onboarding;
+ob.onState((state) => parent.postMessage({ type: "onboarding.state", state }));
+
+function handleOnboarding(d: OnboardingMsg) {
+  const reply = (ok: boolean, value?: unknown, text?: unknown) => parent.postMessage({ type: "onboarding.result", reqId: d.reqId, ok, value, text });
+  try {
+    if (d.type === "onboarding.hint") {
+      // Fabricants des puces vues par l'appli : utiles seulement si aucune sonde ne répond.
+      const list = Array.isArray(d.gpus) ? d.gpus.slice(0, 8) : [];
+      k.machineHint = list.map((g) => ({ vendorId: Number((g as { vendorId?: unknown }).vendorId) || 0, name: String((g as { name?: unknown }).name ?? "").slice(0, 120) }));
+    } else if (d.type === "onboarding.get") {
+      const manual = typeof d.manualBytes === "number" && d.manualBytes >= 0 ? d.manualBytes : undefined;
+      ob.plan({ fresh: d.fresh === true, ...(manual !== undefined ? { manualBytes: manual } : {}) }).then(
+        ({ candidates: _c, ...plan }) => reply(true, { ...plan, state: ob.state, lang: k.uiLang }),
+        (err) => reply(false, undefined, uiError(err)),
+      );
+    } else if (d.type === "onboarding.apply") {
+      const r = ob.apply(String(d.level ?? "") as never, d.brain ? { brain: String(d.brain) } : {});
+      reply(r.ok, undefined, r.text);
+    } else if (d.type === "onboarding.skip") {
+      ob.skip();
+      reply(true);
+    }
+  } catch (err) {
+    reply(false, undefined, uiError(err));
   }
 }

@@ -134,6 +134,7 @@ export default definePlugin<Config>({
         none: { fr: "Local", en: "Local" }, display: "mode",
         description: { fr: "Local : un cerveau et une voix, choisis à part. Live : un seul modèle cloud qui écoute et parle (la délégation reste).", en: "Local: a brain and a voice, chosen separately. Live: one cloud model that listens and speaks (delegation stays)." } },
       { id: "voice.tts", service: "tts", section: "voix", label: { fr: "Voix", en: "Voice" }, display: "tabs",
+        none: { fr: "Aucune (réponses écrites)", en: "None (written replies)" }, defaultFirst: true,
         description: { fr: "Le moteur et la voix de Floppy en mode Local. En Live, c'est le moteur Live qui parle.", en: "Floppy's engine and voice in Local mode. In Live mode, the Live engine speaks." } },
       { id: "listen.wakeword", service: "wakeword", section: "ecoute", label: { fr: "Mot d'activation", en: "Wake word" }, display: "tabs",
         none: { fr: "Aucun (bouton seulement)", en: "None (button only)" },
@@ -163,7 +164,12 @@ export default definePlugin<Config>({
     const separate = !live && !liveUnavailable;
     const brain: BrainService | undefined = separate || live?.capabilities.tools === "delegation" ? await ctx.use("brain") : undefined;
     const tts = separate ? await ctx.slot<TtsService>("voice.tts") : undefined;
-    const ttsUnavailable = separate && !tts;
+    // « Aucune » voix choisie : Floppy répond par écrit, sans erreur. Une voix choisie mais absente : erreur montrée.
+    // « Aucune » est un choix seulement s'il y avait des voix (sinon le slot prend la première) : sans voix du tout,
+    // le flux voix parle lui-même (service voix complet), comme avant.
+    const ttsSetting = ctx.settings.list().find((x) => x.key === "slot.voice.tts");
+    const mute = separate && !tts && ttsSetting?.value === "@none" && (ttsSetting.options ?? []).some((o) => o.value !== "@none");
+    const ttsUnavailable = separate && !tts && !mute;
     let tone = ctx.settings.saved<string>("ton") ?? tr(PHRASES.tone, lang);
     ctx.settings.declare([{ key: "ton", section: "voix", label: { fr: "Ton", en: "Tone" }, description: { fr: "La manière de parler, commune à tous les modes.", en: "Speaking style shared by all conversation modes." }, type: "text", maxLength: 300, risk: "free", get: () => tone, set: (v) => { tone = String(v); for (const b of bodies.values()) b.live?.updateTone(); } }]);
     const wake = wakeword?.words?.() ?? [...ctx.assistant.wake_words];
@@ -721,7 +727,7 @@ ${text}` : text;
         b.voiceOffset = b.history?.end ?? 0;
         b.stream = stream;
         stream.setMergeEnabled?.(!live);
-        b.output = new SpeechQueue({ stream, tts, emit: (e) => onVoice(b, e), unavailable: ttsUnavailable ? T("La voix choisie est indisponible. Active une autre voix dans les réglages.", "The chosen voice is unavailable. Turn on another voice in the settings.") : undefined, lang: () => ctx.uiLang() });
+        b.output = new SpeechQueue({ stream, tts, mute, emit: (e) => onVoice(b, e), unavailable: ttsUnavailable ? T("La voix choisie est indisponible. Active une autre voix dans les réglages.", "The chosen voice is unavailable. Turn on another voice in the settings.") : undefined, lang: () => ctx.uiLang() });
         b.off = stream.on((ev) => onVoice(b, ev));
       } else if (!live) ctx.log("warn", `${b.id} a un micro mais aucun service voix n'est actif`);
       if (!ctx.alive) return;

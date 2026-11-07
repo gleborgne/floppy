@@ -7,6 +7,15 @@ contextBridge.exposeInMainWorld("floppySettings", {
   undo: () => ipcRenderer.invoke("settings:undo"),
   // Éléments du catalogue (modèles, voix, connecteurs, corps, avatars).
   items: () => ipcRenderer.invoke("items:get"),
+  // Fenêtre « Bienvenue » : refaire le réglage de départ selon la machine.
+  openOnboarding: () => ipcRenderer.send("open-onboarding"),
+  // Avancement de l'installation de départ (montré dans la rubrique Général).
+  onboardingState: () => ipcRenderer.invoke("onboarding:state"),
+  onOnboarding: (cb) => {
+    const fn = (_e, data) => cb(data);
+    ipcRenderer.on("onboarding:state", fn);
+    return () => ipcRenderer.removeListener("onboarding:state", fn);
+  },
   itemOp: (op) => ipcRenderer.invoke("items:op", op),
   pickPath: (opts) => ipcRenderer.invoke("items:pick", {
     directory: !!opts?.directory,

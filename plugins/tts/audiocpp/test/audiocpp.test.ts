@@ -323,3 +323,12 @@ describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simul
     }
   });
 });
+
+describe("ce que demande une voix (premier lancement)", () => {
+  it("Pocket TTS et Supertonic : processeur ; Qwen3-TTS : puce graphique (CUDA, Vulkan, Metal)", async () => {
+    const { voiceNeeds } = await import("../src/index.ts");
+    expect(voiceNeeds({ famille: "pocket_tts" })).toMatchObject({ device: "cpu" });
+    expect(voiceNeeds({ famille: "supertonic" })).toMatchObject({ device: "cpu" });
+    expect(voiceNeeds({ famille: "qwen3_tts" })).toMatchObject({ device: "gpu", backends: ["cuda", "vulkan", "metal"] });
+  });
+});

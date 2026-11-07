@@ -32,6 +32,8 @@ export interface SlotDef {
   description?: Text;
   /** Présent : le choix est facultatif, et ce texte nomme « aucun » (ex. « Séparé », « Pas de délégation »). */
   none?: Text;
+  /** Avec `none` : sans choix de l'utilisateur, prendre quand même le premier élément (« aucun » reste un choix). */
+  defaultFirst?: boolean;
   /**
    * Indice pour la fenêtre. "mode" : onglets de mode en haut de la rubrique (« aucun » = le mode par défaut, ex. Local / Live).
    * "tabs" : un onglet par plugin qui offre le service (ex. Voix, mot d'activation). Sans : une liste groupée par plugin.
@@ -97,7 +99,11 @@ export interface Manifest {
    * L'utilisateur peut ajouter ou retirer ce plugin depuis la fenêtre des réglages (voir apps.ts).
    * `fields` : formulaire de la config de l'entrée. `single` : une seule entrée possible.
    */
-  addable?: { section: string; label: Text; description?: Text; fields?: FieldDef[]; cloud?: boolean; single?: boolean; aliases?: string[] };
+  /**
+   * `program` : programme dont le plugin a besoin (ex. « codex »). Trouvé sur la machine, le premier lancement propose
+   * le plugin (et l'ajoute s'il n'est pas dans la config).
+   */
+  addable?: { section: string; label: Text; description?: Text; fields?: FieldDef[]; cloud?: boolean; single?: boolean; aliases?: string[]; program?: string };
 }
 
 const strs = z.array(z.string().min(1));
@@ -123,6 +129,7 @@ const ManifestSchema = z.object({
   slots: z.array(z.object({
     id: z.string().regex(/^[a-z][a-z0-9.-]*$/, "minuscules, chiffres, points et tirets"),
     service: z.string().min(1), section: z.string().min(1), label: text, description: text.optional(), none: text.optional(),
+    defaultFirst: z.boolean().optional(),
     display: z.enum(["mode", "tabs"]).optional(),
   }).strict()).optional(),
   tasks: z.array(z.object({

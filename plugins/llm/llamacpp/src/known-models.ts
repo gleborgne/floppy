@@ -1,13 +1,13 @@
 // Modèles GGUF choisis pour le cerveau (Réglages → Cerveau → Télécharger des modèles). Testés avec llama-server.
 // Adresses figées (commit Hugging Face) et empreintes sha256 : un fichier changé est refusé.
 import { T, type LibraryEntry } from "@floppy/core";
-import { memoryTag } from "./hf.ts";
+import { ggufNeeds, memoryTag } from "./hf.ts";
 
 const hf = (repo: string, commit: string, file: string, size: number, sha256: string) =>
   ({ url: `https://huggingface.co/${repo}/resolve/${commit}/${file}`, path: `hf/${repo}/${file}`, size, sha256 });
 
 const entry = (e: Omit<LibraryEntry, "tags"> & { tags: LibraryEntry["tags"] }): LibraryEntry =>
-  ({ ...e, tags: [...(e.tags ?? []), memoryTag(e.files[0]!.size!)] });
+  ({ ...e, tags: [...(e.tags ?? []), memoryTag(e.files[0]!.size!)], needs: ggufNeeds(e.files[0]!.size!) });
 
 export const KNOWN_MODELS: LibraryEntry[] = [
   entry({

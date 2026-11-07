@@ -350,3 +350,6 @@ dialog#editor.library { width: min(900px, 94vw); }
   .lside { max-width: none; width: 100%; justify-content: flex-start; }
   .lprog { width: 100%; }
 }
+
+/* Installation de départ (rubrique Général) : ce qui vient de s'activer, sous les lignes. */
+.onb-notes { margin: 0; padding: 10px 14px 12px 32px; border-top: 1px solid rgba(255, 255, 255, 0.06); color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }

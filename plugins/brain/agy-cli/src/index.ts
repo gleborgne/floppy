@@ -195,7 +195,7 @@ export default definePlugin<Config>({
     provides: ["delegate", "llm"],
     inject: ["mcp"],
     permissions: { exec: ["agy"], cloud: true },
-    addable: { section: "cerveau", label: "Antigravity", description: { fr: "Ton compte Google, par le CLI Antigravity (Gemini). Cerveau ou délégué. Conditions de Google peu claires pour un outil tiers.", en: "Your Google account, through the Antigravity CLI (Gemini). Brain or delegate. Google's terms are unclear for third-party tools." }, cloud: true, single: true, aliases: ["antigravity", "agy", "gemini"] },
+    addable: { section: "cerveau", label: "Antigravity", description: { fr: "Ton compte Google, par le CLI Antigravity (Gemini). Cerveau ou délégué. Conditions de Google peu claires pour un outil tiers.", en: "Your Google account, through the Antigravity CLI (Gemini). Brain or delegate. Google's terms are unclear for third-party tools." }, cloud: true, single: true, program: "agy", aliases: ["antigravity", "agy", "gemini"] },
   },
   config: Config,
   apply(ctx, cfg) {

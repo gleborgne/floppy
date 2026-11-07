@@ -30,7 +30,9 @@ let quitting = false;
 let currentPorts = null;
 let state = "idle";
 let settingsWin = null;
+let onbWin = null;               // fenêtre « Bienvenue » (premier lancement)
 let lastSettings = null;        // dernier { list, sections, plugins, lang } reçu du noyau
+let lastOnb = null;            // dernier état de l'installation de départ (fenêtre « Bienvenue » et réglages)
 let lastItems = null;           // derniers { providers, lang } reçus du noyau (éléments : modèles, voix, connecteurs, corps, avatars)
 let lang = "fr";                // langue de l'interface (réglage « langue_interface » du noyau)
 let reqSeq = 0;
@@ -79,6 +81,7 @@ const TEXTS = {
     logs: "Ouvrir le dossier des journaux", quit: "Quitter", settingsTitle: "Floppy — Réglages", panelTitle: "Floppy — Résultats", documentsTitle: "Floppy — Documents", noKernel: "Le noyau n'est pas démarré.", noAnswer: "Le noyau n'a pas répondu.",
     pickTitle: "Choisir", invalid: "Demande invalide.", taken: "déjà pris",
     problemNames: { "dictée": "dictée", raccourci: "raccourci" },
+    onboardingTitle: "Floppy — Bienvenue", firstSetup: "Réglage de départ…",
     settingsNotOpened: "Réglages non ouverts", closedWhileLoading: "fenêtre fermée pendant le chargement", loadTooLong: "chargement trop long", notVisible: "fenêtre non visible",
   },
   en: {
@@ -89,6 +92,7 @@ const TEXTS = {
     logs: "Open the logs folder", quit: "Quit", settingsTitle: "Floppy — Settings", panelTitle: "Floppy — Results", documentsTitle: "Floppy — Documents", noKernel: "The kernel is not running.", noAnswer: "The kernel did not answer.",
     pickTitle: "Choose", invalid: "Invalid request.", taken: "already taken",
     problemNames: { "dictée": "dictation", raccourci: "shortcut" },
+    onboardingTitle: "Floppy — Welcome", firstSetup: "First setup…",
     settingsNotOpened: "Settings not opened", closedWhileLoading: "window closed while loading", loadTooLong: "loading took too long", notVisible: "window not visible",
   },
 };
@@ -114,6 +118,7 @@ function setLang(l) {
   if (typeof l !== "string" || !TEXTS[l] || l === lang) return;
   lang = l;
   settingsWin?.setTitle(T("settingsTitle"));
+  onbWin?.setTitle(T("onboardingTitle"));
   // Les autres fenêtres suivent aussi la langue de l'interface, tout de suite.
   if (docsWin && !docsWin.isDestroyed()) docsWin.webContents.send("documents:lang", lang);
   if (dictWin && !dictWin.isDestroyed()) dictWin.webContents.send("dictation:lang", lang);
@@ -167,6 +172,7 @@ function refreshTray() {
     { label: win && !win.isDestroyed() && win.isVisible() ? T("hide") : T("show"), click: toggleWindow },
     { label: T("replace"), click: () => { placeHome(); showWin(); } },
     { label: T("settings"), click: openSettings },
+    { label: T("firstSetup"), click: openOnboarding },
     { type: "separator" },
     { label: T("restart"), click: () => restartKernel() },
     { label: T("logs"), click: () => shell.openPath(logDir) },
@@ -211,6 +217,12 @@ function startKernel() {
     }
     else if (m?.type === "coder.event") settingsWin?.webContents.send("coder:event", m.event);
     else if (m?.type === "coder.result") { pending.get(m.reqId)?.(m); pending.delete(m.reqId); }
+    else if (m?.type === "onboarding.state") {
+      lastOnb = m.state;
+      if (onbWin && !onbWin.isDestroyed()) onbWin.webContents.send("onboarding:state", m.state);
+      if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send("onboarding:state", m.state);
+    }
+    else if (m?.type === "onboarding.result") { pending.get(m.reqId)?.({ ok: m.ok, value: m.value, text: m.text }); pending.delete(m.reqId); }
     else if (m?.type === "settings.result") { pending.get(m.reqId)?.({ ok: m.ok, text: m.text }); pending.delete(m.reqId); }
     else if (m?.type === "plugin.state") {
       if (m.state === "error" || m.state === "waiting") problems.set(m.id, m.error ?? waitText(m.missing));
@@ -219,6 +231,11 @@ function startKernel() {
     } else if (m?.type === "kernel.ready") {
       for (const p of m.plugins) if (p.state === "error" || p.state === "waiting") problems.set(p.id, p.error ?? waitText(p.missing));
       refreshTray();
+      // Fabricants des puces vues par l'appli : un indice pour la lecture de la machine, si aucune sonde ne répond.
+      void app.getGPUInfo("basic").then((info) => {
+        const gpus = (info?.gpuDevice ?? []).map((g) => ({ vendorId: g.vendorId, name: g.deviceString ?? "" }));
+        source.postMessage({ type: "onboarding.hint", gpus });
+      }).catch(() => {}).finally(() => { if (m.firstRun) openOnboarding(); });
     }
   });
   kernel.on("exit", (code) => {
@@ -352,6 +369,12 @@ function createWindow() {
       if (process.env.FLOPPY_SETTINGS_JS) await settingsWin.webContents.executeJavaScript(process.env.FLOPPY_SETTINGS_JS).catch(() => {});
       const s = await settingsWin.webContents.capturePage();
       fs.writeFileSync(process.env.FLOPPY_SNAPSHOT.replace(/\.png$/i, "-reglages.png"), s.toPNG());
+    }
+    // Et la fenêtre « Bienvenue » : <fichier>-bienvenue.png (FLOPPY_ONBOARDING_JS=<code> : action avant l'image).
+    if (onbWin && !onbWin.isDestroyed()) {
+      if (process.env.FLOPPY_ONBOARDING_JS) await onbWin.webContents.executeJavaScript(process.env.FLOPPY_ONBOARDING_JS).catch(() => {});
+      const o = await onbWin.webContents.capturePage().catch(() => null);
+      if (o) fs.writeFileSync(process.env.FLOPPY_SNAPSHOT.replace(/\.png$/i, "-bienvenue.png"), o.toPNG());
     }
   }, 3000);
   // Messages de la page de l'avatar → console et journal (état du micro, erreurs).
@@ -545,6 +568,23 @@ function openSettings() {
   return settingsWin;
 }
 
+// ------------------------------------------------------------------ fenêtre « Bienvenue » (premier lancement)
+function openOnboarding() {
+  if (onbWin && !onbWin.isDestroyed()) { bringToFront(onbWin); return onbWin; }
+  onbWin = new BrowserWindow({
+    width: 820, height: 700, minWidth: 420, minHeight: 480, title: T("onboardingTitle"), backgroundColor: "#0b0f15",
+    autoHideMenuBar: true, show: false,
+    webPreferences: { preload: join(here, "preload-onboarding.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  onbWin.setMenu(null);
+  onbWin.loadFile(join(here, "renderer", "onboarding.html"));
+  onbWin.once("ready-to-show", () => bringToFront(onbWin));
+  onbWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  onbWin.webContents.on("will-navigate", (e) => e.preventDefault());
+  onbWin.on("closed", () => { onbWin = null; });
+  return onbWin;
+}
+
 async function showSettingsConfirmed() {
   const target = openSettings();
   if (target.webContents.isLoadingMainFrame()) await new Promise((resolve, reject) => {
@@ -723,6 +763,18 @@ app.whenReady().then(() => {
   });
   // Fenêtre des réglages : seulement depuis sa propre page.
   const fromSettings = (e) => settingsWin && e.sender === settingsWin.webContents;
+  // Fenêtre « Bienvenue » : seulement depuis sa propre page.
+  const fromOnb = (e) => onbWin && !onbWin.isDestroyed() && e.sender === onbWin.webContents;
+  ipcMain.handle("onboarding:get", (e, o) => fromOnb(e) ? kernelRequest({
+    type: "onboarding.get", fresh: o?.fresh === true,
+    ...(typeof o?.manualBytes === "number" && o.manualBytes >= 0 && o.manualBytes < 2 ** 50 ? { manualBytes: o.manualBytes } : {}),
+  }) : null);
+  ipcMain.handle("onboarding:apply", (e, level, brain) => fromOnb(e) ? kernelRequest({ type: "onboarding.apply", level: String(level).slice(0, 40), ...(brain ? { brain: String(brain).slice(0, 200) } : {}) }) : null);
+  ipcMain.handle("onboarding:skip", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.skip" }) : null);
+  ipcMain.on("onboarding:close", (e) => { if (fromOnb(e)) onbWin.close(); });
+  ipcMain.on("onboarding:settings", (e) => { if (fromOnb(e)) openSettings(); });
+  ipcMain.handle("onboarding:state", (e) => (fromSettings(e) ? lastOnb : null));
+  ipcMain.on("open-onboarding", (e) => { if (settingsWin && e.sender === settingsWin.webContents) openOnboarding(); });
   ipcMain.handle("settings:get", (e) => {
     if (!fromSettings(e)) return null;
     kernel?.postMessage({ type: "settings.get" });

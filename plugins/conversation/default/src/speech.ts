@@ -8,6 +8,8 @@ interface Options {
   emit(event: VoiceEvent): void;
   /** Voix choisie indisponible : erreur montrée au corps à chaque phrase. */
   unavailable?: Text;
+  /** Aucune voix choisie (réponses écrites) : chaque phrase finit tout de suite, sans son ni erreur. */
+  mute?: boolean;
   /** Langue des erreurs montrées au corps (celle de l'interface). Défaut : français. */
   lang?: () => string;
 }
@@ -22,6 +24,7 @@ export class SpeechQueue {
   speak(id: string, text: string): void {
     const { stream, tts, emit, unavailable } = this.opts;
     const lang = this.opts.lang?.() ?? "fr";
+    if (this.opts.mute) { emit({ type: "speak_done", id, cancelled: false }); return; }
     if (unavailable) { emit({ type: "speak_done", id, cancelled: true, error: tr(unavailable, lang) }); return; }
     if (!tts?.speak || tts.viaStream) {
       if (stream.speak) { stream.speak(id, text); return; }

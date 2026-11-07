@@ -24,8 +24,9 @@ The brain, the voice, the avatar, the tools and even the body it lives in are pl
 ## Requirements
 
 - Windows 10/11, [Node.js 24](https://nodejs.org/).
-- For a **local brain**: an NVIDIA GPU (about 16 GB of free VRAM for brain + voice) and [llama.cpp](https://github.com/ggml-org/llama.cpp/releases) (`llama-server`), plus a GGUF model.
-- For the **local voice**: [audio.cpp](https://github.com/0xShug0/audio.cpp/releases) (`audiocpp_server`) and its GGUF models, plus the sherpa-onnx listening models (about 1 GB in all). No GPU needed.
+- Nothing else to install by hand: on first start, the **Welcome** window reads the computer (graphics card or unified memory), recommends a level from "text only" to "all local", then downloads the right [llama.cpp](https://github.com/ggml-org/llama.cpp/releases) and [audio.cpp](https://github.com/0xShug0/audio.cpp/releases) build (CUDA, Vulkan, Metal or CPU) and the models. Run `floppy machine` to see what Floppy reads.
+- For a **local brain**: a graphics chip with about 8 to 16 GB for models (NVIDIA, AMD, Intel, or an Apple chip with unified memory).
+- For the **local voice**: no graphics chip needed (Pocket TTS on the CPU); the listening models take about 1 GB.
 - Optional: the [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex CLI, signed in (delegation, web search, Settings assistant).
 - Without a GPU: listening and voice run on the CPU; use Claude Code, Codex or a cloud model as the brain (API keys are entered in the Settings forms and stored in the OS keychain).
 

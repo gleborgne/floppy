@@ -3,10 +3,11 @@ import { createServer, type Server } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { z } from "zod";
 import { DownloadManager, MemorySecrets, hostAllowed, Kernel, definePlugin, tr, type DownloadState, type Context } from "../src/index.ts";
-import { safeJoin } from "../src/downloads.ts";
+import { safeJoin, systemExtract } from "../src/downloads.ts";
+import { execFileSync } from "node:child_process";
 
 const quiet = () => {};
 const DATA = randomBytes(200_000);
@@ -73,7 +74,7 @@ describe("DownloadManager", () => {
   it("télécharge, annonce la progression, vérifie le sha256 et ne laisse pas de .part", async () => {
     const s = await serve();
     const d = dir();
-    const m = new DownloadManager({ tickMs: 0 });
+    const m = new DownloadManager({ tickMs: 0, retryMs: [] });
     const seen: DownloadState[] = [];
     m.onChange((x) => seen.push(x));
     const end = finished(m, "e/k");
@@ -87,7 +88,7 @@ describe("DownloadManager", () => {
 
   it("apprend la taille par content-length quand elle n'est pas donnée", async () => {
     const s = await serve();
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     const end = finished(m, "k");
     m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f" }] }, dir(), HOSTS);
     expect(await end).toMatchObject({ state: "done", total: DATA.length });
@@ -96,7 +97,7 @@ describe("DownloadManager", () => {
   it("reprend un fichier coupé avec Range", async () => {
     const s = await serve();
     const d = dir();
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     s.mode.cutAt = 50_000;
     const req = { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f", size: DATA.length, sha256: SHA }] };
     let end = finished(m, "k");
@@ -113,12 +114,39 @@ describe("DownloadManager", () => {
     expect(readFileSync(join(d, "f")).equals(DATA)).toBe(true);
   });
 
+  it("coupure : nouvel essai tout seul, en reprenant où il en était", async () => {
+    const s = await serve();
+    const d = dir();
+    const m = new DownloadManager({ retryMs: [0, 0] });
+    s.mode.cutAt = 50_000;
+    const seen: (number | undefined)[] = [];
+    m.onChange((st) => { seen.push(st.retry); if (st.retry === 1) s.mode.cutAt = undefined; });
+    const end = finished(m, "k");
+    m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f", size: DATA.length, sha256: SHA }] }, d, HOSTS);
+    const st = await end;
+    expect(st.state).toBe("done");
+    expect(st.retry).toBeUndefined();
+    expect(seen).toContain(1);
+    expect(s.ranges.at(-1)).toBe("bytes=50000-");
+    expect(readFileSync(join(d, "f")).equals(DATA)).toBe(true);
+  });
+
+  it("adresse introuvable (404) : pas de nouvel essai", async () => {
+    const s = await serve();
+    s.mode.status = 404;
+    const m = new DownloadManager({ retryMs: [0, 0, 0] });
+    const end = finished(m, "k");
+    m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f" }] }, dir(), HOSTS);
+    expect((await end).state).toBe("error");
+    expect(s.ranges).toHaveLength(1);
+  });
+
   it("recommence depuis le début si le serveur ignore Range", async () => {
     const s = await serve();
     const d = dir();
     writeFileSync(join(d, "f.part"), DATA.subarray(0, 1000));
     s.mode.noRange = true;
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     const end = finished(m, "k");
     m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f", sha256: SHA }] }, d, HOSTS);
     expect((await end).state).toBe("done");
@@ -128,7 +156,7 @@ describe("DownloadManager", () => {
   it("jette un fichier abîmé (sha256 différent)", async () => {
     const s = await serve();
     const d = dir();
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     const end = finished(m, "k");
     m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f", sha256: "00".repeat(32) }] }, d, HOSTS);
     const r = await end;
@@ -142,7 +170,7 @@ describe("DownloadManager", () => {
     const s = await serve();
     const d = dir();
     writeFileSync(join(d, "f"), DATA);
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     const end = finished(m, "k");
     m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f", size: DATA.length }] }, d, HOSTS);
     expect((await end).state).toBe("done");
@@ -152,7 +180,7 @@ describe("DownloadManager", () => {
   it("signale une réponse d'erreur du serveur", async () => {
     const s = await serve();
     s.mode.status = 404;
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     const end = finished(m, "k");
     m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f" }] }, dir(), HOSTS);
     const r = await end;
@@ -164,7 +192,7 @@ describe("DownloadManager", () => {
     const s = await serve();
     s.mode.hold = true;
     const d = dir();
-    const m = new DownloadManager({ tickMs: 0 });
+    const m = new DownloadManager({ tickMs: 0, retryMs: [] });
     const end = finished(m, "k");
     const started = new Promise<void>((r) => { const off = m.onChange((x) => { if (x.received > 0) { off(); r(); } }); });
     m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f" }] }, d, HOSTS);
@@ -177,7 +205,7 @@ describe("DownloadManager", () => {
   it("n'en lance que `max` à la fois ; les autres attendent", async () => {
     const s = await serve();
     s.mode.hold = true;
-    const m = new DownloadManager({ max: 2 });
+    const m = new DownloadManager({ max: 2, retryMs: [] });
     const d = dir();
     for (const k of ["a", "b", "c"]) m.start(k, { key: k, label: k, files: [{ url: `${s.url}/${k}`, path: k }] }, d, HOSTS);
     expect(m.list().map((x) => x.state)).toEqual(["running", "running", "queued"]);
@@ -189,7 +217,7 @@ describe("DownloadManager", () => {
   });
 
   it("refuse un site non permis et une adresse qui n'est pas http(s)", () => {
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     expect(() => m.start("k", { key: "k", label: "x", files: [{ url: "https://example.com/f", path: "f" }] }, dir(), ["huggingface.co"])).toThrow(/example\.com/);
     expect(() => m.start("k", { key: "k", label: "x", files: [{ url: "file:///etc/passwd", path: "f" }] }, dir(), ["*"])).toThrow(/invalide/);
   });
@@ -197,7 +225,7 @@ describe("DownloadManager", () => {
   it("rend l'état courant si on relance un téléchargement en cours", async () => {
     const s = await serve();
     s.mode.hold = true;
-    const m = new DownloadManager();
+    const m = new DownloadManager({ retryMs: [] });
     const req = { key: "k", label: "x", files: [{ url: `${s.url}/f`, path: "f" }] };
     m.start("k", req, dir(), HOSTS);
     expect(m.start("k", req, dir(), HOSTS).state).toBe("running");
@@ -239,5 +267,52 @@ describe("ctx.downloads", () => {
     const k = new Kernel({ logger: quiet, plugins: [p] });
     await k.applyConfig({ plugins: [{ id: "x", plugin: "pnone" }], services: {} });
     expect(() => ctx.downloads.start({ key: "k", label: "x", files: [{ url: "https://huggingface.co/a", path: "a" }] })).toThrow(/permissions\.net/);
+  });
+});
+
+describe("archives (programmes)", () => {
+  it("décompresse dans un dossier une fois tout reçu, plusieurs archives au même endroit, puis efface les archives", async () => {
+    const s = await serve();
+    const d = dir();
+    const calls: string[] = [];
+    const m = new DownloadManager({
+      extract: async (archive, to) => { calls.push(basename(archive)); writeFileSync(join(to, basename(archive) + ".out"), "x"); },
+    });
+    const end = finished(m, "k");
+    m.start("k", { key: "k", label: "x", files: [
+      { url: `${s.url}/a`, path: "programs/a.zip", size: DATA.length, sha256: SHA, extract: "programs/b1" },
+      { url: `${s.url}/c`, path: "programs/c.zip", size: DATA.length, sha256: SHA, extract: "programs/b1" },
+    ] }, d, HOSTS);
+    const r = await end;
+    expect(tr(r.error ?? "", "fr")).toBe("");
+    expect(r.state).toBe("done");
+    expect(calls).toEqual(["a.zip", "c.zip"]);
+    expect(existsSync(join(d, "programs/b1/a.zip.out")) && existsSync(join(d, "programs/b1/c.zip.out"))).toBe(true);
+    expect(existsSync(join(d, "programs/a.zip"))).toBe(false);
+    expect(existsSync(join(d, "programs/b1.tmp"))).toBe(false);
+  });
+
+  it("échec de décompression : erreur, pas de dossier à moitié fait", async () => {
+    const s = await serve();
+    const d = dir();
+    const m = new DownloadManager({ extract: async () => { throw new Error("archive abîmée"); } });
+    const end = finished(m, "k");
+    m.start("k", { key: "k", label: "x", files: [{ url: `${s.url}/a`, path: "a.zip", extract: "out" }] }, d, HOSTS);
+    expect((await end).state).toBe("error");
+    expect(existsSync(join(d, "out"))).toBe(false);
+    expect(existsSync(join(d, "out.tmp"))).toBe(false);
+  });
+
+  it("le tar du système lit une vraie archive", async () => {
+    const d = dir();
+    mkdirSync(join(d, "src/bin"), { recursive: true });
+    writeFileSync(join(d, "src/bin/prog.txt"), "bonjour");
+    const root = process.env.SystemRoot ?? process.env.windir;
+    const tar = process.platform === "win32" && root ? join(root, "System32", "tar.exe") : "tar";
+    execFileSync(tar, ["-czf", join(d, "a.tar.gz"), "-C", join(d, "src"), "bin"]);
+    mkdirSync(join(d, "out"));
+    await systemExtract(join(d, "a.tar.gz"), join(d, "out"));
+    expect(readFileSync(join(d, "out/bin/prog.txt"), "utf8")).toBe("bonjour");
+    await expect(systemExtract(join(d, "src/bin/prog.txt"), join(d, "out"))).rejects.toThrow();
   });
 });

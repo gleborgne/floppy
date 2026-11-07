@@ -188,3 +188,85 @@ describe("à la demande : plugins lazy, forks, slots", () => {
     expect(k.slots().find((s) => s.id === "conversation.live")?.value).toBe("@none");
   });
 });
+
+describe("slot facultatif qui prend le premier élément (defaultFirst)", () => {
+  const user = (seen: string[]) => definePlugin({
+    manifest: {
+      id: "user", version: "0", licence: "MIT",
+      slots: [{ id: "voice.tts", service: "llm", section: "voix", label: "Voix", none: "Aucune", defaultFirst: true }],
+    },
+    async apply(ctx) { const v = await ctx.slot<{ model: string }>("voice.tts"); seen.push(v?.model ?? "-"); },
+  });
+  it("sans choix : le premier élément ; « aucun » choisi : rien", async () => {
+    const j: string[] = [];
+    const seen: string[] = [];
+    const k = new Kernel({ logger: quiet, plugins: [models(j), user(seen)] });
+    try {
+      await k.applyConfig({ plugins: [{ id: "m", plugin: "models" }, { id: "u", plugin: "user" }] });
+      expect(k.slots().find((s) => s.id === "voice.tts")?.value).toBe("m/a");
+      expect(seen.at(-1)).toBe("a");
+      expect((await k.settings.change("slot.voice.tts", "@none", "ui")).ok).toBe(true);
+      await k.idle();
+      expect(k.slots().find((s) => s.id === "voice.tts")?.value).toBe("@none");
+      expect(seen.at(-1)).toBe("-");
+    } finally { await k.stopAll(); }
+  });
+});
+
+describe("emprunt d'un élément par l'hôte (kernel.borrowItem)", () => {
+  it("fait tourner l'élément jusqu'à release ; élément inconnu : undefined", async () => {
+    const j: string[] = [];
+    const k = new Kernel({ logger: quiet, plugins: [models(j)] });
+    try {
+      await k.applyConfig({ plugins: [{ id: "m", plugin: "models" }] });
+      expect(await k.borrowItem("llm", "m/zz")).toBeUndefined();
+      const b = await k.borrowItem<{ model: string }>("llm", "m/b");
+      expect(b?.service.model).toBe("b");
+      expect(j).toEqual(["spawn b"]);
+      b!.release();
+      await k.idle();
+      expect(j).toEqual(["spawn b", "kill b"]);
+    } finally { await k.stopAll(); }
+  });
+});
+
+describe("relancer les éléments offerts (ctx.restartOffers)", () => {
+  it("un élément en panne (programme cassé) est réessayé ; un élément en marche repart (nouveau programme)", async () => {
+    const j: string[] = [];
+    let mctx!: { restartOffers(service?: string): Promise<void> };
+    let broken = true;
+    const m = definePlugin({
+      manifest: { id: "models2", version: "0", licence: "MIT", provides: ["llm"] },
+      apply(ctx) {
+        mctx = ctx;
+        ctx.offer("llm", {
+          max: 1,
+          items: () => [{ id: "a", label: "A", slow: true }],
+          start(f, item) {
+            if (broken) throw new Error("le programme ne se charge pas");
+            j.push(`spawn ${item}`);
+            f.effect(() => { j.push(`kill ${item}`); });
+            f.provide("llm", { baseURL: "x", model: item });
+          },
+        });
+      },
+    });
+    const k = new Kernel({ logger: quiet, plugins: [m, brain(j), live(j), conv(j)] });
+    await k.applyConfig({
+      plugins: [{ id: "m", plugin: "models2" }, { id: "brain", plugin: "brain" }, { id: "live", plugin: "live" }, { id: "conv", plugin: "conv" }],
+      slots: { "brain.main": "m/a" },
+    }).catch(() => {});
+    expect(state(k, "m/llm/a")).toBe("error");
+    // La nouvelle version du programme est arrivée : le plugin relance ses éléments.
+    broken = false;
+    await mctx.restartOffers();
+    expect(state(k, "m/llm/a")).toBe("active");
+    expect(j).toContain("spawn a");
+    j.length = 0;
+    await mctx.restartOffers("llm");
+    expect(j.indexOf("kill a")).toBeLessThan(j.indexOf("spawn a"));
+    expect(j.filter((x) => x === "spawn a")).toHaveLength(1);
+    expect(state(k, "m/llm/a")).toBe("active");
+    await k.stopAll();
+  });
+});

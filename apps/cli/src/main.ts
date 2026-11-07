@@ -21,7 +21,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { controlCall, errorText, floppyHome, tr, type EntryStatus } from "@floppy/core";
+import { controlCall, errorText, findExe, floppyHome, gbText, machineSummary, probeMachine, tr, type EntryStatus, type MachineInfo, type Text } from "@floppy/core";
 import { boot } from "./boot.ts";
 import { checkPlugin, formatFindings } from "./plugins/check.ts";
 import { newPlugin } from "./plugins/scaffold.ts";
@@ -135,15 +135,44 @@ async function main(): Promise<number> {
       console.log(`[${r.status}] ${tr(r.text as never, lang)}`);
       return r.status === "done" || r.status === "unverified" ? 0 : 1;
     }
+    case "machine": return await machine();
     case "dev": return await dev();
     case "plugin": return await plugin();
     default:
       console.log(say(
-        "Commandes : start [--config f] [--headless] | chat | settings | set <clé> <valeur> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <outil> [json] | dev <dossier> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <dossier>",
-        "Commands: start [--config f] [--headless] | chat | settings | set <key> <value> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <tool> [json] | dev <folder> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <folder>",
+        "Commandes : start [--config f] [--headless] | machine | chat | settings | set <clé> <valeur> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <outil> [json] | dev <dossier> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <dossier>",
+        "Commands: start [--config f] [--headless] | machine | chat | settings | set <key> <value> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <tool> [json] | dev <folder> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <folder>",
       ));
       return cmd === "help" ? 0 : 1;
   }
+}
+
+/** `floppy machine` : ce que Floppy lit de la machine ; avec le noyau qui tourne, les niveaux du premier lancement aussi. */
+async function machine(): Promise<number> {
+  let plan: { machine: MachineInfo; levels: { id: string; label: Text; possible: boolean; reason?: Text; picks: { label: Text }[] }[]; recommended: string; agents: { label: Text; program: string; found: boolean }[] } | undefined;
+  try {
+    const r = await controlCall(home, "GET", "/onboarding");
+    if (r.status === 200) plan = r.data;
+  } catch { /* noyau arrêté : la machine seule */ }
+  const m = plan?.machine ?? await probeMachine({ ...(findExe("llama-server") ? { llamaExe: findExe("llama-server")! } : {}) });
+  console.log(tr(machineSummary(m), lang));
+  for (const g of m.gpus) {
+    const mem = g.totalBytes ? ` · ${tr(gbText(g.totalBytes), lang)}` : "";
+    const free = g.freeBytes ? say(` · ${tr(gbText(g.freeBytes), lang)} libres`, ` · ${tr(gbText(g.freeBytes), lang)} free`) : "";
+    console.log(`  ${g === m.gpu ? "●" : "○"} ${g.name}${g.integrated ? say(" (intégrée)", " (integrated)") : ""}${mem}${free} · ${g.backends.join(", ")}`);
+  }
+  console.log(say(`Sondes : ${m.sources.join(", ") || "aucune"}`, `Probes: ${m.sources.join(", ") || "none"}`));
+  const agents = plan?.agents ?? [["Claude Code", "claude"], ["Codex", "codex"], ["Antigravity", "agy"]].map(([label, program]) => ({ label: label!, program: program!, found: !!findExe(program!) }));
+  console.log(say("Programmes de cerveau :", "Brain programs:"));
+  for (const a of agents) console.log(`  ${a.found ? "●" : "○"} ${tr(a.label, lang)} (${a.program})${a.found ? "" : say(" : pas installé", ": not installed")}`);
+  if (!plan) { console.log(say("Niveaux : lancez d'abord le noyau (floppy start).", "Levels: start the kernel first (floppy start).")); return 0; }
+  console.log(say("Niveaux :", "Levels:"));
+  for (const l of plan.levels) {
+    const mark = l.id === plan.recommended ? "★" : l.possible ? "●" : "✖";
+    const detail = l.possible ? l.picks.map((p) => tr(p.label, lang)).join(" · ") : tr(l.reason ?? "", lang);
+    console.log(`  ${mark} ${tr(l.label, lang)} — ${detail}`);
+  }
+  return 0;
 }
 
 /**

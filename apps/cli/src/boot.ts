@@ -1,7 +1,7 @@
 // Démarrage du noyau. Utilisé par `floppy start --headless` (Node 24) et par l'app Electron (utilityProcess).
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { Kernel, FileAudit, consoleLogger, loadConfigFile, watchConfig, startControl, floppyHome, type Logger, type PluginDef } from "@floppy/core";
+import { Kernel, FileAudit, consoleLogger, loadConfigFile, watchConfig, startControl, floppyHome, onboardingFor, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
 import { catalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
@@ -29,6 +29,10 @@ export function envDevDirs(): string[] {
 export interface Running {
   kernel: Kernel;
   home: string;
+  /** Réglage de départ selon la machine (fenêtre « Bienvenue »). */
+  onboarding: Onboarding;
+  /** Premier lancement : la fenêtre « Bienvenue » doit s'ouvrir (config créée maintenant, ou réglage pas fini). */
+  firstRun: boolean;
   /** Relit <home>/plugins : ajoute, recharge, signale les erreurs. */
   reloadUserPlugins(): Promise<ReloadItem[]>;
   stop(): Promise<void>;
@@ -39,7 +43,8 @@ export async function boot(opts: BootOptions): Promise<Running> {
   const configPath = resolve(opts.configPath);
   // Premier lancement : floppy.yml (propre à ce PC, hors git) est créé depuis floppy.example.yml.
   const example = join(dirname(configPath), "floppy.example.yml");
-  if (!existsSync(configPath) && existsSync(example)) {
+  const created = !existsSync(configPath) && existsSync(example);
+  if (created) {
     copyFileSync(example, configPath);
     console.log(sayer(cliLang(home))(`config créée depuis ${example} : ${configPath}`, `config created from ${example}: ${configPath}`));
   }
@@ -67,10 +72,16 @@ export async function boot(opts: BootOptions): Promise<Running> {
   const stopControl = await startControl(kernel, home, {
     reload: () => kernel.applyConfig(loadConfigFile(configPath)),
   });
+  const onboarding = onboardingFor(kernel);
+  if (created) onboarding.begin();
+  // Floppy fermé pendant l'installation de départ : elle reprend (les blocs déjà téléchargés sont prêts tout de suite).
+  void onboarding.resume().catch((e) => log({ level: "warn", source: "onboarding", msg: String(e) }));
   let stopping: Promise<void> | undefined;
   return {
     kernel,
     home,
+    onboarding,
+    firstRun: onboarding.needed(),
     reloadUserPlugins: () => userPlugins.reload(),
     stop: () => (stopping ??= (async () => {
       unwatch();

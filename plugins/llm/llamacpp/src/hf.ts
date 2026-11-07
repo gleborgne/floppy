@@ -1,6 +1,6 @@
 // Recherche de modèles GGUF sur Hugging Face (comme LM Studio) : dépôts publics, quelques quantifications par dépôt.
 // Chaque fichier proposé est figé au commit lu (adresse /resolve/<commit>/) et vérifié par son empreinte sha256 (Git LFS).
-import { T, type DownloadFile, type LibraryEntry, type Text } from "@floppy/core";
+import { T, type DownloadFile, type LibraryEntry, type ModelNeeds, type Text } from "@floppy/core";
 
 const API = "https://huggingface.co/api/models";
 
@@ -14,6 +14,11 @@ const PER_REPO = 3;
 export function memoryTag(bytes: number): Text {
   const gb = Math.ceil(bytes / 1e9 + 1.2);
   return T(`≈ ${gb} Go de mémoire`, `≈ ${gb} GB of memory`);
+}
+
+/** Ce que demande un modèle GGUF : le fichier + ~1,2 Go (contexte 32k, tampons), sur la puce graphique (tous moteurs). */
+export function ggufNeeds(bytes: number): ModelNeeds {
+  return { memory: bytes + 1.2e9, device: "gpu" };
 }
 
 /** Quantification lue dans le nom (« Q4_K_M »), ou undefined. */
@@ -79,6 +84,7 @@ export async function searchHf(query: string, fetchFn: typeof fetch = fetch): Pr
         description: g.parts.length > 1 ? T(`${id} · ${g.parts.length} fichiers`, `${id} · ${g.parts.length} files`) : id,
         ...(licence ? { licence: { name: licence, url: `https://huggingface.co/${id}` } } : {}),
         tags: [memoryTag(size)],
+        needs: ggufNeeds(size),
         files,
       });
     }

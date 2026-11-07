@@ -5,7 +5,7 @@
 import { readdirSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Context } from "./plugin/context.ts";
-import type { ItemInfo, OpResult } from "./catalog.ts";
+import type { ItemInfo, ModelNeeds, OpResult } from "./catalog.ts";
 import type { DownloadFile, DownloadState } from "./downloads.ts";
 import { safeJoin } from "./downloads.ts";
 import { T, tr, type Text } from "./i18n.ts";
@@ -22,6 +22,10 @@ export interface LibraryEntry {
   tags?: Text[];
   /** Court extrait sonore (http(s)) à écouter avant de télécharger : bouton « Écouter », ouvert dans le navigateur. */
   sample?: string;
+  /** Service que rendra son élément, quand la bibliothèque en offre plusieurs (ex. « vad » ou « stt »). */
+  service?: string;
+  /** Ce qu'il demande pour tourner (mémoire, processeur ou puce graphique). Lu par le premier lancement. */
+  needs?: ModelNeeds;
 }
 
 export interface LibraryOptions {
@@ -44,6 +48,10 @@ export interface LibraryOptions {
   /** Recherche en ligne : rend des entrées (gardées en mémoire pour leurs boutons). */
   search?(query: string): Promise<LibraryEntry[]>;
   searchHint?: Text;
+  /** Modèle installé : id de l'élément offert qu'il donne (le premier, s'il en donne plusieurs). */
+  itemOf?(entry: LibraryEntry): string | undefined;
+  /** Ce qui manque pour faire tourner ces modèles (ex. le programme). Absent ou undefined : rien. */
+  missing?(): Text | undefined;
 }
 
 /** « 1,2 Go » / « 1.2 GB ». */
@@ -86,9 +94,14 @@ export function modelLibrary(ctx: Context, opts: LibraryOptions): { refresh(): v
       ...(e.sample ? [{ id: "listen", label: T("Écouter", "Listen") }] : []),
       ...(e.licence?.url ? [{ id: "licence", label: T("Licence", "Licence") }] : []),
     ];
+    const one = typeof opts.offers === "string" ? opts.offers : opts.offers.length === 1 ? opts.offers[0] : undefined;
+    const service = e.service ?? one;
     const base: ItemInfo = {
       id: e.id, label: e.label, enabled: true, tags,
       ...(e.description ? { detail: e.description } : {}),
+      ...(e.needs ? { needs: e.needs } : {}),
+      ...(size !== undefined ? { size } : {}),
+      ...(service ? { service } : {}),
     };
     if (d && (d.state === "queued" || d.state === "running")) {
       const total = d.total ?? size;
@@ -96,12 +109,15 @@ export function modelLibrary(ctx: Context, opts: LibraryOptions): { refresh(): v
       const text: Text = d.state === "queued" ? T("En attente…", "Waiting…")
         : total ? join2(T(`${Math.floor((progress ?? 0) * 100)} %`, `${Math.floor((progress ?? 0) * 100)}%`), " · ", join2(formatBytes(d.received), " / ", formatBytes(total)))
         : formatBytes(d.received);
-      return { ...base, status: "loading", statusText: text, progress: progress ?? 0, actions: [{ id: "cancel", label: T("Annuler", "Cancel") }] };
+      // Coupure : le téléchargement réessaie tout seul (en reprenant où il en était).
+      const shown = d.retry ? join2(text, " · ", T(`nouvel essai ${d.retry}`, `retry ${d.retry}`)) : text;
+      return { ...base, status: "loading", statusText: shown, progress: progress ?? 0, actions: [{ id: "cancel", label: T("Annuler", "Cancel") }] };
     }
     if (onDisk(e)) {
       const missing = opts.has && !opts.has(e);
+      const uses = missing ? undefined : opts.itemOf?.(e);
       return {
-        ...base, status: "ok", statusText: T("Installé", "Installed"),
+        ...base, status: "ok", statusText: T("Installé", "Installed"), ...(uses ? { uses } : {}),
         actions: [...(missing ? [{ id: "use", label: T("Ajouter à la liste", "Add to the list") }] : []), { id: "remove", label: T("Supprimer", "Delete") }, ...licence],
       };
     }
@@ -142,6 +158,7 @@ export function modelLibrary(ctx: Context, opts: LibraryOptions): { refresh(): v
     ...(opts.description ? { description: opts.description } : {}),
     ...(opts.order !== undefined ? { order: opts.order } : {}),
     ...(opts.searchHint ? { searchHint: opts.searchHint } : {}),
+    ...(opts.missing ? { missing: opts.missing } : {}),
     list: () => {
       // Les résultats de recherche restent visibles tant qu'ils se téléchargent, ont échoué ou sont installés.
       const known = new Set(opts.entries().map((e) => e.id));

@@ -14,6 +14,7 @@ import type { Secrets } from "../secrets.ts";
 import type { Text } from "../i18n.ts";
 import type { TaskInfo, TaskOutcome } from "../tasks.ts";
 import type { ContextDownloads } from "../downloads.ts";
+import type { MachineInfo } from "../machine.ts";
 
 /** Tâches des plugins (voir tasks.ts) : pour un déclencheur (Planificateur) ou un plugin qui en lance une. */
 export interface ContextTasks {
@@ -123,6 +124,13 @@ export interface Context {
   readonly assistant: AssistantSettings;
   /** Langue de l'interface (ce que l'utilisateur lit dans les fenêtres) : « fr » ou « en ». La langue de ce que Floppy dit est assistant.language. */
   uiLang(): string;
+  /** Ce que Floppy lit de la machine : puce graphique, type de mémoire, mémoire pour les modèles, moteurs (cuda, metal…). */
+  machine(): Promise<MachineInfo>;
+  /**
+   * Relance les éléments offerts (ctx.offer) qui tournent ou sont en panne : ils repartent avec le nouveau programme ou
+   * les nouveaux réglages. `service` : seulement ceux de ce service. Depuis un fork : ceux de son plugin.
+   */
+  restartOffers(service?: string): Promise<void>;
   readonly approvals: ContextApprovals;
   readonly audit: Audit;
   /** Dossier de données de l'assistant (%LOCALAPPDATA%\floppy ou FLOPPY_HOME). */

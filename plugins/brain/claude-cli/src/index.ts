@@ -266,7 +266,7 @@ export default definePlugin<Config>({
     provides: ["delegate", "llm", "brain", "completion"],
     inject: ["mcp"],
     permissions: { exec: ["claude"], cloud: true },
-    addable: { section: "cerveau", label: "Claude Code", description: { fr: "Ton abonnement Claude, par le CLI officiel : Opus, Sonnet ou Haiku. Cerveau ou délégué.", en: "Your Claude subscription, through the official CLI: Opus, Sonnet or Haiku. Brain or delegate." }, cloud: true, single: true },
+    addable: { section: "cerveau", label: "Claude Code", description: { fr: "Ton abonnement Claude, par le CLI officiel : Opus, Sonnet ou Haiku. Cerveau ou délégué.", en: "Your Claude subscription, through the official CLI: Opus, Sonnet or Haiku. Brain or delegate." }, cloud: true, single: true, program: "claude" },
   },
   config: Config,
   apply(ctx, cfg) {

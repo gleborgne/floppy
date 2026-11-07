@@ -17,6 +17,7 @@ export const KNOWN_MODELS: KnownModel[] = [
       "Detects when you start and stop speaking. Small and fast: needed for listening."),
     licence: { name: "MIT", url: "https://github.com/snakers4/silero-vad/blob/master/LICENSE" },
     tags: [T("processeur", "CPU")],
+    service: "vad", needs: { memory: 50_000_000, device: "cpu" },
     target: "silero-vad/silero_vad.onnx",
     files: [{
       url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
@@ -31,6 +32,7 @@ export const KNOWN_MODELS: KnownModel[] = [
       "Turns your voice into text, in French, English and 23 other European languages. Runs on the CPU."),
     licence: { name: "CC-BY-4.0", url: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" },
     tags: [T("français", "French"), T("anglais", "English"), T("processeur", "CPU")],
+    service: "stt", needs: { memory: 1_300_000_000, device: "cpu" },
     target: "parakeet-tdt-v3-int8",
     files: [
       { url: `${PARAKEET}/encoder.int8.onnx`, path: "parakeet-tdt-v3-int8/encoder.int8.onnx", size: 652_184_281, sha256: "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247" },

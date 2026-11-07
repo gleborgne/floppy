@@ -23,6 +23,17 @@ import { dirname, join } from "node:path";
 import type { ApprovalManager } from "./approval.ts";
 import type { Audit } from "./audit.ts";
 import { allTexts, errorText, T, tr, type Text } from "./i18n.ts";
+import type { Backend } from "./machine.ts";
+
+/** Ce que demande un modèle pour tourner (bibliothèque de modèles ; lu par le premier lancement). */
+export interface ModelNeeds {
+  /** Mémoire en octets (fichiers + contexte et tampons). */
+  memory: number;
+  /** « cpu » : tourne sur le processeur (RAM). « gpu » : sur la puce graphique (mémoire des modèles). */
+  device: "cpu" | "gpu";
+  /** Moteurs acceptés sur la puce graphique (absent : tous). Ex. ["cuda"]. */
+  backends?: Backend[];
+}
 
 export type FieldType = "text" | "number" | "boolean" | "select" | "secret" | "path" | "list" | "textarea" | "keyvalue";
 
@@ -109,6 +120,16 @@ export interface ItemInfo {
   group?: { id: string; label: Text; detail?: Text };
   /** Avancement d'un travail en cours (téléchargement), de 0 à 1. La fenêtre montre une barre. */
   progress?: number;
+  /** Modèle à télécharger : ce qu'il demande pour tourner. */
+  needs?: ModelNeeds;
+  /** Modèle à télécharger : taille des fichiers, en octets. */
+  size?: number;
+  /** Modèle à télécharger : le service que rendra son élément (« vad », « stt », « tts », « llm »). */
+  service?: string;
+  /** Programme à télécharger : son moteur (« cuda », « vulkan », « metal », « cpu »). */
+  backend?: string;
+  /** Modèle installé : l'élément offert qu'il donne (id dans ctx.offer du même plugin), à choisir dans un slot. */
+  uses?: string;
 }
 
 export interface OpResult {
@@ -171,6 +192,8 @@ export interface ProviderDef {
   search?(query: string): Promise<OpResult>;
   /** Texte d'aide de la case de recherche (« Chercher sur Hugging Face »). */
   searchHint?: Text;
+  /** Ce qui manque pour que ces éléments tournent (ex. « llama-server est introuvable »). Absent : rien ne manque. */
+  missing?(): Text | undefined;
 }
 
 export interface ProviderSnapshot {
@@ -187,6 +210,7 @@ export interface ProviderSnapshot {
   addLabel?: Text;
   childrenLabel?: Text;
   searchHint?: Text;
+  missing?: Text;
   source: string;
   can: { add: boolean; update: boolean; remove: boolean; enable: boolean; child: boolean; test: boolean; action: boolean; search: boolean };
   items: ItemInfo[];
@@ -257,6 +281,8 @@ export class CatalogRegistry {
       let items: ItemInfo[] = [];
       let error: string | undefined;
       try { items = await def.list(); } catch (e) { error = e instanceof Error ? e.message : String(e); }
+      let missing: Text | undefined;
+      try { missing = def.missing?.(); } catch { /* lu au prochain instantané */ }
       out.push({
         id: def.id, section: def.section, layout: def.layout ?? "list", capabilities: def.capabilities ?? [], ...(def.offers ? { offers: def.offers } : {}), label: def.label, order: def.order ?? 100, source,
         ...(def.description ? { description: def.description } : {}),
@@ -265,6 +291,7 @@ export class CatalogRegistry {
         ...(def.addLabel ? { addLabel: def.addLabel } : {}),
         ...(def.childrenLabel ? { childrenLabel: def.childrenLabel } : {}),
         ...(def.searchHint ? { searchHint: def.searchHint } : {}),
+        ...(missing ? { missing } : {}),
         can: {
           add: !!def.add && (def.kinds?.length ?? 0) > 0, update: !!def.update, remove: !!def.remove,
           enable: !!def.setEnabled, child: !!def.setChild, test: !!def.test, action: !!def.action, search: !!def.search,

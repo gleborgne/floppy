@@ -15,11 +15,11 @@
 import { spawn as nodeSpawn, type SpawnOptions } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { Bus, type PluginState } from "../bus.ts";
 import { Hooks } from "./hooks.ts";
 import { EffectScope } from "./effects.ts";
-import { manifestError, execAllowed, programName, type PluginDef, type SlotDef } from "./manifest.ts";
+import { manifestError, execAllowed, programName, type Manifest, type PluginDef, type SlotDef } from "./manifest.ts";
 import type { Context, ContextApprovals, LogLevel, OfferDef, OfferItem } from "./context.ts";
 import type { SettingOption } from "../settings.ts";
 import { ApprovalManager } from "../approval.ts";
@@ -37,7 +37,8 @@ import { TaskRegistry, taskTools } from "../tasks.ts";
 import { DownloadManager, downloadsDir, type DownloadManagerOptions } from "../downloads.ts";
 import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
-import { killTree, stableStringify } from "../util/process.ts";
+import { findExe, killTree, stableStringify } from "../util/process.ts";
+import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
 export type Logger = (rec: { level: LogLevel; source: string; msg: string; data?: Record<string, unknown> }) => void;
 
@@ -118,6 +119,8 @@ export interface KernelOptions {
   secrets?: Secrets;
   /** Téléchargements (tests : un fetch simulé). Défaut : fetch global, 2 en même temps. */
   downloads?: DownloadManagerOptions;
+  /** Lecture de la machine (tests : sorties simulées). Défaut : les vraies sondes. */
+  machine?: ProbeOptions;
 }
 
 export class Kernel {
@@ -138,6 +141,10 @@ export class Kernel {
   readonly downloads: DownloadManager;
   /** Dossier où les plugins rangent les fichiers téléchargés (réglage « dossier_modeles », défaut <home>/models). */
   modelsDir: string;
+  /** Indice de l'appli pour la lecture de la machine (fabricants des puces vues par le navigateur). */
+  machineHint: ProbeOptions["hint"];
+  private readonly machineOpts: ProbeOptions;
+  private machineCache: { at: number; info: Promise<MachineInfo> } | undefined;
   /** Langue de la fenêtre des réglages et des menus (fr, en). */
   uiLang = "fr";
   /** Langue de l'assistant choisie dans les réglages (sinon celle de floppy.yml : assistant.language). */
@@ -234,6 +241,7 @@ export class Kernel {
       },
     }]);
     this.downloads = new DownloadManager(opts.downloads);
+    this.machineOpts = opts.machine ?? {};
     this.modelsDir = this.settings.savedValue<string>("dossier_modeles") || join(this.home, "models");
     this.settings.declare("core", [{
       key: "dossier_modeles", section: "general", group: { fr: "Modèles", en: "Models" },
@@ -507,6 +515,22 @@ export class Kernel {
     }
   }
 
+  /** Relance les forks d'une entrée (nouveau programme) : ceux en marche repartent, ceux en panne sont réessayés. */
+  restartForks(parent: string, service?: string): Promise<void> {
+    return this.enqueue(async () => {
+      const list = [...this.forks.entries()].filter(([, f]) => f.fork!.parent === parent && (!service || f.fork!.service === service));
+      for (const [key, f] of list) {
+        // Un fork en panne n'a rien fourni : ceux qui le voulaient (slot) tournent sans lui ; ils repartent pour le redemander.
+        if (f.state === "error") {
+          for (const y of [...this.all()]) if (y.state === "active" && [...y.slotBound.values()].includes(key)) await this.stopEntry(y, "loaded");
+        }
+        if (f.state !== "loaded") await this.stopEntry(f, "loaded");
+        this.forks.delete(key);
+      }
+      if (list.length) await this.reconcile();
+    });
+  }
+
   /** Relance une entrée en erreur (ou active). */
   restart(id: string): Promise<void> {
     return this.enqueue(async () => {
@@ -532,6 +556,55 @@ export class Kernel {
   /** Attend la fin des opérations en cours. */
   idle(): Promise<void> {
     return this.enqueue(async () => {});
+  }
+
+  /** Manifestes des plugins connus (catalogue). */
+  manifests(): Manifest[] {
+    return [...this.catalog.values()].map((d) => d.manifest);
+  }
+
+  /** Ce que Floppy lit de la machine (puce graphique, mémoire pour les modèles, RAM, disque). Relu au plus toutes les 60 s. */
+  machine(fresh = false): Promise<MachineInfo> {
+    const now = Date.now();
+    if (!fresh && this.machineCache && now - this.machineCache.at < 60_000) return this.machineCache.info;
+    const llamaExe = this.settings.savedValue<string>("llm_local_programme") || findExe("llama-server");
+    const info = probeMachine({
+      diskDir: existsSync(this.modelsDir) ? this.modelsDir : this.home,
+      ...(llamaExe ? { llamaExe } : {}), ...(this.machineHint ? { hint: this.machineHint } : {}), ...this.machineOpts,
+    });
+    this.machineCache = { at: now, info };
+    return info;
+  }
+
+  /**
+   * Emprunte un élément offert (« <entrée>/<élément> ») pour l'hôte (ex. test de vitesse du premier lancement) :
+   * le noyau le fait tourner jusqu'à release(). Undefined : élément absent ou en panne.
+   */
+  borrowItem<T = unknown>(service: string, value: string): Promise<{ service: T; release(): void } | undefined> {
+    const cut = value.indexOf("/");
+    if (cut < 1) return Promise.resolve(undefined);
+    const entry = value.slice(0, cut);
+    const item = value.slice(cut + 1);
+    return this.enqueue(async () => {
+      const p = this.entries.get(entry);
+      const offer = p?.state === "active" ? p.offers.get(service) : undefined;
+      if (!offer || !offerItems(offer).some((i) => i.id === item)) return undefined;
+      const key = `${entry}/${service}/${item}`;
+      this.hold(key, 1);
+      const f = await this.ensureFork(key);
+      const svc = f?.provided.get(service) as T | undefined;
+      if (!svc) { this.hold(key, -1); await this.reconcile(); return undefined; }
+      let done = false;
+      return {
+        service: svc,
+        release: () => {
+          if (done) return;
+          done = true;
+          this.hold(key, -1);
+          void this.enqueue(() => this.reconcile()).catch(() => {});
+        },
+      };
+    });
   }
 
   status(): EntryStatus[] {
@@ -752,7 +825,7 @@ export class Kernel {
     const v = this.selectionEdits.get(key) ?? this.settings.savedValue<string>(key) ?? this.slotDefaults[id];
     const slot = this.slotDefs.get(id)?.def;
     if (v) return slot ? this.followRename(slot, v) : v;
-    if (!slot || slot.none) return "@none";
+    if (!slot || (slot.none && !slot.defaultFirst)) return "@none";
     return this.slotOptions(slot).find((o) => o.value !== "@none")?.value ?? "@none";
   }
 
@@ -989,6 +1062,8 @@ export class Kernel {
       plugin: e.cfg.plugin,
       assistant: this.assistant,
       uiLang: () => this.uiLang,
+      machine: () => this.machine(),
+      restartOffers: (service) => this.restartForks(e.fork?.parent ?? e.cfg.id, service),
       approvals: this.approvalsFor(def.manifest, e.cfg.id),
       audit: this.audit,
       home: this.home,

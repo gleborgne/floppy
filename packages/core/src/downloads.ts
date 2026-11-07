@@ -1,6 +1,7 @@
 // Téléchargements de fichiers (modèles, voix) pour les plugins. Voir docs/spec/telechargements.md.
 // Le noyau ne connaît aucun site ni aucun modèle : il télécharge des fichiers dans le dossier d'un plugin,
 // reprend un fichier coupé (en-tête Range), vérifie le sha256 et ne montre le fichier qu'une fois complet.
+import { execFile } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -14,6 +15,12 @@ export interface DownloadFile {
   size?: number;
   /** Empreinte attendue (hexadécimal). Différente : le fichier est jeté et le téléchargement échoue. */
   sha256?: string;
+  /**
+   * Archive (.zip, .tar.gz) à décompresser dans ce dossier (relatif au dossier du plugin), une fois tous les fichiers
+   * reçus et vérifiés. Plusieurs archives peuvent aller dans le même dossier. L'archive est ensuite effacée ; le dossier
+   * n'apparaît qu'une fois tout décompressé (un ancien dossier est remplacé).
+   */
+  extract?: string;
 }
 
 export interface DownloadRequest {
@@ -34,6 +41,8 @@ export interface DownloadState {
   /** Total en octets, quand il est connu. */
   total?: number;
   error?: Text;
+  /** Nouvel essai en cours après une coupure (1, 2…) : la reprise garde ce qui est déjà reçu. */
+  retry?: number;
 }
 
 /** Ce que les plugins voient (ctx.downloads). Les clés sont celles du plugin, sans préfixe. */
@@ -51,7 +60,7 @@ export interface ContextDownloads {
 
 interface Job {
   state: DownloadState;
-  files: { url: string; dest: string; size?: number; sha256?: string }[];
+  files: { url: string; dest: string; size?: number; sha256?: string; extract?: string }[];
   abort: AbortController;
 }
 
@@ -61,6 +70,29 @@ export interface DownloadManagerOptions {
   max?: number;
   /** Intervalle minimal entre deux annonces de progression, en ms (défaut : 250). */
   tickMs?: number;
+  /** Décompresse une archive dans un dossier (tests : simulé). Défaut : le programme tar du système. */
+  extract?: (archive: string, dir: string) => Promise<void>;
+  /** Attentes avant chaque nouvel essai après une panne (réseau coupé, serveur en panne). Défaut : 5 s, 30 s, 2 min. */
+  retryMs?: number[];
+}
+
+/** Panne qui ne passera pas en réessayant (adresse introuvable, accès refusé). */
+class Permanent extends TextError {}
+
+/**
+ * Décompresse avec le tar du système : il lit .zip et .tar.gz (bsdtar sous windows et mac, GNU tar sous linux pour
+ * .tar.gz). Sous windows, celui du système (un autre tar du PATH ne lit pas les .zip). tar refuse les chemins absolus
+ * et « .. » des archives.
+ */
+export function systemExtract(archive: string, dir: string): Promise<void> {
+  const root = process.env.SystemRoot ?? process.env.windir;
+  const tar = process.platform === "win32" && root ? join(root, "System32", "tar.exe") : "tar";
+  return new Promise((ok, fail) => {
+    execFile(tar, ["-xf", archive, "-C", dir], { windowsHide: true, timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024 }, (err, _out, stderr) => {
+      if (err) fail(new TextError(T(`décompression impossible : ${String(stderr || err.message).trim().slice(0, 200)}`, `could not unpack: ${String(stderr || err.message).trim().slice(0, 200)}`)));
+      else ok();
+    });
+  });
 }
 
 const PART = ".part";
@@ -101,12 +133,16 @@ export class DownloadManager {
   private readonly fetch: typeof fetch;
   private readonly max: number;
   private readonly tickMs: number;
+  private readonly extract: (archive: string, dir: string) => Promise<void>;
   private running = 0;
+  private readonly retryMs: number[];
 
   constructor(opts: DownloadManagerOptions = {}) {
+    this.retryMs = opts.retryMs ?? [5_000, 30_000, 120_000];
     this.fetch = opts.fetch ?? globalThis.fetch;
     this.max = opts.max ?? 2;
     this.tickMs = opts.tickMs ?? 250;
+    this.extract = opts.extract ?? systemExtract;
   }
 
   /**
@@ -125,7 +161,10 @@ export class DownloadManager {
         throw new TextError(T(`le site ${url.hostname} n'est pas permis (permissions.net du manifeste)`,
           `the site ${url.hostname} is not allowed (manifest permissions.net)`));
       }
-      return { url: url.href, dest: safeJoin(dir, f.path), ...(f.size !== undefined ? { size: f.size } : {}), ...(f.sha256 ? { sha256: f.sha256.toLowerCase() } : {}) };
+      return {
+        url: url.href, dest: safeJoin(dir, f.path), ...(f.size !== undefined ? { size: f.size } : {}), ...(f.sha256 ? { sha256: f.sha256.toLowerCase() } : {}),
+        ...(f.extract ? { extract: safeJoin(dir, f.extract) } : {}),
+      };
     });
     const known = files.every((f) => f.size !== undefined);
     const job: Job = {
@@ -186,21 +225,62 @@ export class DownloadManager {
       const now = Date.now();
       if (force || now - last >= this.tickMs) { last = now; this.emit(j); }
     };
-    let done = 0; // octets des fichiers déjà finis
-    try {
-      for (const f of j.files) {
-        done += await this.file(j, f, (got) => { j.state.received = done + got; tick(); });
-        j.state.received = done;
+    // Une panne (réseau coupé, serveur en panne, fichier abîmé) : quelques nouveaux essais, en reprenant où on en était.
+    for (let attempt = 0; ; attempt++) {
+      let done = 0; // octets des fichiers déjà finis
+      try {
+        for (const f of j.files) {
+          done += await this.file(j, f, (got) => { j.state.received = done + got; tick(); });
+          j.state.received = done;
+        }
+        await this.unpack(j);
+        delete j.state.retry;
+        j.state.state = "done";
+        return;
+      } catch (e) {
+        if (!j.abort.signal.aborted && !(e instanceof Permanent) && attempt < this.retryMs.length) {
+          j.state.retry = attempt + 1;
+          tick(true);
+          await new Promise<void>((ok) => {
+            const t = setTimeout(ok, this.retryMs[attempt]);
+            j.abort.signal.addEventListener("abort", () => { clearTimeout(t); ok(); }, { once: true });
+          });
+          if (!j.abort.signal.aborted) continue;
+        }
+        if (j.abort.signal.aborted) {
+          j.state.state = "cancelled";
+          for (const f of j.files) rmSync(f.dest + PART, { force: true });
+        } else {
+          delete j.state.retry;
+          j.state.state = "error";
+          j.state.error = T(`le téléchargement a échoué : ${tr(errorText(e), "fr")}`, `the download failed: ${tr(errorText(e), "en")}`);
+        }
+        return;
       }
-      j.state.state = "done";
-    } catch (e) {
-      if (j.abort.signal.aborted) {
-        j.state.state = "cancelled";
-        for (const f of j.files) rmSync(f.dest + PART, { force: true });
-      } else {
-        j.state.state = "error";
-        j.state.error = T(`le téléchargement a échoué : ${tr(errorText(e), "fr")}`, `the download failed: ${tr(errorText(e), "en")}`);
+    }
+  }
+
+  /** Décompresse les archives (dossier temporaire, puis remplace le dossier final), puis efface les archives. */
+  private async unpack(j: Job): Promise<void> {
+    const targets = [...new Set(j.files.filter((f) => f.extract).map((f) => f.extract!))];
+    for (const target of targets) {
+      const tmp = `${target}.tmp`;
+      rmSync(tmp, { recursive: true, force: true });
+      mkdirSync(tmp, { recursive: true });
+      try {
+        for (const f of j.files.filter((x) => x.extract === target)) {
+          if (j.abort.signal.aborted) throw new Error("annulé");
+          await this.extract(f.dest, tmp);
+        }
+        rmSync(target, { recursive: true, force: true });
+        renameSync(tmp, target);
+      } catch (e) {
+        rmSync(tmp, { recursive: true, force: true });
+        // Les fichiers reçus sont vérifiés : réessayer ne changerait rien (outil absent, disque plein…).
+        if (j.abort.signal.aborted) throw e;
+        throw new Permanent(errorText(e));
       }
+      for (const f of j.files.filter((x) => x.extract === target)) rmSync(f.dest, { force: true });
     }
   }
 
@@ -221,7 +301,11 @@ export class DownloadManager {
         start = 0;
         res = await this.fetch(f.url, { signal: j.abort.signal });
       }
-      if (!res.ok || !res.body) throw new TextError(T(`le serveur a répondu ${res.status}`, `the server answered ${res.status}`));
+      if (!res.ok || !res.body) {
+        // 4xx (sauf 408 et 429) : l'adresse est fausse ou refusée, réessayer ne sert à rien.
+        const Err = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429 ? Permanent : TextError;
+        throw new Err(T(`le serveur a répondu ${res.status}`, `the server answered ${res.status}`));
+      }
       if (res.status !== 206) start = 0; // pas de reprise : le serveur renvoie tout
       const len = Number(res.headers.get("content-length"));
       if (f.size === undefined && Number.isFinite(len) && len > 0) {

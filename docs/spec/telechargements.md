@@ -33,6 +33,10 @@ Le noyau télécharge des fichiers ; il ne connaît aucun site ni aucun modèle 
 - **Fiable** : écrit dans `<fichier>.part`, reprend un fichier coupé (en-tête `Range` ; sans reprise du serveur,
   recommence), vérifie la taille et le sha256, puis renomme. Un fichier abîmé est jeté. Un fichier déjà là, de la
   bonne taille, n'est pas retéléchargé. Annuler jette les fichiers partiels.
+- **Nouveaux essais** : une panne (réseau coupé, serveur en panne, fichier abîmé) relance le téléchargement 3 fois
+  (5 s, 30 s, 2 min ; `DownloadManagerOptions.retryMs`), en reprenant où il en était ; `DownloadState.retry` donne le
+  numéro de l'essai (« nouvel essai 1 » dans la ligne). Adresse fausse ou refusée (4xx sauf 408, 429) et décompression
+  ratée : échec tout de suite.
 - **Une file pour tout le noyau** : 2 téléchargements à la fois, les autres attendent. Avancement annoncé au plus
   4 fois par seconde.
 - Les téléchargements continuent si le plugin redémarre (la file est au noyau).
@@ -67,9 +71,15 @@ plusieurs fichiers (`-00001-of-0000N`) est une seule ligne. Ignorés : dépôts 
 sans empreinte, `mmproj`. Chaque fichier est figé au commit lu. Étiquette « ≈ N Go de mémoire » : le fichier + ~1,2 Go
 (contexte, tampons) ; le bouton Essayer d'un modèle donne l'estimation détaillée.
 
+Chaque entrée dit aussi ce qu'elle demande (`needs` : mémoire, processeur ou puce graphique, moteurs), le service
+qu'elle rend (`service`) et, une fois installée, l'élément qu'elle donne (`itemOf` → `ItemInfo.uses`). Le premier
+lancement s'en sert pour choisir les modèles qui tiennent dans la machine : voir [Premier lancement](premier-lancement.md).
+
+**Programmes** : llama.cpp et audio.cpp se téléchargent aussi, dans la bonne version pour la machine (archives
+décompressées par le noyau, `DownloadFile.extract`) : voir [Premier lancement](premier-lancement.md#télécharger-llamacpp-et-audiocpp-packagescoresrcprogram-libraryts).
+
 ## Pas encore
 
 - Fichiers `mmproj` (vision) et modèles brouillons (MTP) du cerveau.
-- Mémoire de la carte graphique lue sur la machine (« tient dans ta carte graphique »).
 - Voix à cloner téléchargeables (WAV + texte) : les voix intégrées de Pocket TTS couvrent le besoin pour l'instant.
 - Voix des services en ligne (Gemini, ElevenLabs) en liste.

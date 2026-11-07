@@ -6,6 +6,7 @@ import { initAssistant } from "./assistant.js";
 import { entryOf, offersOf, slotSources } from "./slot-sources.js";
 import { isLight } from "./tab-rules.js";
 import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "./library.js";
+import { installSummary, rowStatus } from "./onboarding-view.js";
 
 const api = window.floppySettings;
 const SECRET_SET = "__secret_set__";
@@ -14,7 +15,10 @@ const $ = (id) => document.getElementById(id);
 // ------------------------------------------------------------------ textes de la fenêtre (fr / en)
 const I = {
   fr: {
-    title: "Réglages", search: "Chercher un réglage, un plugin, un outil…", searchLabel: "Chercher un réglage",
+    title: "Réglages", firstSetup: "Refaire le réglage de départ",
+    onbTitle: "Installation de départ", onbRunning: "en cours", onbDone: "terminée", onbFailed: "un morceau a échoué",
+    onbOf: "prêts sur", onbDownloading: "téléchargement…", onbReady: "Prêt", onbWaiting: "En attente", onbFailedRow: "Échec",
+    onbRoles: { vad: "Détecteur de parole", stt: "Transcription", tts: "Voix", llm: "Cerveau", program: "Programme" }, search: "Chercher un réglage, un plugin, un outil…", searchLabel: "Chercher un réglage",
     undo: "Annuler le dernier changement", assistant: "Assistant IA", navLabel: "Rubriques",
     navNote: "Chaque rubrique se construit avec les plugins installés. Un nouveau plugin y ajoute ses options.",
     add: "Ajouter", addIn: "Ajouter", addTitle: "Ajouter", editTitle: "Modifier", cancel: "Annuler", close: "Fermer", save: "Enregistrer",
@@ -49,7 +53,10 @@ const I = {
     libReady: "Prêt : active-le dans la liste.",
   },
   en: {
-    title: "Settings", search: "Search a setting, a plugin, a tool…", searchLabel: "Search a setting",
+    firstSetup: "Run the first setup again",
+    onbTitle: "First setup", onbRunning: "running", onbDone: "finished", onbFailed: "a part failed",
+    onbOf: "ready out of", onbDownloading: "downloading…", onbReady: "Ready", onbWaiting: "Waiting", onbFailedRow: "Failed",
+    onbRoles: { vad: "Speech detector", stt: "Transcription", tts: "Voice", llm: "Brain", program: "Program" }, title: "Settings", search: "Search a setting, a plugin, a tool…", searchLabel: "Search a setting",
     undo: "Undo last change", assistant: "AI assistant", navLabel: "Sections",
     navNote: "Each section is built from the installed plugins. A new plugin adds its options here.",
     add: "Add", addIn: "Add", addTitle: "Add", editTitle: "Edit", cancel: "Cancel", close: "Close", save: "Save",
@@ -1157,6 +1164,36 @@ function patchLibraries() {
 }
 
 // ------------------------------------------------------------------ pages
+// ------------------------------------------------------------------ installation de départ (suivie depuis la rubrique Général)
+let onb = null;   // dernier état de l'installation de départ (onboarding.state du noyau)
+
+/** Avancement de l'installation de départ : un morceau par ligne (programme, écoute, voix, cerveau), et ce qui s'est activé. */
+function onboardingBlock() {
+  const sum = installSummary(onb);
+  if (!sum) return null;
+  const words = { downloading: t("onbDownloading"), ready: t("onbReady"), waiting: t("onbWaiting"), failed: t("onbFailedRow") };
+  const state = sum.running ? t("onbRunning") : sum.failed ? t("onbFailed") : t("onbDone");
+  const card = h("div", { class: "card" }, onb.rows.map((r) => {
+    const pct = Math.floor((r.progress ?? (r.state === "ready" ? 1 : 0)) * 100);
+    // Largeur par le CSSOM : la politique de sécurité de la fenêtre refuse l'attribut style.
+    const fill = h("i");
+    fill.style.width = `${pct}%`;
+    const st = rowStatus(r, (k) => words[k] ?? k, lang);
+    return h("div", { class: "irow" },
+      h("div", { class: "grow" }, h("div", { class: "name", text: tr(r.label) }), h("div", { class: "desc", text: t("onbRoles")[r.role] ?? r.role })),
+      h("div", { class: "lprog" },
+        h("div", { class: "pbar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct), "aria-label": tr(r.label) }, fill),
+        h("span", { class: r.state === "ready" ? "lst good" : "lst", text: st })));
+  }));
+  if (onb.notes?.length) card.append(h("ul", { class: "onb-notes" }, onb.notes.map((n) => h("li", { text: tr(n) }))));
+  return h("div", { class: "block" }, h("h3", {}, t("onbTitle"), h("small", { text: `${state} · ${sum.ready} ${t("onbOf")} ${sum.total}` })), card);
+}
+
+function updateOnboarding(s) {
+  onb = s ?? null;
+  if (section === "general" && !query && !detailStack.length) render();
+}
+
 function pageHead(page, extra) {
   return h("div", { class: "page-head" }, h("div", {}, h("h2", { text: secLabel(page) }), h("p", { text: tr(sectionById(page)?.description) })), extra);
 }
@@ -1280,7 +1317,12 @@ function render() {
   } else if (detailStack.length && (detail = detailPage())) {
     nodes.push(detail);
   } else {
-    const page = [pageHead(section, slotsOn(section).length ? null : addButton(section))];
+    // Rubrique Général : refaire le réglage de départ (fenêtre « Bienvenue »).
+    const head = section === "general" && api?.openOnboarding
+      ? h("button", { type: "button", class: "btn", text: t("firstSetup"), onclick: () => api.openOnboarding() })
+      : slotsOn(section).length ? null : addButton(section);
+    const page = [pageHead(section, head)];
+    if (section === "general") page.push(onboardingBlock());
     pageNodes(section, page);
     nodes.push(...tabify(`page:${section}`, page));
     if (!settings.list.length && !items.providers.length) nodes.push(h("div", { class: "empty", text: api ? t("waiting") : "" }));
@@ -1615,6 +1657,8 @@ applyStaticTexts();
 if (api) {
   api.onUpdate(updateSettings);
   api.onItems?.(updateItems);
+  api.onOnboarding?.(updateOnboarding);
+  api.onboardingState?.().then(updateOnboarding);
   api.get().then(updateSettings);
   api.items?.().then(updateItems);
 } else {

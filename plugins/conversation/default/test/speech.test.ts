@@ -44,3 +44,13 @@ describe("écoute seule (flux sans speak)", () => {
     ]);
   });
 });
+
+describe("aucune voix (réponses écrites)", () => {
+  it("chaque phrase finit tout de suite, sans son, sans erreur, même avec un flux qui parle", () => {
+    const stream = { cancel: vi.fn(), speak: vi.fn() } as unknown as VoiceStream;
+    const heard: VoiceEvent[] = [];
+    new SpeechQueue({ stream, mute: true, emit: (e) => heard.push(e) }).speak("a", "Bonjour");
+    expect(heard).toEqual([{ type: "speak_done", id: "a", cancelled: false }]);
+    expect(stream.speak).not.toHaveBeenCalled();
+  });
+});

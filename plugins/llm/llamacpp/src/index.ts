@@ -11,10 +11,12 @@ import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { definePlugin, modelLibrary, type LibraryEntry, findExe, killTree, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, killTree, TextError, type CompletionService, type Context, type FieldDef, type ItemInfo, type ItemKind, type LlmService, type OpResult } from "@floppy/core";
 
+import { LLAMA_BUILDS, LLAMA_VERSION } from "./known-builds.ts";
 import { KNOWN_MODELS } from "./known-models.ts";
-import { searchHf } from "./hf.ts";
+import { searchHf, ggufNeeds } from "./hf.ts";
+import { scanGguf, scanFolders, scanOllama, ollamaDir, type FoundModel } from "./found.ts";
 
 const DEFAULT_ARGS = ["-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "--fit", "off", "-ngl", "99", "-np", "1"];
 
@@ -60,6 +62,8 @@ const Config = z.object({
   startTimeout_s: z.number().default(240),
   /** Dossiers où chercher des .gguf (action « scan »). */
   scanDirs: z.array(z.string()).default(DEFAULT_SCAN_DIRS),
+  /** Lire aussi les modèles d'Ollama (OLLAMA_MODELS, sinon ~/.ollama/models). */
+  ollama: z.boolean().default(true),
 });
 type Config = z.infer<typeof Config>;
 
@@ -311,23 +315,6 @@ function sizeOf(file: string): number | undefined {
 }
 const gb = (bytes: number) => Math.round((bytes / 1024 ** 3) * 10) / 10;
 
-/** Cherche des .gguf (profondeur limitée), sans les fichiers « mmproj » (vision). */
-function scanGguf(dirs: string[], max = 60): string[] {
-  const out: string[] = [];
-  const walk = (d: string, depth: number) => {
-    if (depth > 6 || out.length >= max) return;
-    let names: import("node:fs").Dirent[];
-    try { names = readdirSync(d, { withFileTypes: true }); } catch { return; }
-    for (const e of names) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) walk(p, depth + 1);
-      else if (/\.gguf$/i.test(e.name) && !/mmproj/i.test(e.name)) out.push(p);
-    }
-  };
-  for (const d of dirs) if (existsSync(d)) walk(d, 0);
-  return out;
-}
-
 /** Même fichier (sans tenir compte de la casse sous un système qui l'ignore). */
 const samePath = (a: string, b: string): boolean => {
   const n = (p: string) => (process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p));
@@ -347,7 +334,7 @@ return definePlugin<Config>({
     description: "LLM local (llama-server) : chaque modèle tourne à la demande, un seul chargé à la fois.",
     provides: ["llm", "completion"],
     // net : modèles choisis et recherche sur Hugging Face (voir known-models.ts, hf.ts).
-    permissions: { exec: ["llama-server"], net: ["huggingface.co"] },
+    permissions: { exec: ["llama-server"], net: ["huggingface.co", "github.com"] },
     addable: { section: "cerveau", label: "llama.cpp", description: { fr: "Modèles GGUF sur ce PC, lancés seulement quand ils servent. Un seul à la fois.", en: "GGUF models on this PC, run only while in use. One at a time." }, single: true },
   },
   config: Config,
@@ -384,7 +371,16 @@ return definePlugin<Config>({
             if (!cfg.reuse || other !== e.id) throw new TextError(T(`le port ${cfg.port} est pris par un autre llama-server (modèle ${other ?? "?"}) : arrête-le d'abord`, `port ${cfg.port} is taken by another llama-server (model ${other ?? "?"}): stop it first`));
             ctx.log("info", `llama-server déjà lancé sur ${cfg.port} : réutilisé (modèle ${other})`);
           } else {
-            srv.stop = await launch(e, (why) => { for (const u of [...srv.users]) if (u.alive) u.fail(why); });
+            // Le llama-server de Floppy est en version « processeur » : la version pour la puce graphique se télécharge
+            // en fond (ex. réglage de départ minimal, puis un cerveau local choisi plus tard).
+            if (ours(e)) void program.want("gpu").catch((err) => ctx.log("warn", "llama.cpp : mise à niveau impossible", { err: String(err) }));
+            try {
+              srv.stop = await launch(e, (why) => { for (const u of [...srv.users]) if (u.alive) u.fail(why); });
+            } catch (err) {
+              // Ne démarre pas : si c'est le programme lui-même (pilote, bibliothèque), Floppy passe à la version suivante.
+              const next = ours(e) ? await program.failed(String(err)).catch(() => undefined) : undefined;
+              throw next ? new TextError(failoverText("llama.cpp", next)) : err;
+            }
           }
           srv.ready = true;
           ctx.audit.write({ kind: "llm.load", model: e.id });
@@ -461,9 +457,20 @@ return definePlugin<Config>({
         get: () => dirsSetting, set: (v) => { dirsSetting = String(v ?? "").trim(); },
       },
     ]);
-    /** llama-server à lancer : celui du modèle, du réglage, de la config, sinon celui du PATH. */
+    // Le programme llama-server, téléchargé par Floppy dans la bonne version pour la machine (CUDA, Vulkan, Metal…).
+    const program = programLibrary(ctx, {
+      id: "llm-local-program", section: "cerveau", order: 10, offers: "llm", label: "llama.cpp", program: "llama-server",
+      version: LLAMA_VERSION, builds: LLAMA_BUILDS, licence: { name: "MIT", url: "https://github.com/ggml-org/llama.cpp/blob/master/LICENSE" },
+      // Nouvelle version pour la puce graphique, repli, réparation : le cerveau en marche repart avec.
+      changed: (why) => { ctx.items.changed(); if (restartsModels(why)) void ctx.restartOffers(); },
+    });
+    /** Ce modèle tourne-t-il avec le llama-server de Floppy ? (pas un programme choisi à la main) */
+    const ours = (e: Entry): boolean => !e.exe && !exeSetting && !cfg.exe && !!program.path();
+    /** llama-server à lancer sans modèle précis : réglage, config, celui de Floppy, sinon celui du PATH. */
+    const exePath = (): string | undefined => exeSetting || cfg.exe || program.path() || findExe("llama-server");
+    /** llama-server à lancer : celui du modèle, sinon exePath. */
     const exeFor = (e: Entry): string => {
-      const exe = e.exe || exeSetting || cfg.exe || findExe("llama-server");
+      const exe = e.exe || exePath();
       if (!exe) throw new TextError(T("llama-server introuvable : installe llama.cpp (https://github.com/ggml-org/llama.cpp/releases) et ajoute-le au PATH, ou indique son chemin dans Réglages → Cerveau → Programme llama-server.",
         "llama-server not found: install llama.cpp (https://github.com/ggml-org/llama.cpp/releases) and add it to the PATH, or give its path in Settings → Brain → llama-server program."));
       return exe;
@@ -604,6 +611,9 @@ return definePlugin<Config>({
       entries: () => known,
       search,
       has: (e) => mine(e).length > 0,
+      itemOf: (e) => mine(e)[0]?.id,
+      missing: () => (exePath() ? undefined
+        : T("Le programme llama.cpp n'est pas encore installé.", "The llama.cpp program is not installed yet.")),
       installed: (e) => {
         if (mine(e).length) return;
         const label = typeof e.label === "string" ? e.label : (e.label[ctx.uiLang()] ?? e.label.fr);
@@ -617,6 +627,44 @@ return definePlugin<Config>({
         if (loaded) throw new TextError(T(`${loaded.label} est chargé en ce moment : active d'abord un autre cerveau.`, `${loaded.label} is loaded right now: activate another brain first.`));
         for (const m of list) store.remove(m.id);
         ctx.items.changed();
+      },
+    });
+
+    // Modèles déjà sur la machine (LM Studio, Ollama) : llama.cpp les lance tels quels, rien à télécharger.
+    // L'onboarding les voit comme des modèles installés (taille 0) : « use » les ajoute à la liste.
+    let foundCache: { at: number; list: FoundModel[] } | undefined;
+    const found = (): FoundModel[] => {
+      if (!foundCache || Date.now() - foundCache.at > 30_000) {
+        foundCache = { at: Date.now(), list: [...scanFolders(scanDirs()), ...(cfg.ollama ? scanOllama(ollamaDir()) : [])] };
+      }
+      return foundCache.list;
+    };
+    const FROM = { lmstudio: "LM Studio", ollama: "Ollama" } as const;
+    ctx.items.declare({
+      id: "llm-local-found", section: "cerveau", layout: "library", offers: "llm", order: 12,
+      label: T("Modèles déjà sur ta machine", "Models already on your computer"),
+      description: T("Trouvés dans LM Studio et Ollama : llama.cpp les lance tels quels, sans rien télécharger.",
+        "Found in LM Studio and Ollama: llama.cpp runs them as they are, without downloading anything."),
+      missing: () => (exePath() ? undefined : T("Le programme llama.cpp n'est pas encore installé.", "The llama.cpp program is not installed yet.")),
+      list: () => found().map((f): ItemInfo => {
+        const uses = all().find((m) => samePath(m.model, f.file))?.id;
+        return {
+          id: f.id, label: f.label, enabled: true, service: "llm", needs: ggufNeeds(f.size), size: 0,
+          tags: [FROM[f.from], `${gb(f.size)} ${ctx.uiLang() === "en" ? "GB" : "Go"}`],
+          status: "ok", statusText: uses ? T("Dans la liste", "In the list") : T("Sur le disque", "On disk"),
+          ...(uses ? { uses } : {}),
+          actions: uses ? [] : [{ id: "use", label: T("Ajouter à la liste", "Add to the list") }],
+        };
+      }),
+      action: async (id, action): Promise<OpResult> => {
+        const f = found().find((x) => x.id === id);
+        if (!f || action !== "use") return { ok: false, text: T("Modèle inconnu.", "Unknown model.") };
+        if (!all().some((m) => samePath(m.model, f.file))) {
+          const label = `${f.label} (${FROM[f.from]})`;
+          store.add("gguf", clean({ label, model: f.file }, cfg) as unknown as Record<string, unknown>, label, Object.keys(baseList));
+        }
+        ctx.items.changed();
+        return { ok: true, text: T(`${f.label} est dans la liste.`, `${f.label} is in the list.`) };
       },
     });
   },

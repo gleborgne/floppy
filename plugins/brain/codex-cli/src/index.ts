@@ -244,7 +244,7 @@ export default definePlugin<Config>({
     provides: ["delegate", "llm"],
     inject: ["mcp"],
     permissions: { exec: ["codex"], cloud: true },
-    addable: { section: "cerveau", label: "Codex", description: { fr: "Ton abonnement ChatGPT, par le CLI Codex. Cerveau ou délégué.", en: "Your ChatGPT subscription, through the Codex CLI. Brain or delegate." }, cloud: true, single: true, aliases: ["codex", "openai", "chatgpt"] },
+    addable: { section: "cerveau", label: "Codex", description: { fr: "Ton abonnement ChatGPT, par le CLI Codex. Cerveau ou délégué.", en: "Your ChatGPT subscription, through the Codex CLI. Brain or delegate." }, cloud: true, single: true, program: "codex", aliases: ["codex", "openai", "chatgpt"] },
   },
   config: Config,
   apply(ctx, cfg) {

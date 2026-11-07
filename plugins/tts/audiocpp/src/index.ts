@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { definePlugin, modelLibrary, findExe, killTree, Pcm16Decoder, wavPcm, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, killTree, Pcm16Decoder, wavPcm, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -29,7 +29,8 @@ const Config = z.object({
   /** Programme audiocpp_server. Absent : réglage « tts_local_programme », sinon trouvé dans le PATH. */
   exe: z.string().optional(),
   port: z.number().int().default(8089),
-  backend: z.enum(["cuda", "cpu"]).default("cuda"),
+  /** « auto » : cuda avec une carte NVIDIA, sinon le processeur (audio.cpp n'a pas encore Metal ni Vulkan). */
+  backend: z.enum(["auto", "cuda", "vulkan", "metal", "cpu"]).default("auto"),
   device: z.number().int().default(0),
   threads: z.number().int().default(4),
   startTimeout_s: z.number().default(180),
@@ -96,7 +97,9 @@ export const VOICE_NAME = "voix";
 const slash = (p: string) => p.replace(/\\/g, "/");
 
 /** Contenu de server.json pour un modèle. dirs.voiceDir : dossier des voix de ce modèle. */
-export function serverConfig(item: ModelValues, cfg: Pick<Config, "port" | "backend" | "device" | "threads">, dirs: { voiceDir: string }): Record<string, unknown> {
+type ServerCfg = Pick<Config, "port" | "device" | "threads"> & { backend: Exclude<Config["backend"], "auto"> };
+
+export function serverConfig(item: ModelValues, cfg: ServerCfg, dirs: { voiceDir: string }): Record<string, unknown> {
   return {
     host: "127.0.0.1", port: cfg.port, backend: cfg.backend, device: cfg.device, threads: cfg.threads,
     lazy_load: false, max_loaded_models: 1, ui: false, voice_dir: slash(dirs.voiceDir),
@@ -124,7 +127,7 @@ export function speechRequest(item: ModelValues, text: string, lang?: string): R
 }
 
 /** Écrit server.json et voices/ (voix clonée + prompt_text) dans le dossier du modèle. */
-export function prepareDir(dir: string, item: ModelValues, cfg: Pick<Config, "port" | "backend" | "device" | "threads">): string {
+export function prepareDir(dir: string, item: ModelValues, cfg: ServerCfg): string {
   const voiceDir = join(dir, "voices");
   rmSync(voiceDir, { recursive: true, force: true });
   mkdirSync(voiceDir, { recursive: true });
@@ -250,6 +253,7 @@ export function scanGguf(dirs: string[], max = 60): string[] {
 }
 
 import { KNOWN_VOICE_MODELS, type KnownVoiceModel } from "./known-voices.ts";
+import { AUDIOCPP_BUILDS, AUDIOCPP_VERSION } from "./known-builds.ts";
 
 /** Même fichier (sans tenir compte de la casse sous un système qui l'ignore). */
 const samePath = (a: string, b: string): boolean => {
@@ -257,7 +261,16 @@ const samePath = (a: string, b: string): boolean => {
   return n(a) === n(b);
 };
 
-export function makePlugin(known: KnownVoiceModel[] = KNOWN_VOICE_MODELS) {
+/**
+ * Ce que demande un modèle de voix : Pocket TTS et Supertonic parlent en temps réel sur le processeur ;
+ * Qwen3-TTS demande une carte NVIDIA (~4,5 Go mesurés pour la 1.7B).
+ */
+export function voiceNeeds(k: Pick<KnownVoiceModel, "famille">): ModelNeeds {
+  return k.famille === "qwen3_tts" ? { memory: 4.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] } : { memory: 0.8 * 1024 ** 3, device: "cpu" };
+}
+
+/** `builds` : archives d'audio.cpp (remplaçables pour les tests). */
+export function makePlugin(known: KnownVoiceModel[] = KNOWN_VOICE_MODELS, builds: ProgramBuild[] = AUDIOCPP_BUILDS) {
 return definePlugin<Config>({
   manifest: {
     id: "tts-audiocpp",
@@ -267,7 +280,7 @@ return definePlugin<Config>({
     description: "Voix locales (audio.cpp) : un modèle de synthèse vocale à la fois, lancé seulement quand il sert.",
     provides: ["tts"],
     // net : téléchargement des modèles connus (voir known-voices.ts).
-    permissions: { exec: ["audiocpp_server"], net: ["huggingface.co"] },
+    permissions: { exec: ["audiocpp_server"], net: ["huggingface.co", "github.com"] },
     addable: { section: "voix", label: "audio.cpp", description: { fr: "Modèles de voix GGUF sur ce PC (voix clonée ou intégrée), lancés seulement quand ils servent.", en: "GGUF voice models on this PC (cloned or built-in voice), run only while in use." }, single: true },
   },
   config: Config,
@@ -303,9 +316,37 @@ return definePlugin<Config>({
       },
     ]);
     /** audiocpp_server à lancer : réglage, config, sinon PATH. Undefined s'il est introuvable. */
-    const exePath = (): string | undefined => exeSetting || cfg.exe || findExe("audiocpp_server");
+    // Le programme audiocpp_server, téléchargé par Floppy dans la bonne version pour la machine (CUDA, Vulkan, Metal…).
+    const program = programLibrary(ctx, {
+      id: "voix-locale-program", section: "voix", order: 20, offers: "tts", label: "audio.cpp", program: "audiocpp_server",
+      version: AUDIOCPP_VERSION, builds, licence: { name: "Apache-2.0", url: "https://github.com/0xShug0/audio.cpp/blob/main/LICENSE" },
+      // Nouvelle version pour la puce graphique, repli, réparation : la voix en marche repart avec.
+      changed: (why) => { ctx.items.changed(); if (restartsModels(why)) void ctx.restartOffers("tts"); },
+    });
+    /** Le moteur est choisi par Floppy, avec son propre programme (pas un programme ou un moteur choisi à la main). */
+    const ours = (): boolean => cfg.backend === "auto" && !exeSetting && !cfg.exe && !!program.path();
+    /** Voix qui demande la puce graphique (Qwen3-TTS). */
+    const gpuVoice = (m: Entry): boolean => voiceNeeds({ famille: familyOf(m) as KnownVoiceModel["famille"] }).device === "gpu";
+    /**
+     * Une voix de la puce graphique est dans la liste et Floppy n'a que la version « processeur » d'audio.cpp
+     * (réglage de départ minimal, puis voix plus costaude choisie plus tard) : la bonne version se télécharge en fond.
+     */
+    const upgrade = (): void => {
+      if (ours() && enabled().some(gpuVoice)) void program.want("gpu").catch((err) => ctx.log("warn", "audio.cpp : mise à niveau impossible", { err: String(err) }));
+    };
+    /** audiocpp_server à lancer : réglage, config, celui de Floppy, sinon celui du PATH. */
+    const exePath = (): string | undefined => exeSetting || cfg.exe || program.path() || findExe("audiocpp_server");
     const missingExe = T("audio.cpp introuvable : installe audiocpp_server et ajoute-le au PATH, ou indique son chemin dans Réglages → Voix → Programme audio.cpp.",
       "audio.cpp not found: install audiocpp_server and add it to the PATH, or give its path in Settings → Voice → audio.cpp program.");
+    /** Moteur d'audio.cpp : celui de la config, ou (auto) cuda si la machine a une carte NVIDIA. */
+    const backend = async (): Promise<ServerCfg["backend"]> => {
+      if (cfg.backend !== "auto") return cfg.backend;
+      // Le programme de Floppy en service : son moteur (une archive « processeur » ne sait pas faire CUDA).
+      const mine = program.installed();
+      const ours = mine && !exeSetting && !cfg.exe ? mine.backend : undefined;
+      if (ours) return ours === "rocm" || ours === "sycl" ? "vulkan" : ours;
+      return (await ctx.machine()).backends.includes("cuda") ? "cuda" : "cpu";
+    };
     const scanDirs = (): string[] => [...cfg.scanDirs, ...dirsSetting.split(";").map((d) => d.trim()).filter(Boolean)];
 
     /** Lance le serveur pour ce fork (tué avec lui) et attend qu'il réponde. */
@@ -316,7 +357,7 @@ return definePlugin<Config>({
       if (await healthy()) throw new TextError(T(`le port ${cfg.port} est déjà pris par un autre serveur : arrête-le d'abord (ou change le port)`, `port ${cfg.port} is already taken by another server: stop it first (or change the port)`));
       const dir = join(f.home, "tts-audiocpp", e.id);
       mkdirSync(dir, { recursive: true });
-      const file = prepareDir(dir, e, cfg);
+      const file = prepareDir(dir, e, { ...cfg, backend: await backend() });
       f.log("info", `lancement d'audio.cpp : ${e.label}`, { model: e.model });
       const exe = exePath();
       if (!exe) throw new TextError(missingExe);
@@ -386,7 +427,14 @@ return definePlugin<Config>({
         running.set(id, false);
         ctx.items.changed();
         f.effect(() => { running.delete(id); ctx.items.changed(); });
-        await launch(f, e);
+        if (gpuVoice(e)) upgrade();
+        try {
+          await launch(f, e);
+        } catch (err) {
+          // Ne démarre pas : si c'est le programme lui-même (pilote, bibliothèque), Floppy passe à la version suivante.
+          const next = ours() ? await program.failed(String(err)).catch(() => undefined) : undefined;
+          throw next ? new TextError(failoverText("audio.cpp", next)) : err;
+        }
         running.set(id, true);
         ctx.audit.write({ kind: "tts.load", model: e.id });
         ctx.items.changed();
@@ -501,7 +549,7 @@ return definePlugin<Config>({
         if (!exe) return { ok: false, text: missingExe };
         if (!existsSync(exe)) return { ok: false, text: T(`audio.cpp introuvable : ${exe}`, `audio.cpp not found: ${exe}`) };
         const total = size / 1024 ** 3 + 0.5;
-        const cuda = cfg.backend === "cuda";
+        const cuda = (await backend()) !== "cpu";
         const noText = v.voix === "clone" && !v.refText;
         return { ok: true, text: T(
           `Estimation : ~${total.toFixed(1)} Go ${cuda ? "sur le GPU" : "en mémoire (processeur)"} (modèle ${gb(size)} Go).${noText ? " Sans texte de l'enregistrement, seul le timbre est copié." : ""}`,
@@ -519,11 +567,16 @@ return definePlugin<Config>({
     // Modèles à télécharger : un modèle arrive avec ses voix intégrées, une voix par élément (groupées sous le modèle).
     const mine = (k: KnownVoiceModel) => all().filter((m) => samePath(m.model, knownFile(k)));
     const ui = (t: Text) => (typeof t === "string" ? t : (t[ctx.uiLang()] ?? t.fr));
+    // Au démarrage aussi : une voix de la puce graphique déjà dans la liste (ajoutée avant cette version de Floppy).
+    upgrade();
+
     modelLibrary(ctx, {
       id: "voix-locale-library", section: "voix", order: 21, offers: "tts",
       label: T("Modèles de voix audio.cpp", "audio.cpp voice models"),
-      entries: () => known,
+      entries: () => known.map((k) => ({ ...k, needs: voiceNeeds(k) })),
       has: (e) => mine(e as KnownVoiceModel).length > 0,
+      itemOf: (e) => mine(e as KnownVoiceModel)[0]?.id,
+      missing: () => (exePath() ? undefined : T("Le programme audio.cpp n'est pas encore installé.", "The audio.cpp program is not installed yet.")),
       installed: (e) => {
         const k = e as KnownVoiceModel;
         if (mine(k).length) return;
@@ -532,6 +585,7 @@ return definePlugin<Config>({
           store.add("gguf", values as unknown as Record<string, unknown>, `${k.id}-${v.id}`, Object.keys(baseList));
         }
         ctx.items.changed();
+        upgrade();
       },
       removed: (e) => {
         const list = mine(e as KnownVoiceModel);
