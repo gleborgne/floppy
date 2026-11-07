@@ -79,8 +79,20 @@ flowchart LR
 
 - Un **fournisseur** (`ProviderDef`) appartient à une rubrique : `cerveau`, `voix`, `connecteurs`, `corps`, `avatars`.
 - Il donne ses **types d'éléments** (`kinds`). Chaque type a des **champs** (`FieldDef`) : texte, nombre, oui/non,
-  choix, secret, fichier, liste, texte long, paires clé = valeur. Options : champ requis, avancé (replié),
-  visible selon un autre champ (`showIf`), filtres de fichier.
+  choix, secret, fichier, liste, texte long, paires clé = valeur, **enregistrement audio**. Options : champ requis,
+  avancé (replié), visible selon un autre champ (`showIf`), filtres de fichier. Un fournisseur qui a 2 ou 3 types
+  montre un bouton « + … » par type (ex. « + Nouvelle voix », « + Modèle de voix local ») ; au-delà, un seul bouton
+  qui fait choisir le type.
+- Champ **`audio`** (2026-11-07) : la fenêtre enregistre au micro (« M'enregistrer ») ou importe un fichier (WAV, MP3,
+  M4A, OGG…). `prompts` : phrases à lire, une au hasard, « Autre phrase » en change ; `textKey` : le champ qui reçoit
+  la phrase lue (sauf si l'utilisateur y a écrit autre chose) ; `seconds` : durée conseillée. À la fin, la fenêtre
+  coupe le silence aux bords, vérifie la durée, la saturation et le bruit de fond, et donne le son en WAV mono 24 kHz,
+  en adresse `data:audio/wav` (le plugin le lit avec `wavFromDataUrl` : 16 Mo au plus). Une valeur qui n'est pas une
+  adresse `data:` est celle que le plugin a rendue (ex. le chemin du fichier gardé) : rien n'a changé. Le micro n'est
+  ouvert que pendant l'enregistrement ; rien ne quitte l'ordinateur.
+- Un **son à jouer** : `OpResult.audio` (adresse `data:audio/wav`, voir `wavDataUrl`). La fenêtre le joue après un
+  essai (et montre un lecteur pour le réécouter) ou une action. Une action marquée `play` est un bouton rond
+  « lecture » au début de la ligne de l'élément (ex. « Écouter » une voix).
 - Il liste ses **éléments** (`ItemInfo`) : nom, détail, statut, en service ou pas, actif ou désactivé, nuage ou pas,
   sous-éléments (`children`, par ex. les outils d'un connecteur), boutons d'action.
 - Il répond aux **opérations** : ajouter, modifier, supprimer, activer, choisir un sous-élément, essayer, action.
@@ -190,11 +202,34 @@ La ligne « En service » en haut de la page montre chaque slot, son élément e
 
 | Fournisseur | Types (ajout) | Notes |
 |---|---|---|
-| `voix-locale` (tts-audiocpp, `offers: "tts"`) | `gguf` : nom, fichier, famille (Qwen3-TTS, VoxCPM2, Pocket TTS, Supertonic, autre), voix clonée (WAV + texte) ou intégrée (nom), style, langue | Le service Python `voices` (voice-cascade) est archivé depuis le 6 novembre 2026. |
+| `voix-locale` (tts-audiocpp, `offers: "tts"`) | `voice` (« Nouvelle voix ») : nom, enregistrement (champ `audio`), ce qu'il dit, modèle qui la fait parler (seulement ceux qui clonent : Qwen3-TTS, VoxCPM2, Pocket TTS), phrase d'essai. `gguf` : nom, fichier, famille (Qwen3-TTS, VoxCPM2, Pocket TTS, Supertonic, autre), voix clonée (WAV + texte) ou intégrée (nom), style, langue | Voir « Studio de voix » ci-dessous. Le service Python `voices` (voice-cascade) est archivé depuis le 6 novembre 2026. |
 | `sherpa` (stt-sherpa, `offers: ["vad", "stt"]`) | `onnx` : nom, fichier ou dossier ; le type (détecteur ou transcription) est lu aux fichiers | Voir [ecoute.md](ecoute.md). |
 | `tts-elevenlabs-account`, `tts-gemini-account` (`offers: "tts"`) | compte : modèle, voix, clé | « Activer » sur le compte = cette voix cloud en service (accord à la voix). |
 
 Slot `voice.tts` (déclaré par la conversation) : « Activer » sur une voix choisit le moteur **et** la voix. Le réglage `ton` est aussi dans la rubrique Voix.
+
+#### Studio de voix (2026-11-07)
+
+Une **voix** n'est plus un modèle : c'est un enregistrement de 10 à 20 s et la phrase qu'il contient (quelques centaines
+de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partagé par ses voix. Maquette :
+<https://claude.ai/artifact/S8bjdyUCVGTL19pbDn31YB>.
+
+- Chaque élément de `voix-locale` reste un couple « voix + modèle » (l'élément offert au slot), mais il est toujours
+  rangé sous son modèle (`group` = le fichier GGUF). La page montre d'abord **les voix** (taille absente), puis **les
+  modèles** (taille, format, carte graphique ou processeur, chargé ou en veille). Les 26 voix intégrées d'un modèle
+  sont repliées : on voit celle en service, et « 25 autres dans Pocket TTS · Voir ».
+- **Nouvelle voix** : la fenêtre fait lire une phrase au micro (ou importe un fichier), vérifie l'enregistrement, puis
+  le plugin le **copie** dans `<dossier de Floppy>/tts-audiocpp/voices/<uuid>.wav` : l'original peut disparaître. Un
+  nouvel enregistrement remplace l'ancien fichier ; supprimer la voix efface son fichier. Un fichier de l'utilisateur
+  (ancienne voix clonée qui pointe ailleurs) n'est jamais effacé.
+- Une voix clonée se modifie avec le formulaire `voice` (type de l'élément : `voice` si clonée, `gguf` si intégrée).
+  Son action **Écouter** (`play`) rend l'enregistrement.
+- **Essayer** : la phrase d'essai est dite par le modèle **chargé en ce moment** (le serveur n'en garde qu'un),
+  l'enregistrement partant en `voice_ref` avec `reference_text` (Qwen3-TTS, VoxCPM2) : pas de redémarrage du serveur.
+  Rien de chargé, ou un modèle qui ne clone pas (Supertonic) : un message dit comment l'entendre (garder la voix, la
+  choisir).
+- Pas encore : **décrire** une voix (modèle Qwen3-TTS VoiceDesign) ; transcrire seul un fichier importé (on écrit la
+  phrase à la main).
 
 ### Connecteurs
 
@@ -318,7 +353,7 @@ des fournisseurs (`offers`, `source`) et des applications (`apps-<rubrique>`).
 Affichage d'un slot (`SlotDef.display`) :
 
 - `"mode"` : onglets de mode en haut de la rubrique. « aucun » = le mode par défaut (`none`, ex. **Local**), l'autre = le libellé du slot (ex. **Live**). L'onglet Local montre les autres slots de la rubrique ; l'onglet Live montre les moteurs. Activer dans l'onglet d'un mode qui n'est pas en service passe Floppy dans ce mode.
-- `"tabs"` : un onglet par plugin qui offre le service (Voix, mot d'activation), plus « aucun » si le slot le permet. Un plugin qui n'offre qu'un élément (ex. « Dans le texte transcrit ») : pas de ligne qui répète l'onglet ; son formulaire est directement dans l'onglet, puis sa ligne de détail. S'il n'est pas en service, sa ligne reste au-dessus, pour l'activer. Un plugin « Installé » dans le catalogue a toujours son onglet : qu'il déclare ses éléments (`ctx.items.declare` avec `offers`), qu'il n'offre ses choix que par `ctx.offer` (ex. Voix du système : ses choix viennent des options du slot), ou qu'il soit éteint (l'onglet dit alors « éteint » et garde l'interrupteur Actif). Si les éléments ont un `group` (ex. le modèle d'une voix), deux étapes : 1. le groupe, 2. l'élément.
+- `"tabs"` : un onglet par plugin qui offre le service (Voix, mot d'activation), plus « aucun » si le slot le permet. Un plugin qui n'offre qu'un élément (ex. « Dans le texte transcrit ») : pas de ligne qui répète l'onglet ; son formulaire est directement dans l'onglet, puis sa ligne de détail. S'il n'est pas en service, sa ligne reste au-dessus, pour l'activer. Un plugin « Installé » dans le catalogue a toujours son onglet : qu'il déclare ses éléments (`ctx.items.declare` avec `offers`), qu'il n'offre ses choix que par `ctx.offer` (ex. Voix du système : ses choix viennent des options du slot), ou qu'il soit éteint (l'onglet dit alors « éteint » et garde l'interrupteur Actif). Si les éléments ont un `group` (ex. le modèle d'une voix) : d'abord tous les éléments (ce qu'on choisit), puis les groupes avec leur description et leur état ; un groupe de plus de 6 éléments est replié (« N autres dans … · Voir »).
 - sans : une liste groupée par plugin (cerveau principal, délégation), puis les cartes des plugins.
 
 Chaîne d'étapes (`SlotDef.step`, 2026-11-07) : quand **tous** les slots d'une rubrique (hors mode) ont un `step` et qu'il

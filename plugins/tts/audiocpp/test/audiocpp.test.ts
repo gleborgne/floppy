@@ -195,7 +195,9 @@ describe("noyau : fork, serveur lancé, voix en flux", () => {
       const p = (await k.items.snapshot()).find((x) => x.id === "voix-locale")!;
       expect(p).toMatchObject({ section: "voix", offers: "tts" });
       expect(p.items.find((i) => i.id === "q")).toMatchObject({ active: true, status: "ok" });
-      expect((p.items.find((i) => i.id === "q")!.detail as { fr: string }).fr).toMatch(/qwen3_tts · voix clonée \(ref\.wav\)/);
+      expect((p.items.find((i) => i.id === "q")!.detail as { fr: string }).fr).toBe("voix clonée · parle avec qwen3-tts-base.gguf");
+      // La taille est celle du modèle : sur le groupe, jamais sur la voix.
+      expect((p.items.find((i) => i.id === "q")!.group?.detail as { fr: string }).fr).toBe("0 Go · carte graphique");
       // Le consommateur part : le fork est fermé, le processus tué.
       await k.applyConfig({ plugins: [base], slots: { "voice.tts": "tts/q" } });
       await k.idle(); await k.idle();
@@ -217,7 +219,7 @@ describe("catalogue", () => {
       const r = await run({ op: "add", kind: "gguf", values: { label: "Ma voix", model, voix: "clone", refWav: wav } });
       expect(r).toMatchObject({ ok: true, id: "ma-voix" });
       const p = (await k.items.snapshot()).find((x) => x.id === "voix-locale")!;
-      expect(p.items[0]).toMatchObject({ kind: "gguf", enabled: true, active: false });
+      expect(p.items[0]).toMatchObject({ kind: "voice", enabled: true, active: false });
       const t = await run({ op: "test", kind: "gguf", values: { label: "X", model, voix: "clone", refWav: wav } });
       expect(t).toMatchObject({ ok: true });
       expect(String((t as { text: string }).text)).toContain("Estimation");

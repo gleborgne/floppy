@@ -38,6 +38,37 @@ export class AudioHistory {
   }
 }
 
+/** PCM 16 bits mono -> fichier WAV complet. */
+export function pcmWav(rate: number, pcm: Int16Array): Uint8Array {
+  const b = Buffer.alloc(44 + pcm.length * 2);
+  b.write("RIFF", 0, "ascii"); b.writeUInt32LE(36 + pcm.length * 2, 4); b.write("WAVE", 8, "ascii");
+  b.write("fmt ", 12, "ascii"); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+  b.write("data", 36, "ascii"); b.writeUInt32LE(pcm.length * 2, 40);
+  for (let i = 0; i < pcm.length; i++) b.writeInt16LE(pcm[i]!, 44 + i * 2);
+  return new Uint8Array(b);
+}
+
+const WAV_DATA = "data:audio/wav;base64,";
+
+/** Un son pour la fenêtre des réglages (OpResult.audio, champ « audio ») : le WAV en adresse data:. */
+export function wavDataUrl(bytes: Uint8Array): string {
+  return WAV_DATA + Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+}
+
+/**
+ * Valeur d'un champ « audio » -> octets du WAV. undefined : la valeur n'est pas un nouvel enregistrement (ex. le chemin
+ * du fichier déjà gardé). Lève une erreur si l'adresse est trop grosse ou ne contient pas un WAV lisible.
+ */
+export function wavFromDataUrl(value: unknown, maxBytes = 16 * 1024 * 1024): Uint8Array | undefined {
+  if (typeof value !== "string" || !value.startsWith(WAV_DATA)) return undefined;
+  if ((value.length - WAV_DATA.length) * 0.75 > maxBytes) throw new TextError(T("Enregistrement trop long.", "Recording too long."));
+  const bytes = new Uint8Array(Buffer.from(value.slice(WAV_DATA.length), "base64"));
+  try { if (!wavPcm(bytes).pcm.length) throw new Error("vide"); }
+  catch { throw new TextError(T("L'enregistrement est illisible : recommence.", "The recording cannot be read: try again.")); }
+  return bytes;
+}
+
 /** WAV 16 bits -> PCM mono (on garde le premier canal). Une taille de données trop grande (flux) est bornée au fichier. */
 export function wavPcm(bytes: Uint8Array): { rate: number; pcm: Int16Array } {
   const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);

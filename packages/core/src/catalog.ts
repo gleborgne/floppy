@@ -35,7 +35,12 @@ export interface ModelNeeds {
   backends?: Backend[];
 }
 
-export type FieldType = "text" | "number" | "boolean" | "select" | "secret" | "path" | "list" | "textarea" | "keyvalue";
+/**
+ * « audio » : un enregistrement de voix, fait au micro ou importé dans la fenêtre. La valeur est soit une adresse
+ * data:audio/wav (nouvel enregistrement, à lire avec wavFromDataUrl), soit ce que le plugin a rendu (ex. le chemin du
+ * fichier déjà gardé), inchangé.
+ */
+export type FieldType = "text" | "number" | "boolean" | "select" | "secret" | "path" | "list" | "textarea" | "keyvalue" | "audio";
 
 export interface FieldDef {
   key: string;
@@ -56,6 +61,12 @@ export interface FieldDef {
   directory?: boolean;
   min?: number;
   max?: number;
+  /** audio : phrases à lire au micro (une au hasard, « Autre phrase » en change). */
+  prompts?: Text[];
+  /** audio : champ qui reçoit la phrase lue (ex. le texte de l'enregistrement). */
+  textKey?: string;
+  /** audio : durée conseillée, en secondes. */
+  seconds?: { min: number; max: number };
 }
 
 export interface ItemKind {
@@ -109,8 +120,11 @@ export interface ItemInfo {
   toggleable?: boolean;
   children?: ItemChild[];
   childrenLabel?: Text;
-  /** Boutons propres à l'élément (« Utiliser », « Tester la voix »…). */
-  actions?: { id: string; label: Text }[];
+  /**
+   * Boutons propres à l'élément (« Utiliser », « Tester la voix »…). play : l'action rend un son (OpResult.audio) ;
+   * la fenêtre la montre en bouton rond « lecture » au début de la ligne.
+   */
+  actions?: { id: string; label: Text; play?: boolean }[];
   /** Mots qui le désignent à l'oral. */
   aliases?: string[];
   /** Clés des réglages qui appartiennent à cet élément : montrés dans l'élément (« Configurer »), pas dans la rubrique. */
@@ -148,6 +162,8 @@ export interface OpResult {
   copy?: string;
   /** Réponse à une recherche (op « search ») : les éléments trouvés, avec leurs boutons. */
   items?: ItemInfo[];
+  /** Après un clic dans la fenêtre : un son à jouer (adresse data:audio/wav, voir wavDataUrl). Ex. l'essai d'une voix. */
+  audio?: string;
 }
 
 /** Résultat rendu par CatalogRegistry.run : le message est déjà dans la langue de l'origine de la demande. */

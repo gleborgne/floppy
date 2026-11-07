@@ -30,7 +30,7 @@ export type { TtsChunk, TtsService, VadEvent, VadStream, VadService, SttService,
 export { providerConfig } from "./provider-config.ts";
 export { modelLibrary, formatBytes, entrySize, type LibraryEntry, type LibraryOptions } from "./model-library.ts";
 export { programLibrary, pickBuild, findProgram, type ProgramBuild, type ProgramOptions, type ProgramLibrary, type ProgramChange, restartsModels, failoverText, programRuns } from "./program-library.ts";
-export { floatToPcm16, Pcm16Decoder, AudioHistory, wavPcm } from "./audio.ts";
+export { floatToPcm16, Pcm16Decoder, AudioHistory, wavPcm, pcmWav, wavDataUrl, wavFromDataUrl } from "./audio.ts";
 export { readSse } from "./streaming.ts";
 export { connectJsonSocket, type JsonSocket } from "./json-socket.ts";
 export type { ConversationCommand, ConversationCommandInput } from "./services.ts";

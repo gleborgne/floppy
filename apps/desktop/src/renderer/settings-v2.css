@@ -388,3 +388,46 @@ dialog#editor.library { width: min(900px, 94vw); }
 .iform .try { padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
 .pdesc { color: var(--muted); font-size: 13px; }
 .idline { color: var(--muted-2); font-size: 12.5px; padding: 0 4px; }
+
+/* Enregistreur de voix (champ « audio ») et bouton rond « lecture » */
+.vplay { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel-2); color: var(--ink); }
+.vplay:hover { background: var(--raised-hover); color: var(--accent); }
+.vplay .icon { width: 14px; height: 14px; margin-left: 2px; }
+.vrec { display: flex; flex-direction: column; gap: 10px; }
+.vrec .seg.vmode { align-self: flex-start; }
+.vrec .seg.vmode button { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+.vrec .seg.vmode .icon { width: 15px; height: 15px; }
+.vrec .flabel, .vlabel { font-size: 13px; color: var(--ink-soft); }
+.vprompt-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vprompt-h .btn .icon, .vacts .btn .icon, .vfile .btn .icon { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
+.vprompt { margin: 0; padding: 14px 16px; border-radius: 14px; background: var(--field-well, #0d131b); border: 1px solid var(--line); font-size: 17px; line-height: 1.55; color: var(--ink); }
+.vpanel { display: flex; align-items: center; gap: 18px; padding: 14px 16px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line); }
+.vbig { width: 64px; height: 64px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 2px solid var(--accent); background: transparent; color: var(--accent); }
+.vbig .icon { width: 26px; height: 26px; }
+.vbig:hover { background: rgba(70, 227, 234, 0.1); }
+.vbig.on { background: var(--accent); color: var(--accent-ink); }
+.vbig.on .icon { width: 20px; height: 20px; fill: currentColor; }
+.vlive { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.vtop { display: flex; align-items: baseline; gap: 10px; }
+.vtime { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.vwave { display: flex; align-items: center; gap: 2px; height: 48px; overflow: hidden; }
+.vwave > span { flex: none; width: 3px; border-radius: 2px; background: var(--accent); }
+.vwave.live { justify-content: flex-end; }
+.vdone .vwave { flex: 1; min-width: 0; }
+.vsecs { color: var(--muted-2); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.vmeter { height: 6px; border-radius: 999px; background: var(--field-well, #0d131b); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.vmeter > i { display: block; height: 100%; width: 100%; background: var(--good); transform: scaleX(0); transform-origin: left; transition: transform 80ms linear; }
+.vtips { margin: 0; padding-left: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; color: var(--ink-soft); font-size: 12.5px; }
+.vchecks { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-soft); }
+.vchecks li { display: inline-flex; align-items: center; gap: 6px; }
+.vchecks .icon { width: 15px; height: 15px; flex: none; }
+.vchecks .ok .icon { color: var(--good); }
+.vchecks .warn .icon { color: var(--warn); }
+.vfile { flex-wrap: wrap; }
+.vcur { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-soft); }
+.vbad { color: var(--bad); font-size: 13px; }
+.vtrial { width: 100%; max-width: 420px; height: 36px; margin-top: 6px; }
+.sfold { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; color: var(--muted); font-size: 12.5px; border-bottom: 1px solid var(--divider); }
+.sfold:last-child { border-bottom: 0; }
+@media (max-width: 760px) { .vtips { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .vmeter > i { transition: none; } }

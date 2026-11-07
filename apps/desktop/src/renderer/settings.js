@@ -5,6 +5,7 @@
 import { initAssistant } from "./assistant.js";
 import { entryOf, offersOf, slotSources } from "./slot-sources.js";
 import { isLight } from "./tab-rules.js";
+import { abortRecording, audioField } from "./voice-recorder.js";
 import { listAdd, missingFields as missingOf, chainOf } from "./form-rules.js";
 import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "./library.js";
 import { installSummary, rowStatus } from "./onboarding-view.js";
@@ -37,7 +38,19 @@ const I = {
     hidden: "masqué", makeAvail: "Rends-le disponible pour pouvoir l'activer.", provIdle: "En veille : rien ne s'en sert dans ce mode.",
     inUseShort: "en service", turnOffTip: "Éteindre : plus rien dans ce rôle", inUseTip: "En service. Pour changer, allume un autre élément.", activateTip: "Mettre en service (l'élément actuel s'arrête)", noMore: "Rien d'autre à régler ici.", openDetail: "ouvrir le détail", settingsTab: "Réglages", back: "Retour", crumbs: "Chemin", settingsBtn: "Réglages", onShort: "Actif", builtin: "intégré", addPlugin: "Ajouter un plugin",
     pluginsNote: "ils apportent les éléments ci-dessus", pluginsOf: "Plugins", needsSetup: "à configurer",
-    stepModel: "Modèle", stepModelNote: "un seul chargé à la fois", stepItems: "Choix", stepItemsNote: "ceux du modèle choisi",
+    stepModelNote: "un seul chargé à la fois",
+    groupsTitle: "Modèles", itemsNote: "celle qui est allumée sert ; les autres attendent", foldMore: "{n} autres dans {g}", foldLess: "Replier",
+    recHow: "Comment créer la voix", recMe: "M'enregistrer", recImport: "Importer un fichier", recRead: "Lis cette phrase à voix haute", recOther: "Autre phrase",
+    recKnown: "Floppy connaît déjà ce texte : tu n'as rien à taper.", recStart: "Enregistrer", recStop: "Arrêter l'enregistrement", recOn: "enregistrement…",
+    recAim: "vise {min} à {max} secondes", recLevel: "Niveau du micro", recReading: "Lecture du son…", recAgain: "Recommencer", recReplay: "Réécouter l'enregistrement",
+    recChecks: "Vérifications", recLenOk: "Durée : {n} s", recShort: "Un peu court ({n} s) : vise {min} s ou plus.", recLong: "Long ({n} s) : {max} s suffisent.",
+    recClipped: "Son saturé : éloigne-toi un peu du micro.", recNotClipped: "Pas de son saturé", recQuiet: "Très faible : rapproche-toi du micro.",
+    recNoisy: "Un peu de bruit de fond : une pièce plus calme donnera un meilleur clone.", recClean: "Peu de bruit de fond",
+    recTip1: "Une pièce calme : pas de musique, pas de télé.", recTip2: "À une main du micro : ni trop près, ni trop loin.", recTip3: "Ton naturel : Floppy copie aussi ta façon de parler.",
+    recLocal: "L'enregistrement reste sur cet ordinateur.", recEmpty: "On n'entend rien : vérifie le micro, puis recommence.", recBadFile: "Ce son est illisible : essaie un autre fichier.",
+    recDenied: "Micro refusé : autorise le micro pour Floppy, puis recommence.", recNoMic: "Aucun micro trouvé.", recPickFile: "Choisir un fichier audio",
+    recFileHint: "WAV, MP3, M4A, OGG… {min} à {max} secondes de voix claire. Écris ensuite ce que dit le fichier.", recCurrent: "Enregistrement actuel",
+    recReplaceHint: "Un nouvel enregistrement le remplace.", recListenCurrent: "Écouter l'enregistrement actuel", trialAudio: "Essai",
     loadedShort: "chargé", idleShort: "en veille", seeItems: "Voir",
     modeOff: "Ce mode n'est pas en service. « Activer » un moteur ci-dessous y passe Floppy.",
     modeOffLocal: "Floppy est en mode Live. « Activer » un élément ici le repasse dans ce mode.",
@@ -76,7 +89,19 @@ const I = {
     hidden: "hidden", makeAvail: "Make it available to activate it.", provIdle: "Idle: nothing uses it in this mode.",
     inUseShort: "in use", turnOffTip: "Turn off: nothing in this role", inUseTip: "In use. To change, turn on another item.", activateTip: "Put in use (the current one stops)", noMore: "Nothing else to set here.", openDetail: "open details", settingsTab: "Settings", back: "Back", crumbs: "Path", settingsBtn: "Settings", onShort: "On", builtin: "built-in", addPlugin: "Add a plugin",
     pluginsNote: "they provide the items above", pluginsOf: "Plugins", needsSetup: "needs setup",
-    stepModel: "Model", stepModelNote: "one loaded at a time", stepItems: "Choice", stepItemsNote: "those of the chosen model",
+    stepModelNote: "one loaded at a time",
+    groupsTitle: "Models", itemsNote: "the one switched on is used; the others wait", foldMore: "{n} more in {g}", foldLess: "Collapse",
+    recHow: "How to create the voice", recMe: "Record myself", recImport: "Import a file", recRead: "Read this sentence aloud", recOther: "Another sentence",
+    recKnown: "Floppy already knows this text: nothing to type.", recStart: "Record", recStop: "Stop recording", recOn: "recording…",
+    recAim: "aim for {min} to {max} seconds", recLevel: "Microphone level", recReading: "Reading the sound…", recAgain: "Start over", recReplay: "Play the recording again",
+    recChecks: "Checks", recLenOk: "Length: {n} s", recShort: "A bit short ({n} s): aim for {min} s or more.", recLong: "Long ({n} s): {max} s is enough.",
+    recClipped: "Distorted sound: move a little away from the microphone.", recNotClipped: "No distortion", recQuiet: "Very quiet: move closer to the microphone.",
+    recNoisy: "Some background noise: a quieter room will give a better clone.", recClean: "Little background noise",
+    recTip1: "A quiet room: no music, no TV.", recTip2: "A hand's width from the microphone: not too close, not too far.", recTip3: "Natural tone: Floppy also copies the way you speak.",
+    recLocal: "The recording stays on this computer.", recEmpty: "Nothing can be heard: check the microphone, then start over.", recBadFile: "This sound cannot be read: try another file.",
+    recDenied: "Microphone refused: allow the microphone for Floppy, then start over.", recNoMic: "No microphone found.", recPickFile: "Choose an audio file",
+    recFileHint: "WAV, MP3, M4A, OGG… {min} to {max} seconds of clear voice. Then write what the file says.", recCurrent: "Current recording",
+    recReplaceHint: "A new recording replaces it.", recListenCurrent: "Listen to the current recording", trialAudio: "Trial",
     loadedShort: "loaded", idleShort: "idle", seeItems: "See",
     modeOff: "This mode is not in use. “Activate” an engine below to switch Floppy to it.",
     modeOffLocal: "Floppy is in Live mode. “Activate” an item here to switch back to this mode.",
@@ -217,7 +242,38 @@ async function itemOp(op) {
 async function quickOp(op) {
   const r = await itemOp(op);
   toast(r.text || (r.ok ? t("done") : t("refused")), !r.ok);
+  if (r.ok && r.audio) playAudio(r.audio);
   return r;
+}
+
+/** Un seul son à la fois (« Écouter » d'une voix, essai) : le suivant coupe le précédent. */
+let playing = null;
+function playAudio(src) {
+  playing?.pause();
+  playing = new Audio(src);
+  void playing.play().catch(() => {});
+}
+
+/** Bouton rond « lecture » au début d'une ligne : l'action de l'élément qui rend un son (actions[].play). */
+function playLead(p, it) {
+  const a = (it.actions ?? []).find((x) => x.play);
+  if (!a) return null;
+  return h("button", {
+    type: "button", class: "vplay", "aria-label": `${tr(a.label)} : ${tr(it.label)}`,
+    onclick: async (e) => {
+      e.stopPropagation();
+      const r = await itemOp({ op: "action", provider: p.id, id: it.id, action: a.id });
+      if (r.ok && r.audio) playAudio(r.audio); else toast(r.text || t("refused"), true);
+    },
+  }, window.lucideIcon("play"));
+}
+
+/** « + Ajouter … » d'un fournisseur : un bouton par type quand il en a plusieurs (ex. « Nouvelle voix », « Modèle local »). */
+function addButtons(p) {
+  if (!p.can.add || !p.kinds.length) return [];
+  // Un seul type, ou beaucoup (ex. les connecteurs) : un bouton, qui fait choisir le type.
+  if (p.kinds.length === 1 || p.kinds.length > 3) return [h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) })];
+  return p.kinds.map((k) => h("button", { type: "button", class: "btn small", text: `+ ${tr(k.label)}`, onclick: () => openEditor({ mode: "add", kinds: [{ provider: p, kind: k }] }) }));
 }
 
 // ------------------------------------------------------------------ contrôles des réglages
@@ -613,7 +669,6 @@ function addButton(page) {
 // ses réglages, l'interrupteur « Actif » est seulement sur un plugin. Tout vient des déclarations : slots du noyau,
 // fournisseurs d'éléments (offers) et applications (plugins qu'on ajoute, allume, éteint ou retire).
 const uiTab = new Map();     // slot ou page -> onglet affiché
-const uiGroup = new Map();   // slot -> groupe affiché (ex. modèle de voix)
 
 const appProviders = () => items.providers.filter((p) => p.id.startsWith("apps-"));
 /** L'application (plugin installé) d'une entrée : [fournisseur « apps-… », élément]. */
@@ -707,6 +762,7 @@ function itemRow(slot, p, it, page) {
     canAct: canFill(slot, p, it) && it.status !== "warn" && it.status !== "error", onAct: () => activate(slot, v, page),
     onOff: slot.none ? () => activate(slot, "@none", page) : null,
     onSettings: editable ? () => openDetail(p, it) : null, rowLink: true,
+    lead: playLead(p, it),
   });
 }
 
@@ -754,9 +810,7 @@ function slotList(slot, page, { withNone = true, title, sub } = {}) {
  */
 function slotAddBar(slot, page) {
   const bar = h("div", { class: "saddbar" });
-  for (const [, provs] of pluginsFor(slot.service)) {
-    for (const p of provs) if (p.can.add && p.kinds.length) bar.append(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
-  }
+  for (const [, provs] of pluginsFor(slot.service)) for (const p of provs) bar.append(...addButtons(p));
   const libs = librariesFor(libraries, slot.service);
   if (libs.length) bar.append(libButton(slot.service, "", tr(slot.label)));
   bar.append(h("button", { type: "button", class: "btn small", text: `+ ${t("addPlugin")}`, onclick: () => openCatalogue(page, roleOf(slot)) }));
@@ -768,7 +822,7 @@ function pluginHead(source, provs, service, roleLabel, page) {
   const app = appOf(source);
   const text = tr(app?.[1].detail) || tr(provs[0]?.description);
   const btns = [];
-  for (const p of provs) if (p.can.add && p.kinds.length) btns.push(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
+  for (const p of provs) btns.push(...addButtons(p));
   if (service && librariesFor(libraries, service, source).length) btns.push(libButton(service, source, roleLabel));
   // Retirer / Actif sont dans l'onglet Plugins quand la page en a un : ici, seulement pour rallumer un plugin éteint.
   if (app && (!app[1].enabled || !hasPluginsTab(page))) { const c = pluginControls(app[0], app[1]); btns.push(...c.acts, ...c.sw); }
@@ -818,7 +872,7 @@ function pluginCards(services, page, title) {
     // Ligne 1 : nom, « intégré », interrupteur Actif. Ligne 2 : « + Ajouter … », Réglages.
     const top = h("div", { class: "pctop" }, h("strong", { text: pluginName(source, provs) }), h("span", { class: "chip", text: t("builtin") }));
     const acts = h("div", { class: "pcacts" });
-    for (const p of provs) if (p.can.add && p.kinds.length) acts.append(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
+    for (const p of provs) acts.append(...addButtons(p));
     if (app) { const c = pluginControls(app[0], app[1]); top.append(...c.sw); acts.append(...c.acts); }
     grid.append(h("div", { class: "scard pcard" }, top, acts));
   }
@@ -885,33 +939,43 @@ function singleItem(slot, p, it, page) {
   return out;
 }
 
-/** Deux étapes : 1. le groupe (ex. le modèle), 2. l'élément de ce groupe (ex. la voix). */
+/**
+ * Éléments rangés par groupe (ex. des voix, rangées sous leur modèle) : d'abord TOUS les éléments, ce qu'on choisit ;
+ * puis les groupes, avec ce qui les décrit (taille, matériel) et leur état (chargé, en veille). Un groupe de plus de
+ * FOLD éléments (ex. les 26 voix intégrées d'un modèle) est replié : on voit celui en service, et « N autres · Voir ».
+ */
+const FOLD = 6;
+const uiFold = new Set(); // « slot/groupe » dépliés
 function groupedRows(slot, rows, page) {
   const groups = [];
   for (const [, it] of rows) if (it.group && !groups.some((g) => g.id === it.group.id)) groups.push(it.group);
   const here = rows.find(([p, it]) => slot.value === valueOf(p, it));
   const hereGroup = here?.[1].group?.id;
-  let sel = uiGroup.get(slot.id);
-  if (!groups.some((g) => g.id === sel)) sel = hereGroup ?? groups[0]?.id;
-  const step = (n, title, sub, extra) => h("h3", { class: "shead" }, h("span", { class: "step", text: String(n) }), h("span", { text: title }), sub ? h("span", { class: "sub", text: sub }) : null, extra ?? null);
+  const loose = rows.filter(([, it]) => !it.group);
+  const voices = h("div", { class: "scard" });
+  // Les petits groupes d'abord (souvent les voix de l'utilisateur), les grands repliés à la fin.
+  const order = [...groups].sort((a, b) => (rows.filter(([, i]) => i.group?.id === a.id).length > FOLD) - (rows.filter(([, i]) => i.group?.id === b.id).length > FOLD));
+  for (const [p, it] of loose) voices.append(itemRow(slot, p, it, page));
+  for (const g of order) {
+    const inG = rows.filter(([, it]) => it.group?.id === g.id);
+    const fk = `${slot.id}/${g.id}`;
+    const folded = inG.length > FOLD && !uiFold.has(fk);
+    const shown = folded ? inG.filter(([p, it]) => slot.value === valueOf(p, it)) : inG;
+    for (const [p, it] of shown) voices.append(itemRow(slot, p, it, page));
+    if (inG.length > FOLD) {
+      const label = folded ? t("foldMore").replace("{n}", String(inG.length - shown.length)).replace("{g}", tr(g.label)) : tr(g.label);
+      voices.append(h("div", { class: "sfold" }, h("span", { text: label }),
+        h("button", { type: "button", class: "btn small", "aria-expanded": String(!folded), text: folded ? t("seeItems") : t("foldLess"), onclick: () => { if (folded) uiFold.add(fk); else uiFold.delete(fk); render(); } })));
+    }
+  }
   const models = h("div", { class: "scard" });
   for (const g of groups) {
-    const inG = rows.filter(([p, it]) => it.group?.id === g.id && canFill(slot, p, it));
     const isHere = g.id === hereGroup;
-    models.append(row({
-      name: tr(g.label), detail: tr(g.detail), here: isHere, selected: g.id === sel,
-      state: isHere ? (slotStateText(slot) || t("loadedShort")) : t("idleShort"),
-      canAct: inG.length > 0, onAct: () => { uiGroup.set(slot.id, g.id); return activate(slot, valueOf(...inG[0]), page); },
-      extraBtn: h("button", { type: "button", class: "btn small", text: t("seeItems"), "aria-pressed": String(g.id === sel), onclick: (e) => { e.stopPropagation(); uiGroup.set(slot.id, g.id); render(); } }),
-      onPick: () => { uiGroup.set(slot.id, g.id); render(); },
-    }));
+    models.append(row({ name: tr(g.label), detail: tr(g.detail), state: isHere ? (slotStateText(slot) || t("loadedShort")) : t("idleShort"), stateCls: isHere ? "use" : "" }));
   }
-  const g = groups.find((x) => x.id === sel);
-  const voices = h("div", { class: "scard" });
-  for (const [p, it] of rows.filter(([, it]) => it.group?.id === sel)) voices.append(itemRow(slot, p, it, page));
   return [
-    h("section", { class: "ssec" }, step(1, t("stepModel"), t("stepModelNote")), models),
-    h("section", { class: "ssec" }, step(2, `${t("stepItems")} · ${tr(g?.label)}`, t("stepItemsNote")), voices),
+    h("section", { class: "ssec" }, secHead(tr(slot.label), t("itemsNote")), voices),
+    h("section", { class: "ssec" }, secHead(t("groupsTitle"), t("stepModelNote")), models),
   ];
 }
 
@@ -1440,6 +1504,7 @@ function defaultsOf(kind) {
 function openEditor(init) {
   catalog = null; library = null;
   dlg.classList.remove("catalog", "library");
+  resetEditorAudio();
   ed = { kinds: init.kinds ?? [], provider: null, kind: null, values: {}, step: 1, result: null, trial: null, busy: false };
   if (ed.kinds.length === 1) chooseKind(ed.kinds[0]);
   drawEditor();
@@ -1454,8 +1519,15 @@ function chooseKind(k) {
   ed.step = 2;
 }
 
-function closeEditor() { if (dlg.open) dlg.close(); ed = null; }
-dlg.addEventListener("close", () => { ed = null; catalog = null; library = null; dlg.classList.remove("catalog", "library"); if (deferred) render(); });
+/** Enregistreurs des formulaires : « ed/<champ> » (fenêtre d'ajout) ou « fournisseur/élément/<champ> » (page de l'élément). */
+const audioStates = new Map();
+/** Fenêtre d'ajout fermée ou rouverte : son micro s'arrête, son enregistrement repart de zéro. */
+function resetEditorAudio() {
+  for (const [k, st] of audioStates) if (k.startsWith("ed/")) { abortRecording(st); audioStates.delete(k); }
+}
+
+function closeEditor() { if (dlg.open) dlg.close(); ed = null; resetEditorAudio(); }
+dlg.addEventListener("close", () => { resetEditorAudio(); ed = null; catalog = null; library = null; dlg.classList.remove("catalog", "library"); if (deferred) render(); });
 dlg.addEventListener("cancel", () => { ed = null; });
 
 const visible = (f, values) => !f.showIf || (f.showIf.values ?? []).some((v) => String(v) === String(values[f.showIf.key]));
@@ -1465,12 +1537,32 @@ const visible = (f, values) => !f.showIf || (f.showIf.values ?? []).some((v) => 
  * (champ quitté, Entrée, case cochée, pastille ajoutée ou retirée) émet un événement « change » qui remonte : le
  * formulaire en place l'enregistre.
  */
-function fieldControl(f, values, onChange) {
+function fieldControl(f, values, onChange, opts = {}) {
   const id = nextId();
   const v = values[f.key];
   const set = (x) => { values[f.key] = x; onChange(); };
   let ctl;
   switch (f.type) {
+    case "audio": {
+      // L'état de l'enregistreur survit aux dessins de la page (un enregistrement peut être en cours).
+      const sk = `${opts.stateKey ?? "ed"}/${f.key}`;
+      const st = audioStates.get(sk) ?? {};
+      audioStates.set(sk, st);
+      const box = audioField({
+        f, st, value: v, set,
+        // La phrase lue remplit le champ texte, sauf si l'utilisateur y a écrit autre chose.
+        setText: (text, prompts) => { if (f.textKey && (!values[f.textKey] || prompts.includes(values[f.textKey]))) values[f.textKey] = text; },
+        deps: {
+          h, t, tr, icon: window.lucideIcon,
+          // Fin d'un enregistrement : le formulaire en place l'enregistre tout de suite, puis on redessine.
+          // (Pas d'événement « change » : la case a pu être redessinée pendant l'enregistrement.)
+          redraw: () => { if (st.phase === "done" && st.committed !== st.url) { st.committed = st.url; opts.commit?.(); } if (opts.stateKey) render(); else drawEditor(); },
+          ...(opts.listen ? { listenCurrent: opts.listen } : {}),
+        },
+      });
+      box.id = id;
+      return { id, ctl: box, wide: true };
+    }
     case "boolean": {
       ctl = h("input", { type: "checkbox", id, checked: v === true });
       ctl.addEventListener("change", () => set(ctl.checked));
@@ -1572,17 +1664,22 @@ function fieldControl(f, values, onChange) {
   return { id, ctl };
 }
 
-function formNode(kind, values) {
+/** opts.stateKey : formulaire en place d'un élément (« fournisseur/élément ») ; opts.listen : écouter l'enregistrement gardé. */
+function formNode(kind, values, opts = {}) {
   const form = h("div", { class: "form" });
   const adv = h("div", { class: "form" });
   const wraps = [];
   const refresh = () => { for (const [f, w] of wraps) w.hidden = !visible(f, values); };
   for (const f of kind.fields) {
-    const { id, ctl, inline } = fieldControl(f, values, refresh);
-    const lab = h("label", { for: ctl.labelTarget ? ctl.labelTarget.id : id }, tr(f.label), f.required ? h("span", { class: "req", "aria-hidden": "true", text: " *" }) : null);
+    const { id, ctl, inline, wide: wideCtl } = fieldControl(f, values, refresh, opts);
+    // Un enregistreur n'est pas un champ de saisie : son nom est un titre de groupe, pas une étiquette « for ».
+    const lab = f.type === "audio"
+      ? h("span", { class: "flabel", id: `${id}-l` }, tr(f.label), f.required ? h("span", { class: "req", "aria-hidden": "true", text: " *" }) : null)
+      : h("label", { for: ctl.labelTarget ? ctl.labelTarget.id : id }, tr(f.label), f.required ? h("span", { class: "req", "aria-hidden": "true", text: " *" }) : null);
+    if (f.type === "audio") ctl.setAttribute("aria-labelledby", `${id}-l`);
     if (f.required) (ctl.labelTarget ?? ctl).setAttribute("aria-required", "true");
     const hint = f.hint ? h("span", { class: "hint", text: tr(f.hint) }) : null;
-    const wide = f.type === "textarea" || f.type === "list" || f.type === "keyvalue";
+    const wide = wideCtl || f.type === "textarea" || f.type === "list" || f.type === "keyvalue";
     const w = inline ? h("div", { class: "field check" }, ctl, lab, hint) : h("div", { class: wide ? "field wide" : "field" }, lab, ctl, hint);
     wraps.push([f, w]);
     (f.advanced ? adv : form).append(w);
@@ -1602,6 +1699,7 @@ async function runTrial() {
   drawEditor();
   const r = await itemOp({ op: "test", provider: e.provider.id, kind: e.kind.id, values: e.values });
   e.busy = false; e.trial = r;
+  if (r.ok && r.audio && ed === e) playAudio(r.audio);
   if (ed === e) drawEditor();
 }
 
@@ -1652,6 +1750,7 @@ function drawEditor() {
           h("button", { type: "button", class: "btn small", text: ed.trial?.running ? t("trying") : t("tryBtn"), disabled: ed.busy, onclick: runTrial })));
       if (ed.trial && !ed.trial.running) {
         tb.append(h("pre", { class: ed.trial.ok ? "" : "bad", role: "status", text: ed.trial.text ?? "" }));
+        if (ed.trial.audio) tb.append(trialPlayer(ed.trial.audio));
         if (ed.trial.children?.length) {
           const ul = h("ul", { class: "plainlist" });
           for (const c of ed.trial.children) ul.append(h("li", { text: [tr(c.label), tr(c.detail)].filter(Boolean).join(" — ") }));
@@ -1684,7 +1783,11 @@ function inlineForm(p, it) {
   const fresh = last?.ok && Date.now() - last.at < 2500;
   const status = h("span", { class: `fsaved${fresh ? " ok" : ""}`, role: "status", text: last?.busy ? t("saving") : fresh ? `✓ ${t("savedOk")}` : "" });
   const err = h("p", { class: "ferr", role: "alert", hidden: !(last && !last.ok && !last.busy), text: last && !last.ok ? last.text : "" });
-  const form = formNode(kind, values);
+  const play = (it.actions ?? []).find((a) => a.play);
+  const form = formNode(kind, values, {
+    stateKey: key, commit: () => { void save(); },
+    ...(play ? { listen: () => quickOp({ op: "action", provider: p.id, id: it.id, action: play.id }) } : {}),
+  });
   // L'état est écrit dans la page tout de suite : le rendu complet attend que le champ en cours de saisie soit quitté.
   const show = (state) => {
     saves.set(key, state);
@@ -1722,10 +1825,18 @@ function inlineForm(p, it) {
     box.append(h("div", { class: "try" }, h("div", { class: "step-h" }, t("tryNow"),
       h("button", { type: "button", class: "btn small", text: tri?.running ? t("trying") : t("tryBtn"), disabled: !!tri?.running, onclick: async () => {
         trials.set(key, { running: true }); render();
-        trials.set(key, await itemOp({ op: "test", provider: p.id, kind: kind.id, id: it.id, values: { ...values } })); render();
-      } })), out));
+        const r = await itemOp({ op: "test", provider: p.id, kind: kind.id, id: it.id, values: { ...values } });
+        trials.set(key, r);
+        if (r.ok && r.audio) playAudio(r.audio);
+        render();
+      } })), out, tri?.audio ? trialPlayer(tri.audio) : null));
   }
   return box;
+}
+
+/** Le son d'un essai (ex. la voix qui dit la phrase d'essai) : un lecteur pour le réécouter. */
+function trialPlayer(src) {
+  return h("audio", { class: "vtrial", controls: true, src, "aria-label": t("trialAudio") });
 }
 
 // ------------------------------------------------------------------ branchements

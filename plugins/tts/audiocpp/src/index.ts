@@ -4,9 +4,10 @@
 // - Le fork écrit son dossier de travail (server.json + voices/), lance le serveur, attend qu'il réponde, puis parle en flux (SSE).
 import { z } from "zod";
 import type { ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, killTree, Pcm16Decoder, wavPcm, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
+import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, killTree, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text, type TtsChunk, type TtsService } from "@floppy/core";
 
 /** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
@@ -227,6 +228,45 @@ const KIND: ItemKind = {
     "A GGUF file run by audio.cpp. It joins the list; activate it as the voice whenever you like."),
   fields: FIELDS,
 };
+
+/** Familles qui savent cloner une voix à partir d'un enregistrement. */
+export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts"];
+/** Familles qui lisent le texte de l'enregistrement (sinon : seulement le timbre, x_vector_only_mode). */
+const WITH_TEXT = ["qwen3_tts", "voxcpm2"];
+
+/** Phrases à lire au micro : 10 à 15 s chacune, des sons variés. */
+export const PROMPTS: Text[] = [
+  T("Le matin, j'aime ouvrir la fenêtre et écouter la ville se réveiller. Les volets claquent, un vélo passe, et quelqu'un rit au coin de la rue.",
+    "In the morning, I like to open the window and listen to the city waking up. Shutters bang, a bike goes by, and someone laughs around the corner."),
+  T("Hier soir, nous avons préparé une grande soupe de légumes. Il y avait des carottes, des poireaux et beaucoup trop de poivre !",
+    "Last night, we made a big vegetable soup. There were carrots, leeks and far too much pepper!"),
+  T("Pour aller à la gare, prends la deuxième rue à gauche, traverse le petit pont, puis continue tout droit jusqu'à la boulangerie.",
+    "To get to the station, take the second street on the left, cross the little bridge, then keep going straight to the bakery."),
+  T("Tu sais quoi ? Je crois que le chat a encore caché mes clés sous le canapé. Il fait ça chaque fois que je suis pressé.",
+    "You know what? I think the cat hid my keys under the sofa again. He does that every time I'm in a hurry."),
+  T("Quand la pluie s'arrête enfin, l'air sent la terre mouillée, et les enfants sortent sauter dans toutes les flaques du jardin.",
+    "When the rain finally stops, the air smells of wet earth, and the children run out to jump in every puddle in the garden."),
+];
+
+/** Formulaire d'une voix : son nom, son enregistrement, ce qu'il dit, et le modèle qui la fait parler. */
+export function voiceKind(models: { value: string; label: Text }[]): ItemKind {
+  return {
+    id: "voice",
+    label: T("Nouvelle voix", "New voice"),
+    description: T("Quelques secondes de ta voix (ou d'une autre), enregistrées au micro ou importées. Elle pèse quelques centaines de Ko : le modèle, lui, est partagé.",
+      "A few seconds of your voice (or another one), recorded with the microphone or imported. It weighs a few hundred KB: the model is shared."),
+    fields: [
+      { key: "label", label: T("Nom de la voix", "Voice name"), type: "text", required: true, placeholder: T("Ma voix", "My voice"),
+        hint: T("C'est aussi le nom à dire : « Floppy, prends ma voix ».", "It's also the name to say: \"Floppy, use my voice\".") },
+      { key: "sample", label: T("Enregistrement", "Recording"), type: "audio", required: true, prompts: PROMPTS, textKey: "refText", seconds: { min: 10, max: 20 } },
+      { key: "refText", label: T("Ce que dit l'enregistrement", "What the recording says"), type: "textarea",
+        hint: T("La phrase lue. Si tu as dit autre chose, corrige-la ici. Vide : seul le timbre est copié.", "The sentence read. If you said something else, fix it here. Empty: only the timbre is copied.") },
+      { key: "model", label: T("Modèle qui la fait parler", "Model that speaks it"), type: "select", required: true, options: models,
+        hint: T("Qwen3 TTS : plus fidèle, carte graphique. Pocket TTS : plus rapide, processeur.", "Qwen3 TTS: more faithful, graphics card. Pocket TTS: faster, processor.") },
+      { key: "essai", label: T("Phrase d'essai", "Test sentence"), type: "text", placeholder: T("Bonjour ! Je suis Floppy.", "Hello! I'm Floppy.") },
+    ],
+  };
+}
 
 function sizeOf(file: string): number | undefined {
   try { return statSync(file).size; } catch { return undefined; }
@@ -452,34 +492,140 @@ return definePlugin<Config>({
      * Plusieurs voix d'un même fichier (ex. les voix de Pocket TTS) : groupées sous le modèle. La fenêtre fait alors
      * choisir le modèle, puis la voix. Un fichier qui n'a qu'une voix reste une ligne simple.
      */
+    /** Nom d'un fichier de modèle : celui du catalogue des modèles connus, sinon le nom du fichier. */
+    const modelLabel = (file: string): Text => known.find((x) => samePath(knownFile(x), file))?.label ?? basename(file);
+    /**
+     * Chaque voix est rangée sous son modèle (le fichier GGUF) : la fenêtre montre les voix, puis les modèles avec leur
+     * taille. La taille est celle du modèle, partagée par ses voix : elle n'apparaît que sur le modèle.
+     */
     const groupOf = (m: Entry): Pick<ItemInfo, "group"> => {
-      if (all().filter((x) => samePath(x.model, m.model)).length < 2) return {};
-      const k = known.find((x) => samePath(knownFile(x), m.model));
-      return { group: { id: m.model.replace(/\\/g, "/").toLowerCase(), label: k?.label ?? basename(m.model), ...(k?.description ? { detail: k.description } : {}) } };
+      if (!m.model) return {};
+      const size = sizeOf(m.model);
+      const q = quantOf(m.model);
+      const where = voiceNeeds({ famille: familyOf(m) as KnownVoiceModel["famille"] }).device === "gpu" ? T("carte graphique", "graphics card") : T("processeur", "processor");
+      const detail = size === undefined ? T("fichier introuvable", "file not found")
+        : T(`${gb(size)} Go · ${q ? `${q.fr} · ` : ""}${where.fr}`, `${gb(size)} GB · ${q ? `${q.en} · ` : ""}${where.en}`);
+      return { group: { id: m.model.replace(/\\/g, "/").toLowerCase(), label: modelLabel(m.model), detail } };
+    };
+    /** Durée d'un enregistrement (s), gardée tant que le fichier ne change pas : la liste est relue souvent. */
+    const durations = new Map<string, { mtime: number; seconds: number }>();
+    const secondsOf = (file: string): number | undefined => {
+      try {
+        const mtime = statSync(file).mtimeMs;
+        const c = durations.get(file);
+        if (c?.mtime === mtime) return c.seconds;
+        const w = wavPcm(new Uint8Array(readFileSync(file)));
+        const seconds = w.pcm.length / w.rate;
+        durations.set(file, { mtime, seconds });
+        return seconds;
+      } catch { return undefined; }
     };
     const info = (m: Entry): ItemInfo => {
       const size = sizeOf(m.model);
-      const q = quantOf(m.model);
       const ready = running.get(m.id);
       const active = ready !== undefined;
       const on = store.isEnabled(m.id);
-      const vt = voiceText(m);
-      const fam = familyOf(m);
-      const noRef = m.voix === "clone" && !m.refWav;
+      const clone = m.voix === "clone";
+      const noRef = clone && !m.refWav;
+      const secs = clone && m.refWav ? secondsOf(m.refWav) : undefined;
+      const ml = modelLabel(m.model);
+      const mlFr = typeof ml === "string" ? ml : ml.fr, mlEn = typeof ml === "string" ? ml : ml.en;
+      const detail = !clone
+        ? T(`voix intégrée${m.speaker ? ` (${m.speaker})` : ""} · ${mlFr}`, `built-in voice${m.speaker ? ` (${m.speaker})` : ""} · ${mlEn}`)
+        : T(`voix clonée${secs ? ` · ${Math.round(secs)} s d'enregistrement` : ""} · parle avec ${mlFr}`, `cloned voice${secs ? ` · ${Math.round(secs)} s recording` : ""} · speaks with ${mlEn}`);
       return {
-        id: m.id, label: m.label, enabled: on, active, kind: "gguf",
-        detail: size === undefined
-          ? T(`fichier introuvable · ${fam} · ${vt.fr}`, `file not found · ${fam} · ${vt.en}`)
-          : T(`${gb(size)} Go · ${q ? `${q.fr} · ` : ""}${fam} · ${vt.fr}`, `${gb(size)} GB · ${q ? `${q.en} · ` : ""}${fam} · ${vt.en}`),
+        id: m.id, label: m.label, enabled: on, active, kind: clone ? "voice" : "gguf",
+        detail: size === undefined ? T(`fichier du modèle introuvable · ${detail.fr}`, `model file not found · ${detail.en}`) : detail,
         status: size === undefined ? "error" : !on ? "off" : active ? (ready ? "ok" : "loading") : noRef ? "warn" : undefined,
         statusText: size === undefined ? T("fichier introuvable", "file not found")
           : !on ? T("désactivé : Floppy ne le voit plus", "disabled: Floppy no longer sees it")
           : active ? (ready ? T("chargé", "loaded") : T("chargement…", "loading…"))
-          : noRef ? T("voix clonée sans enregistrement : choisis un WAV", "cloned voice without a recording: pick a WAV") : undefined,
-        values: { ...m } as unknown as Record<string, unknown>,
+          : noRef ? T("voix clonée sans enregistrement : enregistre-la", "cloned voice without a recording: record it") : undefined,
+        // sample : l'enregistrement, pour le formulaire d'une voix (son chemin ; un nouvel enregistrement le remplace).
+        values: { ...m, ...(clone ? { sample: m.refWav } : {}) } as unknown as Record<string, unknown>,
         editable: true, removable: !active, toggleable: !active || !on,
+        ...(clone && secs !== undefined ? { actions: [{ id: "listen", label: T("Écouter", "Listen"), play: true }] } : {}),
         ...groupOf(m),
       };
+    };
+
+    // ---- Voix créées dans la fenêtre : l'enregistrement est copié chez Floppy (l'original peut disparaître).
+    const voicesDir = join(ctx.home, "tts-audiocpp", "voices");
+    /** Modèles qui savent cloner, un par fichier : les choix du formulaire d'une voix. */
+    const cloneModels = (): { value: string; label: Text }[] => {
+      const out: { value: string; label: Text }[] = [];
+      for (const m of all()) if (CLONERS.includes(familyOf(m)) && m.model && !out.some((o) => samePath(o.value, m.model))) out.push({ value: m.model, label: modelLabel(m.model) });
+      return out;
+    };
+    /** Valeurs d'une voix (formulaire) -> entrée : le modèle choisi garde sa famille et son mode. */
+    const voiceEntry = (values: Record<string, unknown>, cur?: ModelValues): { v: ModelValues; wav?: Uint8Array } => {
+      const wav = wavFromDataUrl(values.sample);
+      const model = str(values.model) || cur?.model || "";
+      const twin = all().find((m) => samePath(m.model, model));
+      const v = clean({
+        ...(cur ?? {}), ...(twin ? { famille: twin.famille, familleAutre: twin.familleAutre, mode: twin.mode, rate: twin.rate } : {}),
+        label: values.label ?? cur?.label, model, voix: "clone",
+        refWav: wav ? "" : str(values.sample) || cur?.refWav || "",
+        refText: typeof values.refText === "string" ? values.refText : cur?.refText ?? "",
+      } as Record<string, unknown>);
+      return { v, ...(wav ? { wav } : {}) };
+    };
+    const saveSample = (wav: Uint8Array): string => {
+      mkdirSync(voicesDir, { recursive: true });
+      const file = join(voicesDir, `${randomUUID()}.wav`);
+      writeFileSync(file, wav);
+      return file;
+    };
+    const voiceProblem = (v: ModelValues, wav?: Uint8Array): Text | undefined => {
+      if (!v.label) return T("Donne un nom à la voix.", "Give the voice a name.");
+      if (!v.model) return T("Choisis le modèle qui la fait parler. Aucun ? Télécharge d'abord Qwen3 TTS ou Pocket TTS.", "Choose the model that speaks it. None? Download Qwen3 TTS or Pocket TTS first.");
+      if (!existsSync(v.model)) return T(`Fichier du modèle introuvable : ${v.model}`, `Model file not found: ${v.model}`);
+      if (!wav && !v.refWav) return T("Enregistre la voix, ou importe un fichier.", "Record the voice, or import a file.");
+      if (!wav && !existsSync(v.refWav)) return T(`Enregistrement introuvable : ${v.refWav}`, `Recording not found: ${v.refWav}`);
+      return undefined;
+    };
+
+    /**
+     * Essai d'une voix avec le modèle chargé en ce moment (le serveur ne garde qu'un modèle). L'enregistrement part en
+     * voice_ref : pas besoin de relancer le serveur. Rien de chargé : on explique comment l'entendre.
+     */
+    const trialVoice = async (values: Record<string, unknown>, id?: string): Promise<OpResult> => {
+      const cur = id ? all().find((m) => m.id === id) : undefined;
+      const { v, wav } = voiceEntry(values, cur);
+      if (!wav && !(v.refWav && existsSync(v.refWav))) return { ok: false, text: T("Enregistre la voix d'abord.", "Record the voice first.") };
+      const loadedId = [...running].find(([, ok]) => ok)?.[0];
+      const loaded = loadedId ? all().find((m) => m.id === loadedId) : undefined;
+      if (!loaded || !(await healthy())) return { ok: true, text: T("Aucune voix audio.cpp n'est chargée en ce moment. Garde la voix puis choisis-la : Floppy charge son modèle (environ 20 s), et tu l'entends.", "No audio.cpp voice is loaded right now. Keep the voice and choose it: Floppy loads its model (about 20 s), and you hear it.") };
+      const fam = familyOf(loaded);
+      const name = modelLabel(loaded.model);
+      const nameFr = typeof name === "string" ? name : name.fr, nameEn = typeof name === "string" ? name : name.en;
+      if (!CLONERS.includes(fam)) return { ok: true, text: T(`Le modèle chargé (${nameFr}) ne sait pas cloner une voix. Choisis d'abord une voix de Qwen3 TTS ou de Pocket TTS.`, `The loaded model (${nameEn}) cannot clone a voice. First choose a Qwen3 TTS or Pocket TTS voice.`) };
+      let ref = v.refWav;
+      if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "essai.wav"); writeFileSync(ref, wav); }
+      const text = str(values.essai) || (ctx.uiLang() === "en" ? "Hello! I'm Floppy. Do you want me to read today's emails?" : "Bonjour ! Je suis Floppy. Tu veux que je lise tes mails du jour ?");
+      const streaming = loaded.mode === "streaming";
+      const r = await fetch(`${base}/v1/audio/speech`, {
+        method: "POST", signal: AbortSignal.timeout(120_000), headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL_ID, input: text, voice_ref: slash(ref), language: loaded.langue || ctx.assistant.language,
+          ...(WITH_TEXT.includes(fam) ? (v.refText ? { reference_text: v.refText.replace(/\s*[\r\n]+\s*/g, " ") } : { options: { x_vector_only_mode: true } }) : {}),
+          ...(streaming ? { stream_format: "sse" } : { response_format: "wav" }),
+        }),
+      });
+      if (!r.ok || !r.body) {
+        const why = (await r.text().catch(() => "")).slice(0, 200);
+        return { ok: false, text: T(`La voix locale a répondu ${r.status} : ${why}`, `The local voice answered ${r.status}: ${why}`) };
+      }
+      let out: Uint8Array;
+      if (streaming) {
+        const parts: Int16Array[] = [];
+        for await (const pcm of ssePcm(r.body)) parts.push(pcm);
+        const all16 = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+        let o = 0;
+        for (const p of parts) { all16.set(p, o); o += p.length; }
+        out = pcmWav(rateOf(loaded), all16);
+      } else out = new Uint8Array(await r.arrayBuffer());
+      return { ok: true, text: T(`Essai avec ${nameFr} (le modèle chargé).`, `Trial with ${nameEn} (the loaded model).`), audio: wavDataUrl(out) };
     };
     const refuseActive = (m: Entry, what: { fr: string; en: string }): OpResult | undefined =>
       running.has(m.id) ? { ok: false, text: T(`${m.label} est chargé en ce moment : choisis d'abord une autre voix, puis ${what.fr}.`, `${m.label} is loaded right now: choose another voice first, then ${what.en}.`) } : undefined;
@@ -496,9 +642,19 @@ return definePlugin<Config>({
       label: T("Voix locale (audio.cpp)", "Local voice (audio.cpp)"),
       description: T("Modèles de voix GGUF lancés par audio.cpp sur ce PC, seulement quand ils servent. Un seul chargé à la fois.", "GGUF voice models run by audio.cpp on this PC, only while in use. Only one loaded at a time."),
       addLabel: T("Ajouter un modèle local", "Add a local model"),
-      kinds: [KIND],
+      // Relus à chaque fois : les modèles qui clonent changent quand on en télécharge un.
+      get kinds() { return [voiceKind(cloneModels()), KIND]; },
       list: () => all().map(info),
       add: async (kind, values) => {
+        if (kind === "voice") {
+          const { v, wav } = voiceEntry(values);
+          const no = voiceProblem(v, wav);
+          if (no) return { ok: false, text: no };
+          const ready = { ...v, refWav: wav ? saveSample(wav) : v.refWav };
+          const id = store.add("voice", ready as unknown as Record<string, unknown>, v.label, Object.keys(baseList));
+          ctx.items.changed();
+          return { ok: true, id, text: T(`${v.label} gardée. Choisis-la comme voix quand tu veux.`, `${v.label} kept. Choose it as the voice whenever you like.`) };
+        }
         if (kind !== "gguf") return { ok: false, text: T(`Type inconnu : ${kind}.`, `Unknown type: ${kind}.`) };
         const v = clean(values);
         const no = problem(v);
@@ -510,6 +666,19 @@ return definePlugin<Config>({
       update: async (id, values) => {
         const cur = all().find((m) => m.id === id);
         if (!cur) return { ok: false, text: T(`Modèle inconnu : ${id}`, `Unknown model: ${id}`) };
+        // Formulaire d'une voix (champ « sample ») : un nouvel enregistrement remplace l'ancien.
+        if ("sample" in values) {
+          const { v, wav } = voiceEntry(values, cur);
+          const no = voiceProblem(v, wav);
+          if (no) return { ok: false, text: no };
+          const old = cur.refWav;
+          const next = { ...v, refWav: wav ? saveSample(wav) : v.refWav };
+          store.update(id, next as unknown as Record<string, unknown>);
+          // L'ancien enregistrement n'est effacé que s'il était à Floppy (jamais un fichier de l'utilisateur).
+          if (wav && old && samePath(dirname(old), voicesDir)) rmSync(old, { force: true });
+          ctx.items.changed();
+          return { ok: true, id, text: running.has(id) ? T(`${v.label} modifiée. Les changements s'appliquent au prochain chargement.`, `${v.label} updated. Changes apply on the next load.`) : T(`${v.label} modifiée.`, `${v.label} updated.`) };
+        }
         const v = clean({ ...cur, ...values });
         const no = problem(v);
         if (no) return { ok: false, text: no };
@@ -523,8 +692,10 @@ return definePlugin<Config>({
         const no = refuseActive(cur, T("supprime-le", "delete it"));
         if (no) return no;
         store.remove(id);
+        // Un enregistrement fait dans Floppy part avec la voix ; un fichier de l'utilisateur n'est jamais effacé.
+        if (cur.refWav && samePath(dirname(cur.refWav), voicesDir)) rmSync(cur.refWav, { force: true });
         ctx.items.changed();
-        return { ok: true, text: T(`${cur.label} supprimé de la liste (le fichier n'est pas touché).`, `${cur.label} removed from the list (the file isn't touched).`) };
+        return { ok: true, text: T(`${cur.label} supprimé de la liste (le fichier du modèle n'est pas touché).`, `${cur.label} removed from the list (the model file isn't touched).`) };
       },
       setEnabled: async (id, on) => {
         const cur = all().find((m) => m.id === id);
@@ -537,7 +708,8 @@ return definePlugin<Config>({
         ctx.items.changed();
         return { ok: true, text: on ? T(`${cur.label} disponible.`, `${cur.label} available.`) : T(`${cur.label} masqué : Floppy ne le voit plus (rien n'est supprimé).`, `${cur.label} hidden: Floppy no longer sees it (nothing is deleted).`) };
       },
-      test: async (_kind, values) => {
+      test: async (kind, values, id) => {
+        if (kind === "voice") return trialVoice(values, id);
         const v = clean(values);
         const size = sizeOf(v.model);
         if (size === undefined) return { ok: false, text: T(`Fichier introuvable : ${v.model}`, `File not found: ${v.model}`) };
@@ -555,7 +727,12 @@ return definePlugin<Config>({
           `Estimation : ~${total.toFixed(1)} Go ${cuda ? "sur le GPU" : "en mémoire (processeur)"} (modèle ${gb(size)} Go).${noText ? " Sans texte de l'enregistrement, seul le timbre est copié." : ""}`,
           `Estimate: ~${total.toFixed(1)} GB ${cuda ? "on the GPU" : "in memory (CPU)"} (model ${gb(size)} GB).${noText ? " Without the recording's text, only the timbre is copied." : ""}`) };
       },
-      action: async (_id, action) => {
+      action: async (id, action) => {
+        if (action === "listen") {
+          const cur = all().find((m) => m.id === id);
+          if (!cur?.refWav || !existsSync(cur.refWav)) return { ok: false, text: T("Enregistrement introuvable.", "Recording not found.") };
+          return { ok: true, text: T(`${cur.label} : l'enregistrement.`, `${cur.label}: the recording.`), audio: wavDataUrl(new Uint8Array(readFileSync(cur.refWav))) };
+        }
         if (action !== "scan") return { ok: false, text: T(`Action inconnue : ${action}`, `Unknown action: ${action}`) };
         const norm = (f: string) => f.replace(/\\/g, "/").toLowerCase();
         const known = new Set(all().map((m) => norm(m.model)));

@@ -686,9 +686,10 @@ function applyShortcuts(next) {
 
 // ------------------------------------------------------------------ démarrage
 app.whenReady().then(() => {
-  // Micro : seulement pour notre fenêtre (fichier local), rien d'autre.
-  session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && wc === win?.webContents));
-  session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && wc === win?.webContents);
+  // Micro : seulement pour nos fenêtres (fichiers locaux) : l'avatar, et les réglages (enregistrer une voix). Rien d'autre.
+  const micOk = (wc) => !!wc && (wc === win?.webContents || (!!settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents));
+  session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && micOk(wc)));
+  session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && micOk(wc));
   tray = new Tray(dotIcon(COLORS.starting));
   tray.on("click", toggleWindow);
   createWindow();
