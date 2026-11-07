@@ -9,13 +9,13 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { agentPrompt, definePlugin, killTree, type Context } from "@floppy/core";
+import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, CompletionService } from "@floppy/contracts";
 import type { McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, parseModelJson } from "@floppy/agent-cli";
+import { agentEnv, parseModelJson, offerAgent, scopedAgentRun } from "@floppy/agent-cli";
 const Config = z.object({
-  exe: z.string().default(process.env.CLAUDE_EXE ?? join(process.env.USERPROFILE ?? "", ".local", "bin", "claude.exe")),
+  exe: z.string().default(() => process.env.CLAUDE_EXE ?? findExe("claude") ?? "claude"),
   /** Arguments ajoutés avant les autres (pour les tests : un script devant un faux CLI). */
   exeArgs: z.array(z.string()).default([]),
   /** Modèle par défaut du cerveau principal (et du montage B, `as: [brain]`). Changeable dans les réglages. */
@@ -257,9 +257,9 @@ export default definePlugin<Config>({
       { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Claude Code (CLI) comme cerveau ou pour la délégation, branché seulement sur le serveur MCP Floppy.",
-    provides: ["delegate", "llm", "brain", "completion"],
+    provides: ["delegate", "llm", "brain", "completion", "agent"],
     inject: ["mcp"],
-    permissions: { exec: ["claude"], cloud: true },
+    permissions: { exec: ["claude"], "fs.write": ["workspaces/brain-claude-cli"], cloud: true },
     addable: { section: "cerveau", label: "Claude Code", description: { fr: "Ton abonnement Claude, par le CLI officiel : Opus, Sonnet ou Haiku. Cerveau ou délégué.", en: "Your Claude subscription, through the official CLI: Opus, Sonnet or Haiku. Brain or delegate." }, cloud: true, single: true, program: "claude" },
   },
   config: Config,
@@ -283,6 +283,11 @@ export default definePlugin<Config>({
     };
     const pick = pickOf("model", cfg.model);
     const pickDelegate = pickOf("delegateModel", cfg.delegateModel);
+    offerAgent(ctx, {
+      id: "claude", label: "Claude Code", program: "claude", aliases: ["claude", "claude code"],
+      args: (prompt, model) => [...(model ? ["--model", model] : []), prompt],
+    }, { exe: () => cfg.exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
+      makeBrain(f, { ...cfg, cwd }, scope, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
     const brains = new Set<{ renew(): void }>();
     const options = models.map((m) => ({ value: m.id, label: m.label }));
     const fields = [

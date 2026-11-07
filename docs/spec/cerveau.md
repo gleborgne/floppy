@@ -2,9 +2,11 @@
 
 [← Retour à la spec](README.md)
 
-Décision du 4 novembre 2026, après les prototypes 3 à 3 quater : **le cerveau est un plugin du noyau**. Par défaut, un agent Vercel AI SDK avec Gemma 4 12B en local. Sans GPU, le CLI Claude ou Codex sert de cerveau. Hermes Agent est abandonné. Hermes était trop lent et trop lourd pour la voix (voir [l'ancienne intégration avec Hermes](hermes.md), gardée pour l'historique).
+Décision du 4 novembre 2026, après les prototypes 3 à 3 quater : **le cerveau est un plugin du noyau**. Par défaut, un agent Vercel AI SDK avec Gemma 4 12B en local. Sans GPU, le CLI Claude ou Codex sert de cerveau. L'ancien montage Hermes avait été écarté, trop lent et trop lourd pour la voix (voir [l'ancienne intégration avec Hermes](hermes.md), gardée pour l'historique).
 
 Légende : **[M]** mesuré par un prototype. **[I]** déduction, à vérifier.
+
+Depuis le 7 novembre 2026, [les agents externes](agents-externes.md) ajoutent OpenCode, Pi, Oh My Pi et un nouvel adaptateur Hermes comme cerveau ou délégué, ainsi que les missions nommées et les travaux suivis. Le rejet d'Hermes mentionné ci-dessus concerne l'ancien prototype ; ses mesures ne portent pas sur ce nouvel adaptateur. Copilot, Cursor et Aider sont disponibles en sessions interactives.
 
 ## Pourquoi ce choix
 

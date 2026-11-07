@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, codexMcpOverrides, userCodexMcpNames } from "@floppy/agent-cli";
+import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `codex` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -225,9 +225,9 @@ export default definePlugin<Config>({
       { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Codex (CLI d'OpenAI) comme cerveau ou pour la délégation, branché seulement sur le serveur MCP Floppy.",
-    provides: ["delegate", "llm"],
+    provides: ["delegate", "llm", "agent"],
     inject: ["mcp"],
-    permissions: { exec: ["codex"], cloud: true },
+    permissions: { exec: ["codex"], "fs.write": ["workspaces/brain-codex-cli"], cloud: true },
     addable: { section: "cerveau", label: "Codex", description: { fr: "Ton abonnement ChatGPT, par le CLI Codex. Cerveau ou délégué.", en: "Your ChatGPT subscription, through the Codex CLI. Brain or delegate." }, cloud: true, single: true, program: "codex", aliases: ["codex", "openai", "chatgpt"] },
   },
   config: Config,
@@ -247,6 +247,11 @@ export default definePlugin<Config>({
     };
     const pick = pickOf("model", cfg.models[0]!.id);
     const pickDelegate = pickOf("delegateModel", cfg.models[0]!.id);
+    offerAgent(ctx, {
+      id: "codex", label: "Codex", program: "codex", aliases: ["codex"],
+      args: (prompt, model) => [...(model ? ["-m", model] : []), prompt],
+    }, { exe: () => exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
+      makeCodexBrain(f, { ...cfg, cwd }, scope, exe!, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
     const brains = new Set<{ renew(): void }>();
     const name = T("Codex", "Codex");
     ctx.items.declare({

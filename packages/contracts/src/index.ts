@@ -2,6 +2,7 @@
 // ses services à l'interface `Services` du noyau (augmentation de module, comme Cordis). Un plugin importe d'ici
 // les types des services qu'il fournit ou utilise ; il ne s'importe jamais avec un autre plugin.
 export type * from "./brain.ts";
+export type * from "./agents.ts";
 export type * from "./voice.ts";
 export type * from "./coder.ts";
 export type * from "./mcp.ts";

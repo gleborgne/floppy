@@ -58,8 +58,18 @@ plugins:
   # - { id: codex, plugin: brain-codex-cli }
   # Antigravity (needs the `agy` CLI, signed in to Google): isolated home, Floppy tools only. Google's terms are unclear for third-party tools.
   # - { id: antigravity, plugin: brain-agy-cli }
+  # Additional agents (also addable in Settings). Set their model and API key in their generated form.
+  # OpenCode requires the V2 CLI. Pi and Oh My Pi use an isolated Floppy profile.
+  # - { id: opencode, plugin: agent-opencode }
+  # - { id: pi, plugin: agent-pi }
+  # - { id: omp, plugin: agent-omp }
+  # - { id: hermes, plugin: agent-hermes }
+  # - { id: copilot, plugin: agent-copilot }
+  # - { id: cursor, plugin: agent-cursor }
+  # - { id: aider, plugin: agent-aider }
   # Agent sessions: "ask Claude to use Opus to…" opens a real Claude Code / Codex / Antigravity session in a terminal (approval first).
   - { id: sessions, plugin: agent-sessions }
+  - { id: agent-jobs, plugin: agent-jobs }
   - { id: brain, plugin: brain-aisdk }
   # --- Voice and bodies
   # Listening: speech detector + transcription chosen in Settings → Listening (slots listen.vad, listen.stt).

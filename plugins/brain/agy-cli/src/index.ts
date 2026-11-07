@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv } from "@floppy/agent-cli";
+import { agentEnv, offerAgent, scopedAgentRun } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `agy` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -91,8 +91,7 @@ type Proc = { p: ChildProcessWithoutNullStreams; q: LineQueue };
 /** Modèle choisi, relu à chaque lancement d'un processus (le changer ne redémarre rien). */
 export type Pick = () => { id: string; label: string };
 
-export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: string, pick: Pick): BrainService & { stop(): Promise<void>; renew(): void } {
-  const home = join(ctx.home, "agy-home");
+export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: string, pick: Pick, home = join(ctx.home, "agy-home")): BrainService & { stop(): Promise<void>; renew(): void } {
   const cwd = cfg.cwd ?? ctx.workspace();
   const schemas = join(home, ".gemini", "antigravity-cli", "mcp");
   const settings = agySettings(schemas);
@@ -191,9 +190,9 @@ export default definePlugin<Config>({
       { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Antigravity (CLI agy de Google) comme cerveau ou pour la délégation, branché seulement sur le serveur MCP Floppy.",
-    provides: ["delegate", "llm"],
+    provides: ["delegate", "llm", "agent"],
     inject: ["mcp"],
-    permissions: { exec: ["agy"], cloud: true },
+    permissions: { exec: ["agy"], "fs.write": ["agy-home", "workspaces/brain-agy-cli"], cloud: true },
     addable: { section: "cerveau", label: "Antigravity", description: { fr: "Ton compte Google, par le CLI Antigravity (Gemini). Cerveau ou délégué. Conditions de Google peu claires pour un outil tiers.", en: "Your Google account, through the Antigravity CLI (Gemini). Brain or delegate. Google's terms are unclear for third-party tools." }, cloud: true, single: true, program: "agy", aliases: ["antigravity", "agy", "gemini"] },
   },
   config: Config,
@@ -213,6 +212,11 @@ export default definePlugin<Config>({
     };
     const pick = pickOf("model", cfg.models[0]!.id);
     const pickDelegate = pickOf("delegateModel", (cfg.models[1] ?? cfg.models[0]!).id);
+    offerAgent(ctx, {
+      id: "antigravity", label: "Antigravity", program: "agy", aliases: ["antigravity", "agy"],
+      args: (prompt, model) => [...(model ? ["--model", model] : []), "-i", prompt],
+    }, { exe: () => exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
+      makeAgyBrain(f, { ...cfg, cwd }, scope, exe!, () => input.model ? { id: input.model, label: input.model } : pickDelegate(), join(cwd, "profile"))) });
     const brains = new Set<{ renew(): void }>();
     const name = T("Antigravity", "Antigravity");
     ctx.items.declare({

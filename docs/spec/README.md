@@ -1,6 +1,6 @@
 # Spec : assistant vocal personnel à plugins
 
-Version 0.2 — 4 novembre 2026. Issue de l'interview, puis des prototypes 1 à 3 ter (Hermes abandonné, cerveau AI SDK).
+Version 0.2 — 4 novembre 2026. Issue de l'interview, puis des prototypes 1 à 3 ter (ancien prototype Hermes écarté, cerveau AI SDK), complétée par les agents externes.
 
 Le projet s'appelle **Floppy**. Dans cette spec, **« l'assistant »** désigne le produit ; « Floppy » est aussi le nom qu'on lui donne à la voix (réglable).
 
@@ -8,7 +8,7 @@ Le projet s'appelle **Floppy**. Dans cette spec, **« l'assistant »** désigne 
 
 - Un assistant vocal **toujours actif** sur le PC. On l'appelle avec un mot d'activation (« Floppy »).
 - Il est **local par défaut**. Le cloud est permis seulement pour les plugins que l'utilisateur active.
-- **Le cerveau est un plugin.** Montage A : agent Vercel AI SDK + Gemma 4 12B en local (~1,1 s avec un outil), qui délègue les demandes difficiles à Claude ou Codex. Montage B, sans GPU : le CLI Claude ou Codex est le cerveau (Claude Haiku : 100 % juste, ~2 s). Les outils, l'accord, la mémoire et les tâches planifiées restent dans le **serveur MCP « Floppy »** du noyau. Hermes Agent : testé puis abandonné (trop lent).
+- **Le cerveau est un plugin.** Montage A : agent Vercel AI SDK + Gemma 4 12B en local (~1,1 s avec un outil), qui délègue les demandes difficiles à Claude ou Codex. Montage B, sans GPU : le CLI Claude ou Codex est le cerveau (Claude Haiku : 100 % juste, ~2 s). Les outils, l'accord, la mémoire et les tâches planifiées restent dans le **serveur MCP « Floppy »** du noyau. Les nouveaux adaptateurs et les travaux suivis sont décrits dans [Agents externes](agents-externes.md).
 - **Tout est plugin** : la voix, le corps, l'affichage, le modèle du cerveau, et les outils.
 - **Deux modes de cerveau.** Mode **séparé** : notre cerveau décide, et une voix comme Gemini Live sert seulement d'oreilles et de bouche. Mode **live** : un modèle live (Gemini Live, GPT Live) est à la fois la voix et le cerveau. Dans les 2 modes, les outils, la mémoire, les droits et les accords restent gérés par notre noyau.
 - **Sécurité** : chaque plugin déclare ses droits, et l'utilisateur les accorde. Lire est libre dans ces droits. Écrire, envoyer ou supprimer demande un accord.
@@ -41,6 +41,7 @@ Guides pas à pas pour les utilisateurs : [docs/guide](../guide/README.md).
 | [Corps, émotions et avatar (implémenté)](corps-et-avatar.md) | Plusieurs corps, protocole v0, émotions, avatar WebGL |
 | [Architecture](architecture.md) | Noyau, services, couche de plugins, manifeste, protocole noyau ↔ corps, services Python |
 | [Le cerveau](cerveau.md) | Vercel AI SDK, modèle par défaut, boucle d'un tour, ce qu'on écrit nous-mêmes, modèle de décision retiré, budget VRAM, prototypes |
+| [Agents externes](agents-externes.md) | Offres de plugins, OpenCode, Pi, Oh My Pi, Hermes, sessions Copilot/Cursor/Aider, missions nommées et travaux suivis |
 | [Intégration avec Hermes (abandonnée)](hermes.md) | Historique : pourquoi Hermes, ses leçons de sécurité et d'abonnements |
 | [Sécurité](securite.md) | Principes, droits et niveaux d'outil, accord, secrets cloisonnés, garde-fous du code et limite connue, journal |
 | [Fonctionnement](fonctionnement.md) | Tour de conversation, tâches longues, initiatives, config à la voix |
@@ -72,7 +73,7 @@ Guides pas à pas pour les utilisateurs : [docs/guide](../guide/README.md).
 
 | Sujet | Décision |
 |---|---|
-| Base du cerveau | **Plugin `brain`** avec 3 adaptateurs : AI SDK + LLM local, CLI Claude, CLI Codex. Tous passent par le **serveur MCP « Floppy »** du noyau (outils, accord, mémoire, tâches planifiées). Voir [Le cerveau](cerveau.md). Hermes Agent : testé puis abandonné (trop lent). |
+| Base du cerveau | **Plugin `brain`** : AI SDK + LLM local ou agent CLI (Claude, Codex, Antigravity, OpenCode, Pi, Oh My Pi, Hermes). Les outils passent par le **serveur MCP « Floppy »** du noyau. Voir [Le cerveau](cerveau.md) et [Agents externes](agents-externes.md). |
 | Cerveau | 2 modes. **Séparé** : notre cerveau décide, les voix live servent seulement d'oreilles et de bouche. **Live** : le modèle live est aussi le cerveau ; il appelle nos outils, et il peut passer une tâche complexe au cerveau séparé. Outils, mémoire, droits et accords restent toujours dans le noyau. |
 | Modèle du cerveau | Montage A (GPU) : **Gemma 4 12B, réflexion coupée**, qui délègue à Claude Sonnet ou Codex. Montage B (sans GPU) : **Claude Haiku** par le CLI, Sonnet ou Codex en option. Clé API proposée partout ; abonnement par les CLI officiels en option « à vos risques » (conditions d'utilisation). |
 | Modèle de décision | **Retiré de la v1** : aucun petit modèle n'a fait mieux que Gemma seul (prototype 3 ter). LFM3 d1-2B a aussi une licence incompatible. Gemma 4 E2B est à mesurer plus tard pour le choix local ou cloud. |

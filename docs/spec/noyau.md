@@ -58,6 +58,7 @@ Un plugin fournit ou utilise un service par son nom ; il ne connaît jamais le p
 ```mermaid
 flowchart LR
   p_noyau[["noyau (tâches, documents)"]]
+  s_agent(["agent"])
   s_avatars(["avatars"])
   s_body(["body"])
   s_brain(["brain"])
@@ -94,11 +95,20 @@ flowchart LR
   p_brain_claude_cli --> s_llm
   p_brain_claude_cli --> s_brain
   p_brain_claude_cli --> s_completion
+  p_brain_claude_cli --> s_agent
   s_mcp --> p_brain_claude_cli
   p_brain_codex_cli["brain-codex-cli<br/>brain-agy-cli"]
   p_brain_codex_cli --> s_delegate
   p_brain_codex_cli --> s_llm
+  p_brain_codex_cli --> s_agent
   s_mcp --> p_brain_codex_cli
+  p_agent_opencode["agent-opencode<br/>agent-pi<br/>agent-omp<br/>agent-hermes"]
+  p_agent_opencode --> s_agent
+  p_agent_opencode --> s_llm
+  p_agent_opencode --> s_delegate
+  s_mcp --> p_agent_opencode
+  p_agent_copilot["agent-copilot<br/>agent-cursor<br/>agent-aider"]
+  p_agent_copilot --> s_agent
   p_body_hub["body-hub"]
   p_body_hub --> s_body
   p_body_ws["body-ws<br/>body-reachy"]
@@ -124,6 +134,11 @@ flowchart LR
   p_coder["coder"]
   p_coder --> s_coder
   s_mcp --> p_coder
+  p_agent_sessions["agent-sessions"]
+  s_agent -.-> p_agent_sessions
+  p_agent_jobs["agent-jobs"]
+  s_agent -.-> p_agent_jobs
+  s_documents -.-> p_agent_jobs
   p_tts_gemini["tts-gemini<br/>tts-elevenlabs<br/>tts-audiocpp<br/>tts-system"]
   p_tts_gemini --> s_tts
   p_live_gemini["live-gemini<br/>live-openai"]
@@ -162,20 +177,21 @@ flowchart LR
 
 Lecture : plugin → service = il le fournit. Service → plugin : trait plein = `inject` (obligatoire), pointillé = `optional`, trait double = un slot (le choix d'un élément, nommé sur la flèche). « type » : un contrat cite le type d'un autre service. Les plugins aux mêmes liens partagent un nœud.
 
-Sans service (outils seuls) : `agent-sessions`, `browser`, `inbox`, `m365`.
+Sans service (outils seuls) : `browser`, `inbox`, `m365`.
 
 | Service | Contrat | Ce qu'il fait | Fournisseurs | Utilisé par |
 |---|---|---|---|---|
+| `agent` | `AgentService` (`packages/contracts/src/agents.ts`) | — | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `agent-copilot`, `agent-cursor`, `agent-aider` | `agent-sessions` (facultatif), `agent-jobs` (facultatif) |
 | `avatars` | `AvatarRegistry` (`packages/contracts/src/body.ts`) | Les avatars de l'app de bureau | `body-electron` | `avatar-tv` (facultatif), `avatar-pixel` (facultatif), `avatar-essaim` (facultatif), `avatar-gyre` (facultatif), `avatar-goutte` (facultatif), `avatar-oscillo` (facultatif), `avatar-iris` (facultatif), `avatar-pixelcat` (facultatif) |
 | `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
 | `brain` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-aisdk`, `brain-claude-cli` | `conversation` (facultatif) |
 | `coder` | `CoderService` (`packages/contracts/src/coder.ts`) | L'assistant IA de la fenêtre des réglages | `coder` | — |
 | `completion` | `CompletionService` (`packages/contracts/src/brain.ts`) | Un appel au modèle hors conversation | `llm-llamacpp`, `llm-openai`, `brain-claude-cli` | `veille` (slot `veille.tri`) |
-| `delegate` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli` | `brain-aisdk` (slot `brain.delegate`) |
-| `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `scheduler` (facultatif), `veille` (facultatif), noyau |
+| `delegate` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `brain-aisdk` (slot `brain.delegate`) |
+| `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `agent-jobs` (facultatif), `scheduler` (facultatif), `veille` (facultatif), noyau |
 | `live` | `LiveService` (`packages/contracts/src/voice.ts`) | Un modèle « Live » qui écoute et parle lui-même (Gemini, GPT) ; les outils passent par lui ou par délégation | `live-gemini`, `live-openai` | `conversation` (slot `conversation.live`) |
-| `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli` | `orca` (facultatif), `brain-aisdk` (slot `brain.main`) |
-| `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `coder` |
+| `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `orca` (facultatif), `brain-aisdk` (slot `brain.main`) |
+| `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `coder` |
 | `memory` | `MemoryService` (`packages/contracts/src/brain.ts`) | La mémoire de Floppy | `memory` | `brain-aisdk` (facultatif), `conversation` (facultatif) |
 | `notify` | `NotifyService` (`packages/contracts/src/notify.ts`) | Un canal d'envoi configuré (ex. « Telegram · mon canal », « Gmail · perso ») | `notify-telegram`, `notify-mail` | `scheduler` (facultatif) |
 | `search` | `SearchService` (`packages/contracts/src/search.ts`) | Recherche web en service, pour les autres plugins (la Veille) | `websearch`, `searxng` | `veille` (slot `veille.recherche`) |

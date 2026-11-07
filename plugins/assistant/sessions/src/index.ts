@@ -8,11 +8,12 @@
 //   une phrase fixe qui désigne ce fichier : ce que l'utilisateur dit ne devient jamais une ligne de commande.
 //   Le nom du modèle est vérifié (lettres, chiffres, . _ : -). Le dossier donné doit exister.
 // - Le terminal est lancé détaché, sans shell quand c'est possible : il reste ouvert si Floppy s'arrête.
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
-import { definePlugin, findExe, type Context, type Text } from "@floppy/core";
+import { definePlugin, findExe, writeFileAtomic, type Context, type Text } from "@floppy/core";
+import { borrowAgent, validAgentModel } from "@floppy/agent-cli";
 
 const t = (fr: string, en: string): Text => ({ fr, en });
 
@@ -79,15 +80,16 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
   return definePlugin<Config>({
     manifest: {
       id: "agent-sessions",
+      optional: ["agent"],
       version: "0.1.0",
       licence: "MIT",
       description: "Ouvre une session Claude Code, Codex ou Antigravity dans un terminal, sur une consigne dictée.",
-      permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["workspaces/agent-sessions"] },
+      permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["workspaces/agent-sessions", "sessions"] },
       addable: {
         section: "cerveau",
         label: t("Sessions d'agent", "Agent sessions"),
-        description: t("« Demande à Claude d'utiliser Opus pour… » : ouvre une vraie session Claude Code, Codex ou Antigravity dans un terminal, avec ses propres droits.",
-          "\"Ask Claude to use Opus to…\": opens a real Claude Code, Codex or Antigravity session in a terminal, with its own permissions."),
+        description: t("Ouvre l'un des agents ajoutés à Floppy dans un terminal, avec ses propres outils et droits.",
+          "Open one of the agents added to Floppy in a terminal, with its own tools and permissions."),
         single: true,
         aliases: ["sessions", "claude code", "codex", "antigravity", "terminal"],
         fields: [{
@@ -111,13 +113,13 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
       };
       ctx.tools.register([{
         name: "ouvrir_session_agent",
-        description: "Ouvre une vraie session d'agent (Claude Code, Codex ou Antigravity) dans un terminal de l'utilisateur, sur une consigne. "
-          + "Utilise-le quand l'utilisateur demande à Claude, Codex ou Antigravity de faire un travail long ou outillé (analyser, produire un artefact, un document, une présentation, du code). "
+        description: "Ouvre une vraie session d'un agent ajouté à Floppy dans un terminal de l'utilisateur, sur une consigne. "
+          + "Utilise-le quand l'utilisateur veut suivre lui-même un travail long ou outillé dans le terminal. Consulte lister_agents pour les choix. "
           + "La session a les droits et les connecteurs propres du CLI ; l'utilisateur la suit dans le terminal. Réécris la demande en une consigne complète et autonome.",
         inputSchema: {
           type: "object",
           properties: {
-            agent: { type: "string", enum: ["claude", "codex", "antigravity"], description: "Le CLI demandé." },
+            agent: { type: "string", description: "Agent demandé : identifiant complet retourné par lister_agents, ou nom non ambigu." },
             consigne: { type: "string", description: "La tâche complète, en phrases (contexte, attendu, format du résultat)." },
             modele: { type: "string", description: "Modèle demandé, s'il est dit. Claude : opus, sonnet ou haiku. Codex : ex. gpt-6.1-sol. Antigravity : ex. gemini-4-argon-medium. Sinon, ne rien mettre." },
             dossier: { type: "string", description: "Dossier de travail absolu, seulement si l'utilisateur en nomme un. Sinon, ne rien mettre : un dossier neuf est créé." },
@@ -132,35 +134,43 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
             : t(`Ouvrir ${l.agent} dans un nouveau dossier ?`, `Open ${l.agent} in a new folder?`);
         },
         handler: async (a) => {
-          const agent = String(a.agent ?? "") as Agent;
-          if (!NAMES[agent]) return { status: "failed", text: `Agent inconnu : ${String(a.agent)}. Choix : claude, codex, antigravity.` };
+          const agent = String(a.agent ?? "");
           const consigne = String(a.consigne ?? "").trim();
-          if (!consigne) return { status: "failed", text: "Il manque la consigne." };
-          const model = a.modele ? String(a.modele).trim().toLowerCase().replace(/\s+/g, "-") : undefined;
-          if (model && !/^[a-z0-9._:-]{1,60}$/.test(model)) return { status: "failed", text: `Nom de modèle refusé : ${String(a.modele)}.` };
-          const exe = exeOf(agent);
-          if (!exe) return { status: "failed", text: `${NAMES[agent]} n'est pas installé sur cet ordinateur (programme introuvable).` };
+          if (!consigne) return { status: "failed", text: t("Il manque la consigne.", "The instruction is missing.") };
+          const rawModel = a.modele ? String(a.modele).trim() : undefined;
+          const model = rawModel && Object.hasOwn(NAMES, agent) ? rawModel.toLowerCase().replace(/\s+/g, "-") : rawModel;
+          if (model && !validAgentModel(model)) return { status: "failed", text: t("Nom de modèle refusé.", "Model name rejected.") };
+          const borrowed = await borrowAgent(ctx, agent);
+          try {
+          // Compatibilité avec les anciennes configurations : les trois CLI historiques restent ouvrables.
+          const legacy = Object.hasOwn(NAMES, agent) ? agent as Agent : undefined;
+          const configured = legacy && (await ctx.items.snapshot()).some((p) => p.items.some((i) => i.id === legacy));
+          const exe = legacy ? exeOf(legacy) : undefined;
+          if (!borrowed && (!exe || configured)) return { status: "failed", text: t(`Agent indisponible : ${agent}. Vérifie son plugin dans les réglages.`, `Agent unavailable: ${agent}. Check its plugin in Settings.`) };
+          const name = borrowed?.service.label ?? NAMES[legacy!];
           let dir: string;
           if (a.dossier) {
             dir = String(a.dossier);
-            if (!isAbsolute(dir) || !existsSync(dir) || !statSync(dir).isDirectory()) return { status: "failed", text: `Dossier introuvable : ${dir}.` };
+            if (!isAbsolute(dir) || !existsSync(dir) || !statSync(dir).isDirectory()) return { status: "failed", text: t(`Dossier introuvable : ${dir}.`, `Folder not found: ${dir}.`) };
           } else {
-            dir = join(cfg.dossier ?? ctx.workspace(), sessionFolderName(consigne));
+            dir = join(cfg.dossier ?? ctx.workspace(), `${sessionFolderName(consigne)}-${randomUUID().slice(0, 8)}`);
             mkdirSync(dir, { recursive: true });
           }
           // La consigne vit dans un fichier, hors du dossier de travail (on ne salit pas un dépôt de l'utilisateur).
           const notes = join(ctx.home, "sessions");
           mkdirSync(notes, { recursive: true });
-          const file = join(notes, `${sessionFolderName("")}-${agent}.md`);
-          writeFileSync(file, `${consigne}\n`, "utf8");
+          const file = join(notes, `${sessionFolderName("")}-${randomUUID()}.md`);
+          writeFileAtomic(file, `${consigne}\n`);
           const prompt = startPrompt(file, ctx.assistant.language);
           try {
-            await launcher(dir, `Floppy · ${NAMES[agent]}`, exe, cliArgs(agent, model, prompt), ctx.spawn);
+            const plan = borrowed?.service.interactive({ prompt, model }) ?? { command: exe!, args: cliArgs(legacy!, model, prompt) };
+            await launcher(dir, `Floppy · ${name}`, plan.command, plan.args, ctx.spawn);
           } catch (e) {
-            return { status: "failed", text: `Le terminal ne s'est pas ouvert : ${e instanceof Error ? e.message : String(e)}` };
+            return { status: "failed", text: t("Le terminal ne s'est pas ouvert.", "The terminal could not open.") };
           }
           ctx.audit.write({ kind: "agent.session", agent, model: model ?? null, dir });
-          return { status: "done", text: `Session ${NAMES[agent]}${model ? ` (${model})` : ""} ouverte dans un terminal, dossier ${dir}. L'utilisateur la suit et répond dans le terminal ; le résultat (lien d'artefact, fichier) y apparaîtra.` };
+          return { status: "done", text: t(`Session ${name}${model ? ` (${model})` : ""} ouverte dans un terminal, dossier ${dir}. L'utilisateur suit le travail et ses résultats dans ce terminal.`, `Session ${name}${model ? ` (${model})` : ""} opened in a terminal, folder ${dir}. The user follows the work and results in that terminal.`) };
+          } finally { borrowed?.release(); }
         },
       }]);
     },
