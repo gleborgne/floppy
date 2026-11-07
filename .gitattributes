@@ -1,0 +1,2 @@
+# Copies de fichiers tiers (Preact) : gardées octet pour octet, comparées à node_modules par vendor.test.ts.
+apps/desktop/src/renderer/vendor/** -text
