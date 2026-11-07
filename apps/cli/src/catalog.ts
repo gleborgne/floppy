@@ -16,6 +16,7 @@ import bodyReachy from "@floppy/plugin-body-reachy";
 import conversation from "@floppy/plugin-conversation";
 import orca from "@floppy/plugin-orca";
 import browser from "@floppy/plugin-browser";
+import inbox from "@floppy/plugin-inbox";
 import websearch from "@floppy/plugin-websearch";
 import m365 from "@floppy/plugin-m365";
 import avatarTv from "@floppy/plugin-avatar-tv";
@@ -48,7 +49,7 @@ import sttSherpa from "@floppy/plugin-stt-sherpa";
 
 export const catalog: PluginDef<any>[] = [
   tools, llmLlamacpp, llmOpenai, memory, brainAisdk, brainClaudeCli, brainCodexCli, brainAgyCli,
-  bodyHub, bodyWs, bodyElectron, bodyReachy, conversation, orca, browser, websearch, m365, avatarTv, avatarPixel, avatarEssaim, avatarGyre, avatarGoutte, avatarOscillo, avatarIris, avatarPixelcat, coder, agentSessions, benchApi,
+  bodyHub, bodyWs, bodyElectron, bodyReachy, conversation, orca, browser, inbox, websearch, m365, avatarTv, avatarPixel, avatarEssaim, avatarGyre, avatarGoutte, avatarOscillo, avatarIris, avatarPixelcat, coder, agentSessions, benchApi,
   ttsGemini, ttsElevenlabs, liveGemini, liveOpenai,
   wakewordStt, wakewordSherpa, wakewordPorcupine,
   searxng, documents, scheduler, veille, notifyTelegram, notifyMail, ttsAudiocpp, ttsSystem, voiceListen, sttSherpa,

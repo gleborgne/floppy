@@ -1,0 +1,146 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Kernel } from "@floppy/core";
+import { createInboxPlugin, settingKey } from "../src/index.ts";
+import { checkActionUrl, cleanText, parseHello, parseMessage } from "../src/protocol.ts";
+
+// Boîte aux lettres : une app locale dépose un message ; Floppy le dit ou l'affiche ; « ouvre-la » lance le lien.
+let kernels: Kernel[] = [];
+afterEach(async () => { for (const k of kernels) await k.stopAll(); kernels = []; });
+
+const APP = "inwink-differendum";
+const KEY = settingKey(APP);
+const hello = { kind: "hello", app: APP, name: "Differendum", schemes: ["inwink-differendum"] };
+const msg = (extra: Record<string, unknown> = {}) => ({
+  kind: "message", app: APP,
+  text: { fr: "Vous avez été ajouté comme relecteur sur la PR 1234, Fix login.", en: "You were added as a reviewer on PR 1234, Fix login." },
+  mode: "voix", key: "n-1",
+  action: { label: { fr: "Ouvrir la PR 1234", en: "Open PR 1234" }, url: "inwink-differendum://pr?url=https%3A%2F%2Fdev.azure.com%2Fc%2Fp%2F_git%2Fr%2Fpullrequest%2F1234" },
+  ...extra,
+});
+
+async function start(home = mkdtempSync(join(tmpdir(), "inbox-"))) {
+  const opened: string[] = [];
+  const k = new Kernel({ logger: () => {}, plugins: [createInboxPlugin({ opener: async (u) => { opened.push(u); } })], home });
+  kernels.push(k);
+  const got: { source: string; text: string; key?: string; importance: string }[] = [];
+  k.bus.on("initiative", (e) => { got.push(e); });
+  await k.applyConfig({ plugins: [{ id: "inbox", plugin: "inbox" }] });
+  const file = join(home, "inbox.json");
+  await vi.waitFor(() => expect(existsSync(file)).toBe(true));
+  const info = JSON.parse(readFileSync(file, "utf8")) as { port: number; token: string };
+  const post = async (body: unknown, token = info.token, path = "/inbox") => (await fetch(`http://127.0.0.1:${info.port}${path}`, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+  })).status;
+  return { k, got, opened, post, home, file };
+}
+
+describe("boîte aux lettres", () => {
+  it("de bout en bout : présentation, accord dans les réglages, annonce dite, puis « ouvre-la » après accord", async () => {
+    const { k, got, opened, post } = await start();
+    expect(await post(hello)).toBe(403);
+    expect(await post(msg())).toBe(403);
+    expect(got).toHaveLength(0);
+    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non");
+
+    expect((await k.settings.change(KEY, "app", "ui")).ok).toBe(true);
+    expect(await post(hello)).toBe(204);
+    expect(await post(msg())).toBe(204);
+    expect(got).toEqual([{ source: `inbox:${APP}`, text: "Vous avez été ajouté comme relecteur sur la PR 1234, Fix login.", importance: "important", key: `inbox:${APP}:n-1` }]);
+
+    const list = await k.tools.call("annonces_recentes", {});
+    expect(JSON.stringify(list.text)).toContain("Ouvrir la PR 1234");
+
+    let summary = "";
+    k.bus.on("approval.request", (r) => { summary = JSON.stringify(r); k.approvals.respond(r.id, true, "test"); });
+    expect((await k.tools.call("ouvrir_annonce", {})).status).toBe("done");
+    expect(summary).toContain("Ouvrir la PR 1234 (Differendum)");
+    expect(opened).toEqual([msg().action.url]);
+  });
+
+  it("autoriser une app ne se fait jamais à la voix ; la couper, si", async () => {
+    const { k, post } = await start();
+    await post(hello);
+    expect((await k.settings.change(KEY, "app", "voice")).ok).toBe(false);
+    expect((await k.settings.change(KEY, "app", "ui")).ok).toBe(true);
+    expect((await k.settings.change(KEY, "non", "voice")).ok).toBe(true);
+    expect(await post(msg())).toBe(403);
+  });
+
+  it("mode info, ou « afficher seulement » : affiché, jamais dit", async () => {
+    const { k, got, post } = await start();
+    await post(hello);
+    await k.settings.change(KEY, "app", "ui");
+    expect(await post(msg({ mode: "info", key: "a" }))).toBe(204);
+    expect(await post(msg({ mode: undefined, key: "b" }))).toBe(204);
+    await k.settings.change(KEY, "info", "ui");
+    expect(await post(msg({ key: "c" }))).toBe(204);
+    expect(got.map((g) => g.importance)).toEqual(["normal", "normal", "normal"]);
+  });
+
+  it("jeton faux, mauvais chemin, message invalide, trop gros", async () => {
+    const { k, post } = await start();
+    expect(await post(hello, "faux")).toBe(401);
+    expect(await post(hello, undefined, "/autre")).toBe(404);
+    await post(hello);
+    await k.settings.change(KEY, "app", "ui");
+    expect(await post(msg({ action: { label: "Ouvrir", url: "file:///C:/Windows/system32/calc.exe" } }))).toBe(400);
+    expect(await post(msg({ action: { label: "Ouvrir", url: "ms-settings:privacy" } }))).toBe(400);
+    expect(await post(msg({ text: "" }))).toBe(400);
+    expect(await post(msg({ mode: "fort" }))).toBe(400);
+    expect(await post({ kind: "autre" })).toBe(400);
+    expect(await post({ ...msg(), text: "x".repeat(70 * 1024) })).toBe(413);
+  });
+
+  it("une app qui change ses liens doit être autorisée de nouveau", async () => {
+    const { k, post } = await start();
+    await post(hello);
+    await k.settings.change(KEY, "app", "ui");
+    expect(await post({ ...hello, schemes: ["inwink-differendum", "autre-app"] })).toBe(403);
+    await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non"));
+    expect(await post(msg())).toBe(403);
+  });
+
+  it("les apps connues et l'accord restent après un redémarrage ; le fichier de la porte est retiré à l'arrêt", async () => {
+    const first = await start();
+    await first.post(hello);
+    await first.k.settings.change(KEY, "app", "ui");
+    await first.k.stopAll();
+    expect(existsSync(first.file)).toBe(false);
+    kernels = [];
+    const again = await start(first.home);
+    expect(again.k.settings.list().find((s) => s.key === KEY)?.value).toBe("app");
+    expect(await again.post(msg())).toBe(204);
+  });
+
+  it("rien à ouvrir : réponse claire, rien lancé", async () => {
+    const { k, opened } = await start();
+    k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, true, "test"); });
+    expect((await k.tools.call("ouvrir_annonce", {})).status).toBe("failed");
+    expect(opened).toHaveLength(0);
+  });
+});
+
+describe("protocole", () => {
+  it("présentation : id, nom et schémas vérifiés ; schémas dangereux refusés", () => {
+    expect(parseHello(hello)).toEqual({ app: APP, name: "Differendum", schemes: ["inwink-differendum"] });
+    expect(parseHello({ ...hello, app: "Pas Bon" })).toBeTypeOf("string");
+    for (const s of ["file", "javascript", "ms-settings", "https", "search-ms"]) expect(parseHello({ ...hello, schemes: [s] })).toBeTypeOf("string");
+  });
+
+  it("lien d'action : schéma déclaré ou https", () => {
+    expect(checkActionUrl("https://dev.azure.com/x", [])).toBe("https://dev.azure.com/x");
+    expect(checkActionUrl("inwink-differendum://pr?url=x", ["inwink-differendum"])).toBe("inwink-differendum://pr?url=x");
+    expect(checkActionUrl("autre://x", ["inwink-differendum"])).toHaveProperty("error");
+    expect(checkActionUrl("http://x", [])).toHaveProperty("error");
+  });
+
+  it("textes : simple ou fr/en, nettoyés et bornés", () => {
+    expect(cleanText("  bonjour\n  toi ", 50)).toBe("bonjour toi");
+    expect(cleanText({ en: "hello" }, 50)).toEqual({ fr: "hello", en: "hello" });
+    expect(cleanText("x".repeat(51), 50)).toBeUndefined();
+    expect(parseMessage({ app: APP, text: "salut" }, [])).toEqual({ app: APP, text: "salut", mode: "info" });
+  });
+});

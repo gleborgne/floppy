@@ -126,6 +126,8 @@ plugins:
   - { id: websearch, plugin: websearch, config: { engine: claude, claudeModel: haiku } }
   - { id: m365, plugin: m365 }
   - { id: orca, plugin: orca, config: { pollSeconds: 15, notifications: importantes } }
+  # Mailbox: apps on this computer send announcements to Floppy (off until turned on in Settings → Connectors).
+  - { id: inbox, plugin: inbox, disabled: true }
   - { id: documents, plugin: documents }
   # --- Tasks: the scheduler runs plugin tasks on time (Settings → Tasks).
   - { id: scheduler, plugin: scheduler }
