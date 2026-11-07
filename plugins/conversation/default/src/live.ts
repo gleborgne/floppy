@@ -66,6 +66,7 @@ export class LiveConversation {
   private pendingInput = "";
   private recent: { role: string; text: string }[] = [];
   private localSeed = "";
+  private textSeq = 0;
   private playing = false;
   private lastActivity = 0;
   private readonly opts: Options;
@@ -79,7 +80,7 @@ export class LiveConversation {
   async start(start?: number, end?: number, text = ""): Promise<void> {
     if (this.active || !this.opts.ctx.alive) return;
     const { ctx, history, body, service } = this.opts;
-    if (start === undefined || end === undefined || !history.slice(start, end)) throw new TextError(T("Activation Live impossible : audio de la demande absent du tampon local.", "Cannot start Live: the request audio is missing from the local buffer."));
+    if (!text && (start === undefined || end === undefined || !history.slice(start, end))) throw new TextError(T("Activation Live impossible : audio de la demande absent du tampon local.", "Cannot start Live: the request audio is missing from the local buffer."));
     if (service.capabilities.tools === "delegation" && !this.opts.brain) throw new TextError(T("GPT Live nécessite un cerveau actif pour les tâches déléguées.", "GPT Live needs an active brain for delegated tasks."));
     const epoch = ++this.epoch;
     const controller = new AbortController(); this.controller = controller;
@@ -99,9 +100,11 @@ export class LiveConversation {
       if (this.epoch !== epoch || !ctx.alive) { await session.close(); return; }
       this.session = session;
       // Inclut l'audio reçu pendant la connexion, jamais le tampon précédant l'énoncé activant.
-      const replay = history.slice(start);
-      if (!replay) throw new TextError(T("Demande trop ancienne : recommence avec le mot d'activation.", "Request too old: start again with the wake word."));
-      for (let i = 0; i < replay.length; i += 1600) session.pushAudio(replay.subarray(i, i + 1600));
+      if (start !== undefined) {
+        const replay = history.slice(start);
+        if (!replay) throw new TextError(T("Demande trop ancienne : recommence avec le mot d'activation.", "Request too old: start again with the wake word."));
+        for (let i = 0; i < replay.length; i += 1600) session.pushAudio(replay.subarray(i, i + 1600));
+      }
       ctx.audit.write({ kind: "live.open", body, provider: service.name });
       this.opts.onState("listening"); this.touch();
       this.maxTimer = setTimeout(() => { void this.stop("durée maximale de session"); }, 15 * 60_000);
@@ -114,6 +117,28 @@ export class LiveConversation {
   pushAudio(frame: Float32Array): void {
     try { this.session?.pushAudio(frame); }
     catch { this.fail(T("Connexion Live interrompue. Réactive Floppy pour reprendre.", "Live connection lost. Wake Floppy again to resume.")); }
+  }
+  /** Même session logique et mêmes outils ; coupe une réponse précédente comme le bouton parler. */
+  async requestText(text: string): Promise<void> {
+    if (!text.trim()) return;
+    const seq = ++this.textSeq;
+    await this.stop("demande écrite");
+    if (seq !== this.textSeq) return;
+    await this.start(undefined, undefined, text);
+    if (!this.session || seq !== this.textSeq) return;
+    this.opts.ctx.get("body").send(this.opts.body, { type: "transcript", text, final: true });
+    this.opts.ctx.maybe("memory")?.record({ session: this.opts.body, origin: this.opts.body, role: "user", text });
+    this.remember("user", text);
+    this.opts.onHeard?.(text);
+    this.opts.onState("thinking");
+    if (this.opts.service.capabilities.tools === "delegation") {
+      // GPT : le même chemin que sa délégation vocale, sans inventer d'audio ni de commande fournisseur.
+      this.event({ type: "delegation", id: `text-${this.epoch}`, offsetMs: 0 });
+    } else {
+      if (!this.session.sendText) throw new TextError(T("Ce fournisseur Live n'accepte pas les demandes écrites.", "This Live provider does not accept typed requests."));
+      this.session.sendText(text);
+    }
+    this.touch();
   }
   localTranscript(text: string): void {
     this.opts.onInput(text);

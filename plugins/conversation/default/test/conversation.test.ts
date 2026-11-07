@@ -370,6 +370,41 @@ describe("conversation (2 corps)", () => {
   });
   afterEach(() => k.stopAll());
 
+  it("une demande écrite sur l'avatar réveille et suit le tour vocal, sans mot d'activation", async () => {
+    avatar.send({ type: "mute", on: true });
+    avatar.send({ type: "text", text: "   " });
+    expect(avatar.of("reply.done")).toHaveLength(0);
+    avatar.send({ type: "text", text: "ça va ?" });
+    await vi.waitFor(() => expect(avatar.of("reply.done")).toHaveLength(1));
+    expect(streams.get("avatar")!.spoken.join(" ")).toBe("Bonjour, je vais bien. Et toi ?");
+    expect(avatar.of("transcript").at(-1)).toMatchObject({ text: "ça va ?" });
+    expect(chat.of("reply.done")).toHaveLength(0);
+    expect(avatar.of("state").map(s => s.state)).toContain("speaking");
+  });
+
+  it("la demande écrite utilise les mêmes outils et accords que la voix", async () => {
+    avatar.send({ type: "text", text: "ouvre la page" });
+    await vi.waitFor(() => expect(avatar.of("approval.request")).toHaveLength(1));
+    expect(avatar.of("tool.call")).toHaveLength(0);
+    avatar.send({ type: "text", text: "oui" });
+    await vi.waitFor(() => expect(avatar.of("tool.call")).toHaveLength(1));
+    const call = avatar.of("tool.call")[0]!;
+    avatar.send({ type: "tool.result", callId: call.callId, ok: true, text: "Ouvert" });
+    await vi.waitFor(() => expect(avatar.of("reply.done")).toHaveLength(1));
+    expect(avatar.of("reply.done")[0]!.text).toBe("C'est ouvert.");
+    expect(streams.get("avatar")!.spoken).toContain("C'est ouvert.");
+  });
+
+  it("une demande écrite interrompt la réponse vocale et ignore l'audio de l'ancien tour", async () => {
+    avatar.send({ type: "text", text: "bonjour" });
+    await vi.waitFor(() => expect(avatar.audio).toBe(2));
+    avatar.send({ type: "text", text: "raconte" });
+    await vi.waitFor(() => expect(avatar.audio).toBe(4));
+    expect(avatar.of("interrupt").length).toBeGreaterThan(0);
+    streams.get("avatar")!.emit({ type: "audio", id: "t1-1", data: new Uint8Array(8) });
+    expect(avatar.audio).toBe(4);
+  });
+
   it("après une coupure de parole, la phrase suivante est écoutée même si l'écoute libre était finie", async () => {
     const st = streams.get("avatar")!;
     st.emit({ type: "transcript", text: "Floppy, bonjour", audio_s: 1, stt_ms: 0, merged: false });

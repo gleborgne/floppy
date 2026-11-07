@@ -4,6 +4,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 ipcRenderer.on("body-port", (e) => window.postMessage("floppy:body-port", "*", e.ports));
+ipcRenderer.on("text-request", (_e, text) => window.postMessage({ floppyTextRequest: text }, "*"));
 ipcRenderer.on("display", (_e, s) => window.postMessage({ floppyDisplay: s }, "*"));
 ipcRenderer.on("shortcut", (_e, name) => window.postMessage({ floppyShortcut: name }, "*"));
 ipcRenderer.on("document-open", (_e, id) => window.postMessage({ floppyDocumentOpen: String(id) }, "*"));

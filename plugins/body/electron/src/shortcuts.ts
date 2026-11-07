@@ -2,10 +2,11 @@
 // Valeur gardée : la forme lisible « Ctrl+Alt+F » (acceptée telle quelle par Electron). Vide = raccourci désactivé.
 import { T, TextError, type Text } from "@floppy/core";
 
-export type ShortcutAction = "parler" | "dicter" | "dormir" | "avatar";
+export type ShortcutAction = "parler" | "ecrire" | "dicter" | "dormir" | "avatar";
 
 export const SHORTCUT_DEFAULTS: Record<ShortcutAction, string> = {
   parler: "Ctrl+Alt+F",
+  ecrire: "Ctrl+Alt+T",
   dicter: "Ctrl+Alt+D",
   dormir: "Ctrl+Alt+M",
   avatar: "Ctrl+Alt+H",
@@ -13,6 +14,7 @@ export const SHORTCUT_DEFAULTS: Record<ShortcutAction, string> = {
 
 export const SHORTCUT_LABELS: Record<ShortcutAction, { label: Text; description: Text }> = {
   parler: { label: T("Parler", "Talk"), description: T("Parler à Floppy sans dire son nom (appuyer une fois pour commencer, une fois pour finir).", "Talk to Floppy without saying its name (press once to start, once to stop).") },
+  ecrire: { label: T("Écrire à Floppy", "Write to Floppy"), description: T("Saisir une demande traitée comme une demande vocale.", "Type a request handled like a spoken request.") },
   dicter: { label: T("Dicter", "Dictate"), description: T("Dicter du texte dans la fenêtre active.", "Dictate text into the active window.") },
   dormir: { label: T("Dormir / réveiller", "Sleep / wake up"), description: T("Floppy n'écoute plus, ou se réveille.", "Floppy stops listening, or wakes up.") },
   avatar: { label: T("Montrer / cacher l'avatar", "Show / hide the avatar"), description: T("Affiche ou cache l'avatar à l'écran.", "Shows or hides the avatar on screen.") },

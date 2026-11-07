@@ -327,6 +327,7 @@ ${text}` : text;
       const accepted = () => { if (!done) { done = true; mood.touch(); onAccepted(); } };
       const text = raw.trim();
       if (!text) return;
+      if (kind === "text" && approvalsFor(b).length) b.muted = false;
       if (answerApproval(b, text)) { accepted(); return; }
       const woke = kind !== "voice";
       // 2. En veille : seul le mot d'activation réveille.
@@ -350,6 +351,7 @@ ${text}` : text;
       // 3. « Floppy, dors »
       if (isSleepCommand(text, wake)) {
         if (b.turn) interrupt(b, "veille");
+        void b.live?.stop("veille");
         abortInit(b);
         b.muted = true;
         b.awakeUntil = 0;
@@ -357,7 +359,13 @@ ${text}` : text;
         setEmotion("sleepy");
         return;
       }
-      const mode: TurnMode = b.voice && b.stream && kind !== "text" ? "voice" : "text";
+      if (kind === "text" && b.voice && b.live) {
+        if (b.turn) interrupt(b, "nouvelle demande");
+        abortInit(b);
+        void b.live.requestText(text).catch(e => hub.send(b.id, { type: "error", text: shown(errorText(e)) }));
+        return;
+      }
+      const mode: TurnMode = b.voice && b.stream ? "voice" : "text";
       // 4. Voie rapide des réglages (« passe sur Gemma ») : sans LLM, pour ne jamais rester bloqué sur un modèle faible.
       const quick = matchQuickSetting(text, wake, ctx.settings.list(), lang);
       if (quick) { void quickSetting(b, quick, mode, text); return; }

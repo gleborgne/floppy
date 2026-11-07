@@ -122,6 +122,8 @@ export type LiveEvent =
 
 export interface LiveSession {
   pushAudio(frame: Float32Array): void;
+  /** Demande écrite au modèle à appels de fonctions, équivalente à une entrée vocale. */
+  sendText?(text: string): void;
   /** Présent uniquement pour les sessions à appels de fonctions. */
   toolResult?(id: string, name: string, result: { text: string; status: string }): void;
   append(kind: "say" | "think" | "instruct", text: string, delegationId?: string): void;

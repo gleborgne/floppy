@@ -587,6 +587,8 @@ window.addEventListener("message", (e) => {
   const cur = e.data?.floppyCursor;
   if (cur) lookAtPoint(cur.x, cur.y);
   const sc = e.data?.floppyShortcut;
+  const request = e.data?.floppyTextRequest;
+  if (typeof request === "string" && request.trim()) { muted = false; stopPlayback(); send({ type: "text", text: request }); }
   if (sc === "ptt-on" || sc === "ptt-off") { pttOn = sc === "ptt-on"; stopPlayback(); send({ type: "ptt", on: pttOn }); }
   if (sc === "dictate-on" || sc === "dictate-off") { dictating = sc === "dictate-on"; if (dictating) stopPlayback(); send({ type: "dictate", on: dictating }); }
   if (sc === "mute-on" || sc === "mute-off") { muted = sc === "mute-on"; send({ type: "mute", on: muted }); }

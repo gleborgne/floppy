@@ -17,12 +17,54 @@ function desktop(argv: string[] = []) {
   const app = { quit:vi.fn(), requestSingleInstanceLock:()=>true, commandLine:{appendSwitch(){}}, whenReady:()=>new Promise(()=>{}), on:events.on.bind(events), getAppPath:()=>'.', getLoginItemSettings:()=>({executableWillLaunchAtLogin:false}), setLoginItemSettings(){} };
   const source = readFileSync(new URL('../src/main.mjs', import.meta.url),'utf8')
     .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.mjs',import.meta.url).href));
+  const textWindow = Object.assign(new EventEmitter(), { webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), isDestroyed: () => false });
+  Object.assign(app, { isReady: () => true });
+  const shortcut = { unregisterAll() {}, register: vi.fn(() => true), unregister: vi.fn() };
   const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console,
     // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
-    ...texts, ...trayIcon, ...placement, safeWindow:()=>{ throw new Error('pas de fenêtre dans le bac'); }, bringToFront(){} };
-  runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,problems:()=>problems,setWindow:w=>{win=w;}};',context);
-  return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
+    ...texts, ...trayIcon, ...placement, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
+  context.globalShortcut = shortcut;
+  runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};}};',context);
+  return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
+
+it("le raccourci global ouvre la saisie, se remplace et se désactive", () => {
+  const d = desktop();
+  d.api.applyShortcuts({});
+  const write = d.shortcut.register.mock.calls.find(c => c[0] === 'Ctrl+Alt+T')!;
+  expect(write).toBeDefined();
+  write[1]();
+  expect(d.windows).toHaveBeenCalledOnce();
+  d.api.applyShortcuts({ecrire: 'Ctrl+Shift+T'});
+  expect(d.shortcut.unregister).toHaveBeenCalledWith('Ctrl+Alt+T');
+  expect(d.shortcut.register).toHaveBeenCalledWith('Ctrl+Shift+T', expect.any(Function));
+  d.api.applyShortcuts({ecrire: ''});
+  expect(d.shortcut.unregister).toHaveBeenCalledWith('Ctrl+Shift+T');
+});
+
+it("la saisie réutilise sa fenêtre et n'envoie qu'à l'avatar connecté depuis son propre expéditeur", () => {
+  const d = desktop();
+  d.api.openTextInput();
+  d.textWindow.webContents.emit('did-finish-load');
+  expect(d.textWindow.webContents.send).toHaveBeenCalledWith('text:lang', 'fr');
+  d.textWindow.emit('ready-to-show');
+  expect(d.front).toHaveBeenCalledWith(d.textWindow);
+  d.api.openTextInput();
+  expect(d.windows).toHaveBeenCalledOnce();
+  expect(d.textWindow.webContents.send).toHaveBeenCalledWith('text:focus');
+  const e = { sender: d.textWindow.webContents };
+  expect(d.api.submitText(e, 'Bonjour')).toBe(false);
+  d.api.startKernel(); d.api.readyText();
+  const send = vi.fn();
+  d.api.setWindow({ isDestroyed: () => false, isVisible: () => true, webContents: { send } });
+  expect(d.api.submitText({sender: {}}, 'Bonjour')).toBe(false);
+  for (const invalid of ['', '  ', null, 'a'.repeat(10001)]) expect(d.api.submitText(e, invalid)).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(d.api.submitText(e, '  Bonjour  ')).toBe(true);
+  expect(send).toHaveBeenCalledWith('text-request', 'Bonjour');
+  d.textWindow.emit('closed');
+  expect(d.api.submitText(e, 'Bonjour')).toBe(false);
+});
 
 it('ignore un affichage reçu pour une fenêtre déjà détruite',()=>{
   const d=desktop();

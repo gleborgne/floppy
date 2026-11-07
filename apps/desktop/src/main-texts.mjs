@@ -1,6 +1,7 @@
 // Textes du processus principal de l'app (menu, barre des tâches, titres des fenêtres), en français et en anglais.
 export const TEXTS = {
   fr: {
+    write: "Écrire à Floppy (Ctrl+Alt+T)", textTitle: "Floppy — Écrire une demande",
     problem: "problème", idle: "prêt", listening: "écoute", thinking: "réfléchit", speaking: "parle", sleep: "dort", starting: "démarrage…",
     waits: "attend", pttStop: "Arrêter de parler (Ctrl+Alt+F)", pttStart: "Parler (Ctrl+Alt+F)",
     dictating: "dictée", dictateStart: "Dicter (Ctrl+Alt+D)", dictateStop: "Arrêter la dictée (Ctrl+Alt+D)", replace: "Remettre en bas à droite", wake: "Réveiller (Ctrl+Alt+M)", mute: "Dormir (Ctrl+Alt+M)",
@@ -13,6 +14,7 @@ export const TEXTS = {
     settingsNotOpened: "Réglages non ouverts", closedWhileLoading: "fenêtre fermée pendant le chargement", loadTooLong: "chargement trop long", notVisible: "fenêtre non visible",
   },
   en: {
+    write: "Write to Floppy (Ctrl+Alt+T)", textTitle: "Floppy — Type a request",
     problem: "problem", idle: "ready", listening: "listening", thinking: "thinking", speaking: "speaking", sleep: "asleep", starting: "starting…",
     waits: "waiting for", pttStop: "Stop talking (Ctrl+Alt+F)", pttStart: "Talk (Ctrl+Alt+F)",
     dictating: "dictation", dictateStart: "Dictate (Ctrl+Alt+D)", dictateStop: "Stop dictation (Ctrl+Alt+D)", replace: "Move back to bottom right", wake: "Wake up (Ctrl+Alt+M)", mute: "Sleep (Ctrl+Alt+M)",

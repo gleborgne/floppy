@@ -8,7 +8,7 @@ async function fixture(kind: "function" | "delegation" = "function") {
   let ctx!: Context;
   let events!: (e: LiveEvent) => void;
   const sent: KernelToBody[] = [], audio: Uint8Array[] = [], replay: number[] = [];
-  const session: LiveSession = { pushAudio: (f) => replay.push(...f), append: vi.fn(), toolResult: vi.fn(), close: vi.fn(async () => {}) };
+  const session: LiveSession = { pushAudio: (f) => replay.push(...f), sendText: vi.fn(), append: vi.fn(), toolResult: vi.fn(), close: vi.fn(async () => {}) };
   const service: LiveService = { name: "fake", capabilities: { tools: kind }, open: vi.fn(async (o) => { events = o.on; return session; }) };
   const hub: BodyHub = { send: (_, m) => { sent.push(m); }, sendAudio: (_, data) => { audio.push(data); }, attach: () => {}, sessions: () => [], has: () => false, broadcast: () => {}, on: () => () => {} };
   const provider = definePlugin({ manifest: { id: "body", version: "0", licence: "MIT", provides: ["body"] }, apply(c) { c.provide("body", hub); } });
@@ -25,6 +25,30 @@ async function fixture(kind: "function" | "delegation" = "function") {
 }
 
 describe("conversation Live", () => {
+  it("une demande écrite ouvre Live sans rejouer le micro et conserve le contexte", async () => {
+    const f = await fixture();
+    try {
+      await f.live.requestText("Bonjour.");
+      expect(f.session.sendText).toHaveBeenCalledWith("Bonjour.");
+      expect(f.replay).toEqual([]);
+      expect(f.sent).toContainEqual({ type: "transcript", text: "Bonjour.", final: true });
+      f.emit({ type: "output_transcript", text: "Salut.", final: true });
+      await f.live.requestText("Et ensuite ?");
+      expect(f.session.close).toHaveBeenCalledOnce();
+      expect(vi.mocked(f.service.open).mock.calls[1]![0].instructions).toContain("Salut.");
+      expect(f.session.sendText).toHaveBeenLastCalledWith("Et ensuite ?");
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("GPT traite le texte par sa délégation habituelle avec le même corps et le mode vocal", async () => {
+    const f = await fixture("delegation");
+    try {
+      await f.live.requestText("Ouvre le document.");
+      await vi.waitFor(() => expect(f.session.append).toHaveBeenCalledWith("say", "Résultat confirmé.", expect.any(String)));
+      expect(f.run.mock.calls[0]![0]).toMatchObject({ text: "Ouvre le document.", session: "avatar", origin: "avatar", mode: "voice" });
+      expect(f.replay).toEqual([]);
+      expect(f.session.sendText).not.toHaveBeenCalled();
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
   it("sérialise deux délégations et conserve leurs demandes distinctes", async () => {
     const f = await fixture("delegation");
     let release!: () => void;

@@ -38,6 +38,10 @@ describe("réglages des raccourcis", () => {
     const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, electron] });
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }] });
     const byKey = (key: string) => k.settings.list().find((s) => s.key === key);
+    expect(byKey("raccourci_ecrire")).toMatchObject({ section: "systeme", type: "text", value: "Ctrl+Alt+T" });
+    expect((await k.settings.change("raccourci_ecrire", "Ctrl+Alt+F", "ui")).ok).toBe(false);
+    expect((await k.settings.change("raccourci_ecrire", "Ctrl+Shift+T", "ui")).ok).toBe(true);
+    expect(sent.filter((m) => m.type === "display").at(-1)?.settings?.raccourcis?.ecrire).toBe("Ctrl+Shift+T");
     expect(byKey("raccourci_parler")).toMatchObject({ section: "systeme", type: "text", value: SHORTCUT_DEFAULTS.parler, group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } });
     expect((await k.settings.change("raccourci_parler", "ctrl+shift+p", "ui")).ok).toBe(true);
     expect(byKey("raccourci_parler")?.value).toBe("Ctrl+Shift+P");

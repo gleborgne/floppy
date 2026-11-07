@@ -93,6 +93,7 @@ const FREE_LISTEN_MS = 10000;
 let pttOn = false;
 let dictating = false;          // dictée en cours (Ctrl+Alt+D) : le texte est tapé dans la fenêtre active
 let typer = null;
+let textWin = null;             // saisie envoyée sur le corps vocal de l'avatar
 let dictWin = null;             // pilule de dictée (en bas de l'écran, ne prend jamais le focus)
 let dictHideTimer = null;               // frappes clavier de la dictée (chargé à la première dictée)
 let muted = false;
@@ -145,7 +146,7 @@ let kernelLog = openLog(logDir);
 // ------------------------------------------------------------------ textes du processus principal (fr / en)
 
 // Raccourcis par défaut (les mêmes que plugins/body/electron/src/shortcuts.ts) ; le noyau envoie ceux choisis (display.raccourcis).
-const SHORTCUT_DEFAULTS = { parler: "Ctrl+Alt+F", dicter: "Ctrl+Alt+D", dormir: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
+const SHORTCUT_DEFAULTS = { parler: "Ctrl+Alt+F", ecrire: "Ctrl+Alt+T", dicter: "Ctrl+Alt+D", dormir: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
 let shortcuts = { ...SHORTCUT_DEFAULTS };
 /** Remplace « (Ctrl+Alt+F) » des textes par le raccourci choisi pour cette action ; rien s'il est désactivé. */
 const withKeys = (s) => typeof s !== "string" ? s : Object.entries(SHORTCUT_DEFAULTS)
@@ -165,6 +166,8 @@ function setLang(l) {
   lang = l;
   settingsWin?.setTitle(T("settingsTitle"));
   onbWin?.setTitle(T("onboardingTitle"));
+  textWin?.setTitle(T("textTitle"));
+  textWin?.webContents.send("text:lang", lang);
   // Les autres fenêtres suivent aussi la langue de l'interface, tout de suite.
   if (docsWin && !docsWin.isDestroyed()) docsWin.webContents.send("documents:lang", lang);
   if (dictWin && !dictWin.isDestroyed()) dictWin.webContents.send("dictation:lang", lang);
@@ -189,6 +192,7 @@ function refreshTray() {
     ...[...problems].map(([id, p]) => ({ label: `✖ ${problemName(id)} : ${trx(p)}`.slice(0, 90), enabled: false })),
     { type: "separator" },
     { label: pttOn ? T("pttStop") : T("pttStart"), click: togglePtt },
+    { label: T("write"), click: openTextInput },
     { label: dictating ? T("dictateStop") : T("dictateStart"), click: toggleDictate },
     { label: muted ? T("wake") : T("mute"), click: toggleMute },
     { label: win && !win.isDestroyed() && win.isVisible() ? T("hide") : T("show"), click: toggleWindow },
@@ -609,6 +613,25 @@ async function showSettingsConfirmed() {
   if (target.isDestroyed() || !target.isVisible()) throw textError(both("notVisible"));
 }
 
+function openTextInput() {
+  if (textWin && !textWin.isDestroyed()) { bringToFront(textWin); textWin.webContents.send("text:focus"); return textWin; }
+  textWin = safeWindow({ size: { width: 560, height: 340, minWidth: 360, minHeight: 320 }, title: T("textTitle"), preload: "preload-text.cjs" });
+  textWin.loadFile(join(here, "renderer", "text.html"));
+  textWin.webContents.once("did-finish-load", () => textWin?.webContents.send("text:lang", lang));
+  textWin.once("ready-to-show", () => { bringToFront(textWin); textWin?.webContents.send("text:focus"); });
+  textWin.on("closed", () => { textWin = null; });
+  return textWin;
+}
+/** N'accepte que la fenêtre de saisie et un avatar connecté ; un échec conserve le brouillon. */
+function submitText(e, raw) {
+  if (!textWin || e.sender !== textWin.webContents) return false;
+  if (typeof raw !== "string" || !raw.trim() || raw.length > 10000 || !kernel || !currentPorts || !winReady || !win || win.isDestroyed()) return false;
+  activity();
+  muted = false;
+  win.webContents.send("text-request", raw.trim());
+  refreshTray();
+  return true;
+}
 function togglePtt() { activity(); pttOn = !pttOn; win?.webContents.send("shortcut", pttOn ? "ptt-on" : "ptt-off"); refreshTray(); }
 /** Pilule de dictée : en bas au centre de l'écran où est la souris, sans jamais prendre le focus. */
 function showDictationPill() {
@@ -657,7 +680,7 @@ function toggleDictate() {
 }
 function toggleMute() { muted = !muted; win?.webContents.send("shortcut", muted ? "mute-on" : "mute-off"); refreshTray(); }
 
-const SHORTCUT_ACTIONS = { parler: () => togglePtt(), dicter: () => toggleDictate(), dormir: () => toggleMute(), avatar: () => toggleWindow() };
+const SHORTCUT_ACTIONS = { ecrire: () => openTextInput(), parler: () => togglePtt(), dicter: () => toggleDictate(), dormir: () => toggleMute(), avatar: () => toggleWindow() };
 const registered = new Map(); // action -> raccourci posé
 /** Pose les raccourcis globaux choisis. Un raccourci déjà pris par une autre app (ex. Ctrl+Alt+Espace) est signalé. */
 function applyShortcuts(next) {
@@ -702,6 +725,8 @@ app.whenReady().then(() => {
   });
   ipcMain.on("activity", (_e, kind) => { approvalOpen = kind === "approval"; activity(); });
   ipcMain.on("approval-closed", () => { approvalOpen = false; settleIdle(); });
+  ipcMain.handle("text:submit", (e, text) => submitText(e, text));
+  ipcMain.on("text:close", (e) => { if (textWin && e.sender === textWin.webContents) textWin.close(); });
   ipcMain.on("open-settings", () => openSettings());
   // Réponse : { ok, text: { fr, en } } ; la page de l'avatar choisit la langue de l'assistant (c'est Floppy qui le dit).
   ipcMain.handle("avatar:place", (e, a) => {
