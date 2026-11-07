@@ -5,7 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { errorText, T, TextError, tr, type Context, type Level, type Rule, type Text, type ToolDef, type ToolResult } from "@floppy/core";
+import { errorText, imageLogo, T, TextError, tr, type Context, type Level, type Rule, type Text, type ToolDef, type ToolResult } from "@floppy/core";
 import { resolveLevel, type LevelSetting } from "./levels.ts";
 import { azTokenProvider, bearerFetch } from "./azcli.ts";
 
@@ -44,6 +44,8 @@ export interface RawTool {
 
 export interface Opened {
   tools: RawTool[];
+  /** Icône que le serveur envoie (serverInfo.icons), en adresse data:image/… seulement (rien n'est téléchargé). */
+  icon?: string;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>;
   close(): Promise<void>;
 }
@@ -161,7 +163,9 @@ export async function open(
       new Promise<never>((_, ko) => { timer = setTimeout(() => ko(new TextError(T(`pas de réponse après ${Math.round(ms / 1000)} s`, `no answer after ${Math.round(ms / 1000)} s`))), ms); }),
     ]);
     clearTimeout(timer);
+    const icon = serverIcon(c.getServerVersion()?.icons);
     return {
+      ...(icon ? { icon } : {}),
       tools: tools.map((t) => {
         const { level, rule } = resolveLevel(t.name, spec.levels, t.annotations);
         return { name: t.name, description: t.description ?? "", inputSchema: t.inputSchema as Record<string, unknown>, level, ...(rule ? { rule } : {}) };
@@ -182,6 +186,18 @@ export async function open(
   }
 }
 
+/**
+ * L'icône d'un serveur (spec MCP : serverInfo.icons). Seules les images déjà dans le message (data:image/…) sont gardées :
+ * une adresse web voudrait dire contacter un autre site. SVG d'abord, sinon la plus grande.
+ */
+export function serverIcon(icons: unknown): string | undefined {
+  if (!Array.isArray(icons)) return undefined;
+  const ok = icons.filter((i): i is { src: string; mimeType?: string; sizes?: string[] } => !!imageLogo((i as { src?: unknown })?.src));
+  const size = (i: { sizes?: string[] }): number => Math.max(0, ...(i.sizes ?? []).map((s) => (s === "any" ? 1e4 : parseInt(s, 10) || 0)));
+  const best = ok.find((i) => i.src.startsWith("data:image/svg+xml")) ?? ok.sort((a, b) => size(b) - size(a))[0];
+  return best?.src;
+}
+
 export type State = "off" | "connecting" | "on" | "error";
 
 export interface Connection {
@@ -192,6 +208,8 @@ export interface Connection {
   tools(): RawTool[];
   /** Nombre d'outils donnés au cerveau. */
   visibleCount(): number;
+  /** Icône envoyée par le serveur à la dernière connexion. */
+  icon(): string | undefined;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   /** Refait le filtre des outils sans rouvrir la connexion. */
@@ -213,6 +231,7 @@ export function makeConnection(
   let error: Text = "";
   let opened: Opened | undefined;
   let raw: RawTool[] = [];
+  let icon: string | undefined;
   let unregister: (() => void) | undefined;
   let visible = 0;
   let stderrTail = "";
@@ -271,6 +290,7 @@ Note : ${note}` : t.description,
       });
       opened = o;
       raw = o.tools;
+      icon = o.icon;
       get.onTools(raw);
       register();
       state = "on";
@@ -307,6 +327,7 @@ Note : ${note}` : t.description,
     error: () => error,
     tools: () => raw,
     visibleCount: () => visible,
+    icon: () => icon,
     connect: () => serial(doConnect),
     disconnect: () => serial(doDisconnect),
     refilter: () => { if (state === "on") register(); },

@@ -281,6 +281,34 @@ flowchart LR
   un appel à un outil caché échoue.
 - Un plugin montre un état court sur son élément avec `ctx.items.status(texte, ton)` (Orca : « surveillance
   active », « Orca ne répond pas »).
+- Logo : `addable.logo` (fixe), remplacé par `ctx.items.logo(logo)` pendant que l'entrée tourne (`null` = aucun).
+  Une entrée éteinte montre celui du manifeste. Voir « Logos des outils » plus bas.
+
+### Logos des outils (2026-11-07)
+
+Chaque ligne de Connecteurs montre le **vrai logo** de l'outil, à gauche du nom (`ItemInfo.logo`,
+`packages/core/src/logo.ts`). Trois formes :
+
+| Forme | Qui la lit | Exemple |
+|---|---|---|
+| image `data:image/…` (256 Ko au plus) | la fenêtre | SVG livré avec le plugin (`svgLogo`, `glyphLogo`), icône envoyée par un serveur MCP |
+| `{ program: chemin }` | l'app (icône du programme, `app.getFileIcon`) | Orca (`Orca.exe`, ou `Orca.app` sous macOS), navigateur choisi |
+| `{ handler: "https" }` | l'app (programme qui ouvre ce protocole) | navigateur par défaut ; rien sous Linux |
+
+- Le noyau ne lit aucune icône du système : l'app remplace `program` / `handler` par une image avant d'envoyer la
+  liste à la fenêtre, la garde en mémoire, et renvoie la liste quand l'image est prête. La CLI les ignore.
+- **Serveurs MCP** : d'abord l'icône que le serveur envoie (`serverInfo.icons` de la spec MCP), seulement si elle est
+  déjà dans le message (`data:image/…`, SVG d'abord, sinon la plus grande) : on ne contacte jamais un autre site pour
+  un logo. Sinon, une marque connue reconnue par l'adresse ou la commande (`brandLogo`) : Azure DevOps
+  (`dev.azure.com`, `visualstudio.com`, `azure-devops`), Obsidian (`obsidian`). Sinon, l'initiale.
+- **Applications** : Microsoft 365 (logo Microsoft), Recherche web (Claude ; aucun avec Codex), SearXNG, Navigateur
+  (`handler`, ou `program` si un navigateur est choisi), Orca (`program`).
+- Dans une liste où au moins un élément a un logo, les autres montrent leur initiale dans la même case (les noms
+  restent alignés). Un élément éteint a son logo en gris.
+- Pas de logo tiré du site web d'une marque : testé, l'icône du site est souvent celle d'une autre marque
+  (Azure DevOps → Azure, Microsoft 365 → Copilot) et demanderait de contacter ce site.
+- Sources : Simple Icons (CC0) pour Obsidian, Claude, SearXNG ; icône officielle Azure DevOps (Azure Architecture
+  Icons : seulement pour représenter Azure DevOps, à côté de son nom, sans modification). Voir `THIRD_PARTY.md`.
 
 ### Navigateur (`plugins/tools/browser`)
 

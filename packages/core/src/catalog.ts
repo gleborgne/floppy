@@ -24,6 +24,7 @@ import type { ApprovalManager } from "./approval.ts";
 import type { Audit } from "./audit.ts";
 import { allTexts, errorText, T, tr, type Text } from "./i18n.ts";
 import type { Backend } from "./machine.ts";
+import type { Logo } from "./logo.ts";
 
 /** Ce que demande un modèle pour tourner (bibliothèque de modèles ; lu par le premier lancement). */
 export interface ModelNeeds {
@@ -103,6 +104,8 @@ export interface ItemInfo {
   detail?: Text;
   /** Petite image de l'élément (adresse data:image/…), montrée à la place de l'initiale (ex. aperçu d'un avatar). */
   preview?: string;
+  /** Logo de l'outil (voir logo.ts) : montré au début de sa ligne, dans la liste et sur sa page. */
+  logo?: Logo;
   enabled: boolean;
   /** En service maintenant (modèle chargé, voix utilisée, avatar affiché). */
   active?: boolean;

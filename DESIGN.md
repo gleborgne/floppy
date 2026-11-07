@@ -357,6 +357,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 - **Step chain** (`.ptabs.chain` / `.ptab.pstep`): when every slot of a section declares a `step` (e.g. Listening: speech detector → transcription → wake word), their tabs become equal cards (`panel`, 12px radius, 10px 14px padding) joined by Lucide `arrow-right` icons in `faint`: a 12px `muted-2` line "n · role" over the item in use in 14px `ink`. The open step takes `selected` with the cyan inset outline (no underline); its first line turns `accent`. Other tabs (Plugins) follow as plain tabs. Below 760px the cards stack and the arrows hide.
 - **Breadcrumbs** (`.crumbs`): a small "Back" button, then cyan text links separated by `›`, the current page in `ink` with `aria-current="page"`.
 - **Clickable rows** (`.srow.pick`): the whole row opens the detail, shows a chevron that turns cyan on hover, and has an inset focus ring.
+- **Tool logo** (`.srow .lg`): a 32px slot at the start of a row holding the tool's real logo at 26px, in its own colours, with no tile behind it (`ItemInfo.logo`, see `docs/spec/elements.md`). In a list where any row has a logo, rows without one show their initial in the same slot (8px radius, `sunken`, `muted-2`, 14px/650) so names stay aligned. A turned-off row shows its logo in greyscale at 55% opacity. The detail page repeats the logo in its head row. `aria-hidden`: the name beside it is the label.
 
 ### Speech bubble (signature)
 - `bubble-card` fill, `bubble-line` border, 18px radius, tail pointing down at the face, Bubble float shadow. Shows "You:" in `muted` 12.5px with a cyan bold prefix, then the reply in `ink` 14px; hairlines at 6% white separate the parts. Appears and hides with a 180ms fade plus 8px rise. The listening state shows "I'm listening…" in cyan with four bars driven by the microphone level.
@@ -375,6 +376,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 
 ### Iconography
 - Icons are **Lucide** (ISC licence), copied path-for-path from `lucide-static` v1.59.0 into `apps/desktop/src/renderer/icons.js` and built as DOM SVG by `window.lucideIcon(name)`: 24 viewBox, `stroke="currentColor"`, stroke-width 2, round caps and joins, `aria-hidden="true"`, sized in CSS (16px in buttons). The button around an icon carries the accessible name. Inline SVG in HTML follows the same attributes (search magnifier in `settings.html`). Add an icon by copying its paths from the same Lucide version; record it in `THIRD_PARTY.md` if a new source is ever used.
+- **Brand logos** are the one exception: a connector or app row shows the real logo of the tool it stands for (Tool logo, above), in the brand's own colours. Logos come from the tool itself (an MCP server's icon, a program's icon) or ship with the plugin from a source whose terms allow it (Simple Icons CC0, the vendor's official icon set), recorded in `THIRD_PARTY.md`. Never redraw, recolour or crop a logo, and never use one as a button icon or decoration.
 
 ### Motion
 - **State transitions:** 120 to 180ms, `ease` (switch knob 120 to 140ms, bubble 180ms, toast 160ms, trash reveal 120ms).
@@ -413,6 +415,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 - **Don't** put white text on cyan; use `accent-ink`.
 - **Don't** place an uppercase label above a heading as an eyebrow or kicker; the uppercase label only names a group of cards.
 - **Don't** use emoji or text glyphs as icons in new UI; existing ones are listed below as debt.
+- **Don't** use brand logos anywhere but the Tool logo slot of the row for that tool.
 - **Don't** write "Windows", "macOS", "Cmd" or "Option" in UI strings.
 
 ### Known inconsistencies in the shipped CSS (not rules)

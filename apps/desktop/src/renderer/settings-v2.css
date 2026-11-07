@@ -203,6 +203,11 @@ details.adv .form { margin-top: 0; }
 .srow.pick { cursor: pointer; }
 .srow.picked { box-shadow: inset 3px 0 0 var(--accent); }
 .srow .rt { flex: 1; min-width: 0; }
+/* Logo de l'outil (vraie marque) au début de la ligne ; sans logo, l'initiale dans la même case. */
+.srow .lg { flex: none; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; margin-right: -4px; }
+.srow .lg img { width: 26px; height: 26px; object-fit: contain; display: block; }
+.srow .lg.none { border-radius: 8px; background: var(--sunken); color: var(--muted-2); font-size: 14px; font-weight: 650; }
+.rwrap.off .srow .lg img { filter: grayscale(1); opacity: .55; }
 .srow .rn { display: flex; align-items: center; gap: 8px; }
 .srow .rd { color: var(--muted-2); font-size: 12.5px; margin-top: 2px; }
 .srow .rs { width: 170px; color: var(--muted-2); font-size: 12.5px; }

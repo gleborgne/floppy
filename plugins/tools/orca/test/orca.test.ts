@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel } from "@floppy/core";
-import { createOrcaPlugin, type OrcaCli, type OrcaWorktree } from "../src/index.ts";
+import { createOrcaPlugin, orcaApp, type OrcaCli, type OrcaWorktree } from "../src/index.ts";
 
 const NOW = 1_800_000_000_000;
 const ag = (paneKey: string, state: string, extra: Record<string, unknown> = {}) =>
@@ -185,5 +185,13 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     expect(asked).toEqual(["Ajouter Orca"]);
     expect((await k.tools.call("ajouter_application", { nom: "orca" })).text).toMatch(/déjà ajouté/);
     expect(asked.length).toBe(1);
+  });
+
+  it("orcaApp : le programme d'Orca (pour son logo) à partir de sa commande", () => {
+    const win = "C:/Programs/orca/resources/bin/orca.exe";
+    expect(orcaApp(win, "win32", () => ["Orca.exe", "resources"]).replace(/\\/g, "/")).toBe("C:/Programs/orca/Orca.exe");
+    expect(orcaApp(win, "win32", () => [])).toBe(win);
+    expect(orcaApp("/Applications/Orca.app/Contents/Resources/bin/orca", "darwin").replace(/\\/g, "/")).toBe("/Applications/Orca.app");
+    expect(orcaApp("/usr/local/bin/orca", "linux")).toBe("/usr/local/bin/orca");
   });
 });

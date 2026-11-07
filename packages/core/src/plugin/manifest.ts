@@ -4,6 +4,7 @@ import type { Context } from "./context.ts";
 import type { FieldDef } from "../catalog.ts";
 import type { Text } from "../i18n.ts";
 import type { SectionDef } from "../sections.ts";
+import type { Logo } from "../logo.ts";
 
 /** Ce que le plugin veut toucher. Accordé une fois par l'utilisateur (voir docs/spec/securite.md). */
 export interface Permissions {
@@ -107,8 +108,9 @@ export interface Manifest {
   /**
    * `program` : programme dont le plugin a besoin (ex. « codex »). Trouvé sur la machine, le premier lancement propose
    * le plugin (et l'ajoute s'il n'est pas dans la config).
+   * `logo` : logo de l'outil, montré sur sa ligne (ctx.items.logo le remplace pendant que le plugin tourne).
    */
-  addable?: { section: string; label: Text; description?: Text; fields?: FieldDef[]; cloud?: boolean; single?: boolean; aliases?: string[]; program?: string };
+  addable?: { section: string; label: Text; description?: Text; fields?: FieldDef[]; cloud?: boolean; single?: boolean; aliases?: string[]; program?: string; logo?: Logo };
 }
 
 const strs = z.array(z.string().min(1));

@@ -7,6 +7,7 @@
 // - SearXNG doit accepter le format JSON : dans son settings.yml, `search.formats: [html, json]`.
 import { z } from "zod";
 import { definePlugin, T, TextError, type SearchHit, type SearchService, type Text } from "@floppy/core";
+import { SEARXNG } from "./logo.ts";
 
 const t = (fr: string, en: string): Text => ({ fr, en });
 
@@ -102,6 +103,7 @@ export function createSearxngPlugin(fetchImpl: FetchLike = fetch) {
       addable: {
         section: "connecteurs",
         single: true,
+        logo: SEARXNG,
         label: t("SearXNG", "SearXNG"),
         description: t(
           "Floppy cherche sur internet avec ton SearXNG. Il doit accepter le format JSON : dans son settings.yml, mets search.formats: [html, json].",

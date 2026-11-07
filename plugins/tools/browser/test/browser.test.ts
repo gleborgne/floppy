@@ -41,4 +41,10 @@ describe("plugin navigateur", () => {
     expect(checkUrl("http://a.b/c").host).toBe("a.b");
     expect(() => checkUrl("ftp://x")).toThrow();
   });
+
+  it("logo : celui du navigateur par défaut, ou du programme choisi", async () => {
+    const logo = async (config: Record<string, unknown>) => (await (await start(config)).k.items.provider("apps-connecteurs")!.list())[0]?.logo;
+    expect(await logo({})).toEqual({ handler: "https" });
+    expect(await logo({ program: "C:/Programs/contoso/browser.exe" })).toEqual({ program: "C:/Programs/contoso/browser.exe" });
+  });
 });

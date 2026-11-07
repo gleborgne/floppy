@@ -245,4 +245,8 @@ describe("Microsoft 365 (Graph)", () => {
     expect(plain("<p>Bonjour&nbsp;<b>Guillaume</b></p><style>x{}</style><div>A&amp;B</div>")).toBe("Bonjour Guillaume\nA&B");
     expect(when({ dateTime: "2026-11-05T14:00:00.0000000", timeZone: "UTC" })).toMatch(/novembre à \d\d:\d\d/);
   });
+
+  it("logo : celui de Microsoft, livré avec le plugin", () => {
+    expect(String(createM365Plugin().manifest.addable?.logo)).toMatch(/^data:image\/svg\+xml;base64,/);
+  });
 });

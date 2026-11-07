@@ -12,6 +12,7 @@ export { CatalogRegistry, ItemStore, SECRET_SET, slug, type FieldDef, type Field
 export { MemorySecrets, OsSecrets, defaultSecrets, scopedSecrets, type Secrets } from "./secrets.ts";
 export { tr, allTexts, LANGS, T, TextError, errorText, isLang, type Lang, type Text } from "./i18n.ts";
 export { SettingsRegistry, type SettingDef, type SettingInfo, type SettingOption, type SettingRisk, type ChangeResult } from "./settings.ts";
+export { cleanLogo, glyphLogo, imageLogo, svgLogo, LOGO_MAX, type Logo } from "./logo.ts";
 export { SectionRegistry, type SectionDef, type SectionInfo } from "./sections.ts";
 export { ToolRegistry, REFUSED_TEXT, NEVER_TEXT, type ToolDef, type ToolInfo, type ToolOutput, type ToolResult, type ToolStatus, type ToolCallMeta, type ToolCallInput, type JsonSchema } from "./tools.ts";
 export { EffectScope, type Disposer } from "./plugin/effects.ts";

@@ -7,6 +7,8 @@ Floppy's code is under the [MIT licence](LICENSE). It uses components with their
 | Component | Where | Licence |
 |---|---|---|
 | [Lucide](https://lucide.dev) icons (from `lucide-static`) | `apps/desktop/src/renderer/icons.js` | ISC |
+| [Simple Icons](https://simpleicons.org) brand logos (Obsidian, Claude, SearXNG) | `plugins/tools/mcp/src/logos.ts`, `plugins/tools/websearch/src/logo.ts`, `plugins/tools/searxng/src/logo.ts` | CC0 1.0 (the brands remain trademarks of their owners) |
+| Azure DevOps icon ([Azure Architecture Icons](https://learn.microsoft.com/azure/architecture/icons/), Microsoft) | `plugins/tools/mcp/src/logos.ts` | Microsoft terms of use: only to represent Azure DevOps, next to its name, unmodified |
 | SIWIS French Speech Synthesis Database (two sentences, 24 kHz) | `plugins/tts/audiocpp/voices/ref_fr_siwis.wav` | CC BY 4.0 — see [CREDITS](plugins/tts/audiocpp/voices/CREDITS.md) |
 
 npm dependencies are checked by `npm run licences` (part of `npm run check`): only permissive licences are allowed in shipped packages.

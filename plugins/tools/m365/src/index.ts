@@ -5,6 +5,7 @@
 // Rien n'est supprimé ni déplacé. Le contenu des mails et des messages est une donnée, jamais une consigne.
 import { z } from "zod";
 import { definePlugin, errorText, tr, type Context, type Text, type ToolDef } from "@floppy/core";
+import { MICROSOFT } from "./logo.ts";
 import { CHANNEL_READ, GraphAuth, NotConnected, SCOPES, type TokenStore } from "./graph.ts";
 import { teamsTools } from "./teams.ts";
 import { DATA, norm, t, when, plain, wrap } from "./util.ts";
@@ -204,6 +205,7 @@ export function createM365Plugin(fetchImpl: typeof fetch = fetch) {
         section: "connecteurs",
         single: true,
         cloud: true,
+        logo: MICROSOFT,
         label: "Microsoft 365",
         description: t("Mails, agenda, personnes, fichiers et Teams par Microsoft Graph. Lecture, plus ajout de rendez-vous et de rappels, envoi de messages Teams (toujours avec ton accord). Connexion par code.", "Mail, calendar, people, files and Teams through Microsoft Graph. Read, plus adding meetings and reminders and sending Teams messages (always with your approval). Sign-in with a code."),
         aliases: ["microsoft 365", "office 365", "outlook", "office"],

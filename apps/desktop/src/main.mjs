@@ -36,6 +36,43 @@ let lastOnb = null;            // dernier état de l'installation de départ (fe
 let lastItems = null;           // derniers { providers, lang } reçus du noyau (éléments : modèles, voix, connecteurs, corps, avatars)
 let lang = "fr";                // langue de l'interface (réglage « langue_interface » du noyau)
 let reqSeq = 0;
+// Logos { program } / { handler } des éléments (packages/core/src/logo.ts) : le noyau ne lit pas les icônes du système,
+// l'app les lit ici et les remplace par une adresse data: avant d'envoyer la liste à la fenêtre. Clé → adresse, "" (rien) ou attente.
+const logoCache = new Map();
+function logoKey(l) {
+  if (!l || typeof l !== "object") return null;
+  if (typeof l.program === "string") return `p:${l.program}`;
+  if (typeof l.handler === "string") return `h:${l.handler}`;
+  return null;
+}
+async function systemLogo(key) {
+  try {
+    if (key.startsWith("p:")) {
+      const file = key.slice(2);
+      if (!existsSync(file)) return "";
+      const img = await app.getFileIcon(file, { size: process.platform === "darwin" ? "normal" : "large" });
+      return img.isEmpty() ? "" : img.toDataURL();
+    }
+    // Programme qui ouvre ce protocole (« https » : le navigateur par défaut). Pas de cette lecture sous Linux.
+    if (process.platform === "linux") return "";
+    const info = await app.getApplicationInfoForProtocol(`${key.slice(2)}://`);
+    return info?.icon && !info.icon.isEmpty() ? info.icon.toDataURL() : "";
+  } catch { return ""; }
+}
+/** La liste des éléments pour la fenêtre : logos du système remplacés par leur image (lue une fois, puis gardée). */
+function itemsPayload() {
+  const providers = (lastItems?.providers ?? []).map((p) => ({ ...p, items: (p.items ?? []).map((it) => {
+    const key = logoKey(it.logo);
+    if (!key) return it;
+    const { logo: _, ...rest } = it;
+    const v = logoCache.get(key);
+    if (typeof v === "string") return v ? { ...rest, logo: v } : rest;
+    if (!v) logoCache.set(key, systemLogo(key).then((d) => { logoCache.set(key, d); sendItems(); }));
+    return rest;
+  }) }));
+  return { providers, lang: lastItems?.lang ?? lang };
+}
+function sendItems() { if (lastItems) settingsWin?.webContents.send("items:update", itemsPayload()); }
 const coderSessions = new Set(); // conversations de l'assistant ouvertes depuis la fenêtre des réglages
 const pending = new Map();      // reqId → résolution de la réponse du noyau
 // Affichage (réglages du plugin body-electron, reçus du noyau).
@@ -214,7 +251,7 @@ function startKernel() {
       );
     }
     else if (m?.type === "settings") { setLang(m.lang); lastSettings = { list: m.list, sections: m.sections ?? [], plugins: m.plugins, slots: m.slots ?? [], lang }; settingsWin?.webContents.send("settings:update", lastSettings); }
-    else if (m?.type === "items") { setLang(m.lang); lastItems = { providers: m.providers, lang }; settingsWin?.webContents.send("items:update", lastItems); }
+    else if (m?.type === "items") { setLang(m.lang); lastItems = { providers: m.providers, lang }; sendItems(); }
     else if (m?.type === "items.result") {
       // Opération lancée par un clic dans la fenêtre des réglages : on peut ouvrir une page (http(s)) et copier un code.
       if (m.ok && typeof m.copy === "string" && m.copy.length < 200) clipboard.writeText(m.copy);
@@ -792,7 +829,7 @@ app.whenReady().then(() => {
   ipcMain.handle("items:get", (e) => {
     if (!fromSettings(e)) return null;
     kernel?.postMessage({ type: "items.get" });
-    return lastItems ?? { providers: [], lang };
+    return lastItems ? itemsPayload() : { providers: [], lang };
   });
   ipcMain.handle("items:op", (e, op) => {
     if (!fromSettings(e)) return null;

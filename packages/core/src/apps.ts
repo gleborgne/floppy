@@ -16,6 +16,7 @@ import type { Manifest } from "./plugin/manifest.ts";
 import type { ToolRegistry } from "./tools.ts";
 import { tr, type Text } from "./i18n.ts";
 import type { PluginState } from "./bus.ts";
+import { cleanLogo, type Logo } from "./logo.ts";
 
 export interface AppsHost {
   home: string;
@@ -26,6 +27,8 @@ export interface AppsHost {
   baseEntries(): EntryConfig[];
   entryState(id: string): { state: PluginState; error?: Text } | undefined;
   entryNote(id: string): { text: Text; tone?: "ok" | "warn" | "error" } | undefined;
+  /** Logo donné par le plugin qui tourne (ctx.items.logo) ; null : aucun ; undefined : celui du manifeste. */
+  entryLogo(id: string): Logo | null | undefined;
   /** Clés des réglages déclarés par l'entrée. */
   entrySettings(id: string): string[];
   entryActions(id: string): { list: { id: string; label: Text }[]; run: (action: string) => Promise<OpResult> } | undefined;
@@ -138,10 +141,13 @@ export class Apps {
       : st?.state === "waiting" ? t("en attente", "waiting")
       : note?.text ?? (st?.state === "active" ? t("actif", "on") : t("démarrage…", "starting…"));
     const withId = (l: string): string => `${l} (${e.id})`;
+    const given = off ? undefined : this.host.entryLogo(e.id);
+    const logo = given === undefined ? cleanLogo(a.logo) : given ?? undefined;
     return {
       id: e.id,
       label: many ? (typeof a.label === "string" ? withId(a.label) : t(withId(tr(a.label, "fr")), withId(tr(a.label, "en")))) : a.label,
       ...(a.description ? { detail: a.description } : {}),
+      ...(logo ? { logo } : {}),
       enabled: !off, status, statusText, tags: ["application"],
       ...(a.cloud ? { cloud: true } : {}),
       kind: m.id,

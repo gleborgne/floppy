@@ -456,18 +456,29 @@ function closeDetail(n = 1) {
   $("content").scrollTop = 0;
 }
 
+/** Logo d'un élément (adresse data:image/… ; l'app a déjà lu les icônes des programmes), sinon null. */
+const logoOf = (it) => (typeof it.logo === "string" && it.logo.startsWith("data:image/") ? it.logo : null);
+/** Case du logo au début d'une ligne : le logo, ou l'initiale si un voisin a un logo (les noms restent alignés). */
+function logoTile(it) {
+  const src = logoOf(it);
+  return src
+    ? h("span", { class: "lg", "aria-hidden": "true" }, h("img", { src, alt: "" }))
+    : h("span", { class: "lg none", "aria-hidden": "true", text: tr(it.label).slice(0, 1).toUpperCase() });
+}
+
 function rowList(listKey, entries) {
   const card = h("div", { class: "scard" });
+  const logos = entries.some(([, it]) => logoOf(it));
   const groups = new Set(entries.map((e) => e[2] || "")).size > 1;
   let last = null;
   for (const [p, it, group] of entries) {
     if (groups && group !== last) { card.append(h("div", { class: "sgrp", text: group || "" })); last = group; }
-    card.append(entryRow(listKey, p, it));
+    card.append(entryRow(listKey, p, it, logos));
   }
   return card;
 }
 
-function entryRow(listKey, p, it) {
+function entryRow(listKey, p, it, logos = false) {
   const offering = offersOf(p).length > 0;
   const fills = filledBy(p, it);
   // Un seul rôle possible : son interrupteur est dans la ligne. Plusieurs (ex. cerveau ET délégation) : dans Réglages.
@@ -486,6 +497,7 @@ function entryRow(listKey, p, it) {
     ...(plain ? { actEl: switchBtn(p, it) } : {}),
     ...(firstAct ? { extraBtn: h("button", { type: "button", class: "btn small", text: tr(firstAct.label), onclick: (e) => { e.stopPropagation(); quickOp({ op: "action", provider: p.id, id: it.id, action: firstAct.id }); } }) } : {}),
     onSettings: () => openDetail(p, it), rowLink: true,
+    ...(logos ? { lead: logoTile(it) } : {}),
   });
   return h("div", { class: `rwrap${it.enabled ? "" : " off"}` }, el);
 }
@@ -521,6 +533,7 @@ function detailPage() {
     ...(one && it.enabled ? { canAct: canFill(one, p, it) && it.status !== "warn" && it.status !== "error", onAct: () => setSlot(one, valueOf(p, it)), onOff: one.none ? () => setSlot(one, "@none") : null } : {}),
     ...(!offering && p.can.enable && it.toggleable !== false ? { actEl: switchBtn(p, it) } : {}),
     ...(firstAct ? { extraBtn: h("button", { type: "button", class: "btn small", text: tr(firstAct.label), onclick: () => quickOp({ op: "action", provider: p.id, id: it.id, action: firstAct.id }) }) } : {}),
+    ...(logoOf(it) ? { lead: logoTile(it) } : {}),
   });
   return h("div", { class: "dpage" }, crumbs,
     h("div", { class: "page-head" }, h("div", {}, h("h2", { text: tr(it.label) }), h("p", { text: tr(p.label) }))),

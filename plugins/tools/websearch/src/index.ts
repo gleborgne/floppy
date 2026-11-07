@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { definePlugin, findExe, killTree, tr, type Text } from "@floppy/core";
+import { CLAUDE } from "./logo.ts";
 
 const t = (fr: string, en: string): Text => ({ fr, en });
 
@@ -209,6 +210,7 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
         section: "connecteurs",
         single: true,
         cloud: true,
+        logo: CLAUDE,
         label: t("Recherche web", "Web search"),
         description: t("Floppy cherche sur internet avec ton abonnement Claude ou Codex (sans clé d'API). Les résultats s'ouvrent dans une fenêtre.", "Floppy searches the internet with your Claude or Codex subscription (no API key). Results open in a window."),
         aliases: ["recherche web", "internet", "web search"],
@@ -276,6 +278,8 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
         },
       }]);
       ctx.items.status(cfg.engine === "codex" ? t("avec Codex", "with Codex") : t(`avec Claude ${cfg.claudeModel}`, `with Claude ${cfg.claudeModel}`));
+      // Logo du moteur : Claude ; pas de logo livré pour Codex (l'initiale le remplace).
+      ctx.items.logo(cfg.engine === "codex" ? null : CLAUDE);
     },
   });
 }

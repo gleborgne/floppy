@@ -7,8 +7,8 @@
 //   le seul argument variable est un identifiant de terminal rendu par Orca et vérifié (TERM_HANDLE).
 import { z } from "zod";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { delimiter, extname, isAbsolute, join } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
 import { definePlugin, T, type Text, type ToolDef, type ToolOutput } from "@floppy/core";
 import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
 import { BRIDGE_LIVE_MS, BRIDGE_POLL_MS, EVENT_WINS_MS, kindOfEvent, startBridge, type BridgeEvent } from "./bridge.ts";
@@ -86,6 +86,24 @@ export function resolveExe(command: string, platform: string = process.platform,
     if (exists(f)) return f;
   }
   return command;
+}
+
+/**
+ * Le programme d'Orca lui-même (pour son logo), à partir de sa commande. La commande vit dans <app>/resources/bin :
+ * sous Windows, le logo est sur <app>/Orca.exe ; sous macOS, sur Orca.app (le dossier au-dessus de Contents).
+ * Ailleurs, ou si rien ne colle, la commande elle-même.
+ */
+export function orcaApp(exe: string, platform: string = process.platform, list: (dir: string) => string[] = (d) => { try { return readdirSync(d); } catch { return []; } }): string {
+  const bin = dirname(exe);
+  const res = dirname(bin);
+  if (basename(bin).toLowerCase() !== "bin" || basename(res).toLowerCase() !== "resources") return exe;
+  const root = dirname(res);
+  if (platform === "win32") {
+    const app = list(root).find((f) => /^orca.*\.exe$/i.test(f));
+    return app ? join(root, app) : exe;
+  }
+  if (platform === "darwin" && basename(root) === "Contents") return dirname(root);
+  return exe;
 }
 
 /** Les shims .cmd/.bat de Windows ne se lancent pas sans shell : `cmd.exe /d /s /c "<commande> <args>"`. Les arguments sont fixes (jamais du modèle). */
@@ -432,6 +450,9 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       ctx.tools.register(tools);
       const pluginSrc = opts.pluginSrc ?? ORCA_PLUGIN_SRC;
       const pluginCli = opts.pluginCli ?? rawCli(cfg.command);
+      // Logo : l'icône du programme Orca (lue par l'app), si on le trouve sur la machine.
+      const exe = resolveExe(cfg.command);
+      ctx.items.logo(isAbsolute(exe) ? { program: orcaApp(exe) } : undefined);
       const showStatus = (): void => {
         if (warned) ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
         else if (!surveillance) ctx.items.status(t("annonces coupées", "announcements off"));

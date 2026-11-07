@@ -97,4 +97,15 @@ describe("recherche web en anglais", () => {
     await k.tools.call("chercher_web", { question: "weather" });
     expect(langs).toEqual(["en"]);
   });
+
+  it("logo : Claude par défaut, aucun avec Codex", async () => {
+    const logo = async (engine: string) => {
+      const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async () => RES)] });
+      kernels.push(k);
+      await k.applyConfig({ plugins: [{ id: "websearch", plugin: "websearch", config: { engine } }] });
+      return (await k.items.provider("apps-connecteurs")!.list())[0]?.logo;
+    };
+    expect(String(await logo("claude"))).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(await logo("codex")).toBeUndefined();
+  });
 });

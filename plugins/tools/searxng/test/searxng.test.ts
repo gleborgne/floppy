@@ -131,4 +131,8 @@ describe("searxng", () => {
     expect([timeRange(d(0.5), now), timeRange(d(3), now), timeRange(d(20), now), timeRange(d(200), now), timeRange(d(900), now)])
       .toEqual(["day", "week", "month", "year", undefined]);
   });
+
+  it("logo : celui de SearXNG, livré avec le plugin", () => {
+    expect(String(createSearxngPlugin().manifest.addable?.logo)).toMatch(/^data:image\/svg\+xml;base64,/);
+  });
 });

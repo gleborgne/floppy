@@ -6,6 +6,9 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Kernel, MemoryAudit, MemorySecrets, SECRET_SET, type ItemInfo } from "@floppy/core";
 import tools from "../src/index.ts";
+import { brandLogo } from "../src/connectors.ts";
+import { serverIcon, type Spec } from "../src/connection.ts";
+import { AZURE_DEVOPS, OBSIDIAN } from "../src/logos.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fake = join(here, "fixtures", "fake-mcp.mjs");
@@ -182,5 +185,43 @@ describe("connecteurs : langue anglaise", () => {
     // En français, rien ne change.
     await s.k.settings.change("langue_interface", "fr", "ui");
     expect((await s.run({ op: "enable", id: "nope", on: true })).text).toBe("Connecteur inconnu.");
+  });
+});
+
+describe("connecteurs : logos", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+
+  it("montre l'icône envoyée par le serveur (data: seulement, jamais une adresse web)", async () => {
+    const s = await start({ notes: { command: process.execPath, args: [fake], env: { FAKE_ICON: PNG } } });
+    expect((await s.item("notes")).logo).toBe(PNG);
+  });
+
+  it("sans icône du serveur : le logo d'une marque connue, sinon rien", async () => {
+    const s = await start({
+      vault: { command: process.execPath, args: [fake, "~/Notes/obsidian"] },
+      autre: { command: process.execPath, args: [fake] },
+    });
+    expect(String((await s.item("vault")).logo)).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect((await s.item("autre")).logo).toBeUndefined();
+  });
+});
+
+describe("brandLogo / serverIcon", () => {
+  it("reconnaît Azure DevOps par l'adresse ou la commande, Obsidian par la commande", () => {
+    const spec = (x: Partial<Spec>): Spec => ({ kind: "mcp-local", args: [], env: {}, headers: {}, cloud: false, levels: {}, exclude: [], ...x });
+    expect(brandLogo(spec({ kind: "mcp-remote", url: "https://mcp.dev.azure.com/contoso" }))).toBe(AZURE_DEVOPS);
+    expect(brandLogo(spec({ command: "npx", args: ["-y", "@azure-devops/mcp", "contoso"] }))).toBe(AZURE_DEVOPS);
+    expect(brandLogo(spec({ command: "node", args: ["services/obsidian-mcp/server.mjs", "~/Notes"] }))).toBe(OBSIDIAN);
+    expect(brandLogo(spec({ kind: "mcp-remote", url: "https://contoso.com/mcp" }))).toBeUndefined();
+    expect(brandLogo(spec({ kind: "command", command: "obsidian" }))).toBeUndefined();
+  });
+
+  it("serverIcon : SVG d'abord, sinon la plus grande ; ignore les adresses web", () => {
+    const png = (n: string) => `data:image/png;base64,${n}`;
+    const svg = "data:image/svg+xml;base64,PHN2Zy8+";
+    expect(serverIcon([{ src: png("A"), sizes: ["16x16"] }, { src: png("B"), sizes: ["64x64"] }])).toBe(png("B"));
+    expect(serverIcon([{ src: png("A"), sizes: ["64x64"] }, { src: svg }])).toBe(svg);
+    expect(serverIcon([{ src: "https://contoso.com/a.svg" }])).toBeUndefined();
+    expect(serverIcon(undefined)).toBeUndefined();
   });
 });

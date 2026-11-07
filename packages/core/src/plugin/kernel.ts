@@ -30,6 +30,7 @@ import { SectionRegistry } from "../sections.ts";
 import { settingsTools } from "../settings-tools.ts";
 import { CatalogRegistry, ItemStore } from "../catalog.ts";
 import { catalogTools } from "../catalog-tools.ts";
+import { cleanLogo, type Logo } from "../logo.ts";
 import { defaultSecrets, MemorySecrets, scopedSecrets, type Secrets } from "../secrets.ts";
 import { errorText, isLang, LANGS, T, TextError, tr, type Text } from "../i18n.ts";
 import { Apps } from "../apps.ts";
@@ -176,6 +177,8 @@ export class Kernel {
   /** Choix de l'utilisateur sur les entrées du fichier (applications ajoutées, retirées, éteintes). */
   private transform: (base: EntryConfig[]) => EntryConfig[] = (b) => b;
   private notes = new Map<string, { text: Text; tone?: "ok" | "warn" | "error" }>();
+  /** Logos donnés par ctx.items.logo, par entrée. */
+  private logos = new Map<string, Logo | null>();
   private appActions = new Map<string, { list: { id: string; label: Text }[]; run: (a: string) => Promise<import("../catalog.ts").OpResult> }>();
   private apps?: Apps;
   /** Tâches des manifestes (veille…), lancées par le noyau (voir tasks.ts). */
@@ -276,6 +279,7 @@ export class Kernel {
       baseEntries: () => this.baseCfg?.plugins ?? [],
       entryState: (id) => { const e = this.entries.get(id); return e ? { state: e.state, ...(e.error ? { error: e.error } : {}) } : undefined; }, // erreur en { fr, en } : la fenêtre choisit
       entryNote: (id) => this.notes.get(id),
+      entryLogo: (id) => this.logos.get(id),
       entryActions: (id) => this.appActions.get(id),
       entrySettings: (id) => this.settings.list().filter((x) => x.source === id).map((x) => x.key),
       setTransform: (fn) => {
@@ -1039,6 +1043,7 @@ export class Kernel {
     const allowed = new Set(e.fork ? [] : [...(def.manifest.inject ?? []), ...(def.manifest.optional ?? [])]);
     const kernel = this;
     let noteOff = false;
+    let logoOff = false;
     const read = (name: string): unknown => {
       if (!allowed.has(name) && !e.used.has(name)) throw new Error(`${e.cfg.id} : service ${name} non déclaré dans inject/optional`);
       const p = e.bound.get(name);
@@ -1093,6 +1098,12 @@ export class Kernel {
         status: (text, tone) => {
           this.notes.set(e.cfg.id, { text, ...(tone ? { tone } : {}) });
           if (!noteOff) { noteOff = true; scope.add(() => { this.notes.delete(e.cfg.id); this.items.changed(); }); }
+          this.items.changed();
+        },
+        logo: (logo) => {
+          if (logo === undefined) this.logos.delete(e.cfg.id);
+          else this.logos.set(e.cfg.id, cleanLogo(logo) ?? null);
+          if (!logoOff) { logoOff = true; scope.add(() => { this.logos.delete(e.cfg.id); this.items.changed(); }); }
           this.items.changed();
         },
       },

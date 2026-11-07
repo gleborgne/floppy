@@ -6,6 +6,7 @@ import {
   type Context, type FieldDef, type ItemChild, type ItemInfo, type ItemKind, type OpResult, type ProviderDef, type Text,
 } from "@floppy/core";
 import { matchesAny } from "./levels.ts";
+import { AZURE_DEVOPS, OBSIDIAN } from "./logos.ts";
 import { errText, makeConnection, open, secretName, wrap, type Connection, type RawTool, type Spec } from "./connection.ts";
 
 type Raw = Record<string, unknown>;
@@ -193,6 +194,20 @@ function childOf(tool: Pick<RawTool, "name" | "level" | "rule" | "description">,
   return { id: tool.name, label: tool.name, ...(tool.description ? { detail: tool.description.slice(0, 160) } : {}), enabled, tag: lv.tag, ...(lv.tone ? { tone: lv.tone } : {}) };
 }
 
+/**
+ * Logo d'une marque connue, pour un serveur qui n'envoie pas le sien : d'après son adresse (serveur distant)
+ * ou sa commande et ses arguments (serveur local). Rien pour une commande transformée en outil.
+ */
+export function brandLogo(spec: Spec): string | undefined {
+  if (spec.kind === "command") return undefined;
+  let host = "";
+  try { host = spec.url ? new URL(spec.url).hostname.toLowerCase() : ""; } catch { /* adresse invalide */ }
+  const text = [spec.command, ...spec.args].join(" ").toLowerCase();
+  if (/(^|\.)dev\.azure\.com$/.test(host) || /(^|\.)visualstudio\.com$/.test(host) || /azure-devops/.test(text)) return AZURE_DEVOPS;
+  if (/(^|[^a-z])obsidian/.test(text) || /(^|\.)obsidian\.md$/.test(host)) return OBSIDIAN;
+  return undefined;
+}
+
 /** Un outil est donné au cerveau : choix de l'utilisateur d'abord, sinon include puis exclude de la config. */
 export function passes(name: string, spec: Spec, override?: boolean): boolean {
   if (override !== undefined) return override;
@@ -333,8 +348,9 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
       } else { status = "off"; statusText = t("éteint", "off"); }
     }
     const label = spec.label ?? id;
+    const logo = c?.icon() ?? brandLogo(spec);
     return {
-      id, label, enabled: on, status, statusText, cloud: spec.cloud, kind: spec.kind,
+      id, label, ...(logo ? { logo } : {}), enabled: on, status, statusText, cloud: spec.cloud, kind: spec.kind,
       detail: spec.url ?? [spec.command, ...spec.args].filter(Boolean).join(" "),
       tags: [tr(KIND_NAME[spec.kind], "fr")],
       values: formValues(id, spec),

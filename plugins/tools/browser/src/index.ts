@@ -55,6 +55,8 @@ export function createBrowserPlugin(opener: Opener = defaultOpener) {
       addable: {
         section: "connecteurs",
         single: true,
+        // Logo du navigateur par défaut (lu par l'app : programme qui ouvre les adresses https).
+        logo: { handler: "https" },
         label: t("Navigateur", "Web browser"),
         description: t("Floppy peut ouvrir une page web (lien, PR, ticket…) dans ton navigateur.", "Floppy can open a web page (link, PR, ticket…) in your browser."),
         aliases: ["navigateur", "browser", "ouvrir url"],
@@ -87,6 +89,7 @@ export function createBrowserPlugin(opener: Opener = defaultOpener) {
         },
       }]);
       ctx.items.status(cfg.program ? t("navigateur choisi", "chosen browser") : t("navigateur par défaut", "default browser"));
+      ctx.items.logo(cfg.program ? { program: cfg.program } : undefined);
     },
   });
 }

@@ -12,6 +12,7 @@ import type { SettingDef, SettingInfo, ChangeResult } from "../settings.ts";
 import type { ProviderDef, ItemStore, CatalogOp, CatalogVia, OpResult, ProviderSnapshot } from "../catalog.ts";
 import type { Secrets } from "../secrets.ts";
 import type { Text } from "../i18n.ts";
+import type { Logo } from "../logo.ts";
 import type { TaskInfo, TaskOutcome } from "../tasks.ts";
 import type { ContextDownloads } from "../downloads.ts";
 import type { MachineInfo } from "../machine.ts";
@@ -81,6 +82,11 @@ export interface ContextItems {
   actions(list: { id: string; label: Text }[], run: (action: string) => Promise<OpResult>): void;
   /** État court du plugin, montré sur son élément « Application » (« surveillance active », « ne répond pas »). */
   status(text: Text, tone?: "ok" | "warn" | "error"): void;
+  /**
+   * Logo de son élément « Application », quand il dépend de la config (ex. le navigateur choisi).
+   * undefined : celui du manifeste (addable.logo) ; null : aucun logo (l'initiale le remplace).
+   */
+  logo(logo: Logo | null | undefined): void;
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

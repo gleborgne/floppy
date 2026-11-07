@@ -13,7 +13,9 @@ const tools = [
   { name: "planter", description: "Renvoie une erreur.", inputSchema: obj, annotations: { readOnlyHint: true } },
 ];
 
-const server = new Server({ name: "fake", version: "0" }, { capabilities: { tools: {} } });
+// FAKE_ICON : icône envoyée dans serverInfo (test des logos).
+const icons = process.env.FAKE_ICON ? [{ src: "https://contoso.com/logo.png" }, { src: process.env.FAKE_ICON, mimeType: "image/png", sizes: ["48x48"] }] : undefined;
+const server = new Server({ name: "fake", version: "0", ...(icons ? { icons } : {}) }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (process.env.CALLS_LOG) appendFileSync(process.env.CALLS_LOG, JSON.stringify({ tool: req.params.name, args: req.params.arguments }) + "\n");
