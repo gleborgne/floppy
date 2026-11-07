@@ -25,11 +25,12 @@ let claimText = "C'est fait, j'ai ouvert les réglages.";
 let server: Server, k: Kernel;
 let brain: BrainService | undefined;
 let delegated = 0;
+const agentInputs: string[] = [];
 const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["brain"] }, apply(ctx) { brain = ctx.get("brain"); } });
 const bigModel: BrainService = {
   name: "gros", label: "Gros Modèle", aliases: ["gros"],
   reset() {},
-  async *run() { delegated++; yield { type: "text", delta: "Réponse du grand modèle." } as BrainEvent; yield { type: "done", text: "" } as BrainEvent; },
+  async *run(input) { delegated++; agentInputs.push(input.text); yield { type: "text", delta: "Réponse du grand modèle." } as BrainEvent; yield { type: "done", text: "" } as BrainEvent; },
 };
 // Offert comme délégué (slot brain.delegate) et comme modèle-agent (slot brain.main), comme Claude Code.
 const fakeDelegate = definePlugin({
@@ -119,6 +120,16 @@ describe("modèle-agent (llm.agent)", () => {
     for await (const ev of brain!.run({ text: "Bonjour", session: "agent", mode: "text" })) if (ev.type === "text") text += ev.delta;
     expect(text).toContain("Réponse du grand modèle.");
     expect(delegated).toBe(before + 1);
+    expect(agentInputs.at(-1)).toBe("Bonjour"); // 1re demande : rien à redonner
+    // Le CLI ne garde rien d'une demande à l'autre : la suivante porte les échanges précédents.
+    for await (const _ of brain!.run({ text: "Elle est pourrie ta blague", session: "agent", mode: "text" })) { /* vide */ }
+    expect(agentInputs.at(-1)).toMatch(/Utilisateur : Bonjour\nToi : Réponse du grand modèle\.[\s\S]*Demande courante : Elle est pourrie ta blague$/);
+    // Une autre conversation (autre corps) ne voit pas ces échanges ; reset les oublie.
+    for await (const _ of brain!.run({ text: "Salut", session: "autre", mode: "text" })) { /* vide */ }
+    expect(agentInputs.at(-1)).toBe("Salut");
+    brain!.reset("agent");
+    for await (const _ of brain!.run({ text: "Et maintenant ?", session: "agent", mode: "text" })) { /* vide */ }
+    expect(agentInputs.at(-1)).toBe("Et maintenant ?");
     expect((await k.settings.change("slot.brain.main", "llm/gemma", "cli")).ok).toBe(true);
   });
 });

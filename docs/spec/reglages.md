@@ -104,7 +104,7 @@ sequenceDiagram
 
 - **Un seul modèle local chargé à la fois** : l'ancien est arrêté avant de charger le nouveau (GPU 17,9 à 18,9 Go avec toute la pile).
 - Catalogue dans `floppy.yml` (`llm.config.models`) : libellé, mots de l'oral (« petit qwen », « gros qwen »), fichier, arguments propres (ex. experts MoE en RAM). Le dernier choix est repris au démarrage.
-- En mode Claude, toute la demande va au CLI Claude (mêmes outils par le serveur MCP Floppy, même accord). Limite : pas d'historique de conversation dans ce mode pour l'instant.
+- En mode Claude, toute la demande va au CLI Claude (mêmes outils par le serveur MCP Floppy, même accord). Le CLI repart de zéro à chaque demande : le cerveau lui redonne les derniers échanges de la conversation (demandes et réponses, `maxHistory` messages, réponses coupées à 800 caractères), oubliés comme les autres après `idle_reset_s` de silence.
 
 ### La voie rapide (sans LLM)
 
