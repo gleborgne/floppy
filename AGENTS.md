@@ -8,7 +8,7 @@ A change is done when `npm run check` passes (typecheck + Vitest + licence check
 
 ## Architecture rules
 
-- **Plugin first.** A new capability is a plugin in `plugins/<family>/<name>`, registered in `apps/cli/src/catalog.ts` and listed in `floppy.example.yml`. Plugins written by others (third-party: `floppy-plugin.json`, isolated process, AI review) follow `docs/spec/plugins-tiers.md`; their types live in `packages/sdk/floppy-plugin.d.ts`. The kernel (`packages/core`) stays free of Electron and of any specific plugin (`packages/core/test/boundaries.test.ts` guards this).
+- **Plugin first.** A new capability is a plugin in `plugins/<family>/<name>`, registered in `apps/cli/src/catalog.ts` (`PACKAGES`) and listed in `floppy.example.yml`. Plugins written by others (third-party: `floppy-plugin.json`, isolated process, AI review) follow `docs/spec/plugins-tiers.md`; their types live in `packages/sdk/floppy-plugin.d.ts`. The kernel (`packages/core`) stays free of Electron and of any specific plugin (`packages/core/test/boundaries.test.ts` guards this).
 - **Plugins declare** the services they provide and inject, their permissions, settings (`ctx.settings.declare`) and settings forms (`ctx.items.declare`, `providerConfig`). The Settings window is generated from these declarations.
 - **Tools carry a level** (`read`, `write`, `send`, `delete`, `physical`). Anything above `read` goes through approvals in the kernel; a plugin never asks the user itself.
 - **Before reworking a subsystem**, read its spec from `docs/spec/README.md` (French) and update the spec with the behaviour.
@@ -24,7 +24,7 @@ Before changing the kernel or how a plugin starts, stops or fails, read `docs/sp
 - **Heavy resources on demand.** A model on the GPU or a local voice is offered with `ctx.offer` and runs only while a slot uses it.
 - **Fail loudly, recover alone.** A plugin that loses its resource calls `ctx.fail(T(…))`; the error shows in the app and the kernel retries with backoff. A local server is watched once ready with `watchHealth`. A borrower listens to `lost` and borrows again.
 - **Network through `ctx.fetch`.** It adds a 30 s default timeout and reports hosts missing from `permissions.net`.
-- **Bounded waits.** Every network call and child process has a timeout (`AbortSignal.timeout`). `apply` has 60 s (`manifest.startTimeout_s`), a fork's `start` 600 s (`OfferDef.startTimeout_s`).
+- **Bounded waits.** Every wait has a limit: `ctx.exec` and `ctx.fetch` set one, other waits use `AbortSignal.timeout`. `apply` has 60 s (`manifest.startTimeout_s`), a fork's `start` 600 s (`OfferDef.startTimeout_s`).
 - **Reuse first.** Agents launched from a plugin take their environment, Codex overrides and JSON parsing from `@floppy/agent-cli`; files, health checks and processes from `@floppy/core` (`writeJsonAtomic`, `watchHealth`, `findExe`, `killTree`).
 - **Safe files.** User data is written with `writeFileAtomic` / `writeJsonAtomic` and read with `readJsonFile`: a crash never leaves half a file, and a file that does not parse is set aside and reported.
 
