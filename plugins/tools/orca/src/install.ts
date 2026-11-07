@@ -4,7 +4,7 @@
 // seulement si Orca décrit exactement l'accès prévu (lire l'état des agents), sinon on s'arrête et on explique.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { T, type OpResult } from "@floppy/core";
@@ -65,6 +65,29 @@ export function expectedGrant(data: unknown): string | undefined {
   return fp;
 }
 
+/**
+ * Met `dir` à l'image de `src`, fichier par fichier, sans supprimer `dir` lui-même : sous Windows, un dossier
+ * surveillé par Orca ne se supprime pas (EIO / EPERM), mais ses fichiers se remplacent. `.orca/` (typages d'Orca) est gardé.
+ */
+export function syncFolder(src: string, dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  const want = new Set(readdirSync(src));
+  for (const n of readdirSync(dir)) {
+    if (n.startsWith(".") || want.has(n)) continue;
+    rmSync(join(dir, n), { recursive: true, force: true });
+  }
+  for (const n of want) {
+    const s = join(src, n), d = join(dir, n);
+    if (statSync(s).isDirectory()) {
+      if (existsSync(d) && !statSync(d).isDirectory()) rmSync(d, { force: true });
+      syncFolder(s, d);
+    } else {
+      if (existsSync(d) && statSync(d).isDirectory()) rmSync(d, { recursive: true, force: true });
+      copyFileSync(s, d);
+    }
+  }
+}
+
 const why = (r: OrcaReply): string => r.json?.error?.message?.split("\n")[0] ?? (r.json ? `code ${r.code}` : "pas de réponse");
 
 /** Copie le plugin dans <home>/orca-plugin et le charge dans Orca. */
@@ -76,10 +99,14 @@ export async function installOrcaPlugin(home: string, cli: OrcaRawCli, src: stri
   if (!ping.json?.ok) {
     return { ok: false, text: T("Orca ne répond pas. Ouvre Orca, puis réessaie.", "Orca is not responding. Open Orca, then try again.") };
   }
-  rmSync(dir, { recursive: true, force: true });
-  cpSync(src, dir, { recursive: true });
-  // Un ancien dossier de développement avec la même clé (ex. le dossier du dépôt) laisserait la place à la copie.
+  // D'abord retirer le dossier de dev de même clé (la copie actuelle, ou le dossier du dépôt) : Orca lâche le dossier.
   await cli(["plugin", "dev", "unload", ORCA_PLUGIN_KEY]);
+  try { syncFolder(src, dir); } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    return { ok: false, text: T(
+      `Floppy n'a pas pu copier le plugin (un fichier est occupé ?). Ferme Orca, puis réessaie. Détail : ${m}`,
+      `Floppy could not copy the plugin (a file is busy?). Close Orca, then try again. Detail: ${m}`) };
+  }
   let r = await cli(["plugin", "dev", "load", dir]);
   if (r.code === 3 || r.json?.error?.code === "approval_required" || r.json?.error?.code === "approval_stale") {
     const fp = expectedGrant(r.json?.error?.data);

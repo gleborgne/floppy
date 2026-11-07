@@ -38,6 +38,7 @@ Si le plugin a changé, le bouton devient **« Mettre à jour dans Orca »**. Cl
 - « Où en sont mes agents ? »
 - « Qu'est-ce qu'il demande ? » : Floppy prend l'agent qu'il vient d'annoncer, ou le seul qui attend.
 - « Montre-moi l'écran de l'agent de la migration » : Floppy lit le terminal de l'agent et te le résume.
+- « Quel agent a travaillé sur le cache ? », « Qu'est-ce qu'on avait décidé pour les dates ? » : Floppy cherche dans les conversations de tous tes agents. Il faut d'abord allumer la recherche dans Orca : **Réglages → Agent Session History**.
 
 Les noms de projets mal compris par la dictée sont tolérés : « différendum » trouve `differendum`.
 

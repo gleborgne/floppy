@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel } from "@floppy/core";
 import { createOrcaPlugin } from "../src/index.ts";
-import { copyState, expectedGrant, installOrcaPlugin, ORCA_PLUGIN_SRC, type OrcaReply } from "../src/install.ts";
+import { copyState, expectedGrant, installOrcaPlugin, ORCA_PLUGIN_SRC, syncFolder, type OrcaReply } from "../src/install.ts";
 
 // Bouton « Installer dans Orca » : copie le plugin Orca dans le dossier de Floppy, puis le charge dans Orca.
 const FP = "ap1-166647625af0f9038cc2cc36c72725b8";
@@ -89,6 +89,23 @@ describe("installation du plugin Orca", () => {
     expect(copyState(h, src)).toBe("ancien");
     await installOrcaPlugin(h, fakeOrca().cli, src);
     expect(readFileSync(join(h, "orca-plugin", "src", "worker.ts"), "utf8")).toBe("v2");
+  });
+
+  it("mise à jour sur place : fichiers remplacés, anciens retirés, .orca gardé, dossier jamais supprimé", () => {
+    const src = mkdtempSync(join(tmpdir(), "orca-src-"));
+    mkdirSync(join(src, "src"));
+    writeFileSync(join(src, "orca-plugin.json"), "{}");
+    writeFileSync(join(src, "src", "worker.ts"), "v2");
+    const dir = mkdtempSync(join(tmpdir(), "orca-dst-"));
+    mkdirSync(join(dir, "src")); mkdirSync(join(dir, ".orca"));
+    writeFileSync(join(dir, "src", "worker.ts"), "v1");
+    writeFileSync(join(dir, "src", "ancien.ts"), "x");
+    writeFileSync(join(dir, ".orca", "types.d.ts"), "t");
+    syncFolder(src, dir);
+    expect(readFileSync(join(dir, "src", "worker.ts"), "utf8")).toBe("v2");
+    expect(existsSync(join(dir, "src", "ancien.ts"))).toBe(false);
+    expect(existsSync(join(dir, ".orca", "types.d.ts"))).toBe(true);
+    expect(existsSync(join(dir, "orca-plugin.json"))).toBe(true);
   });
 
   it("le plugin livré est bien là", () => {

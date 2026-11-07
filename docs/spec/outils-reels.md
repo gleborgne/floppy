@@ -49,11 +49,15 @@ Orca gère les worktrees et les agents de code (Claude Code, Codex). Le plugin l
 | `orca_agents(filtre)` | read | agents par espace de travail : en cours / terminé / en attente / interrompu, tâche, depuis quand, extrait du dernier message (≤ 1 500 caractères en tout) |
 | `orca_detail(nom?)` | read | fiche d'un agent : état, branche, PR liée, note du worktree, demande, action en cours (outil et commande), dernier message complet. Recherche floue sur le worktree, le dépôt, la branche, la tâche ; les agents qui attendent passent en premier |
 | `orca_ecran(nom?)` | read | ce que montre le terminal de l'agent (60 lignes de l'écran rendu, sans lignes de cadre, ≤ 2 000 caractères) : question exacte, permission demandée, choix proposés |
+| `orca_recherche(texte, recent?)` | read | recherche plein texte dans les conversations des agents (tous projets, `orca search --scope conversation`, 5 résultats) : titre, agent, projet, branche, date, extrait et qui parle (l'utilisateur ou l'agent). `recent` : les plus récentes d'abord |
 
 - **Sans nom**, `orca_detail` et `orca_ecran` visent l'agent annoncé en dernier ; sinon le seul agent qui attend (hors workers d'orchestration) ; sinon ils demandent lequel. Exemple : « Sur Differendum, ton agent attend » → « qu'est-ce qu'il demande exactement ? ».
 - **Terminal d'un agent** : le `paneKey` d'un agent vaut `tabId:leafId` d'un terminal ; à défaut, un terminal du même worktree. L'identifiant de terminal rendu par Orca est le seul argument variable d'une commande ; il doit ressembler à `term_…` (lettres, chiffres, tirets), sinon il est ignoré. Le texte de l'utilisateur n'entre jamais dans une commande.
 - **Noms dictés** : la reconnaissance vocale déforme les noms techniques (« différend dom » pour `differendum`, « dev m c p » pour `dev-mcp`). La recherche d'agent compare sans espaces ni tirets, puis tolère quelques fautes (distance d'édition ≤ un quart du mot). Elle compare aussi les mots que Floppy a dits dans l'annonce (nom de projet lisible, tâche nettoyée). Une correspondance exacte passe avant une ressemblance. Le cerveau passe le nom tel qu'il l'a entendu, sans le corriger.
-- Écarté pour l'instant : la recherche plein texte d'Orca (`orca search`). Elle est désactivée par défaut et s'active seulement dans les Réglages d'Orca (« Agent Session History »), pas par la CLI. Elle demanderait aussi de passer le texte de l'utilisateur dans la commande (seulement sans shell, avec `orca.exe`).
+- **Recherche** (`orca_recherche`, `src/search.ts`) : Orca indexe les conversations seulement si l'utilisateur l'a allumé dans Orca (Réglages → « Agent Session History » ; pas de commande pour l'allumer). Éteinte : l'outil dit où l'allumer. Index en cours (`orca search --index-status`, phase `indexing`) : l'outil prévient qu'il peut manquer des résultats.
+  - Recherche plein texte, sans tolérance aux fautes : la description demande au cerveau d'écrire les termes techniques dans leur orthographe probable (« réacte » → « React »), à l'inverse des noms d'agents.
+  - Le texte de l'utilisateur est **un seul argument** de `orca.exe` (`--query <texte>`), jamais dans un shell : une ligne, sans tiret en tête (il serait lu comme une option), 200 caractères au plus. Si le programme trouvé est un `.cmd` (lancé par `cmd.exe`), l'outil refuse.
+  - Vérifié en vrai (7 novembre 2026) : réponse en 0,26 s.
 
 - Testé : « fais-moi une synthèse de mes jobs Orca » → 3 phrases justes en 4,2 s (Gemma résume lui-même, sans délégation).
 
@@ -106,8 +110,8 @@ sequenceDiagram
 
 - **Installation : bouton « Installer dans Orca »** (Réglages → Connecteurs → Orca ; `src/install.ts`). Guide utilisateur : [docs/guide/orca.md](../guide/orca.md).
   1. Orca doit répondre (`orca plugin list`), sinon : « Ouvre Orca ».
-  2. Copie `orca-plugin/` dans `<dossier de Floppy>/orca-plugin` : un chemin stable, hors du dépôt.
-  3. `orca plugin dev unload local.floppy` : retire un ancien dossier de dev de même clé (ex. celui du dépôt).
+  2. Met `orca-plugin/` dans `<dossier de Floppy>/orca-plugin` (un chemin stable, hors du dépôt), après le `dev unload` : fichier par fichier, sans supprimer le dossier. Sous Windows, un dossier surveillé par Orca ne se supprime pas (`EIO`), mais ses fichiers se remplacent. Les anciens fichiers sont retirés ; `.orca/` (typages d'Orca) est gardé. Échec de copie : message clair (« Ferme Orca, puis réessaie »).
+  3. (fait avant la copie) `orca plugin dev unload local.floppy` : retire le dossier de dev de même clé (la copie actuelle ou celui du dépôt), Orca lâche le dossier.
   4. `orca plugin dev load <copie>`. Orca répond `approval_required` avec l'empreinte et l'accès demandé.
   5. Le clic vaut accord, **seulement si** l'accès est exactement celui prévu : clé `local.floppy`, `trusted-worker`, une seule capacité `agent:read`, seule contribution l'événement `agent.status.changed`. Sinon rien n'est autorisé et le bouton le dit. Puis `dev load <copie> --approve <empreinte>`.
   - Libellé : « Installer » (pas de copie), « Mettre à jour » (copie différente du plugin livré : empreinte SHA-256 des fichiers, hors `.orca/` où Orca écrit ses typages), sinon « Réinstaller ». Pont pas en direct et pas de copie : l'état dit « plugin Orca à installer ».

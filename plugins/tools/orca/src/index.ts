@@ -12,6 +12,7 @@ import { delimiter, extname, isAbsolute, join } from "node:path";
 import { definePlugin, T, type Text, type ToolDef, type ToolOutput } from "@floppy/core";
 import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
 import { BRIDGE_LIVE_MS, BRIDGE_POLL_MS, EVENT_WINS_MS, kindOfEvent, startBridge, type BridgeEvent } from "./bridge.ts";
+import { formatSearch, searchArgs, type SearchResult } from "./search.ts";
 import { copyState, installOrcaPlugin, ORCA_PLUGIN_SRC, rawCli, type OrcaRawCli } from "./install.ts";
 
 const Config = z.object({
@@ -389,6 +390,33 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
               const r = (await cli(["terminal", "read", "--terminal", term.handle, "--screen", "--limit", "60"])) as { terminal?: { tail?: string[] } } | undefined;
               const text = screenText(r?.terminal?.tail ?? []);
               return ok(`Écran de l'agent de ${n} (${LABEL[kindOf(hit.a)]}) :\n${text || "(écran vide)"}`);
+            } catch (e) { return fail(e); }
+          },
+        },
+        {
+          name: "orca_recherche",
+          description: "Cherche dans les conversations passées et présentes des agents Orca (Claude, Codex), sur tous les projets : ce que l'utilisateur leur a demandé et ce qu'ils ont répondu. À utiliser pour « quel agent a travaillé sur les migrations ? », « qu'est-ce qu'on avait décidé pour l'authentification ? », « retrouve la conversation où on parlait du cache ». texte : les mots à chercher (recherche plein texte, pas de fautes tolérées : écris les termes techniques dans leur orthographe probable, la dictée les déforme, ex. « réacte » → « React », « jason » → « JSON »). recent : true pour les plus récentes d'abord (« ce matin », « hier »), sinon les plus pertinentes.",
+          inputSchema: { type: "object", properties: { texte: { type: "string" }, recent: { type: "boolean" } }, required: ["texte"] },
+          level: "read",
+          handler: async (a) => {
+            const texte = String(a.texte ?? "").trim();
+            const args = searchArgs(texte, a.recent === true);
+            if (!args) return nope("Que faut-il chercher ?", "What should I search for?");
+            // Un shim .cmd passe par cmd.exe : le texte de l'utilisateur n'y va jamais.
+            if (!opts.cli && /\.(cmd|bat)$/i.test(resolveExe(cfg.command))) {
+              return nope("Recherche impossible : le programme Orca trouvé passe par l'interpréteur de commandes. Règle le chemin vers orca.exe.", "Search unavailable: the Orca program found goes through the command interpreter. Set the path to orca.exe.");
+            }
+            try {
+              const [r, st] = await Promise.all([
+                cli(args) as Promise<SearchResult | undefined>,
+                (cli(["search", "--index-status"]) as Promise<{ phase?: string } | undefined>).catch(() => undefined),
+              ]);
+              if (r?.kind === "unavailable") {
+                return r.reason === "disabled"
+                  ? nope("La recherche est éteinte dans Orca. Pour l'allumer : dans Orca, Réglages, Agent Session History.", "Search is off in Orca. To turn it on: in Orca, Settings, Agent Session History.")
+                  : nope(`La recherche d'Orca n'est pas disponible (${String(r.reason ?? "?")}).`, `Orca search is not available (${String(r.reason ?? "?")}).`);
+              }
+              return ok(formatSearch(r, texte, now(), st?.phase === "indexing"));
             } catch (e) { return fail(e); }
           },
         },
