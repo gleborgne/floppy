@@ -162,7 +162,7 @@ Le détail de chaque fournisseur est plus bas, rempli au fur et à mesure.
 |---|---|---|
 | `llm-local` (llm-llamacpp) | `gguf` : nom, mots à la voix, fichier GGUF, brouillon, emplacement (GPU / experts en RAM + `--n-cpu-moe`), contexte, réflexion, arguments avancés | Un seul modèle chargé. Le modèle chargé ne se désactive pas. « Essayer » estime la mémoire. Action `scan` : cherche des `.gguf` dans les dossiers de LM Studio et ceux du réglage « Dossiers de modèles ». |
 | `llm-remote` (llm-openai, nouveau) | `openai` : nom, mots à la voix, adresse de base, modèle, clé d'API (secret), cloud | Toute API au format OpenAI (Mistral, OpenRouter, Azure OpenAI…). « Essayer » appelle `/models`. Choisir un modèle distant à la voix = accord. |
-| `claude-cli` (brain-claude-cli) | aucun | **Un seul élément** « Claude Code (CLI) ». Sa page (Modifier) a deux choix : le modèle du cerveau principal (défaut `model`, Sonnet) et le modèle de délégation (défaut `delegateModel`, Opus). Appliqué à la demande suivante, sans redémarrage. Les anciens choix par modèle (`claude/opus`…) reviennent sur `claude` (`OfferDef.renamed`). Le tri (service `completion`) garde un élément par modèle. |
+| `claude-cli` (brain-claude-cli) | aucun | **Un seul élément** « Claude Code (CLI) ». Sa page a deux choix : le modèle du cerveau principal (défaut `model`, Sonnet) et le modèle de délégation (défaut `delegateModel`, Opus). Appliqué à la demande suivante, sans redémarrage. Les anciens choix par modèle (`claude/opus`…) reviennent sur `claude` (`OfferDef.renamed`). Le tri (service `completion`) garde un élément par modèle. |
 | `codex-cli` (brain-codex-cli, nouveau) | aucun | Un seul élément « Codex », mêmes deux choix (liste `models`). `codex app-server`, un fil par session, seulement le MCP Floppy (voir [Le cerveau](cerveau.md)). |
 | `agy-cli` (brain-agy-cli, nouveau) | aucun | Un seul élément « Antigravity », mêmes deux choix (défaut : Flash en principal, Argon en délégation). Maison isolée. Conditions de Google peu claires : proposé seulement si on l'ajoute. |
 
@@ -311,15 +311,23 @@ des fournisseurs (`offers`, `source`) et des applications (`apps-<rubrique>`).
 |---|---|
 | **Activer** | met un élément en service (modèle, voix, moteur Live, mot d'activation) ; un seul par slot |
 | **en service** (badge vert) | l'élément qui sert ; le même badge sur l'onglet du mode ou du plugin en service |
-| **Réglages** | sur chaque élément : formulaire de son type, Masquer / Rendre disponible, Supprimer |
-| **Actif** (interrupteur) | seulement sur un plugin (application) : éteint = l'entrée s'arrête, rien n'est supprimé |
+| **Réglages** (flèche « › ») | ouvre la page de l'élément : son formulaire **en place**, Masquer / Rendre disponible, Supprimer. Chaque changement s'enregistre seul (champ quitté, Entrée, case cochée, pastille ajoutée ou retirée) ; « ✓ Enregistré » ou l'erreur s'affichent sur le formulaire. Un champ obligatoire vide n'est pas envoyé. La fenêtre (éditeur) ne sert plus qu'à **ajouter** (2026-11-07) |
+| **Actif** (interrupteur) | seulement sur un plugin (application) : éteint = l'entrée s'arrête, rien n'est supprimé. Dans l'onglet d'un plugin, Retirer / Actif n'apparaissent que si la page n'a pas d'onglet Plugins, ou pour rallumer un plugin éteint |
 | **+ Ajouter un plugin** | ouvre le catalogue. Depuis un rôle (ex. mot d'activation) ou l'onglet Plugins d'une page : seulement les plugins dont le manifeste fournit (`provides`) un service de ce rôle, aussi pour « Créer le tien » ; la pastille « Pour : … » enlève le filtre. Ailleurs : filtré sur la rubrique ; « + Ajouter un modèle / une voix » ouvre le formulaire du plugin |
 
 Affichage d'un slot (`SlotDef.display`) :
 
 - `"mode"` : onglets de mode en haut de la rubrique. « aucun » = le mode par défaut (`none`, ex. **Local**), l'autre = le libellé du slot (ex. **Live**). L'onglet Local montre les autres slots de la rubrique ; l'onglet Live montre les moteurs. Activer dans l'onglet d'un mode qui n'est pas en service passe Floppy dans ce mode.
-- `"tabs"` : un onglet par plugin qui offre le service (Voix, mot d'activation), plus « aucun » si le slot le permet. Un plugin « Installé » dans le catalogue a toujours son onglet : qu'il déclare ses éléments (`ctx.items.declare` avec `offers`), qu'il n'offre ses choix que par `ctx.offer` (ex. Voix du système : ses choix viennent des options du slot), ou qu'il soit éteint (l'onglet dit alors « éteint » et garde l'interrupteur Actif). Si les éléments ont un `group` (ex. le modèle d'une voix), deux étapes : 1. le groupe, 2. l'élément.
+- `"tabs"` : un onglet par plugin qui offre le service (Voix, mot d'activation), plus « aucun » si le slot le permet. Un plugin qui n'offre qu'un élément (ex. « Dans le texte transcrit ») : pas de ligne qui répète l'onglet ; son formulaire est directement dans l'onglet, puis sa ligne de détail. S'il n'est pas en service, sa ligne reste au-dessus, pour l'activer. Un plugin « Installé » dans le catalogue a toujours son onglet : qu'il déclare ses éléments (`ctx.items.declare` avec `offers`), qu'il n'offre ses choix que par `ctx.offer` (ex. Voix du système : ses choix viennent des options du slot), ou qu'il soit éteint (l'onglet dit alors « éteint » et garde l'interrupteur Actif). Si les éléments ont un `group` (ex. le modèle d'une voix), deux étapes : 1. le groupe, 2. l'élément.
 - sans : une liste groupée par plugin (cerveau principal, délégation), puis les cartes des plugins.
+
+Chaîne d'étapes (`SlotDef.step`, 2026-11-07) : quand **tous** les slots d'une rubrique (hors mode) ont un `step` et qu'il
+y en a au moins deux, leurs onglets deviennent des cases numérotées, dans l'ordre, reliées par des flèches. Chaque case
+dit le rôle et ce qui est en service. Ex. Écoute : 1 · Détecteur de parole (`listen.vad`) → 2 · Transcription
+(`listen.stt`) → 3 · Mot d'activation (`listen.wakeword`). Les autres onglets (Plugins) suivent.
+
+Champ `list` : des pastilles. × retire, Entrée ou virgule ajoute, un collage de plusieurs lignes donne plusieurs
+pastilles, pas de doublon (sans tenir compte des majuscules).
 
 Tous les plugins intégrés sont des applications (`manifest.addable`) : llama.cpp, API compatible OpenAI, Claude Code, Voix locale, Gemini Live, GPT Live, ElevenLabs, Gemini TTS, les détecteurs de mot d'activation. Le catalogue liste les types `addable` par rubrique (« Intégrés » ; « Marketplace » plus tard), avec « Installé » ou « Ajouter », et « Créer le tien » (types d'éléments des plugins installés : MCP local, modèle GGUF…).
 

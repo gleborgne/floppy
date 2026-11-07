@@ -20,6 +20,11 @@ sans changer le bloc. But : **chaque morceau est un plugin**, les modèles sont 
 | Règles d'écoute + flux par corps | `voice` (inchangé) | plugin **Écoute** (`voice-listen`) | — |
 | Parler | `tts` | plugins `tts-*` | slot `voice.tts` |
 
+Dans les réglages, les trois slots de la rubrique Écoute portent un `step` (VAD 1, STT 2, mot d'activation 3) : la
+fenêtre les montre en chaîne, « parole → texte → réveil ». Le mot d'activation « Dans le texte transcrit » (`wakeword-stt`)
+ne coûte rien de plus : il lit le texte de chaque phrase que le VAD a laissé passer vers la transcription. Ses mots se
+modifient dans son onglet ; « Dernier réveil » montre la phrase qui a réveillé Floppy (gardée en mémoire seulement).
+
 La conversation ne change pas : elle parle toujours au contrat `voice`. Le service Python reste un autre fournisseur
 du même contrat le temps de la transition. Les deux ne doivent pas être configurés ensemble (le premier actif gagne).
 

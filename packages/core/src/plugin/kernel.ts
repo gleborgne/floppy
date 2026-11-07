@@ -97,6 +97,8 @@ export interface SlotStatus {
   description?: Text;
   none?: Text;
   display?: "mode" | "tabs";
+  /** Place dans la chaîne de la rubrique (voir SlotDef.step). */
+  step?: number;
   /** Plugin qui déclare le slot (le consommateur). */
   owner: string;
   /** "<entrée>/<élément>" ou "@none". */
@@ -628,6 +630,7 @@ export class Kernel {
       return {
         id: def.id, service: def.service, section: def.section, label: def.label, owner,
         ...(def.description ? { description: def.description } : {}), ...(def.none ? { none: def.none } : {}), ...(def.display ? { display: def.display } : {}),
+        ...(def.step ? { step: def.step } : {}),
         value: this.slotValue(def.id),
         state: f ? f.state : key ? "idle" : "none",
         ...(f?.error ? { error: tr(f.error, this.uiLang) } : {}),

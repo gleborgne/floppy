@@ -5,6 +5,7 @@
 import { initAssistant } from "./assistant.js";
 import { entryOf, offersOf, slotSources } from "./slot-sources.js";
 import { isLight } from "./tab-rules.js";
+import { listAdd, missingFields as missingOf, chainOf } from "./form-rules.js";
 import { splitLibraries, librariesFor, downloadSummary, libraryShape, percent } from "./library.js";
 import { installSummary, rowStatus } from "./onboarding-view.js";
 
@@ -51,6 +52,7 @@ const I = {
     libNoResult: "Aucun modèle trouvé.", libSearchLabel: "Chercher un modèle", libConfirm: "Confirmer ?",
     libNote: "Télécharger un modèle, c'est accepter sa licence. Les fichiers vont dans le dossier des modèles (rubrique Général). Le téléchargement continue si tu fermes cette fenêtre.",
     libReady: "Prêt : active-le dans la liste.",
+    savedOk: "Enregistré", saving: "Enregistrement…", listAddHint: "Ajouter, puis Entrée", removeWord: "Retirer", steps: "Étapes", tryNow: "Vérifier que ça marche",
   },
   en: {
     firstSetup: "Run the first setup again",
@@ -89,6 +91,7 @@ const I = {
     libNoResult: "No model found.", libSearchLabel: "Search a model", libConfirm: "Confirm?",
     libNote: "Downloading a model means accepting its licence. Files go to the models folder (General section). The download goes on if you close this window.",
     libReady: "Ready: turn it on in the list.",
+    savedOk: "Saved", saving: "Saving…", listAddHint: "Add, then Enter", removeWord: "Remove", steps: "Steps", tryNow: "Check that it works",
   },
 };
 let lang = "fr";
@@ -347,16 +350,31 @@ function tabify(key, nodes) {
   if (labels.length < 2) return list;
   let cur = tabSel.get(key);
   if (!labels.includes(cur)) cur = labels[0];
-  const ids = labels.map(() => nextId());
   const pick = (l) => { tabSel.set(key, l); navAnim = "tab"; render(); requestAnimationFrame(() => document.querySelector(".ptab.on")?.focus()); };
-  const bar = h("div", { class: "ptabs", role: "tablist" }, labels.map((l, i) => h("button", {
-    type: "button", role: "tab", id: ids[i], class: `ptab${l === cur ? " on" : ""}`, "aria-selected": String(l === cur), tabindex: l === cur ? "0" : "-1",
-    onclick: () => pick(l),
-    onkeydown: (e) => {
-      const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (d) { e.preventDefault(); pick(labels[(i + d + labels.length) % labels.length]); }
-    },
-  }, l)));
+  // Un onglet « étape » (slot d'une chaîne, data-step) devient une case : n° et rôle, puis ce qui est en service.
+  // Les étapes d'abord, dans leur ordre, reliées par des flèches ; les autres onglets (ex. Plugins) après.
+  const stepOf = (l) => named.find((n) => n.dataset.tab === l && n.dataset.step);
+  const steps = labels.filter(stepOf).sort((a, b) => Number(stepOf(a).dataset.step) - Number(stepOf(b).dataset.step));
+  if (steps.length) labels.splice(0, labels.length, ...steps, ...labels.filter((l) => !stepOf(l)));
+  const ids = labels.map(() => nextId());
+  const tabBtn = (l, i) => {
+    const node = stepOf(l);
+    const kids = node ? [h("span", { class: "k", text: `${node.dataset.step} · ${l}` }), h("span", { class: "v", text: node.dataset.stepValue ?? "" })] : [l];
+    return h("button", {
+      type: "button", role: "tab", id: ids[i], class: `ptab${node ? " pstep" : ""}${l === cur ? " on" : ""}`, "aria-selected": String(l === cur), tabindex: l === cur ? "0" : "-1",
+      onclick: () => pick(l),
+      onkeydown: (e) => {
+        const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (d) { e.preventDefault(); pick(labels[(i + d + labels.length) % labels.length]); }
+      },
+    }, ...kids);
+  };
+  const bar = h("div", { class: `ptabs${steps.length ? " chain" : ""}`, role: "tablist", ...(steps.length ? { "aria-label": t("steps") } : {}) },
+    labels.flatMap((l, i) => [
+      i > 0 && i < steps.length ? h("span", { class: "parrow", "aria-hidden": "true" }, window.lucideIcon("arrow-right")) : null,
+      steps.length && i === steps.length ? h("span", { class: "pgap", "aria-hidden": "true" }) : null,
+      tabBtn(l, i),
+    ].filter(Boolean)));
   const panel = h("div", { class: "tabpanel", role: "tabpanel", "aria-labelledby": ids[labels.indexOf(cur)] }, ...named.filter((n) => n.dataset.tab === cur));
   const top = list.filter((n) => !n.dataset?.tab && n.dataset?.place !== "end");
   const light = list.filter((n) => n.dataset?.tab && n.dataset.light);
@@ -462,6 +480,8 @@ function rowBody(p, it, more, firstShown) {
   const roles = slotsFor(p).filter((x) => canFill(x, p, it) || x.value === valueOf(p, it));
   if (offering && roles.length > 1) box.append(activateBar(p, it));
   if (more.length) box.append(h("p", { class: "ddesc", text: more.join("\n") }));
+  const form = inlineForm(p, it);
+  if (form) box.append(form);
   const acts = (it.actions ?? []).slice(firstShown ? 1 : 0);
   if (acts.length && it.enabled) box.append(h("div", { class: "dacts" }, acts.map((a) => h("button", { type: "button", class: "btn small", text: tr(a.label), onclick: () => quickOp({ op: "action", provider: p.id, id: it.id, action: a.id }) }))));
   const own = (it.settings ?? []).map((key) => settings.list.find((x) => x.key === key)).filter(Boolean);
@@ -486,8 +506,6 @@ function rowBody(p, it, more, firstShown) {
     box.append(...sub.filter(Boolean));
   }
   const foot = h("div", { class: "dfoot", "data-place": "end" });
-  const kind = p.kinds.find((x) => x.id === it.kind);
-  if (p.can.update && it.editable !== false && kind) foot.append(h("button", { type: "button", class: "btn small", text: t("edit"), onclick: () => openEditor({ mode: "edit", provider: p, item: it, kind }) }));
   // Masquer un élément à rôle (modèle, voix) : il reste dans la liste, Floppy ne le voit plus.
   if (offering && p.can.enable && it.toggleable !== false) foot.append(h("button", { type: "button", class: "btn small", text: it.enabled ? t("hideIt") : t("showIt"), onclick: () => quickOp({ op: "enable", provider: p.id, id: it.id, on: !it.enabled }) }));
   if (p.can.remove && it.removable !== false) {
@@ -623,10 +641,10 @@ const modeSlotOf = (page) => slotsOn(page).find((x) => x.display === "mode");
 
 function inUseBadge() { return h("span", { class: "inuse" }, h("i", { "aria-hidden": "true" }), t("inUseShort")); }
 
-/** Ouvre les réglages d'un élément (formulaire de son type, masquer, supprimer). */
+/** Ouvre les réglages d'un élément : sa page, avec son formulaire en place (la fenêtre ne sert plus qu'à ajouter). */
 function openItemSettings(p, it) {
-  const kind = p.kinds.find((k) => k.id === it.kind) ?? { id: it.kind ?? "", label: it.label, fields: [] };
-  openEditor({ mode: "edit", provider: p, item: it, kind });
+  if (dlg.open) dlg.close();
+  openDetail(p, it);
 }
 
 /** Active un élément ; dans l'onglet d'un mode qui n'est pas en service, passe aussi dans ce mode. */
@@ -727,7 +745,7 @@ function slotList(slot, page, { withNone = true, title, sub } = {}) {
   }
   if (withNone && slot.none) card.append(noneRow(slot, page));
   if (!card.childElementCount) card.append(h("div", { class: "empty-line", text: t("noItems") }));
-  return h("section", { class: "ssec", "data-tab": title ?? tr(slot.label) }, secHead(title ?? tr(slot.label), sub ?? tr(slot.description)), card, slotAddBar(slot, page));
+  return h("section", { class: "ssec", "data-tab": title ?? tr(slot.label), ...stepAttrs(slot) }, secHead(title ?? tr(slot.label), sub ?? tr(slot.description)), card, slotAddBar(slot, page));
 }
 
 /**
@@ -746,15 +764,20 @@ function slotAddBar(slot, page) {
 }
 
 /** Bandeau d'un plugin : description, « + Ajouter … », Réglages, interrupteur Actif. */
-function pluginHead(source, provs, service, roleLabel) {
+function pluginHead(source, provs, service, roleLabel, page) {
   const app = appOf(source);
-  const bar = h("div", { class: "scard phead" });
-  bar.append(h("span", { class: "chip", text: t("builtin") }), h("p", { text: tr(app?.[1].detail) || tr(provs[0]?.description) }));
-  for (const p of provs) if (p.can.add && p.kinds.length) bar.append(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
-  if (service && librariesFor(libraries, service, source).length) bar.append(libButton(service, source, roleLabel));
-  if (app) { const c = pluginControls(app[0], app[1]); bar.append(...c.acts, ...c.sw); }
-  return bar;
+  const text = tr(app?.[1].detail) || tr(provs[0]?.description);
+  const btns = [];
+  for (const p of provs) if (p.can.add && p.kinds.length) btns.push(h("button", { type: "button", class: "btn small", text: `+ ${tr(p.addLabel) || t("add")}`, onclick: () => openEditor({ mode: "add", kinds: p.kinds.map((k) => ({ provider: p, kind: k })) }) }));
+  if (service && librariesFor(libraries, service, source).length) btns.push(libButton(service, source, roleLabel));
+  // Retirer / Actif sont dans l'onglet Plugins quand la page en a un : ici, seulement pour rallumer un plugin éteint.
+  if (app && (!app[1].enabled || !hasPluginsTab(page))) { const c = pluginControls(app[0], app[1]); btns.push(...c.acts, ...c.sw); }
+  // Rien à faire : la description seule, sans carte.
+  if (!btns.length) return text ? h("p", { class: "ddesc pdesc", text }) : null;
+  return h("div", { class: "scard phead" }, h("p", { text }), ...btns);
 }
+/** La page a-t-elle un onglet Plugins (au moins un slot montré en liste) ? */
+const hasPluginsTab = (page) => !!page && slotsOn(page).some((x) => x.display !== "tabs" && x.display !== "mode");
 
 /**
  * Commandes d'un plugin (application) : « Réglages » seulement s'il a un formulaire, « Retirer » (2 clics : le 2e
@@ -824,9 +847,12 @@ function slotTabs(slot, page) {
   if (cur === "@none") panel.append(h("div", { class: "scard" }, noneRow(slot, page)));
   else {
     const { provs = [], options = [] } = plugins.find((x) => x.source === cur) ?? {};
-    panel.append(pluginHead(cur, provs, slot.service, tr(slot.label)));
+    const headNode = pluginHead(cur, provs, slot.service, tr(slot.label), page);
+    if (headNode) panel.append(headNode);
     const rows = provs.flatMap((p) => p.items.map((it) => [p, it]));
-    if (rows.some(([, it]) => it.group)) panel.append(...groupedRows(slot, rows, page));
+    const single = rows.length === 1 && !options.length && !rows[0][1].group ? rows[0] : null;
+    if (single) panel.append(...singleItem(slot, single[0], single[1], page));
+    else if (rows.some(([, it]) => it.group)) panel.append(...groupedRows(slot, rows, page));
     else {
       const card = h("div", { class: "scard" });
       for (const [p, it] of rows) card.append(itemRow(slot, p, it, page));
@@ -840,7 +866,23 @@ function slotTabs(slot, page) {
       panel.append(card);
     }
   }
-  return h("section", { class: "ssec", "data-tab": tr(slot.label) }, secHead(tr(slot.label), tr(slot.description)), tabs, panel);
+  return h("section", { class: "ssec", "data-tab": tr(slot.label), ...stepAttrs(slot) }, secHead(tr(slot.label), tr(slot.description)), tabs, panel);
+}
+
+/**
+ * L'unique élément d'un onglet de plugin (ex. les mots d'activation) : pas de ligne qui répète l'onglet. En service :
+ * l'onglet le dit déjà. Sinon (ou en panne) : sa ligne, pour l'activer. Puis son formulaire en place, et sa ligne de
+ * détail (ex. le dernier réveil).
+ */
+function singleItem(slot, p, it, page) {
+  const here = slot.value === valueOf(p, it);
+  const form = inlineForm(p, it);
+  const out = [];
+  if (!here || slot.state === "error" || !form) out.push(h("div", { class: "scard" }, itemRow(slot, p, it, page)));
+  if (form) out.push(form);
+  const detail = tr(it.detail);
+  if (here && form && detail) out.push(h("p", { class: "ddesc idline", text: detail }));
+  return out;
 }
 
 /** Deux étapes : 1. le groupe (ex. le modèle), 2. l'élément de ce groupe (ex. la voix). */
@@ -885,9 +927,19 @@ function modeTabs(page, mode) {
     h("span", { class: "tabnote", text: tr(mode.description) }));
 }
 
+/** Slots de la page en cours qui forment une chaîne (voir chainOf) : slot -> n° d'étape. */
+let chainNow = new Map();
+/** Onglet « étape » d'un slot de la chaîne : son n° et ce qui est en service. */
+function stepAttrs(slot) {
+  const n = chainNow.get(slot.id);
+  return n ? { "data-step": String(n), "data-step-value": slotLabelOf(slot) } : {};
+}
+
 function slotPage(page, nodes, restSettings, embedded = false) {
   const mode = modeSlotOf(page);
-  const others = slotsOn(page).filter((x) => x !== mode);
+  const chain = chainOf(slotsOn(page).filter((x) => x !== mode));
+  chainNow = new Map((chain ?? []).map((x, i) => [x.id, i + 1]));
+  const others = chain ?? slotsOn(page).filter((x) => x !== mode);
   // Fournisseurs de la page qui n'offrent rien (ni slot, ni application) : le contenu propre de la rubrique (ex. les
   // centres d'intérêt de la Veille). En premier : c'est ce qu'on vient régler.
   for (const p of items.providers) {
@@ -1375,7 +1427,7 @@ function setLang(l) {
   applyStaticTexts();
 }
 
-// ------------------------------------------------------------------ éditeur (ajouter / modifier)
+// ------------------------------------------------------------------ éditeur (ajouter ; modifier se fait sur la page de l'élément)
 const dlg = $("editor");
 let ed = null;
 
@@ -1388,9 +1440,8 @@ function defaultsOf(kind) {
 function openEditor(init) {
   catalog = null; library = null;
   dlg.classList.remove("catalog", "library");
-  ed = { mode: init.mode, kinds: init.kinds ?? [], provider: init.provider ?? null, kind: init.kind ?? null, item: init.item ?? null, values: {}, step: init.mode === "edit" ? 2 : 1, result: null, trial: null, busy: false };
-  if (ed.mode === "edit") ed.values = { ...defaultsOf(ed.kind), ...(init.item.values ?? {}) };
-  else if (ed.kinds.length === 1) chooseKind(ed.kinds[0]);
+  ed = { kinds: init.kinds ?? [], provider: null, kind: null, values: {}, step: 1, result: null, trial: null, busy: false };
+  if (ed.kinds.length === 1) chooseKind(ed.kinds[0]);
   drawEditor();
   if (!dlg.open) dlg.showModal();
 }
@@ -1409,10 +1460,15 @@ dlg.addEventListener("cancel", () => { ed = null; });
 
 const visible = (f, values) => !f.showIf || (f.showIf.values ?? []).some((v) => String(v) === String(values[f.showIf.key]));
 
-function fieldControl(f, onChange) {
+/**
+ * Le contrôle d'un champ déclaré. values : les valeurs du formulaire (modifiées en place). Chaque changement « fini »
+ * (champ quitté, Entrée, case cochée, pastille ajoutée ou retirée) émet un événement « change » qui remonte : le
+ * formulaire en place l'enregistre.
+ */
+function fieldControl(f, values, onChange) {
   const id = nextId();
-  const v = ed.values[f.key];
-  const set = (x) => { ed.values[f.key] = x; onChange(); };
+  const v = values[f.key];
+  const set = (x) => { values[f.key] = x; onChange(); };
   let ctl;
   switch (f.type) {
     case "boolean": {
@@ -1429,8 +1485,8 @@ function fieldControl(f, onChange) {
     case "select": {
       ctl = h("select", { id });
       for (const o of f.options ?? []) ctl.append(h("option", { value: o.value, text: tr(o.label) }));
-      if (v === undefined && f.options?.length) ed.values[f.key] = f.options[0].value;
-      ctl.value = String(ed.values[f.key] ?? "");
+      if (v === undefined && f.options?.length) values[f.key] = f.options[0].value;
+      ctl.value = String(values[f.key] ?? "");
       ctl.addEventListener("change", () => set(ctl.value));
       break;
     }
@@ -1446,16 +1502,36 @@ function fieldControl(f, onChange) {
       input.addEventListener("input", () => set(input.value));
       const pick = h("button", { type: "button", class: "btn small", text: t("pick"), disabled: !api?.pickPath, onclick: async () => {
         const p = await api.pickPath({ directory: !!f.directory, filters: f.filters ?? [] });
-        if (p) { input.value = p; set(p); }
+        if (p) { input.value = p; set(p); input.dispatchEvent(new Event("change", { bubbles: true })); }
       } });
       ctl = h("div", { class: "pathrow" }, input, pick);
       ctl.labelTarget = input;
       break;
     }
     case "list": {
-      ctl = h("textarea", { id, placeholder: tr(f.placeholder) || t("listHint") });
-      ctl.value = Array.isArray(v) ? v.join("\n") : "";
-      ctl.addEventListener("input", () => set(ctl.value.split("\n").map((x) => x.trim()).filter(Boolean)));
+      // Pastilles : × retire, Entrée (ou virgule) ajoute ; un collage de plusieurs lignes donne plusieurs pastilles.
+      const input = h("input", { type: "text", id, placeholder: tr(f.placeholder) || t("listAddHint") });
+      const box = h("div", { class: "lchips", role: "group", onclick: (e) => { if (e.target === box) input.focus(); } }, input);
+      const now = () => (Array.isArray(values[f.key]) ? values[f.key] : []);
+      const changed = () => box.dispatchEvent(new Event("change", { bubbles: true }));
+      const draw = () => {
+        for (const n of box.querySelectorAll(".lchip")) n.remove();
+        for (const x of now()) box.insertBefore(h("span", { class: "lchip" }, h("span", { text: x }),
+          h("button", { type: "button", "aria-label": `${t("removeWord")} ${x}`, onclick: () => { set(now().filter((y) => y !== x)); draw(); input.focus(); changed(); } }, "×")), input);
+      };
+      const take = (text) => {
+        const next = listAdd(now(), text);
+        input.value = "";
+        if (next.length === now().length) return;
+        set(next); draw(); changed();
+      };
+      input.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === ",") && input.value.trim()) { e.preventDefault(); take(input.value); } });
+      input.addEventListener("paste", (e) => { const text = e.clipboardData?.getData("text") ?? ""; if (/[\n,;]/.test(text)) { e.preventDefault(); take(text); } });
+      // Texte tapé puis champ quitté : il compte aussi (rien ne se perd). Son propre « change » ne remonte pas.
+      input.addEventListener("change", (e) => { e.stopPropagation(); if (input.value.trim()) take(input.value); });
+      draw();
+      ctl = box;
+      ctl.labelTarget = input;
       break;
     }
     case "textarea": {
@@ -1477,7 +1553,7 @@ function fieldControl(f, onChange) {
         const vi = h("input", { type: "text", "aria-label": t("value"), placeholder: t("value") });
         ki.value = k; vi.value = val;
         ki.addEventListener("input", sync); vi.addEventListener("input", sync);
-        const del = h("button", { type: "button", class: "btn small", "aria-label": t("remove"), text: "×", onclick: () => { r.remove(); sync(); } });
+        const del = h("button", { type: "button", class: "btn small", "aria-label": t("remove"), text: "×", onclick: () => { r.remove(); sync(); box.dispatchEvent(new Event("change", { bubbles: true })); } });
         const r = h("div", { class: "r" }, ki, vi, del);
         box.insertBefore(r, add);
       };
@@ -1496,13 +1572,13 @@ function fieldControl(f, onChange) {
   return { id, ctl };
 }
 
-function formNode(kind) {
+function formNode(kind, values) {
   const form = h("div", { class: "form" });
   const adv = h("div", { class: "form" });
   const wraps = [];
-  const refresh = () => { for (const [f, w] of wraps) w.hidden = !visible(f, ed.values); };
+  const refresh = () => { for (const [f, w] of wraps) w.hidden = !visible(f, values); };
   for (const f of kind.fields) {
-    const { id, ctl, inline } = fieldControl(f, refresh);
+    const { id, ctl, inline } = fieldControl(f, values, refresh);
     const lab = h("label", { for: ctl.labelTarget ? ctl.labelTarget.id : id }, tr(f.label), f.required ? h("span", { class: "req", "aria-hidden": "true", text: " *" }) : null);
     if (f.required) (ctl.labelTarget ?? ctl).setAttribute("aria-required", "true");
     const hint = f.hint ? h("span", { class: "hint", text: tr(f.hint) }) : null;
@@ -1517,17 +1593,14 @@ function formNode(kind) {
 }
 
 function missingFields() {
-  return ed.kind.fields.filter((f) => f.required && visible(f, ed.values) && (() => {
-    const v = ed.values[f.key];
-    return v === undefined || v === null || (typeof v === "string" && !v.trim()) || (Array.isArray(v) && !v.length);
-  })());
+  return missingOf(ed.kind.fields, ed.values, visible);
 }
 
 async function runTrial() {
   const e = ed; // Échap pendant l'attente met `ed` à null : on garde notre propre référence.
   e.busy = true; e.trial = { running: true };
   drawEditor();
-  const r = await itemOp({ op: "test", provider: e.provider.id, kind: e.kind.id, values: e.values, ...(e.item ? { id: e.item.id } : {}) });
+  const r = await itemOp({ op: "test", provider: e.provider.id, kind: e.kind.id, values: e.values });
   e.busy = false; e.trial = r;
   if (ed === e) drawEditor();
 }
@@ -1537,20 +1610,16 @@ async function submit() {
   if (miss.length) { ed.trial = { ok: false, text: `${t("required")} : ${miss.map((f) => tr(f.label)).join(", ")}` }; drawEditor(); return; }
   const e = ed; // Échap pendant l'attente met `ed` à null : on garde notre propre référence.
   e.busy = true; drawEditor();
-  const op = e.mode === "add"
-    ? { op: "add", provider: e.provider.id, kind: e.kind.id, values: e.values }
-    : { op: "update", provider: e.provider.id, id: e.item.id, values: e.values };
-  const r = await itemOp(op);
+  const r = await itemOp({ op: "add", provider: e.provider.id, kind: e.kind.id, values: e.values });
   e.busy = false;
   if (ed !== e) { if (r.ok) toast(r.text || t("done")); return; } // éditeur fermé entre-temps
-  if (r.ok && e.mode === "edit") { toast(r.text || t("done")); closeEditor(); return; }
   e.result = r;
   drawEditor();
 }
 
 function drawEditor() {
   if (!ed) return;
-  const title = ed.mode === "add" ? `${t("addTitle")}${ed.kind ? " : " + tr(ed.kind.label) : ""}` : `${t("settingsOf")} : ${tr(ed.item.label)}`;
+  const title = `${t("addTitle")}${ed.kind ? " : " + tr(ed.kind.label) : ""}`;
   const body = h("div", { class: "ed-body" });
   const foot = h("div", { class: "ed-foot" });
   const closeBtn = h("button", { type: "button", class: "btn", text: ed.result ? t("close") : t("cancel"), onclick: closeEditor });
@@ -1572,12 +1641,11 @@ function drawEditor() {
     foot.append(closeBtn);
   } else {
     // Numéros d'étape : « 1. choisir le type » existe seulement s'il y a plusieurs types à ajouter.
-    const n0 = ed.mode === "add" && ed.kinds?.length > 1 ? 1 : 0;
+    const n0 = ed.kinds.length > 1 ? 1 : 0;
     body.append(h("div", { class: "step-h" }, h("span", { class: "step", text: String(n0 + 1) }), tr(ed.kind.label), ed.kind.cloud ? h("span", { class: "chip cloud", text: t("cloud") }) : null));
     if (ed.kind.description) body.append(h("div", { class: "desc", text: tr(ed.kind.description) }));
     const hasForm = ed.kind.fields.length > 0;
-    if (ed.mode === "edit" && ed.item.detail) body.append(h("div", { class: "desc", text: tr(ed.item.detail) }));
-    if (hasForm) body.append(formNode(ed.kind));
+    if (hasForm) body.append(formNode(ed.kind, ed.values));
     if (ed.provider.can.test && hasForm) {
       const tb = h("div", { class: "try" },
         h("div", { class: "step-h" }, h("span", { class: "step", text: String(n0 + 2) }), t("stepTry"),
@@ -1592,24 +1660,72 @@ function drawEditor() {
       }
       body.append(tb);
     } else if (ed.trial && !ed.trial.running) body.append(h("pre", { class: "bad", role: "alert", text: ed.trial.text }));
-    if (ed.mode === "add" && ed.kinds.length > 1) foot.append(h("button", { type: "button", class: "btn", "aria-label": t("stepType"), onclick: () => { ed.step = 1; ed.trial = null; drawEditor(); } }, window.lucideIcon("arrow-left")));
-    if (ed.mode === "edit") {
-      const e = ed;
-      const p = e.provider, it = e.item;
-      if (p.can.remove && it.removable !== false) foot.append(h("button", { type: "button", class: "btn danger", text: removing === `${p.id}/${it.id}` ? t("removeSure") : t("remove"), onclick: async () => {
-        const k = `${p.id}/${it.id}`;
-        if (removing !== k) { removing = k; drawEditor(); return; }
-        removing = ""; const r = await quickOp({ op: "remove", provider: p.id, id: it.id }); if (r.ok) closeEditor();
-      } }));
-      if (p.can.enable && it.toggleable !== false) foot.append(h("button", { type: "button", class: "btn", text: it.enabled ? t("hideIt") : t("showIt"), onclick: async () => {
-        const r = await quickOp({ op: "enable", provider: p.id, id: it.id, on: !it.enabled }); if (r.ok) closeEditor();
-      } }));
-      foot.append(h("span", { class: "grow" }));
-    }
+    if (ed.kinds.length > 1) foot.append(h("button", { type: "button", class: "btn", "aria-label": t("stepType"), onclick: () => { ed.step = 1; ed.trial = null; drawEditor(); } }, window.lucideIcon("arrow-left")));
     foot.append(closeBtn);
-    if (hasForm) foot.append(h("button", { type: "button", class: "btn pri", disabled: ed.busy, text: ed.mode === "add" ? t("addAndGo") : t("save"), onclick: submit }));
+    if (hasForm) foot.append(h("button", { type: "button", class: "btn pri", disabled: ed.busy, text: t("addAndGo"), onclick: submit }));
   }
   dlg.replaceChildren(h("div", { class: "ed-head" }, h("h2", { id: "editor-title", text: title })), body, foot);
+}
+
+// ------------------------------------------------------------------ formulaire en place (page d'un élément)
+// Les champs du type de l'élément, directement sur sa page : chaque changement s'enregistre seul. La fenêtre
+// (éditeur) ne sert plus qu'à AJOUTER un élément.
+const drafts = new Map();   // « fournisseur/élément » -> valeurs refusées, gardées jusqu'au prochain enregistrement réussi
+const saves = new Map();    // « fournisseur/élément » -> { ok, busy, text, at } : dernier enregistrement, montré sur le formulaire
+const trials = new Map();   // « fournisseur/élément » -> résultat du dernier essai
+let saveSeq = 0;
+
+function inlineForm(p, it) {
+  const kind = p.kinds.find((x) => x.id === it.kind);
+  if (!p.can.update || it.editable === false || !kind?.fields.length) return null;
+  const key = `${p.id}/${it.id}`;
+  const values = drafts.get(key) ?? { ...defaultsOf(kind), ...(it.values ?? {}) };
+  const last = saves.get(key);
+  const fresh = last?.ok && Date.now() - last.at < 2500;
+  const status = h("span", { class: `fsaved${fresh ? " ok" : ""}`, role: "status", text: last?.busy ? t("saving") : fresh ? `✓ ${t("savedOk")}` : "" });
+  const err = h("p", { class: "ferr", role: "alert", hidden: !(last && !last.ok && !last.busy), text: last && !last.ok ? last.text : "" });
+  const form = formNode(kind, values);
+  // L'état est écrit dans la page tout de suite : le rendu complet attend que le champ en cours de saisie soit quitté.
+  const show = (state) => {
+    saves.set(key, state);
+    status.textContent = state.busy ? t("saving") : state.ok ? `✓ ${t("savedOk")}` : "";
+    status.classList.toggle("ok", !!state.ok);
+    err.textContent = !state.ok && !state.busy ? state.text : "";
+    err.hidden = !!state.ok || !!state.busy;
+  };
+  const save = async () => {
+    const miss = missingOf(kind.fields, values, visible);
+    if (miss.length) {
+      drafts.set(key, values);
+      show({ ok: false, text: `${t("required")} : ${miss.map((f) => tr(f.label)).join(", ")}`, at: Date.now() });
+      return;
+    }
+    const n = ++saveSeq;
+    show({ busy: true, at: Date.now() });
+    const r = await itemOp({ op: "update", provider: p.id, id: it.id, values: { ...values } });
+    if (n !== saveSeq) return; // un enregistrement plus récent est parti entre-temps
+    if (r.ok) {
+      drafts.delete(key);
+      show({ ok: true, at: Date.now() });
+      setTimeout(() => { if (saveSeq === n) status.textContent = ""; render(); }, 2600);
+    } else {
+      drafts.set(key, values);
+      show({ ok: false, text: tr(r.text) || t("refused"), at: Date.now() });
+    }
+    render();
+  };
+  form.addEventListener("change", () => { void save(); });
+  const box = h("div", { class: "scard iform" }, h("div", { class: "fhead" }, status), form, err);
+  if (p.can.test) {
+    const tri = trials.get(key);
+    const out = tri && !tri.running ? h("pre", { class: tri.ok ? "" : "bad", role: "status", text: tr(tri.text) }) : null;
+    box.append(h("div", { class: "try" }, h("div", { class: "step-h" }, t("tryNow"),
+      h("button", { type: "button", class: "btn small", text: tri?.running ? t("trying") : t("tryBtn"), disabled: !!tri?.running, onclick: async () => {
+        trials.set(key, { running: true }); render();
+        trials.set(key, await itemOp({ op: "test", provider: p.id, kind: kind.id, id: it.id, values: { ...values } })); render();
+      } })), out));
+  }
+  return box;
 }
 
 // ------------------------------------------------------------------ branchements

@@ -4,6 +4,7 @@
 (() => {
   const ICONS = {
     "arrow-left": ["m12 19-7-7 7-7", "M19 12H5"],
+    "arrow-right": ["M5 12h14", "m12 5 7 7-7 7"],
     "check": ["M20 6 9 17l-5-5"],
     "download": ["M12 15V3", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5"],
     "chevron-right": ["m9 18 6-6-6-6"],

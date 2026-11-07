@@ -39,6 +39,11 @@ export interface SlotDef {
    * "tabs" : un onglet par plugin qui offre le service (ex. Voix, mot d'activation). Sans : une liste groupée par plugin.
    */
   display?: "mode" | "tabs";
+  /**
+   * Place dans la chaîne de la rubrique (1, 2, 3…). Les slots d'une rubrique qui ont tous un `step` forment une chaîne :
+   * la fenêtre les montre dans cet ordre, reliés par des flèches (ex. Écoute : parole → texte → mot d'activation).
+   */
+  step?: number;
 }
 
 /** Quand une tâche tourne : « at » (HH:MM, heure locale, jours 1 = lundi … 7 = dimanche) ou « every » (« 30m », « 3h »). */
@@ -131,6 +136,7 @@ const ManifestSchema = z.object({
     service: z.string().min(1), section: z.string().min(1), label: text, description: text.optional(), none: text.optional(),
     defaultFirst: z.boolean().optional(),
     display: z.enum(["mode", "tabs"]).optional(),
+    step: z.number().int().min(1).max(20).optional(),
   }).strict()).optional(),
   tasks: z.array(z.object({
     id: z.string().regex(/^[a-z][a-z0-9-]*$/, "minuscules, chiffres et tirets"),

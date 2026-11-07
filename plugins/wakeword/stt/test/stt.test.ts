@@ -51,6 +51,24 @@ describe("plugin wakeword STT", () => {
       expect(f.service.words!()).toEqual(["Marvin"]);
     } finally { await f.k.stopAll(); }
   });
+  it("montre le dernier réveil dans les réglages, et un nom par défaut dans les deux langues", async () => {
+    const f = await fixture();
+    try {
+      const item = async () => (await f.k.items.snapshot()).find((p) => p.id === "stt-account")!.items[0]!;
+      expect((await item()).detail).toBeUndefined();
+      expect((await item()).label).toEqual({ fr: "Mots d'activation", en: "Wake words" });
+      expect(f.service.name).toBe("Dans le texte transcrit");
+      const stream = await f.service.open({ body: "a", signal: new AbortController().signal, onDetection() {}, onError() {} });
+      stream.pushTranscript!({ text: "Rien à voir" });
+      expect((await item()).detail).toBeUndefined();
+      stream.pushTranscript!({ text: "  Flopy,   quelle heure ? " });
+      expect((await item()).detail).toEqual({ fr: expect.stringMatching(/^Dernier réveil : « Flopy, quelle heure \? » à \d\d:\d\d$/), en: expect.stringMatching(/^Last wake: “Flopy, quelle heure \?” at \d\d:\d\d$/) });
+      // Le nom choisi par l'utilisateur remplace le nom par défaut.
+      expect((await f.k.items.run({ op: "update", provider: "stt-account", id: "account", values: { name: "Maison" } }, "ui")).ok).toBe(true);
+      expect(f.service.name).toBe("Maison");
+      stream.close();
+    } finally { await f.k.stopAll(); }
+  });
   it("signale le STT absent au lieu de charger un autre moteur", async () => {
     const f = await fixture(undefined, false);
     try {

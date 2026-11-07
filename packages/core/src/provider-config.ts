@@ -13,6 +13,8 @@ export function providerConfig<C extends Record<string, unknown>>(ctx: Context, 
   offers?: string;
   /** Certains fournisseurs locaux n'ont aucun secret. Les autres gardent apiKey dans le coffre. */
   secret?: false; secretLabel?: Text; onChange?(): void;
+  /** Ligne sous le nom de l'élément (ex. le dernier mot d'activation entendu). */
+  detail?(): Text | undefined;
 }): { config(): C; apiKey(): string; availability(): Availability } {
   const store = ctx.items.store();
   const secret = `${ctx.plugin}/${ctx.id}/apiKey`;
@@ -30,8 +32,9 @@ export function providerConfig<C extends Record<string, unknown>>(ctx: Context, 
     kinds: [{ id: "account", label: opts.label, cloud: opts.secret !== false, fields: [...opts.fields, ...(opts.secret === false ? [] : [keyField])] }],
     list: () => {
       const reason = why();
+      const detail = opts.detail?.();
       return [{
-        id: "account", kind: "account", label: opts.label, enabled: true, cloud: opts.secret !== false, editable: true,
+        id: "account", kind: "account", label: opts.label, ...(detail ? { detail } : {}), enabled: true, cloud: opts.secret !== false, editable: true,
         status: reason ? "warn" : "ok",
         statusText: reason,
         values: { ...config(), ...(opts.secret === false ? {} : { apiKey: ctx.secrets.has(secret) ? SECRET_SET : "" }) },

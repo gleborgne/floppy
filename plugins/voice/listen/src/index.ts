@@ -16,9 +16,9 @@ export default definePlugin({
     description: "Écoute assemblée : détecteur de parole (vad) + transcription (stt), choisis dans des slots ; règles d'écoute en TypeScript.",
     sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
     slots: [
-      { id: "listen.vad", service: "vad", section: "ecoute", label: T("Détecteur de parole", "Speech detector"),
+      { id: "listen.vad", service: "vad", section: "ecoute", label: T("Détecteur de parole", "Speech detector"), step: 1,
         description: T("Repère quand tu commences et quand tu finis de parler.", "Notices when you start and stop speaking.") },
-      { id: "listen.stt", service: "stt", section: "ecoute", label: T("Transcription", "Transcription"),
+      { id: "listen.stt", service: "stt", section: "ecoute", label: T("Transcription", "Transcription"), step: 2,
         description: T("Transforme ce que tu dis en texte.", "Turns what you say into text.") },
     ],
     addable: {

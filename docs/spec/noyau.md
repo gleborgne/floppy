@@ -115,7 +115,7 @@ definePlugin({
 | Champ du manifeste | Rôle |
 |---|---|
 | `provides` | services fournis par `ctx.provide` |
-| `slots` | choix d'éléments dont le plugin a besoin (`{ id, service, section, label, none?, display? }`). Le noyau en fait un réglage `slot.<id>` (fenêtre, voix, CLI). `none` : choix facultatif. `display: "mode"` : interrupteur en haut de la rubrique |
+| `slots` | choix d'éléments dont le plugin a besoin (`{ id, service, section, label, none?, display?, step? }`). Le noyau en fait un réglage `slot.<id>` (fenêtre, voix, CLI). `none` : choix facultatif. `display: "mode"` : interrupteur en haut de la rubrique. `step` : place dans la chaîne de la rubrique (voir [elements.md](elements.md)) |
 | `lazy` | le plugin tourne seulement quand un plugin actif s'en sert (`inject` ou `ctx.use`), et s'arrête ensuite |
 | `serviceSelection` | sélecteur d'une **entrée** fournisseur (`service.<nom>`), gardé pour les détecteurs de mot d'activation. Pour choisir un élément (modèle, voix, moteur Live), utiliser `slots` |
 | `inject` | services obligatoires : sans eux, le plugin attend (état `waiting`). Un fournisseur `lazy` est démarré pour eux |

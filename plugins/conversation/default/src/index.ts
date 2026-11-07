@@ -136,7 +136,7 @@ export default definePlugin<Config>({
       { id: "voice.tts", service: "tts", section: "voix", label: { fr: "Voix", en: "Voice" }, display: "tabs",
         none: { fr: "Aucune (réponses écrites)", en: "None (written replies)" }, defaultFirst: true,
         description: { fr: "Le moteur et la voix de Floppy en mode Local. En Live, c'est le moteur Live qui parle.", en: "Floppy's engine and voice in Local mode. In Live mode, the Live engine speaks." } },
-      { id: "listen.wakeword", service: "wakeword", section: "ecoute", label: { fr: "Mot d'activation", en: "Wake word" }, display: "tabs",
+      { id: "listen.wakeword", service: "wakeword", section: "ecoute", label: { fr: "Mot d'activation", en: "Wake word" }, display: "tabs", step: 3,
         none: { fr: "Aucun (bouton seulement)", en: "None (button only)" },
         description: { fr: "Le plugin qui reconnaît « Floppy ». Le bouton parler marche toujours.", en: "The plugin that recognizes “Floppy”. The talk button always works." } },
     ],

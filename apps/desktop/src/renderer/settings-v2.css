@@ -353,3 +353,38 @@ dialog#editor.library { width: min(900px, 94vw); }
 
 /* Installation de départ (rubrique Général) : ce qui vient de s'activer, sous les lignes. */
 .onb-notes { margin: 0; padding: 10px 14px 12px 32px; border-top: 1px solid rgba(255, 255, 255, 0.06); color: var(--muted); font-size: 12.5px; display: grid; gap: 4px; }
+
+/* ---- Chaîne d'étapes (slots avec `step`, ex. Écoute : parole → texte → mot d'activation). Une case par étape,
+   reliées par des flèches ; l'étape ouverte prend le contour cyan (comme la rubrique en cours du menu). */
+.ptabs.chain { align-items: stretch; gap: 6px; border-bottom: 0; }
+.ptab.pstep { height: auto; flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); text-align: left; }
+.ptab.pstep:hover { background: var(--hover); }
+.ptab.pstep .k { font-size: 12px; font-weight: 600; color: var(--muted-2); }
+.ptab.pstep .v { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--ink); }
+.ptab.pstep.on { background: var(--selected); box-shadow: inset 0 0 0 1px rgba(70, 227, 234, 0.45); }
+.ptab.pstep.on::after { display: none; }
+.ptab.pstep.on .k { color: var(--accent); }
+.ptabs.chain > .ptab:not(.pstep) { align-self: center; }
+.parrow { display: flex; align-items: center; color: var(--faint); }
+.parrow .icon { width: 16px; height: 16px; }
+.pgap { width: 12px; }
+@media (max-width: 760px) { .parrow, .pgap { display: none; } .ptab.pstep { flex-basis: 100%; } }
+
+/* ---- Champ « liste » en pastilles : × retire, Entrée ajoute. */
+.lchips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px; border-radius: 9px; background: var(--field-well); border: 1px solid rgba(255, 255, 255, 0.12); cursor: text; }
+.lchips:focus-within { border-color: var(--accent); }
+.lchip { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 3px 0 11px; border-radius: 999px; border: 1px solid var(--edge); background: var(--panel-2); color: var(--ink); font-size: 13px; cursor: default; }
+.lchip button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
+.lchip button:hover, .lchip button:focus-visible { background: rgba(255, 255, 255, 0.08); color: var(--ink); }
+.field .lchips input[type=text] { flex: 1 1 140px; width: auto; min-width: 120px; padding: 4px 6px; border: 0; background: transparent; }
+.field .lchips input[type=text]:focus { outline: none; }
+
+/* ---- Formulaire en place (page d'un élément, onglet d'un plugin) : chaque changement s'enregistre seul. */
+.iform { position: relative; padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 10px; overflow: visible; }
+.iform .fhead { position: absolute; top: 12px; right: 18px; }
+.fsaved { font-size: 12px; color: var(--muted-2); }
+.fsaved.ok { color: var(--good); }
+.ferr { margin: 0; color: var(--bad); font-size: 12.5px; }
+.iform .try { padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+.pdesc { color: var(--muted); font-size: 13px; }
+.idline { color: var(--muted-2); font-size: 12.5px; padding: 0 4px; }
