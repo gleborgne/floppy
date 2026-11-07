@@ -2,7 +2,10 @@
 
 Prévient Floppy dès qu'un agent Orca change d'état (au lieu d'attendre la vérification suivante de Floppy).
 
-Installation, une fois :
+Installation : dans Floppy, **Réglages → Connecteurs → Orca → « Installer dans Orca »** (Orca ouvert).
+Guide : `docs/guide/orca.md`.
+
+À la main, pour développer le plugin :
 
 ```
 orca plugin dev load plugins/tools/orca/orca-plugin

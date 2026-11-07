@@ -12,6 +12,7 @@ import { delimiter, extname, isAbsolute, join } from "node:path";
 import { definePlugin, T, type Text, type ToolDef, type ToolOutput } from "@floppy/core";
 import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
 import { BRIDGE_LIVE_MS, BRIDGE_POLL_MS, EVENT_WINS_MS, kindOfEvent, startBridge, type BridgeEvent } from "./bridge.ts";
+import { copyState, installOrcaPlugin, ORCA_PLUGIN_SRC, rawCli, type OrcaRawCli } from "./install.ts";
 
 const Config = z.object({
   /** Commande Orca (par défaut `orca` sur le PATH). */
@@ -66,6 +67,10 @@ export interface OrcaOptions {
   cli?: OrcaCli;
   /** Porte d'entrée du plugin Orca « Floppy » (par défaut : ouverte). */
   bridge?: boolean;
+  /** Commandes `orca plugin …` du bouton d'installation (tests : simulées). */
+  pluginCli?: OrcaRawCli;
+  /** Dossier du plugin Orca à installer (tests). */
+  pluginSrc?: string;
   now?: () => number;
   /** Phrase parlée d'une annonce (tests). Par défaut : LLM local, sinon phrase faite par le code. */
   phrase?: (f: Facts) => Promise<string | undefined>;
@@ -392,12 +397,32 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       // Application : l'utilisateur l'ajoute, l'éteint ou la retire dans Réglages → Connecteurs (manifest.addable).
       // Éteinte, l'entrée s'arrête : outils retirés et surveillance coupée. L'état court est montré par ctx.status.
       ctx.tools.register(tools);
+      const pluginSrc = opts.pluginSrc ?? ORCA_PLUGIN_SRC;
+      const pluginCli = opts.pluginCli ?? rawCli(cfg.command);
       const showStatus = (): void => {
         if (warned) ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
         else if (!surveillance) ctx.items.status(t("surveillance coupée", "monitoring off"));
-        else ctx.items.status(bridgeLive() ? t("surveillance en direct", "live monitoring") : t("surveillance active", "monitoring on"));
+        else if (bridgeLive()) ctx.items.status(t("surveillance en direct", "live monitoring"));
+        else if (copyState(ctx.home, pluginSrc) === "absent") ctx.items.status(t("surveillance active · plugin Orca à installer pour être prévenu aussitôt", "monitoring on · install the Orca plugin to hear at once"));
+        else ctx.items.status(t("surveillance active", "monitoring on"));
       };
       showStatus();
+
+      // Bouton « Installer dans Orca » / « Mettre à jour dans Orca » (voir install.ts). Clic seulement.
+      const install = async (action: string) => {
+        if (action !== "orca-plugin") return { ok: false, text: t(`Action inconnue : ${action}`, `Unknown action: ${action}`) };
+        const r = await installOrcaPlugin(ctx.home, pluginCli, pluginSrc);
+        ctx.log(r.ok ? "info" : "warn", "Installation du plugin Orca", { ok: r.ok });
+        if (ctx.alive) { showButton(); showStatus(); }
+        return r;
+      };
+      const showButton = (): void => {
+        const st = copyState(ctx.home, pluginSrc);
+        const label = st === "absent" ? t("Installer dans Orca", "Install in Orca")
+          : st === "ancien" ? t("Mettre à jour dans Orca", "Update in Orca") : t("Réinstaller dans Orca", "Reinstall in Orca");
+        ctx.items.actions([{ id: "orca-plugin", label }], install);
+      };
+      showButton();
 
       // Annonce en langage parlé (voir speech.ts) : nettoyage du jargon, puis une phrase du LLM local si possible.
       const announce = async (w: OrcaWorktree, a: OrcaAgent, k: Kind): Promise<void> => {

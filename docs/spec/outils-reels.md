@@ -104,7 +104,15 @@ sequenceDiagram
   P->>P: working → autre état ? lit le message de l'agent (orca worktree ps), annonce
 ```
 
-- **Installation** (une fois) : `orca plugin dev load plugins/tools/orca/orca-plugin`, puis la même commande avec `--approve <empreinte>` qu'Orca affiche. Le plugin demande seulement `agent:read`. Orca garde le dossier chargé (Réglages → Plugins → Development folders) et le recharge quand ses fichiers changent.
+- **Installation : bouton « Installer dans Orca »** (Réglages → Connecteurs → Orca ; `src/install.ts`). Guide utilisateur : [docs/guide/orca.md](../guide/orca.md).
+  1. Orca doit répondre (`orca plugin list`), sinon : « Ouvre Orca ».
+  2. Copie `orca-plugin/` dans `<dossier de Floppy>/orca-plugin` : un chemin stable, hors du dépôt.
+  3. `orca plugin dev unload local.floppy` : retire un ancien dossier de dev de même clé (ex. celui du dépôt).
+  4. `orca plugin dev load <copie>`. Orca répond `approval_required` avec l'empreinte et l'accès demandé.
+  5. Le clic vaut accord, **seulement si** l'accès est exactement celui prévu : clé `local.floppy`, `trusted-worker`, une seule capacité `agent:read`, seule contribution l'événement `agent.status.changed`. Sinon rien n'est autorisé et le bouton le dit. Puis `dev load <copie> --approve <empreinte>`.
+  - Libellé : « Installer » (pas de copie), « Mettre à jour » (copie différente du plugin livré : empreinte SHA-256 des fichiers, hors `.orca/` où Orca écrit ses typages), sinon « Réinstaller ». Pont pas en direct et pas de copie : l'état dit « plugin Orca à installer ».
+  - Bouton : clic seulement (une demande à la voix est refusée par le noyau). Le chemin de la copie passe dans une ligne de commande : refusé s'il contient `" % ! ^` ou un retour à la ligne.
+  - À la main (développement) : `orca plugin dev load plugins/tools/orca/orca-plugin`, puis la même commande avec `--approve <empreinte>`. Orca recharge un dossier de dev quand ses fichiers changent, sans nouvel accord tant que l'accès ne change pas.
 - **Dossier de Floppy vu d'Orca** : `FLOPPY_HOME`, sinon `LOCALAPPDATA/floppy`, sinon (Windows) `~/AppData/Local/floppy`, sinon `~/.local/share/floppy`. Orca lance ses workers **sans** `LOCALAPPDATA` : d'où le chemin Windows écrit en dur à partir du dossier personnel.
 - **Orca démarre le worker au premier événement**, pas au lancement. Floppy passe « en direct » au premier message reçu.
 - **Pont en direct** (un message depuis moins de 10 min) : la vérification régulière tombe à une par minute (filet de sécurité). État affiché : « surveillance en direct ».
