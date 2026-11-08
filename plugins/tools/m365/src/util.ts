@@ -1,5 +1,5 @@
 // Petits outils partagés par les outils Microsoft 365 (mails, agenda, Teams).
-import type { Text, ToolResult } from "@floppy/core";
+import { errorText, type Text, type ToolOutput } from "@floppy/core";
 
 export const t = (fr: string, en: string): Text => ({ fr, en });
 
@@ -37,6 +37,6 @@ export const norm = (s: unknown) => String(s ?? "").normalize("NFD").replace(/\p
 export const clamp = (v: unknown, def: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number(v) || def));
 
 /** Exécute un outil : texte rendu = « fait » ; erreur = « échec » avec le message. */
-export const wrap = (fn: (a: Record<string, unknown>) => Promise<string>) => async (a: Record<string, unknown>): Promise<ToolResult> => {
-  try { return { status: "done", text: await fn(a) }; } catch (e) { return { status: "failed", text: e instanceof Error ? e.message : String(e) }; }
+export const wrap = (fn: (a: Record<string, unknown>) => Promise<Text>) => async (a: Record<string, unknown>): Promise<ToolOutput> => {
+  try { return { status: "done", text: await fn(a) }; } catch (e) { return { status: "failed", text: errorText(e) }; }
 };

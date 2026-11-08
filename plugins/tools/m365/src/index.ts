@@ -8,6 +8,9 @@ import { definePlugin, errorText, tr, type Context, type Text, type ToolDef } fr
 import { MICROSOFT } from "./logo.ts";
 import { CHANNEL_READ, GraphAuth, NotConnected, SCOPES, type TokenStore } from "./graph.ts";
 import { teamsTools } from "./teams.ts";
+import { mailSearchTools } from "./mail-search.ts";
+import { calendarTools } from "./calendar.ts";
+import { unreadMailTool } from "./unread-mail.ts";
 import { DATA, norm, t, when, plain, wrap } from "./util.ts";
 
 export { GraphAuth, NotConnected } from "./graph.ts";
@@ -37,41 +40,10 @@ const fmtEn = (d: Date) => `${d.toLocaleDateString("en-US", { weekday: "long", d
 export function m365Tools(g: GraphAuth, cfg: Config): ToolDef[] {
   /** Noms lisibles des destinataires (adresse, id de conversation, canal) pour les cartes d'accord. */
   const labels = new Map<string, Text>();
-  const n = (v: unknown) => Math.max(1, Math.min(25, Number(v) || cfg.max));
-  const mailLine = (m: any, i: number) => `${i + 1}. ${who(m.from)} — ${m.subject || "(sans objet)"} — ${when(m.receivedDateTime)}${m.bodyPreview ? ` — « ${String(m.bodyPreview).replace(/\s+/g, " ").slice(0, 140)} »` : ""} [id ${m.id}]`;
-  const SEL = "$select=id,subject,from,receivedDateTime,bodyPreview,isRead";
-  const range = async (start: Date, end: Date, top: number) => {
-    const q = `me/calendarView?startDateTime=${start.toISOString()}&endDateTime=${end.toISOString()}&$top=${top}&$orderby=start/dateTime&$select=subject,start,end,location,organizer,isOnlineMeeting,isCancelled,showAs`;
-    const r = await g.get<{ value: any[] }>(q);
-    return r.value.filter((e) => !e.isCancelled);
-  };
-  const eventLine = (e: any, withDay: boolean) => `- ${when(e.start, withDay)} → ${when(e.end, false)} : ${e.subject || "(sans titre)"}${e.location?.displayName ? ` (${e.location.displayName})` : e.isOnlineMeeting ? " (en ligne)" : ""}${e.organizer ? ` — organisé par ${who(e.organizer)}` : ""}`;
 
   return [
-    {
-      name: "m365_mails_non_lus",
-      description: "Mails non lus de la boîte de réception Outlook (Microsoft 365) : nombre, expéditeur, objet, début du texte. max : nombre de mails (défaut 8).",
-      inputSchema: { type: "object", properties: { max: { type: "number" } } },
-      level: "read",
-      handler: wrap(async (a) => {
-        const box = await g.get<{ unreadItemCount: number }>("me/mailFolders/inbox?$select=unreadItemCount");
-        if (!box.unreadItemCount) return "Aucun mail non lu dans la boîte de réception.";
-        const r = await g.get<{ value: any[] }>(`me/mailFolders/inbox/messages?$filter=isRead eq false&$orderby=receivedDateTime desc&$top=${n(a.max)}&${SEL}`);
-        return `${box.unreadItemCount} mail(s) non lu(s). Les plus récents :\n${r.value.map(mailLine).join("\n")}\n${DATA}`;
-      }),
-    },
-    {
-      name: "m365_chercher_mails",
-      description: "Cherche des mails Outlook (Microsoft 365) par mots (expéditeur, sujet, contenu). requete : les mots. max : nombre (défaut 8).",
-      inputSchema: { type: "object", properties: { requete: { type: "string" }, max: { type: "number" } }, required: ["requete"] },
-      level: "read",
-      handler: wrap(async (a) => {
-        const q = String(a.requete ?? "").replace(/"/g, " ").trim();
-        if (!q) return "Requête vide.";
-        const r = await g.get<{ value: any[] }>(`me/messages?$search="${encodeURIComponent(q)}"&$top=${n(a.max)}&${SEL}`);
-        return r.value.length ? `${r.value.map(mailLine).join("\n")}\n${DATA}` : `Aucun mail trouvé pour « ${q} ».`;
-      }),
-    },
+    unreadMailTool(g, cfg.max),
+    ...mailSearchTools(g, cfg.max),
     {
       name: "m365_lire_mail",
       description: "Lit un mail Outlook complet (expéditeur, destinataires, date, texte). id : l'id donné par m365_mails_non_lus ou m365_chercher_mails.",
@@ -84,31 +56,7 @@ export function m365Tools(g: GraphAuth, cfg: Config): ToolDef[] {
         return `De : ${who(m.from)}\nÀ : ${to}\nDate : ${when(m.receivedDateTime)}\nObjet : ${m.subject}\nLien : ${m.webLink ?? ""}\n${DATA}\n---\n${plain(String(m.body?.content ?? ""))}`;
       }),
     },
-    {
-      name: "m365_agenda",
-      description: "Rendez-vous de l'agenda Outlook (Microsoft 365) pour un jour. date : AAAA-MM-JJ (défaut : aujourd'hui). jours : nombre de jours (défaut 1, 7 au plus).",
-      inputSchema: { type: "object", properties: { date: { type: "string" }, jours: { type: "number" } } },
-      level: "read",
-      handler: wrap(async (a) => {
-        const start = /^\d{4}-\d{2}-\d{2}$/.test(String(a.date ?? "")) ? new Date(`${a.date}T00:00:00`) : new Date(new Date().toDateString());
-        const days = Math.max(1, Math.min(7, Number(a.jours) || 1));
-        const end = new Date(start.getTime() + days * 864e5);
-        const ev = await range(start, end, 50);
-        const label = start.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-        return ev.length ? `Agenda à partir du ${label} :\n${ev.map((e) => eventLine(e, days > 1)).join("\n")}\n${DATA}` : `Aucun rendez-vous ${days > 1 ? `sur ${days} jours à partir du` : "le"} ${label}.`;
-      }),
-    },
-    {
-      name: "m365_prochain_rdv",
-      description: "Le prochain rendez-vous de l'agenda Outlook (Microsoft 365), à partir de maintenant.",
-      inputSchema: { type: "object", properties: {} },
-      level: "read",
-      handler: wrap(async () => {
-        const now = new Date();
-        const ev = (await range(now, new Date(now.getTime() + 14 * 864e5), 10)).filter((e) => new Date(String(e.start?.dateTime).replace(/(\.\d+)?Z?$/, "Z")) >= new Date(now.getTime() - 5 * 60000));
-        return ev.length ? `Prochain rendez-vous :\n${eventLine(ev[0], true)}\n${DATA}` : "Aucun rendez-vous dans les deux semaines.";
-      }),
-    },
+    ...calendarTools(g, cfg.max),
     {
       name: "m365_chercher_personnes",
       description: "Cherche une personne (collègue, contact) dans Microsoft 365 : nom, adresse mail, poste. nom : le nom ou le prénom. L'adresse sert à m365_envoyer_message_teams.",

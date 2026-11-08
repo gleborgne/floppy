@@ -378,6 +378,60 @@ sequenceDiagram
   `chercher_personnes`, `chercher_fichiers`, `conversations_teams`. Le contenu des mails est marqué comme une donnée,
   jamais une consigne.
 - Se connecter / se déconnecter : boutons de l'élément, clic seulement (refusé à la voix).
+- **Mails non lus par période** : `m365_mails_non_lus` accepte `date` (jour local `AAAA-MM-JJ`,
+  `aujourd'hui` / `today`, `hier` / `yesterday`) ou `debut` et `fin`. Les dates de la plage sont incluses ;
+  les heures locales `AAAA-MM-JJTHH:MM` définissent un début inclus et une fin exclue. « Ce matin » :
+  de 00:00 à 12:00 du jour courant. Sans période, tous les non-lus de la boîte de réception.
+  Le filtre porte sur la **réception** des mails actuellement non lus, dans Graph, avant la limite `max`.
+  Les bornes sont converties en UTC depuis l'heure locale, en tenant compte des changements d'heure.
+  Le décompte filtré (`$count=true`) reste indépendant du nombre affiché ; si Graph l'omet et fournit une
+  page incomplète, le total est annoncé indisponible. La réponse rappelle la période et le nombre affiché.
+  Une date invalide, une plage incomplète ou inversée est refusée sans recherche élargie.
+  Voir [les règles de filtre et de tri Graph](https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0)
+  et [le décompte des résultats](https://learn.microsoft.com/en-us/graph/query-parameters#count-parameter).
+- **Recherches vocales fines** (`plugins/tools/m365/src/query.ts`, `mail-search.ts`, `calendar.ts`,
+  `teams-read.ts`, `channel-search.ts`) :
+  - Périodes communes à Outlook, Teams et l'agenda : `date`, `debut` + `fin`, `depuis` (jusqu'à maintenant),
+    ou `periode` (`ce_matin` 00–12 h, `cet_apres_midi` 12–18 h, `cette_semaine`, `semaine_derniere`,
+    `semaine_prochaine`, `ce_mois`). Semaines du lundi au dimanche, heures locales ; `demain` / `tomorrow`
+    également reconnus. Les modes sont exclusifs. `jours` reste compatible avec les anciennes signatures,
+    et `date` + `jours` avec l'agenda. Une mauvaise date n'est jamais remplacée par aujourd'hui.
+  - `m365_chercher_mails` combine expéditeur, destinataire (À/Cc), sujet, texte, période, état de lecture,
+    présence de pièce jointe, dossier et tri. Aucun mot-clé obligatoire. Période sur la réception, ou l'envoi
+    dans le dossier Envoyés. Les noms sont des filtres textuels, pas des identités devinées.
+    Sans période, un mot présélectionne les candidats dans l'index Outlook ; les autres critères sont
+    revérifiés sur les messages. Avec période, Graph filtre dates et états, le texte est vérifié localement.
+    `max` s'applique après ces filtres. Le plafond de 1 000 résultats de l'index rend le parcours partiel.
+  - `m365_lire_fil_mail(id)` retrouve la conversation du mail et lit les échanges reçus et envoyés,
+    chronologiquement, avec auteurs, destinataires et ids. Les derniers messages sont affichés en priorité.
+  - `m365_messages_teams` accepte une personne facultative, une conversation (id ou nom), un type (privé/groupe),
+    un sens (reçus/envoyés/les deux), des mots, liens, pièces jointes et mentions. `seulement_lui` reste un alias
+    de `sens=recus`. Avec une personne, reçus signifie ses propres messages ; les deux côtés gardent le contexte
+    du groupe. Homonymes ou groupes ambigus : demander lequel, même pour lire.
+    `m365_lire_conversation_teams` et `m365_teams_non_lus` partagent les filtres et périodes.
+    Les non-lus sont calculés message par message après la dernière lecture, même si le dernier message est
+    le nôtre ; les états de lecture absents sont explicitement inconnus. Défaut : 90 jours pour les non-lus,
+    14 pour la recherche, 30 pour la lecture. Les canaux n'ont pas d'état non lu garanti.
+  - `m365_messages_canal` cherche dans les publications et leurs réponses, y compris une réponse récente
+    dans un vieux fil. Période, auteur, mots, mention, lien et pièce jointe se combinent. La publication
+    d'origine reste affichée comme contexte lorsqu'elle ne correspond pas aux filtres. Les réponses ont
+    aussi leurs ids. Les permissions de lecture des canaux restent nécessaires.
+  - `m365_agenda` et `m365_prochain_rdv` combinent période, participant (organisateur compris), organisateur,
+    sujet et lieu. Ils rendent participants, état de réponse, lieu et liens. L'agenda inclut les événements
+    qui chevauchent la période ; le prochain rendez-vous exclut ceux déjà commencés. Défauts : aujourd'hui
+    pour l'agenda, maintenant + 14 jours pour le prochain rendez-vous. Les annulations sont écartées.
+  - `m365_creneaux_libres` calcule les intervalles libres du seul agenda personnel (pas celui des collègues).
+    Défauts : 7 jours, lundi-vendredi 09–18 h, durée 30 min, marge 0 min ; tous réglables dans l'appel.
+    Les réunions occupées, provisoires et absences bloquent ; les événements libres, annulés ou refusés
+    ne bloquent pas. Les chevauchements et marges sont fusionnés. Aucun créneau passé n'est proposé.
+    Une lecture incomplète renvoie `unverified`, sans promettre de disponibilité.
+  - Pagination bornée : 10 pages par collection, 30 requêtes et budget de 25 s par recherche (les requêtes
+    ont aussi leur délai de 20 s). Au plus 10 conversations Teams sont parcourues. Ces limites sont
+    signalées explicitement ; les décomptes portent alors sur la partie consultée. Une erreur HTTP n'est
+    pas transformée en absence de résultat. Les liens de pagination doivent rester sur Microsoft Graph.
+    Les résultats sont bilingues, portent les bornes, les ids et les nombres consultés/affichés pour que
+    le cerveau puisse reprendre les critères ou la référence au tour suivant (« et hier ? », « lis celui-là »).
+    La continuité utilise l'historique de conversation existant ; aucun cache de recherche global n'est ajouté.
 - **Écriture dans l'agenda** (permission `Calendars.ReadWrite`, niveau `write` = carte d'accord à chaque fois) :
   `m365_ajouter_rdv` (titre, début, durée, lieu, rappel ; personne n'est invité, donc aucun mail n'est envoyé) et
   `m365_ajouter_rappel` (créneau de 15 min marqué « libre », catégorie « Floppy », notification à l'heure dite).

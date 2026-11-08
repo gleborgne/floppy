@@ -119,17 +119,17 @@ export class GraphAuth {
     return s ? scopes.filter((x) => x !== "offline_access" && !s.has(x)) : [];
   }
 
-  async get<T = any>(path: string, headers: Record<string, string> = {}): Promise<T> {
-    return this.call<T>("GET", path, undefined, headers);
+  async get<T = any>(path: string, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
+    return this.call<T>("GET", path, undefined, headers, signal);
   }
 
-  async call<T = any>(method: "GET" | "POST", path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
+  async call<T = any>(method: "GET" | "POST", path: string, body?: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
     const token = await this.accessToken();
     const r = await this.fetchImpl(path.startsWith("http") ? path : `${GRAPH}/${path}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
       ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(20000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
     });
     if (r.status === 401) { this.access = undefined; throw new NotConnected(); }
     if (!r.ok) {
