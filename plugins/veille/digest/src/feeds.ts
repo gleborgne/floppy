@@ -35,7 +35,7 @@ export function parseFeed(xml: string, feedUrl: string): FeedItem[] {
   }
   if (doc.feed) {
     const source = text(doc.feed.title) || host;
-    return arr(doc.feed.entry).map((e) => item(text(e.title), atomLink(e.link), e.published ?? e.updated, e.summary ?? e.content, source));
+    return arr(doc.feed.entry).map((e) => item(text(e.title), atomLink(e.link), e.published, e.summary ?? e.content, source));
   }
   const rdf = doc["rdf:RDF"];
   if (rdf) {

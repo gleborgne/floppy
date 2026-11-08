@@ -6,7 +6,7 @@
 
 ## L'idée
 
-Tu donnes des **centres d'intérêt** (Réglages → Veille) : un nom, ce qui t'intéresse, des flux RSS, des recherches web. Chaque matin (7 h 30 par défaut), Floppy lit les nouveaux articles, les **trie avec un modèle** selon tes goûts, et prépare un **digest Markdown** : une synthèse par sujet, puis des articles numérotés avec un résumé et un lien.
+Tu donnes des **centres d'intérêt** (Réglages → Veille) : un nom, ce qui t'intéresse, des flux RSS, des recherches web. Chaque matin (7 h 30 par défaut), Floppy lit les nouveaux articles, les **trie avec un modèle** selon tes goûts, et prépare un **digest Markdown** : des articles numérotés regroupés par sujet, avec un résumé et un lien. Chaque sujet commence directement par ses articles, sans synthèse générale.
 
 Tu affines **à la voix** : « le 3 ne m'intéresse pas », « plus d'articles sur llama.cpp », « plus jamais de crypto ». Le tri suivant en tient compte.
 
@@ -17,13 +17,14 @@ flowchart TB
   C["1. Collecte<br/>flux RSS / Atom + recherches (slot veille.recherche)"] --> P
   P["2. Pré-tri en code<br/>déjà vus · trop vieux · mots bannis · doublons · plafond 60"] --> L
   L["3. Note du modèle par lots de 20<br/>(slot veille.tri) : note 0-10 + résumé"] --> S
-  S["4. Garder note ≥ 6, les 8 meilleurs par sujet<br/>+ synthèse de 2-3 phrases"] --> M
+  S["4. Garder note ≥ 6, les 8 meilleurs par sujet"] --> M
   M["5. Document assemblé en code<br/>numéros uniques"] --> R["Résultat de la tâche<br/>le noyau annonce et montre le document"]
 ```
 
 - **Pré-tri en code** (avant de payer le modèle) : une adresse déjà vue (sans traqueurs `utm_*`, sans ancre) est retirée ; un article publié avant le dernier passage (moins 1 jour) aussi ; un mot banni dans le titre ou l'extrait aussi ; deux titres presque identiques n'en font qu'un.
 - **Le modèle** reçoit, pour chaque sujet : ta description, ce que tu aimes, ce que tu évites, et les 20 derniers articles que tu as notés.
 - Le **document** est assemblé en code, pas par le modèle : les numéros et les liens sont donc toujours justes.
+- Chaque article affiche **Publié le 5 novembre 2026** (ou l'équivalent anglais), à côté de la source et de la note. Sans date valide fournie par le flux ou la recherche : **Date de publication indisponible**. Une date de mise à jour Atom ne remplace pas la date de publication ; aucune date n'est inventée.
 
 ## Ce qu'on choisit dans la rubrique Veille
 
@@ -66,4 +67,4 @@ Autres outils : `veille_interets` (liste ; donne aussi les titres numérotés du
 ## Limites connues
 
 - Le modèle **local** sert au tri seulement s'il est **celui du cerveau principal** (élément « Modèle local du cerveau ») : le plugin llama.cpp n'a qu'un llama-server, partagé par le cerveau et le tri. Jamais deux modèles sur le GPU. Pendant un tri (≈ 1 min pour 25 articles avec Ornith), le cerveau répond un peu plus lentement. Changer de modèle de cerveau pendant un tri est refusé jusqu'à la fin du tri.
-- Coût : environ 1 appel au modèle par lot de 20 articles, plus 1 synthèse par sujet.
+- Coût : environ 1 appel au modèle par lot de 20 articles, sans appel supplémentaire pour une synthèse par sujet.

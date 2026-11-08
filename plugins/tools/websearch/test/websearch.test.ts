@@ -51,13 +51,20 @@ describe("recherche web", () => {
     const btn = comps.find((c) => c.component.Button)!;
     expect(btn.component.Button.action).toEqual({ name: "ouvrir_url", context: [{ key: "url", value: { literalString: "https://meteo.example/paris" } }] });
   });
+
+  it("conserve les dates de publication valides, laisse les dates inconnues absentes", () => {
+    const dates = ["2026-11-05", null, undefined, "illisible"];
+    const r = parseResult(JSON.stringify({ reponse: "ok", resultats: dates.map((date, i) => ({ titre: `Article ${i}`, url: `https://example.com/${i}`, date })) }));
+    expect(r.resultats[0]?.date).toBe("2026-11-05T00:00:00.000Z");
+    for (const a of r.resultats.slice(1)) expect(a).not.toHaveProperty("date");
+  });
 });
 
 describe("service search (slot)", () => {
   it("le même moteur est offert au consommateur d'un slot : résultats convertis, max respecté", async () => {
     const asked: string[] = [];
     const many: SearchResult = { reponse: "ok", resultats: [
-      { titre: "A", resume: "ra", url: "https://a.test/", source: "A.test" },
+      { titre: "A", resume: "ra", url: "https://a.test/", source: "A.test", date: "2026-11-05" },
       { titre: "B", resume: "", url: "https://b.test/", source: "" },
     ] };
     let ctxRef: Context | undefined;
@@ -73,7 +80,7 @@ describe("service search (slot)", () => {
     const b = await ctxRef!.borrow<SearchService>("veille.recherche");
     expect(b!.service.cloud).toBe(true);
     expect(await b!.service.search("ia")).toEqual([
-      { titre: "A", url: "https://a.test/", resume: "ra", source: "A.test" },
+      { titre: "A", url: "https://a.test/", resume: "ra", source: "A.test", date: "2026-11-05T00:00:00.000Z" },
       { titre: "B", url: "https://b.test/" },
     ]);
     expect(await b!.service.search("ia", { max: 1 })).toHaveLength(1);

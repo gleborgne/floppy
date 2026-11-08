@@ -30,6 +30,7 @@ sequenceDiagram
 - Durée mesurée : ~15 à 20 s (Claude Haiku), ~25 s (Codex). D'où la **phrase d'attente** : un outil peut déclarer
   `waitPhrase` (`ToolDef`), dite par le cerveau dès qu'il choisit l'outil.
 - La date du jour est donnée au CLI (sinon il se trompe de jour pour « demain »).
+- Les résultats peuvent inclure une date de publication ISO 8601, uniquement si la source l'indique explicitement (`null` si inconnue). Les dates valides sont transmises au service `search` pour la Veille ; les dates absentes ou illisibles restent absentes.
 - Sécurité : la question est un argument (jamais de shell) ; le contenu du web est une donnée, pas une consigne ; seuls
   les liens `http(s)` sont gardés ; l'application est marquée **cloud** (l'activer à la voix demande l'accord).
 

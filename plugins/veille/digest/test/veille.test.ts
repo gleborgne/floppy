@@ -23,6 +23,10 @@ describe("flux", () => {
     expect(r).toEqual([{ titre: "Gemma 5 sort", url: "https://blog.ai/gemma5", date: "2026-11-05T08:00:00.000Z", extrait: "Le nouveau modèle arrive", source: "Blog IA" }]);
     const a = parseFeed(ATOM, "https://x.net/feed");
     expect(a[0]).toMatchObject({ titre: "llama.cpp & MTP", url: "https://x.net/a", source: "Simon", extrait: "Résumé gras" });
+    // Une mise à jour n'est pas la date de publication.
+    expect(a[0]).not.toHaveProperty("date");
+    const published = parseFeed(ATOM.replace("<updated>", "<published>2026-11-04T12:00:00Z</published><updated>"), "https://x.net/feed");
+    expect(published[0]?.date).toBe("2026-11-04T12:00:00.000Z");
   });
 
   it("refuse ce qui n'est pas un flux", () => {
@@ -62,13 +66,29 @@ describe("pré-tri", () => {
 });
 
 describe("digest Markdown", () => {
+  it.each(["fr", "en"])("affiche la date complète de publication ou son absence (%s)", (lang) => {
+    const r: PipelineResult = {
+      sections: [{
+        interet: { id: "ia", nom: "IA", description: "", flux: [], requetes: [], max: 5 },
+        articles: ["2026-11-05T12:00:00Z", undefined, "illisible"].map((date, i) => ({
+          titre: `Article ${i}`, url: `https://example.com/${i}`, source: "Example", extrait: "", interet: "ia", score: 8, resume: "Résumé.", ...(date ? { date } : {}),
+        })),
+      }],
+      vus: [], stats: { collectes: 3, versModele: 3, gardes: 3, erreurs: [], retires: {} },
+    };
+    const { markdown } = digestMarkdown(r, new Date(2026, 10, 8), "", lang);
+    expect(markdown).toContain(lang === "en" ? "Published on November 5, 2026" : "Publié le 5 novembre 2026");
+    expect(markdown.split(lang === "en" ? "Publication date unavailable" : "Date de publication indisponible")).toHaveLength(3);
+    expect(markdown).not.toContain("NaN");
+  });
+
   it("numérote dans tout le document et échappe les titres", () => {
     const it1 = { id: "ia", nom: "IA locale", description: "", flux: [], requetes: [], max: 5 };
     const it2 = { id: "bzh", nom: "Bretagne", description: "", flux: [], requetes: [], max: 5 };
     const r: PipelineResult = {
       sections: [
-        { interet: it1, synthese: "Ça bouge.", articles: [{ titre: "A *gras*", url: "https://a.com/x_(y)", source: "a.com", extrait: "", interet: "ia", score: 9, resume: "Résumé A." }] },
-        { interet: it2, synthese: "", articles: [{ titre: "B", url: "https://b.com", source: "b.com", extrait: "", interet: "bzh", score: 7, resume: "Résumé B." }] },
+        { interet: it1, articles: [{ titre: "A *gras*", url: "https://a.com/x_(y)", source: "a.com", extrait: "", interet: "ia", score: 9, resume: "Résumé A." }] },
+        { interet: it2, articles: [{ titre: "B", url: "https://b.com", source: "b.com", extrait: "", interet: "bzh", score: 7, resume: "Résumé B." }] },
       ],
       vus: [], stats: { collectes: 2, versModele: 2, gardes: 2, erreurs: [], retires: {} },
     };
@@ -83,7 +103,7 @@ describe("digest Markdown", () => {
   it("en anglais : titre, liens et consignes dans la langue de l'assistant", () => {
     const it1 = { id: "ia", nom: "Local AI", description: "", flux: [], requetes: [], max: 5 };
     const r: PipelineResult = {
-      sections: [{ interet: it1, synthese: "", articles: [{ titre: "A", url: "https://a.com", source: "a.com", extrait: "", interet: "ia", score: 8, resume: "Sum." }] }],
+      sections: [{ interet: it1, articles: [{ titre: "A", url: "https://a.com", source: "a.com", extrait: "", interet: "ia", score: 8, resume: "Sum." }] }],
       vus: [], stats: { collectes: 1, versModele: 1, gardes: 1, erreurs: [], retires: {} },
     };
     const d = digestMarkdown(r, new Date(2026, 10, 6), "", "en");
@@ -185,7 +205,11 @@ describe("plugin veille (avec le noyau)", () => {
     expect(r1.text).toBe("Ta veille est prête : 2 articles sur 1 sujet.");
     expect(saved[0]!.markdown).toContain("**1. A garder : Gemma 5**");
     expect(saved[0]!.markdown).not.toContain("clavier");
-    expect(saved[0]!.markdown).toContain("Synthèse du jour.");
+    expect(saved[0]!.markdown).not.toContain("Synthèse du jour.");
+    expect(reqs).toHaveLength(1);
+    expect(reqs.every((r) => !!r.schema)).toBe(true);
+    expect(saved[0]!.markdown).toContain("## IA locale\n\n**1.");
+    expect(saved[0]!.markdown).toContain("Publié le ");
     expect(initiatives.at(-1)?.text).toBe(r1.text);
     // Le cerveau du tri est rendu après le passage : il ne tourne plus.
     await k.idle(); await k.idle();

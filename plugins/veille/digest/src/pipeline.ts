@@ -1,4 +1,4 @@
-// Un passage de veille : collecter → pré-trier en code → noter avec le modèle (par lots) → synthèse → document Markdown.
+// Un passage de veille : collecter → pré-trier en code → noter avec le modèle (par lots) → document Markdown.
 // Ne connaît ni l'horloge (le Planificateur la lance) ni les corps (le noyau montre le document).
 import { T, TextError, errorText, tr } from "@floppy/core";
 import type { CompletionService, SearchService } from "@floppy/contracts";
@@ -52,7 +52,7 @@ export interface Noted extends Article {
 
 export interface PipelineResult {
   /** Articles gardés, par centre d'intérêt (ordre des intérêts), triés par note. */
-  sections: { interet: Interet; synthese: string; articles: Noted[] }[];
+  sections: { interet: Interet; articles: Noted[] }[];
   /** Tous les articles nouveaux vus pendant ce passage (à marquer « vus » si le passage réussit). */
   vus: { url: string; titre: string; interet: string }[];
   stats: { collectes: number; versModele: number; gardes: number; erreurs: string[]; retires: Record<string, number> };
@@ -105,10 +105,7 @@ export async function runPipeline(d: PipelineDeps): Promise<PipelineResult> {
     noted.sort((x, y) => y.score - x.score);
     const top = noted.slice(0, it.max);
     if (!top.length) continue;
-    // 4. Synthèse courte du sujet (si elle échoue, le digest reste utile sans).
-    let synthese = "";
-    try { synthese = await synthetiser(d, it, top); } catch (e) { d.log("warn", `synthèse ${it.nom} : ${msg(e)}`); }
-    sections.push({ interet: it, synthese, articles: top });
+    sections.push({ interet: it, articles: top });
   }
   const versModele = gardes.length;
   return { sections, vus, stats: { collectes: all.length, versModele, gardes: sections.reduce((n, s) => n + s.articles.length, 0), erreurs, retires } };
@@ -170,22 +167,9 @@ async function noter(d: PipelineDeps, it: Interet, lot: Article[]): Promise<Map<
   return out;
 }
 
-async function synthetiser(d: PipelineDeps, it: Interet, list: Noted[]): Promise<string> {
-  const r = await d.completion.complete({
-    system: d.lang === "en"
-      ? `Write in English 2 or 3 sentences that say what is moving on the topic “${it.nom}”, based on these articles. No title, no list, no link. Do not make anything up.`
-      : `Écris en français 2 ou 3 phrases qui disent ce qui bouge sur le sujet « ${it.nom} », d'après ces articles. Pas de titre, pas de liste, pas de lien. N'invente rien.`,
-    prompt: list.map((a) => `- ${a.titre} : ${a.resume}`).join("\n"),
-    ...(d.signal ? { signal: d.signal } : {}),
-  });
-  return r.text.trim();
-}
-
-const MOIS_COURT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function dateFr(d: Date): string {
   return `${d.getDate()} ${MOIS[d.getMonth()]} ${d.getFullYear()}`;
@@ -222,12 +206,13 @@ export function digestMarkdown(r: PipelineResult, now: Date, docId = "", lang = 
   let num = 0;
   for (const s of r.sections) {
     parts.push(`## ${esc(s.interet.nom)}`, "");
-    if (s.synthese) parts.push(s.synthese, "");
     for (const a of s.articles) {
       num++;
       articles.push({ numero: num, doc: docId, interet: s.interet.id, titre: a.titre, url: a.url, source: a.source, resume: a.resume });
       const dt = a.date ? new Date(a.date) : undefined;
-      const when = dt ? (en ? ` · ${MONTHS_SHORT[dt.getMonth()]} ${dt.getDate()}` : ` · ${dt.getDate()} ${MOIS_COURT[dt.getMonth()]}`) : "";
+      const when = dt && Number.isFinite(dt.getTime())
+        ? (en ? ` · Published on ${dateEn(dt)}` : ` · Publié le ${dateFr(dt)}`)
+        : (en ? " · Publication date unavailable" : " · Date de publication indisponible");
       parts.push(`**${num}. ${esc(a.titre)}**  `, `*${esc(a.source)}${when}* · ${en ? "score" : "note"} ${Math.round(a.score)}/10  `, `${a.resume} [${en ? "Read the article" : "Lire l'article"}](${href(a.url)})`, "");
     }
   }
