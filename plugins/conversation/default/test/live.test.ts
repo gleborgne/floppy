@@ -4,7 +4,7 @@ import type { BodyHub, LiveService, LiveSession, LiveEvent, BrainRunInput, Memor
 import type { KernelToBody } from "@floppy/protocol";
 import { LiveConversation, liveInstructions } from "../src/live.ts";
 
-async function fixture(kind: "function" | "delegation" = "function", timed = false, optional?: { memory: MemoryService; vocabulary?: VocabularyService }) {
+async function fixture(kind: "function" | "delegation" = "function", timed = false, optional?: { memory: MemoryService; vocabulary?: VocabularyService }, managesMemory = false) {
   let ctx!: Context;
   let events!: (e: LiveEvent) => void;
   const sent: KernelToBody[] = [], audio: Uint8Array[] = [], replay: number[] = [];
@@ -27,12 +27,26 @@ async function fixture(kind: "function" | "delegation" = "function", timed = fal
   const reply = vi.fn((_text: string, _timing: { body: string; id: string }): string | undefined => undefined);
   let profile: "playful" | "discreet" = "playful";
   const states: string[] = [];
-  const live = new LiveConversation({ ctx, body: "avatar", service, brain: { name: "fake", reset: () => {}, run }, history,
+  const live = new LiveConversation({ ctx, body: "avatar", service, brain: { name: "fake", managesMemory, reset: () => {}, run }, history,
     tone: () => "sobre", profile: () => profile, freeListen: () => 1, onInput: input, onReply: reply, onState: (s) => states.push(s), onPlaying: () => {} });
   return { k, service, session, live, audio, sent, history, run, input, reply, order, replay, states, bind, unbind, setProfile: (p: typeof profile) => { profile = p; live.updateTone(); }, emit: (e: LiveEvent) => events(e) };
 }
 
 describe("conversation Live", () => {
+  it("confie une seule photo structurée au cerveau qui gère sa mémoire", async () => {
+    const snapshot = vi.fn<MemoryService["snapshot"]>(async () => ({ user: "", memory: "Photo préparée Live" }));
+    const f = await fixture("delegation", false, { memory: { snapshot, record() {}, search: () => [] } }, true);
+    try {
+      await f.live.requestText("Lis le canal");
+      await vi.waitFor(() => expect(f.run).toHaveBeenCalledOnce());
+      const input = f.run.mock.calls[0]![0];
+      expect(input.memoryContext).toMatchObject({ memory: "Photo préparée Live", availability: { memory: "ready", vocabulary: "absent" } });
+      expect(JSON.stringify(input.context)).not.toContain("Photo préparée Live");
+      expect(input.recordMemory).toBe(false);
+      // Une lecture ouvre la session audio, une seconde prépare la délégation ; le cerveau réutilise celle-ci.
+      expect(snapshot).toHaveBeenCalledTimes(2);
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
   it("transmet la mémoire et la corrélation MCP au cerveau direct délégué sans lui faire réenregistrer le tour", async () => {
     const record = vi.fn<MemoryService["record"]>(() => {});
     const f = await fixture("delegation", false, { memory: { snapshot: async () => ({ user: "", memory: "corps team → Core Team" }), record, search: () => [] } });

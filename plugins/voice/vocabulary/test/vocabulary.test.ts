@@ -79,6 +79,94 @@ describe("vocabulaire : apprentissage explicite", () => {
     expect((await call({ ...correction, evidence: { text: direct } }, "direct")).status).toBe("done");
   });
 
+  it("réserve la preuve avant l’écriture asynchrone et refuse un appel concurrent", async () => {
+    const memory = mockMemory();
+    const save = memory.saveCorrection!;
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const persist = vi.fn(async (...args: Parameters<typeof save>) => { entered(); await gate; return save(...args); });
+    memory.saveCorrection = persist;
+    const { observe, call } = await start({ memory });
+    observe("Lis court team"); observe(correction.evidence.text);
+    const first = call();
+    await started;
+    expect((await call()).status).toBe("failed");
+    release();
+    expect((await first).status).toBe("done");
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it("libère une preuve après un rejet fournisseur confirmé, sans autoriser le concurrent", async () => {
+    const memory = mockMemory();
+    const save = memory.saveCorrection!;
+    let fail!: (error: Error) => void;
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<never>((_resolve, reject) => { fail = reject; });
+    const persist = vi.fn(async (...args: Parameters<typeof save>) => {
+      if (persist.mock.calls.length === 1) { entered(); await gate; }
+      return save(...args);
+    });
+    memory.saveCorrection = persist;
+    const { observe, call } = await start({ memory });
+    observe("Lis court team"); observe(correction.evidence.text);
+    const first = call();
+    await started;
+    expect((await call()).status).toBe("failed");
+    fail(new Error("refus du fournisseur"));
+    expect((await first).status).toBe("failed");
+    expect((await call()).status).toBe("done");
+    expect(persist).toHaveBeenCalledTimes(2);
+  });
+
+  it("garde la preuve réservée après timeout lorsque l’écriture peut encore aboutir", async () => {
+    const memory = mockMemory();
+    const save = memory.saveCorrection!;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const persist = vi.fn(async (...args: Parameters<typeof save>) => { await gate; return save(...args); });
+    memory.saveCorrection = persist;
+    const { observe, call, service } = await start({ memory });
+    observe("Lis court team"); observe(correction.evidence.text);
+    expect((await call()).status).toBe("failed");
+    expect((await call()).status).toBe("failed");
+    release();
+    await vi.waitFor(async () => expect((await service.resolve({ heard: correction.heard, scope })).status).toBe("match"));
+    expect((await call()).status).toBe("failed");
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it("exige l’ancien fragment au tour précédent sauf pour une paire explicite", async () => {
+    const { observe, call } = await start();
+    observe(correction.evidence.text);
+    expect((await call({ ...correction, heard: "non" })).status).toBe("failed");
+    expect((await call()).status).toBe("failed");
+    for (const evidence of ["Corrige court team en Core Team", "Pas court team mais Core Team", "Not court team but Core Team"]) {
+      observe(evidence, evidence);
+      expect((await call({ ...correction, evidence: { text: evidence } }, evidence)).status).toBe("done");
+    }
+  });
+
+  it("ne transforme pas un changement d’avis ambigu en correction durable", async () => {
+    const { observe, call } = await start();
+    const cases = [
+      ["Envoie à Bob", "Non, Alice", "Bob", "Alice"],
+      ["Send to Bob", "I mean Alice", "Bob", "Alice"],
+      ["Send to Bob", "No, I meant Alice", "Bob", "Alice"],
+      ["Envoie à Bob", "Je veux dire Alice", "Bob", "Alice"],
+      ["It is today", "No, it is tomorrow", "today", "tomorrow"],
+      ["C’est aujourd’hui", "Non, c’est demain", "aujourd’hui", "demain"],
+    ];
+    for (const [previous, evidence, heard, canonical] of cases) {
+      observe(previous!); observe(evidence!);
+      expect((await call({ ...correction, heard, canonical, evidence: { text: evidence } })).status).toBe("failed");
+    }
+    observe("Read court team"); observe("No, I said Core Team");
+    expect((await call({ ...correction, evidence: { text: "No, I said Core Team" } })).status).toBe("done");
+  });
+
   it("rejette une preuve périmée ou provenant d’un autre corps", async () => {
     const { k, observe, call } = await start();
     observe("Lis court team"); observe(correction.evidence.text);
@@ -188,9 +276,9 @@ describe("vocabulaire : interprétation contextualisée", () => {
     expect(containsFragment("Le score team", "core team")).toBe(false);
     expect(containsFragment("Le court team !", "COURT TEAM")).toBe(true);
     expect(containsFragment(" court team ", "")).toBe(false);
-    expect(isExplicitCorrection("Non, c’est Core Team", "court team", "Core Team")).toBe(true);
+    expect(isExplicitCorrection("Non, c’est Core Team", "court team", "Core Team")).toBe(false);
     expect(isExplicitCorrection("Not court team but Core Team", "court team", "Core Team")).toBe(true);
-    expect(isExplicitCorrection("Non, Core Team", "court team", "Core Team")).toBe(true);
+    expect(isExplicitCorrection("Non, Core Team", "court team", "Core Team")).toBe(false);
     expect(isExplicitCorrection("Not available for Core Team", "court team", "Core Team")).toBe(false);
     expect(isExplicitCorrection("Non, je ne suis pas disponible pour Core Team", "court team", "Core Team")).toBe(false);
     expect(isExplicitCorrection("C’est Core Team qui attend", "court team", "Core Team")).toBe(false);

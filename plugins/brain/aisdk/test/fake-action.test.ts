@@ -1,5 +1,5 @@
 // Garde-fou « fausse action » : la relance traite `deleguer` comme le chemin principal (phrase d'attente + arrêt).
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,6 +28,8 @@ let delegated = 0;
 const agentInputs: string[] = [];
 const requests: BrainRunInput[] = [];
 const resets: string[] = [];
+const unbind = vi.fn(), bind = vi.fn(() => unbind), observe = vi.fn();
+const snapshot = vi.fn(() => ({ user: "", memory: "Mémoire du tour source" }));
 const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["brain"] }, apply(ctx) { brain = ctx.get("brain"); } });
 const bigModel: BrainService = {
   name: "gros", label: "Gros Modèle", aliases: ["gros"],
@@ -36,8 +38,11 @@ const bigModel: BrainService = {
 };
 // Offert comme délégué (slot brain.delegate) et comme modèle-agent (slot brain.main), comme Claude Code.
 const fakeDelegate = definePlugin({
-  manifest: { id: "fakedelegate", version: "0", licence: "MIT", provides: ["delegate", "llm"] },
+  manifest: { id: "fakedelegate", version: "0", licence: "MIT", provides: ["delegate", "llm", "mcp", "memory", "vocabulary"] },
   apply(ctx) {
+    ctx.provide("mcp", { url: "unused", token: "unused", bindContext: bind, scoped() { throw new Error("inutilisé"); } });
+    ctx.provide("memory", { snapshot, record() {}, search: () => [] });
+    ctx.provide("vocabulary", { observe, context: async () => "", resolve: async () => ({ status: "none", candidates: [] }) });
     ctx.offer("delegate", { items: () => [{ id: "gros", label: "Gros Modèle" }], start(f) { f.provide("delegate", bigModel); } });
     ctx.offer("llm", { items: () => [{ id: "gros", label: "Gros Modèle" }], start(f) { f.provide("llm", { label: "Gros Modèle", model: "gros", agent: bigModel }); } });
   },
@@ -91,7 +96,9 @@ describe("relance après fausse action", () => {
   });
   it("si la relance délègue : phrase d'attente, réponse du grand modèle, puis arrêt", async () => {
     const evs: BrainEvent[] = [];
-    for await (const ev of brain!.run({ text: "écris-moi un script", session: "s", mode: "text", tone: "joueur" })) evs.push(ev);
+    const reads = snapshot.mock.calls.length, observations = observe.mock.calls.length;
+    const abort = new AbortController();
+    for await (const ev of brain!.run({ text: "écris-moi un script", session: "s", origin: "avatar", turn: "source-turn", mode: "text", tone: "joueur", signal: abort.signal })) evs.push(ev);
     const text = evs.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("");
     expect(WAIT_PHRASES.some((p) => text.includes(p))).toBe(true);
     expect(text).toContain("Réponse du grand modèle.");
@@ -99,6 +106,14 @@ describe("relance après fausse action", () => {
     expect(evs.some((e) => e.type === "delegate")).toBe(true);
     expect(delegated).toBe(1);
     expect(requests.at(-1)?.tone).toBe("joueur");
+    const delegatedInput = requests.at(-1)!;
+    expect(delegatedInput).toMatchObject({ session: "s:delegate", turn: "source-turn", recordMemory: false, memoryContext: { memory: "Mémoire du tour source" }, toolContext: { session: "s", origin: "avatar", turn: "source-turn" } });
+    expect(delegatedInput.toolContext!.signal).toBe(delegatedInput.signal);
+    expect(bind).toHaveBeenLastCalledWith(delegatedInput.toolContext);
+    expect(unbind).toHaveBeenCalled();
+    expect(snapshot.mock.calls.length - reads).toBe(1);
+    expect(observe.mock.calls.slice(observations)).toEqual([[expect.objectContaining({ text: "écris-moi un script", session: "s", turn: "source-turn" })]]);
+    expect(JSON.stringify(delegatedInput.context)).toContain("Mémoire du tour source");
     brain!.reset("s");
     expect(resets).toContain("s:delegate");
     expect(calls).toBe(2); // pas de 3e appel : la boucle s'arrête après la délégation

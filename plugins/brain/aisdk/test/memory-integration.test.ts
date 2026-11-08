@@ -7,8 +7,7 @@ import type { BrainRunInput, BrainService, MemoryService } from "@floppy/contrac
 import aisdk from "../src/index.ts";
 import localMemory from "../../../memory/local/src/index.ts";
 import vocabulary from "../../../voice/vocabulary/src/index.ts";
-import { optionalContext as brainContext } from "../src/optional-context.ts";
-import { optionalContext as conversationContext } from "../../../conversation/default/src/optional-context.ts";
+import { optionalContext } from "@floppy/contracts";
 
 describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
   it("apprend une correction explicite, la fournit au prochain tour puis retire la correction oubliée", async () => {
@@ -35,7 +34,7 @@ describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
     const currentMemory = () => {
       const text = requests.at(-1)!.context!.at(-1)!.text;
       expect(text).toContain("remplace le contexte mémorisé précédent");
-      return (JSON.parse(text.slice(text.indexOf("{"))) as { memory: string }).memory;
+      return (JSON.parse(text.slice(text.indexOf("{"))) as { vocabulary: string }).vocabulary;
     };
     try {
       await run("Lis le canal court team");
@@ -59,7 +58,8 @@ describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
   });
 });
 
-describe.each([["brain", brainContext], ["conversation", conversationContext]] as const)("contexte facultatif %s", (_name, optional) => {
+describe("contexte facultatif commun", () => {
+  const optional = optionalContext;
   it("ne lance aucun travail déjà annulé et distingue panne, délai et vide sans journaliser les données", async () => {
     const audit = new MemoryAudit(), ctx = { audit, log: vi.fn() };
     const operation = { service: "memory" as const, consumer: "brain" as const, phase: "snapshot" as const, session: "avatar", origin: "avatar", turn: "turn-test", available: true };

@@ -1,10 +1,10 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, MemoryAudit, MemorySecrets, definePlugin } from "@floppy/core";
-import type { BrainService, LlmService, AgentService, BrainEvent } from "@floppy/contracts";
+import { Kernel, MemoryAudit, MemorySecrets, definePlugin, type Context } from "@floppy/core";
+import type { BrainService, LlmService, BrainEvent, McpTurnContext } from "@floppy/contracts";
 import { createExternalAgent, borrowAgent, validAgentModel } from "../src/index.ts";
 import { floppyToolName, openCodeSystemConfigPaths, type AgentProtocol } from "../src/profiles.ts";
 
@@ -12,22 +12,28 @@ const fixture = fileURLToPath(new URL("./fixtures/external-agent.mjs", import.me
 const kernels: Kernel[] = [];
 afterEach(async () => { for (const k of kernels.splice(0)) await k.stopAll(); });
 
-async function boot(protocol: AgentProtocol, timeout_s = 5) {
+async function boot(protocol: AgentProtocol, timeout_s = 5, bindScoped = true) {
   const home = mkdtempSync(join(tmpdir(), "floppy-agent-"));
   const audit = new MemoryAudit(); const secrets = new MemorySecrets();
-  const scopes: { tools: string[]; closed: boolean }[] = [];
+  const scopes: { tools: string[]; closed: boolean; contexts: McpTurnContext[]; cleanup: string[] }[] = [];
+  const bindRoot = vi.fn(() => { throw new Error("Le jeton racine ne doit pas recevoir le tour de cet agent."); });
   const mcp = definePlugin({ manifest: { id: "test-mcp", version: "0", licence: "MIT", provides: ["mcp"] }, apply(ctx) {
-    ctx.provide("mcp", { url: "http://127.0.0.1:1/mcp", token: "FULL-TOKEN", scoped(opts) {
-      const s = { tools: opts.tools, closed: false }; scopes.push(s);
-      return { url: "http://127.0.0.1:1/mcp", token: "SCOPE-TOKEN", close() { s.closed = true; } };
+    ctx.provide("mcp", { url: "http://127.0.0.1:1/mcp", token: "FULL-TOKEN", bindContext: bindRoot, scoped(opts) {
+      const s = { tools: opts.tools, closed: false, contexts: [] as McpTurnContext[], cleanup: [] as string[] }; scopes.push(s);
+      return { url: "http://127.0.0.1:1/mcp", token: "SCOPE-TOKEN",
+        ...(bindScoped ? { bindContext(context: McpTurnContext) {
+          s.contexts.push(context);
+          return () => { s.cleanup.push("unbind"); };
+        } } : {}),
+        close() { s.closed = true; s.cleanup.push("close"); } };
     } });
   } });
   const plugin = createExternalAgent({ id: protocol, label: protocol, program: "node", protocol, aliases: [protocol], args: (p, m) => [...(m ? ["--model", m] : []), p] });
-  let brain: LlmService | undefined, delegate: BrainService | undefined;
+  let brain: LlmService | undefined, delegate: BrainService | undefined, consumer: Context | undefined;
   const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", optional: ["agent"], slots: [
     { id: "test.main", service: "llm", section: "cerveau", label: "Principal" },
     { id: "test.delegate", service: "delegate", section: "cerveau", label: "Délégué" },
-  ] }, async apply(ctx) { brain = await ctx.slot("test.main"); delegate = await ctx.slot("test.delegate"); } });
+  ] }, async apply(ctx) { consumer = ctx; brain = await ctx.slot("test.main"); delegate = await ctx.slot("test.delegate"); } });
   const k = new Kernel({ home, logger: () => {}, audit, secrets, plugins: [mcp, plugin, probe] }); kernels.push(k);
   k.tools.register("test", ["agenda", "lancer_travail_agent", "ouvrir_session_agent"].map((name) => ({ name, description: name,
     inputSchema: { type: "object", properties: {} }, level: "read" as const, handler: async () => ({ status: "done" as const, text: "ok" }) })));
@@ -36,7 +42,7 @@ async function boot(protocol: AgentProtocol, timeout_s = 5) {
       exe: process.execPath, exeArgs: [fixture, protocol], model: "provider/main", delegateModel: "provider/delegate", timeout_s,
     } }, { id: "probe", plugin: "probe" },
   ] });
-  return { k, home, audit, secrets, scopes, brain: () => brain!, delegate: () => delegate! };
+  return { k, home, audit, secrets, scopes, bindRoot, consumer: () => consumer!, brain: () => brain!, delegate: () => delegate! };
 }
 
 async function collect(brain: BrainService, text: string, signal?: AbortSignal) {
@@ -47,6 +53,49 @@ async function collect(brain: BrainService, text: string, signal?: AbortSignal) 
 }
 
 describe.each(["opencode", "pi", "omp", "hermes"] as const)("agent piloté %s", (protocol) => {
+  it("lie chaque cerveau et délégation au tour hôte, indépendamment de leur session d'historique", async () => {
+    const b = await boot(protocol);
+    const main = { text: "principal", session: "avatar", origin: "body-avatar", mode: "text" as const, turn: "tour-main", signal: new AbortController().signal };
+    const childSignal = new AbortController().signal;
+    const hostContext = { session: "telegram:42", origin: "body-telegram", turn: "tour-delegate", signal: childSignal };
+    const delegated = { text: "délégation", session: "telegram:42:delegate", mode: "text" as const, signal: childSignal, toolContext: hostContext };
+    const drain = async (brain: BrainService, input: Parameters<BrainService["run"]>[0]) => {
+      let result = "";
+      for await (const event of brain.run(input)) if (event.type === "done") result = event.text;
+      return result;
+    };
+    await Promise.all([drain(b.brain().agent!, main), drain(b.delegate(), delegated)]);
+    expect(b.scopes.map((s) => s.contexts)).toEqual([
+      [{ session: main.session, origin: main.origin, turn: main.turn, signal: main.signal }],
+      [hostContext],
+    ]);
+    expect(b.scopes.map((s) => s.cleanup)).toEqual([["unbind", "close"], ["unbind", "close"]]);
+    const next = JSON.parse(await drain(b.delegate(), { ...delegated, text: "suite" }));
+    expect(next.prompt).toContain("délégation");
+    expect(b.scopes[2]!.contexts).toEqual([hostContext]);
+    b.delegate().reset(delegated.session);
+    const reset = JSON.parse(await drain(b.delegate(), { ...delegated, text: "nouveau" }));
+    expect(reset.prompt).not.toContain("délégation");
+    expect(b.bindRoot).not.toHaveBeenCalled();
+  });
+
+  it("une mission autonome reste sans contexte et un accès restreint ancien n'hérite jamais du contexte racine", async () => {
+    const b = await boot(protocol);
+    const agent = await borrowAgent(b.consumer(), protocol);
+    expect(agent?.service.run).toBeDefined();
+    try {
+      for await (const _ of agent!.service.run!({ text: "mission", session: "job:1", mode: "text" })) { /* vidé */ }
+    } finally { agent?.release(); }
+    expect(b.scopes[0]!.contexts).toEqual([]);
+    expect(b.scopes[0]!.cleanup).toEqual(["close"]);
+    expect(b.bindRoot).not.toHaveBeenCalled();
+
+    const legacy = await boot(protocol, 5, false);
+    await collect(legacy.brain().agent!, "ancien accès");
+    expect(legacy.scopes[0]!.cleanup).toEqual(["close"]);
+    expect(legacy.bindRoot).not.toHaveBeenCalled();
+  });
+
   it("offres principal/délégué, profil privé, secrets au coffre, jeton restreint et historique réinitialisable", async () => {
     const b = await boot(protocol);
     const p = b.k.items.provider("agent-agent")!;
@@ -87,8 +136,20 @@ describe.each(["opencode", "pi", "omp", "hermes"] as const)("agent piloté %s", 
   it("erreur explicite et annulation ferment le profil et rendent l'agent disponible", async () => {
     const b = await boot(protocol);
     await expect(collect(b.brain().agent!, "FAIL")).rejects.toThrow();
-    await expect(collect(b.brain().agent!, "HANG", AbortSignal.timeout(200))).rejects.toThrow();
+    const hostSignal = new AbortController().signal;
+    const cancelled = async () => {
+      for await (const _ of b.delegate().run({ text: "HANG", session: "s:delegate", mode: "text", signal: AbortSignal.timeout(200),
+        toolContext: { session: "s", turn: "tour-hôte", signal: hostSignal } })) { /* vidé */ }
+    };
+    await expect(cancelled()).rejects.toThrow();
     expect(b.scopes.every((s) => s.closed)).toBe(true);
+    expect(b.scopes.map((s) => s.cleanup)).toEqual([["unbind", "close"], ["unbind", "close"]]);
+    expect(b.scopes[0]!.contexts).toEqual([{ session: "s", origin: undefined, turn: undefined, signal: undefined }]);
+    expect(b.scopes[1]!.contexts[0]!.signal?.aborted).toBe(true);
+    expect(b.scopes[1]!.contexts[0]!.session).toBe("s");
+    expect(b.scopes[1]!.contexts[0]!.turn).toBe("tour-hôte");
+    expect(hostSignal.aborted).toBe(false);
+    expect(b.bindRoot).not.toHaveBeenCalled();
     expect(JSON.parse((await collect(b.brain().agent!, "après")).text).prompt).toContain("après");
   });
 

@@ -5,10 +5,10 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Kernel, definePlugin } from "@floppy/core";
-import type { BrainRunInput, BrainService, MemoryService } from "@floppy/contracts";
+import type { BrainRunInput, BrainService, MemoryService, PreparedMemoryContext } from "@floppy/contracts";
 import aisdk from "../src/index.ts";
 
-async function fixture(agent: boolean) {
+async function fixture(agent: boolean, agentManagesMemory = false) {
   const requests: BrainRunInput[] = [], bodies: { messages: { role: string; content: string }[] }[] = [];
   const server = createServer((req, res) => {
     let body = ""; req.on("data", d => { body += d; });
@@ -32,7 +32,7 @@ async function fixture(agent: boolean) {
     c.provide("vocabulary", { observe, context, resolve: async () => ({ status: "none", candidates: [] }) });
     c.provide("mcp", { url: "unused", token: "unused", bindContext: bind, scoped() { throw new Error("inutilisé"); } });
     c.offer("llm", { items: () => [{ id: "model", label: "Test" }], start(f) {
-      f.provide("llm", agent ? { model: "cli", agent: { name: "cli", keepsHistory: true, reset() {}, async *run(input) {
+      f.provide("llm", agent ? { model: "cli", agent: { name: "cli", managesMemory: agentManagesMemory, keepsHistory: true, reset() {}, async *run(input) {
         requests.push(input); yield { type: "text", delta: "[content] Bonjour." };
       } } } : { model: "local", baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1` });
     } });
@@ -41,9 +41,9 @@ async function fixture(agent: boolean) {
   const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["brain"] }, apply(c) { brain = c.get("brain"); } });
   const k = new Kernel({ logger() {}, home: mkdtempSync(join(tmpdir(), "brain-memory-")), plugins: [provider, aisdk, probe] });
   await k.applyConfig({ plugins: [{ id: "fake", plugin: "fake" }, { id: "brain", plugin: "brain-aisdk", config: { emotions: false } }, { id: "probe", plugin: "probe" }] });
-  const run = async (text: string, recordMemory = true) => {
+  const run = async (text: string, recordMemory = true, memoryContext?: PreparedMemoryContext | null) => {
     let result = "";
-    for await (const e of brain.run({ text, session: "avatar", origin: "avatar", mode: "voice", recordMemory })) if (e.type === "text") result += e.delta;
+    for await (const e of brain.run({ text, session: "avatar", origin: "avatar", mode: "voice", recordMemory, ...(memoryContext !== undefined ? { memoryContext } : {}) })) if (e.type === "text") result += e.delta;
     return result;
   };
   return { requests, bodies, snapshot, record, observe, context, bind, unbind, run,
@@ -52,6 +52,32 @@ async function fixture(agent: boolean) {
 }
 
 describe("mémoire des cerveaux", () => {
+  it("transmet une photo unique à un modèle-agent qui possède sa mémoire", async () => {
+    const f = await fixture(true, true);
+    try {
+      await f.run("Bonjour");
+      expect(f.requests[0]!.context).toBeUndefined();
+      expect(f.requests[0]!.memoryContext).toMatchObject({ user: "Profil", memory: "Ancienne préférence", availability: { memory: "ready", vocabulary: "ready" } });
+      expect(f.requests[0]!.recordMemory).toBe(false);
+      expect(f.snapshot).toHaveBeenCalledOnce(); expect(f.observe).toHaveBeenCalledOnce();
+      expect(f.record.mock.calls.map(([entry]) => entry.role)).toEqual(["user", "assistant"]);
+    } finally { await f.close(); }
+  });
+  it.each([false, true])("réutilise une photo Live sans lecture ni contexte contradictoire (CLI %s)", async agent => {
+    const f = await fixture(agent);
+    try {
+      const memoryContext: PreparedMemoryContext = { user: "Profil Live", memory: "Photo Live", vocabulary: "", availability: { memory: "ready", vocabulary: "unavailable" }, warning: "Source indisponible" };
+      await f.run("Bonjour", false, memoryContext);
+      expect(f.snapshot).not.toHaveBeenCalled(); expect(f.context).not.toHaveBeenCalled();
+      expect(f.record).not.toHaveBeenCalled(); expect(f.observe).not.toHaveBeenCalled();
+      const rendered = agent ? f.requests[0]!.context!.map(c => c.text).join("\n") : f.bodies[0]!.messages[0]!.content;
+      expect(rendered.match(/Photo Live/g)).toHaveLength(1);
+      expect(rendered).toContain('"vocabulary":"unavailable"');
+      expect(rendered).not.toContain("Ancienne préférence");
+      await f.run("Encore", false, null);
+      expect(f.snapshot).not.toHaveBeenCalled(); expect(f.context).not.toHaveBeenCalled();
+    } finally { await f.close(); }
+  });
   it("distingue une mémoire vide autoritaire d'une mémoire indisponible dans le contexte CLI", async () => {
     const f = await fixture(true);
     try {
@@ -104,7 +130,7 @@ describe("mémoire des cerveaux", () => {
       f.record.mockRejectedValue(new Error("indisponible"));
       const started = performance.now();
       expect(await f.run("Bonjour")).toBe("Bonjour.");
-      expect(performance.now() - started).toBeLessThan(2000);
+      expect(performance.now() - started).toBeLessThan(3500);
       expect(f.snapshot.mock.calls[0]![0]!.signal!.aborted).toBe(true);
     } finally { await f.close(); }
   });

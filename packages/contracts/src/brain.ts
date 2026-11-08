@@ -1,5 +1,7 @@
 // Cerveau et modèles : modèle de langage en service (slot brain.main), cerveau qui mène un tour, délégation,
 // appel ponctuel (tri, résumé) et commandes reconnues localement.
+import type { PreparedMemoryContext } from "./memory-context.ts";
+import type { McpTurnContext } from "./mcp.ts";
 import type { Text } from "@floppy/core";
 
 /** Hook conversation.command : reconnaissance locale, sans exécution ; l'orchestrateur appelle le registre d'outils. */
@@ -47,8 +49,13 @@ export interface BrainRunInput {
   history?: { role: "user" | "assistant"; text: string }[];
   /** Faux : l'appelant a déjà enregistré le tour (ex. délégation depuis Live). */
   recordMemory?: boolean;
+  /** Photo préparée par l'appelant : aucune relecture ; null = aucun fournisseur.
+   * Indépendant de recordMemory, qui ne contrôle que l'observation et l'enregistrement. */
+  memoryContext?: PreparedMemoryContext | null;
   /** Identifiant de corrélation du tour, fourni par l'hôte. */
   turn?: string;
+  /** Identité du tour hôte pour les outils, distincte de la session d'historique d'une délégation. */
+  toolContext?: McpTurnContext;
 }
 
 export type BrainEvent =
@@ -69,6 +76,7 @@ export interface BrainService {
   /** Garde son historique par session. L'appelant fournit `history` en secours, sans le préfixer à chaque demande. */
   keepsHistory?: boolean;
   /** Gère lui-même la photo mémoire et l'enregistrement des tours. */
+  // Le propriétaire prépare, observe et enregistre ; il respecte memoryContext et recordMemory=false.
   managesMemory?: boolean;
   run(input: BrainRunInput): AsyncIterable<BrainEvent>;
   /** Oublie l'historique d'une conversation. */

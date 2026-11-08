@@ -6,6 +6,8 @@ Floppy peut retenir tes corrections de noms dans leur contexte : canal Teams, pr
 
 Si « Core Team » est transcrit « court team », dis **« Non, je dis Core Team »**. Tu peux aussi écrire **« Corrige court team en Core Team »** dans la conversation si la voix continue à mal reconnaître le nom corrigé.
 
+Une réponse comme « non, Alice » ou « je veux dire Alice » peut être un changement d'avis : elle n'est pas retenue comme une correspondance permanente. Pour corriger la reconnaissance, indique ce que tu as dit, ou nomme explicitement les deux formes. Dans « non, je dis Core Team », la variante mal reconnue doit venir de la demande précédente ; les mots de cette réponse ne servent pas de variante à mémoriser.
+
 Précise l'équipe ou le compte si plusieurs canaux portent ce nom. Floppy retient la correspondance après l'appel réussi à son outil ; dire « c'est retenu » sans écriture ne suffit pas. Les demandes suivantes peuvent utiliser cette correspondance. Le moteur STT lui-même n'est pas réentraîné.
 
 La correction concerne les noms de cibles. Elle ne remplace pas des mots dans le texte d'un message à envoyer ou dans la dictée libre.

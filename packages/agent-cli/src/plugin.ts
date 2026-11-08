@@ -3,7 +3,7 @@ import { z } from "zod";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { agentPrompt, definePlugin, findExe, itemSecret, T, TextError, type Context, type FieldDef } from "@floppy/core";
-import type { AgentRunInput, BrainService } from "@floppy/contracts";
+import type { AgentRunInput, BrainService, McpTurnContext } from "@floppy/contracts";
 import { offerAgent, validAgentModel, agentTools, type AgentDefinition } from "./offers.ts";
 import { prepareAgentProfile, parseAgentEvent, floppyToolName, type AgentProtocol } from "./profiles.ts";
 import { runAgentStream } from "./stream.ts";
@@ -84,13 +84,16 @@ export function createExternalAgent(def: AgentDefinition & { protocol?: AgentPro
         },
       });
       const mcp = def.protocol ? ctx.get("mcp") : undefined;
-      const runIn = (f: Context) => async function* (input: AgentRunInput) {
+      const runIn = (f: Context) => async function* (input: AgentRunInput, context?: McpTurnContext) {
         const c = config(); const program = exe(); const model = input.model ?? (c.delegateModel || c.model);
         if (!program || !model || !validAgentModel(model)) throw new TextError(T("Programme ou modèle de l'agent manquant ou invalide.", "Agent program or model is missing or invalid."));
         const tools = agentTools(f).map((t) => t.name);
         const scope = mcp!.scoped({ tools });
+        let unbind: (() => void) | undefined;
         let runs: string | undefined, turn: string | undefined;
         try {
+          // Seul le cerveau reçoit un tour hôte ; une mission autonome garde son jeton sans identité de conversation.
+          unbind = context ? scope.bindContext?.(context) : undefined;
           runs = f.workspace("runs");
           turn = mkdtempSync(join(runs, "turn-"));
           const key = secret.get(def.id);
@@ -108,6 +111,7 @@ export function createExternalAgent(def: AgentDefinition & { protocol?: AgentPro
               secrets: [scope.token, ...(key ? [key] : [])] });
           }
         } finally {
+          unbind?.();
           scope.close();
           // Seul le dossier temporaire créé pour ce tour peut être retiré, jamais un dossier choisi par l'utilisateur.
           if (turn && runs && resolve(turn).startsWith(resolve(runs) + sep)) {
@@ -126,8 +130,11 @@ export function createExternalAgent(def: AgentDefinition & { protocol?: AgentPro
             async *run(input) {
               const c = config();
               const context = input.context ?? history.get(input.session) ?? [];
+              const toolContext = input.toolContext ?? { session: input.session, origin: input.origin, turn: input.turn, signal: input.signal };
+              const signal = input.signal && toolContext.signal && input.signal !== toolContext.signal
+                ? AbortSignal.any([input.signal, toolContext.signal]) : input.signal ?? toolContext.signal;
               let result = "";
-              for await (const event of run({ ...input, context, model: delegated ? c.delegateModel || c.model : c.model })) {
+              for await (const event of run({ ...input, context, model: delegated ? c.delegateModel || c.model : c.model }, { ...toolContext, signal })) {
                 if (event.type === "done") result = event.text;
                 yield event;
               }

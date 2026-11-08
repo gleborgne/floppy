@@ -3,6 +3,7 @@
 // les types des services qu'il fournit ou utilise ; il ne s'importe jamais avec un autre plugin.
 export type * from "./brain.ts";
 export type * from "./memory.ts";
+export * from "./memory-context.ts";
 export type * from "./vocabulary.ts";
 export type * from "./agents.ts";
 export type * from "./voice.ts";

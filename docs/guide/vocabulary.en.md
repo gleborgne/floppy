@@ -4,7 +4,9 @@ Floppy can remember your explicit name corrections in context, such as a Teams c
 
 ## Correct a name
 
-If “Core Team” is transcribed as “court team”, say **“No, I meant Core Team.”** You can also type **“Correct court team to Core Team”** in the conversation when speech recognition keeps getting the corrected name wrong.
+If “Core Team” is transcribed as “court team”, say **“No, I said Core Team.”** You can also type **“Correct court team to Core Team”** in the conversation when speech recognition keeps getting the corrected name wrong.
+
+A reply such as “no, Alice” or “I mean Alice” may be a change of mind: it is not saved as a permanent mapping. To correct recognition, state what you said or explicitly name both forms. For “no, I said Core Team”, the misrecognized form must come from the previous request; words from the corrective reply are not used as the form to remember.
 
 Specify the team or account if multiple channels share the name. A correction is remembered only after a successful tool write and can be used on subsequent requests. This does not retrain the speech model or replace words in message bodies or free dictation.
 
