@@ -93,6 +93,8 @@ interface SttService {
 
 ## Suite
 
+Le vocabulaire personnel est désormais un plugin séparé (`voice/vocabulary`) qui utilise la mémoire, après acceptation d'une demande utilisateur. Il apprend les corrections explicites de noms (ex. Core Team) et fournit des interprétations contextualisées aux cerveaux. Le contrat STT et le son restent inchangés ; aucun remplacement global des transcriptions ni de la dictée. Voir [Mémoire et corrections](memoire-skills-ton-langue.md#corrections-du-vocabulaire-implémenté).
+
 1. Lecteur audio.cpp : offrir aussi `stt` (familles `*_asr`, dont `parakeet_tdt`) et `vad`, un seul serveur partagé.
 2. Lecteur transcribe.cpp (Parakeet Ultra, Silero intégré).
 3. « Modèles connus » à ajouter en un clic : **fait** (Silero VAD, Parakeet TDT v3), voir [telechargements.md](telechargements.md).

@@ -1,5 +1,5 @@
 // Cerveau et modèles : modèle de langage en service (slot brain.main), cerveau qui mène un tour, délégation,
-// mémoire, appel ponctuel (tri, résumé) et commandes reconnues localement.
+// appel ponctuel (tri, résumé) et commandes reconnues localement.
 import type { Text } from "@floppy/core";
 
 /** Hook conversation.command : reconnaissance locale, sans exécution ; l'orchestrateur appelle le registre d'outils. */
@@ -45,6 +45,10 @@ export interface BrainRunInput {
   context?: { role: "user" | "assistant"; text: string }[];
   /** Copie de secours de l'historique : un agent persistant ne l'envoie au modèle qu'après une perte de session. */
   history?: { role: "user" | "assistant"; text: string }[];
+  /** Faux : l'appelant a déjà enregistré le tour (ex. délégation depuis Live). */
+  recordMemory?: boolean;
+  /** Identifiant de corrélation du tour, fourni par l'hôte. */
+  turn?: string;
 }
 
 export type BrainEvent =
@@ -64,25 +68,13 @@ export interface BrainService {
   aliases?: string[];
   /** Garde son historique par session. L'appelant fournit `history` en secours, sans le préfixer à chaque demande. */
   keepsHistory?: boolean;
+  /** Gère lui-même la photo mémoire et l'enregistrement des tours. */
+  managesMemory?: boolean;
   run(input: BrainRunInput): AsyncIterable<BrainEvent>;
   /** Oublie l'historique d'une conversation. */
   reset(session: string): void;
   /** Faux = désactivé dans les réglages : à ne pas proposer ni utiliser (absent = actif). */
   enabled?(): boolean;
-}
-
-export interface MemorySnapshot {
-  user: string;
-  memory: string;
-}
-
-/** La mémoire de Floppy : ce qu'il sait de l'utilisateur, et l'historique des conversations où chercher. */
-export interface MemoryService {
-  /** USER.md et MEMORY.md, lus maintenant. Le cerveau en garde une photo par conversation. */
-  snapshot(): MemorySnapshot;
-  /** Ajoute un message à l'historique (SQLite FTS5). */
-  record(e: { session: string; role: "user" | "assistant"; text: string; origin?: string }): void;
-  search(query: string, limit?: number): { t: string; role: string; text: string; session: string }[];
 }
 
 // ------------------------------------------------------------------ appel ponctuel à un modèle (tri, résumé)
@@ -110,7 +102,6 @@ declare module "@floppy/core" {
     brain: BrainService;
     /** Gros cerveau pour la délégation (montage A) : CLI Claude ou Codex. */
     delegate: BrainService;
-    memory: MemoryService;
     completion: CompletionService;
   }
 }

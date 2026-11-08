@@ -9,6 +9,7 @@ export const PACKAGES: readonly string[] = [
   "@floppy/plugin-llm-llamacpp",
   "@floppy/plugin-llm-openai",
   "@floppy/plugin-memory",
+  "@floppy/plugin-voice-vocabulary",
   "@floppy/plugin-brain-aisdk",
   "@floppy/plugin-brain-claude-cli",
   "@floppy/plugin-brain-codex-cli",

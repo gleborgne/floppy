@@ -26,7 +26,7 @@
 | `write` non réversible, `send`, `delete` | Accord avant l'action. |
 | `physical` (plus tard : Sonos, domotique) | Accord avant l'action. Jamais `always` par défaut. |
 
-- L'utilisateur peut régler chaque catégorie sur `always`, `ask` ou `never`. **La règle la plus restrictive gagne.**
+- L'utilisateur peut régler chaque catégorie sur `always`, `ask` ou `never`. Une entrée `approvals.toolRules` peut remplacer ce défaut pour un triplet exact fournisseur/outil/niveau. Un interdit global `never` reste absolu ; plusieurs règles ciblées prennent la plus stricte, et la règle de l'outil ne peut que durcir la décision. L'autorisation de corriger le vocabulaire n'autorise ni un autre outil, ni un envoi, ni une suppression.
 - Pas de réponse à une demande d'accord = **refus**.
 - Deux cas **demandent toujours l'accord**, même si `write: always` : activer un élément **cloud**, et changer un réglage de risque `ask`. Le code force la règle `ask` pour eux (`override`).
 

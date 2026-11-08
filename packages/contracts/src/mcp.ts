@@ -14,10 +14,20 @@ export interface ScopedOptions {
   extraTools?: ExtraTool[];
 }
 
+/** Contexte de tour attaché par Floppy, jamais accepté depuis une requête MCP du modèle. */
+export interface McpTurnContext {
+  session: string;
+  origin?: string;
+  turn?: string;
+  signal?: AbortSignal;
+}
+
 export interface ScopedEndpoint {
   url: string;
   /** Jeton propre à cet accès : il ne liste et n'appelle que les outils demandés. */
   token: string;
+  /** Lie le jeton au tour actif. La fermeture annule les appels encore en cours de ce tour. */
+  bindContext?(context: McpTurnContext): () => void;
   /** Révoque le jeton. */
   close(): void;
 }
@@ -28,6 +38,8 @@ export interface McpEndpoint {
   url: string;
   /** Jeton à envoyer en `Authorization: Bearer <jeton>`. Nouveau à chaque démarrage. Voit tous les outils. */
   token: string;
+  /** Plusieurs tours distincts sur le même jeton rendent le contexte ambigu (aucune session attribuée). */
+  bindContext?(context: McpTurnContext): () => void;
   /** Accès restreint à quelques outils (assistant de la fenêtre des réglages). */
   scoped(opts: ScopedOptions): ScopedEndpoint;
   /** Tenue quand les connecteurs du démarrage ont fini de se brancher (réussis ou non). Ils se branchent après `apply`. */

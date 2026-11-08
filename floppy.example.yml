@@ -6,7 +6,15 @@ assistant:
   name: Floppy
   language: fr
   wake_words: [floppy, flopy, floppie, flopi]
-approvals: { read: always, write: ask, send: ask, delete: ask, timeout_s: 90 }
+approvals:
+  read: always
+  write: ask
+  send: ask
+  delete: ask
+  timeout_s: 90
+  # Seules les corrections explicitement formulées et vérifiées peuvent être retenues sans nouvel accord.
+  toolRules:
+    - { source: vocabulary, tool: corriger_vocabulaire, level: write, rule: always }
 # Initial slot choices ("<entry id>/<item>"), used until something is chosen in Settings or by voice.
 # The kernel only runs the chosen item while someone uses it.
 slots:
@@ -53,6 +61,7 @@ plugins:
   # Remote models (OpenAI-compatible API): add them in Settings → Brain.
   - { id: llmremote, plugin: llm-openai }
   - { id: memory, plugin: memory }
+  - { id: vocabulary, plugin: vocabulary }
   - { id: claude, plugin: brain-claude-cli, config: { model: sonnet, as: [delegate] } }
   # Codex (needs the `codex` CLI, signed in): main brain or delegate, one item per model. Also addable in Settings → Brain.
   # - { id: codex, plugin: brain-codex-cli }

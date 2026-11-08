@@ -47,7 +47,7 @@ export function approvalsFor(k: KernelInternals, manifest: PluginDef["manifest"]
   return {
     check: (input) => {
       if (scope.isClosed) return Promise.resolve({ ok: false, reason: "cancelled" as const });
-      return k.approvals.check({ ...input, signal: input.signal ? AbortSignal.any([input.signal, stop.signal]) : stop.signal });
+      return k.approvals.check({ ...input, source: id, signal: input.signal ? AbortSignal.any([input.signal, stop.signal]) : stop.signal });
     },
     respond: (rid, ok, by) => may ? k.approvals.respond(rid, ok, by) : deny("approvals.respond"),
     pending: () => may ? k.approvals.pending() : deny("approvals.pending"),
@@ -172,7 +172,7 @@ export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pe
     },
     tools: {
       register: (defs) => {
-        const clean = defs.map(({ selfApproved: _s, ...d }) => ({ ...d, handler: as(d.handler) }));
+        const clean = defs.map(({ selfApproved: _s, ...d }) => ({ ...d, ...(typeof d.rule === "function" ? { rule: as(d.rule) } : {}), ...(d.auditArgs ? { auditArgs: as(d.auditArgs) } : {}), handler: as(d.handler) }));
         const remove = scope.add(k.tools.register(e.cfg.id, clean));
         return () => { void remove(); };
       },

@@ -10,6 +10,11 @@ import { tr, type Text } from "./i18n.ts";
 
 export interface ApprovalInput {
   tool: string;
+  /** Entrée qui fournit l'outil, fixée par le noyau et jamais par ses arguments. */
+  source?: string;
+  callId?: string;
+  session?: string;
+  turn?: string;
   args: unknown;
   level: Level;
   /** Phrase courte montrée et dite à l'utilisateur (« Ouvrir https://… ? ») : texte simple ou { fr, en }. */
@@ -70,19 +75,23 @@ export class ApprovalManager {
     this.settings = s;
   }
 
-  ruleFor(level: Level, override?: Rule): Rule {
-    return strictest(this.settings[level], override);
+  ruleFor(level: Level, override?: Rule, tool?: string, source?: string): Rule {
+    const base = this.settings[level];
+    // Un interdit global reste absolu. Une règle ciblée ne vaut que pour le fournisseur ET le niveau autorisés.
+    const targeted = source && tool ? this.settings.toolRules?.filter(r => r.source === source && r.tool === tool && r.level === level) : undefined;
+    const selected = base === "never" ? base : targeted?.length ? strictest(...targeted.map(r => r.rule)) : base;
+    return strictest(selected, override);
   }
 
   /** Applique la règle, et demande à l'utilisateur si besoin. */
   async check(input: ApprovalInput): Promise<Decision> {
-    const rule = this.ruleFor(input.level, input.override);
+    const rule = this.ruleFor(input.level, input.override, input.tool, input.source);
     let decision: Decision;
     if (input.signal?.aborted) decision = { ok: false, reason: "cancelled" };
     else if (rule === "never") decision = { ok: false, reason: "policy-never" };
     else if (rule === "always") decision = { ok: true, reason: "policy-always" };
     else decision = await this.request(input);
-    this.audit.write({ kind: "approval", tool: input.tool, level: input.level, rule, ok: decision.ok, reason: decision.reason, by: decision.by });
+    this.audit.write({ kind: "approval", tool: input.tool, source: input.source, callId: input.callId, session: input.session, turn: input.turn, level: input.level, rule, ok: decision.ok, reason: decision.reason, by: decision.by });
     return decision;
   }
 
@@ -90,6 +99,10 @@ export class ApprovalManager {
     const ttl_s = this.settings.timeout_s;
     const req: ApprovalRequest = {
       id: randomUUID(), tool: input.tool, args: input.args, level: input.level, summary: tr(input.summary, this.lang()),
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.callId ? { callId: input.callId } : {}),
+      ...(input.session ? { session: input.session } : {}),
+      ...(input.turn ? { turn: input.turn } : {}),
       ttl_s, expiresAt: Date.now() + ttl_s * 1000,
       ...(input.origin ? { origin: input.origin } : {}),
     };

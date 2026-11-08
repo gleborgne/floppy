@@ -76,6 +76,7 @@ flowchart LR
   s_task(["task"])
   s_tts(["tts"])
   s_vad(["vad"])
+  s_vocabulary(["vocabulary"])
   s_voice(["voice"])
   s_wakeword(["wakeword"])
   p_tools["tools"]
@@ -85,9 +86,14 @@ flowchart LR
   p_llm_llamacpp --> s_completion
   p_memory["memory"]
   p_memory --> s_memory
+  p_vocabulary["vocabulary"]
+  p_vocabulary --> s_vocabulary
+  s_memory -.-> p_vocabulary
   p_brain_aisdk["brain-aisdk"]
   p_brain_aisdk --> s_brain
   s_memory -.-> p_brain_aisdk
+  s_vocabulary -.-> p_brain_aisdk
+  s_mcp -.-> p_brain_aisdk
   s_llm == "brain.main" ==> p_brain_aisdk
   s_delegate == "brain.delegate" ==> p_brain_aisdk
   p_brain_claude_cli["brain-claude-cli"]
@@ -121,6 +127,8 @@ flowchart LR
   s_brain -.-> p_conversation
   s_voice -.-> p_conversation
   s_memory -.-> p_conversation
+  s_vocabulary -.-> p_conversation
+  s_mcp -.-> p_conversation
   s_live == "conversation.live" ==> p_conversation
   s_tts == "voice.tts" ==> p_conversation
   s_wakeword == "listen.wakeword" ==> p_conversation
@@ -191,14 +199,15 @@ Sans service (outils seuls) : `browser`, `inbox`, `m365`.
 | `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `agent-jobs` (facultatif), `scheduler` (facultatif), `veille` (facultatif), noyau |
 | `live` | `LiveService` (`packages/contracts/src/voice.ts`) | Un modèle « Live » qui écoute et parle lui-même (Gemini, GPT) ; les outils passent par lui ou par délégation | `live-gemini`, `live-openai` | `conversation` (slot `conversation.live`) |
 | `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `orca` (facultatif), `brain-aisdk` (slot `brain.main`) |
-| `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `coder` |
-| `memory` | `MemoryService` (`packages/contracts/src/brain.ts`) | La mémoire de Floppy | `memory` | `brain-aisdk` (facultatif), `conversation` (facultatif) |
+| `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `coder`, `brain-aisdk` (facultatif), `conversation` (facultatif) |
+| `memory` | `MemoryService` (`packages/contracts/src/memory.ts`) | Un adaptateur peut être local ou distant ; les appelants attendent toujours ses résultats | `memory` | `vocabulary` (facultatif), `brain-aisdk` (facultatif), `conversation` (facultatif) |
 | `notify` | `NotifyService` (`packages/contracts/src/notify.ts`) | Un canal d'envoi configuré (ex. « Telegram · mon canal », « Gmail · perso ») | `notify-telegram`, `notify-mail` | `scheduler` (facultatif) |
 | `search` | `SearchService` (`packages/contracts/src/search.ts`) | Recherche web en service, pour les autres plugins (la Veille) | `websearch`, `searxng` | `veille` (slot `veille.recherche`) |
 | `stt` | `SttService` (`packages/contracts/src/voice.ts`) | Transcription en service (l'élément choisi dans le slot listen.stt) | `stt-sherpa` | `voice-listen` (slot `listen.stt`) |
 | `task` | `TaskService` (`packages/core/src/services.ts`) | Un plugin qui a des tâches les déclare dans son manifeste (`tasks`) et fournit ce service | `veille` | noyau |
 | `tts` | `TtsService` (`packages/contracts/src/voice.ts`) | Une voix en service (l'élément choisi dans le slot voice.tts) | `tts-gemini`, `tts-elevenlabs`, `tts-audiocpp`, `tts-system` | `conversation` (slot `voice.tts`) |
 | `vad` | `VadService` (`packages/contracts/src/voice.ts`) | Détecteur de parole en service (l'élément choisi dans le slot listen.vad) | `stt-sherpa` | `voice-listen` (slot `listen.vad`) |
+| `vocabulary` | `VocabularyService` (`packages/contracts/src/vocabulary.ts`) | Interprétation du vocabulaire personnel ; ne modifie jamais une transcription ni un message | `vocabulary` | `brain-aisdk` (facultatif), `conversation` (facultatif) |
 | `voice` | `VoiceService` (`packages/contracts/src/voice.ts`) | Le flux voix d'un corps | `voice-listen` | `conversation` (facultatif), `wakeword-stt` (facultatif) |
 | `wakeword` | `WakewordService` (`packages/contracts/src/voice.ts`) | Un détecteur du mot d'activation (« Floppy »), sur le son ou sur le texte transcrit | `wakeword-stt`, `wakeword-sherpa`, `wakeword-porcupine` | `conversation` (slot `listen.wakeword`) |
 <!-- carte des services : fin -->
@@ -387,7 +396,9 @@ flowchart LR
 
 - Niveau d'un outil MCP : **config** (nom exact, puis motif `write_*`) > **annotations MCP** (`readOnlyHint` → read, seulement pour un serveur local ou un serveur distant avec `trust_annotations: true` ; `destructiveHint` → delete) > **inconnu = write**.
 - `never` dans la config d'un serveur interdit l'outil sans même demander (exemple : `write_*` sur le coffre Obsidian).
+- `approvals.toolRules` permet une autorisation utilisateur ciblée : `{ source, tool, level, rule }`, tous les identifiants comparés exactement. Cette règle remplace le défaut du niveau pour ce seul outil ; un niveau global `never` reste absolu. Les doublons prennent la règle la plus stricte, puis la règle de l'outil peut encore durcir (`rule` statique ou fonction). Le fournisseur vient du registre, jamais des paramètres du modèle. Exemple livré : mémoriser une correction explicite sans autoriser toutes les écritures. `ctx.approvals.check` fixe aussi la source à l'entrée appelante.
 - Statuts d'un résultat : `done`, `unverified`, `failed`, `refused`.
+- Chaque appel reçoit un `callId` neuf du registre. La session et le tour hôte (`session`, `turn`) sont repris dans l'accord et le résultat pour relier les événements. Un outil peut déclarer `auditArgs` pour réduire les paramètres journalisés ; son erreur brute est alors remplacée par `tool-failed`. Un filtre qui lève une erreur produit seulement `{ redacted: true }`, jamais les paramètres d'origine. Les détails utiles restent dans la réponse utilisateur de l'outil.
 - Un plugin demande un accord par `ctx.approvals.check`. Seuls `body-hub`, `conversation` et `bench-api` (catalogue de développement, `FLOPPY_DEV=1`) peuvent répondre (`permissions.approvals: "respond"`) ; voir [Sécurité](securite.md#laccord).
 - La demande d'accord a un **id secret** (UUID) et une durée de vie. Le modèle ne le voit jamais. Seuls les corps (bus) et la CLI répondent. **La première réponse gagne**, les suivantes sont ignorées.
 
@@ -401,6 +412,7 @@ Testé (`plugins/tools/test/tools.test.ts`) : une écriture refusée ou sans ré
 - Si un serveur s'arrête tout seul : **seul son connecteur** passe en erreur (« le serveur s'est arrêté : … »), avec une ligne au journal (`mcp.server_down`). Le plugin `tools` et les autres connecteurs continuent. Ce n'est pas un `ctx.fail()`.
 - Connexion à un serveur : délai de 30 s. Les connecteurs se branchent **après** `apply`, en arrière-plan : le service `mcp` est visible tout de suite, et un connecteur lent ne retarde ni le démarrage ni les cerveaux CLI. `mcp.connected()` est tenue quand ils ont tous fini (réussis ou non).
 - Ouvre le **serveur MCP Floppy** (`127.0.0.1`, port 8740 par défaut, jeton nouveau à chaque démarrage) et fournit le service `mcp` = `{ url, token }` pour les cerveaux CLI.
+- `mcp.bindContext({ session, origin, signal })` attache temporairement le tour hôte à ce jeton et rend une fermeture. Les jetons restreints possèdent leurs propres contextes. Plusieurs liaisons identiques sont possibles ; des sessions/origines contradictoires ne transmettent aucun contexte. Les appels reçoivent le contexte hôte et son signal, jamais une session fournie dans les arguments MCP. La fermeture du tour annule les appels concernés.
 
 ## La CLI et le point de contrôle
 

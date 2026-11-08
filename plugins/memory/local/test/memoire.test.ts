@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel } from "@floppy/core";
+import { Kernel, TextError, tr } from "@floppy/core";
+import type { MemoryService } from "@floppy/contracts";
 import memory, { applyEdit } from "../src/index.ts";
 
 describe("applyEdit : ligne exacte", () => {
@@ -15,17 +16,21 @@ describe("applyEdit : ligne exacte", () => {
     expect(() => applyEdit(cur, "supprimer", "x", "café")).toThrow(/introuvable/);
     expect(() => applyEdit(cur, "remplacer", "y", "")).toThrow(/introuvable/);
   });
+  it("donne aussi l'erreur en anglais", () => {
+    try { applyEdit(cur, "supprimer", "x", "café"); throw new Error("erreur attendue"); }
+    catch (e) { expect(e).toBeInstanceOf(TextError); expect(tr((e as TextError).text, "en")).toContain("Line not found"); }
+  });
 });
 
 let kernels: Kernel[] = [];
 afterEach(async () => { for (const k of kernels) await k.stopAll(); kernels = []; });
 
 describe("memoriser : accord", () => {
-  async function start() {
+  async function start(language = "fr") {
     const home = mkdtempSync(join(tmpdir(), "mem-"));
     const k = new Kernel({ logger: () => {}, plugins: [memory], home });
     kernels.push(k);
-    await k.applyConfig({ plugins: [{ id: "memory", plugin: "memory", config: { dir: home } }] });
+    await k.applyConfig({ assistant: { language }, plugins: [{ id: "memory", plugin: "memory", config: { dir: home } }] });
     const requests: { summary: string }[] = [];
     k.bus.on("approval.request", (r) => { requests.push(r); });
     return { k, home, requests };
@@ -53,5 +58,16 @@ describe("memoriser : accord", () => {
     const r = await p;
     expect(r.status).toBe("failed");
     expect(readFileSync(join(home, "USER.md"), "utf8")).toBe("- aime le café\n- autre\n");
+  });
+
+  it("traduit les résultats de mémorisation et de recherche en anglais", async () => {
+    const { k } = await start("en");
+    expect((await k.tools.call("chercher_historique", { requete: "coffee" })).text).toBe("Nothing found in history.");
+    await k.service<MemoryService>("memory")!.record({ role: "user", text: "coffee", session: "avatar" });
+    expect((await k.tools.call("chercher_historique", { requete: "coffee" })).text).toContain("User : coffee");
+    const p = k.tools.call("memoriser", { fichier: "notes", action: "ajouter", texte: "Likes coffee" });
+    await new Promise((r) => setTimeout(r, 30));
+    k.approvals.respond(k.approvals.pending()[0]!.id, true, "test");
+    expect((await p).text).toBe("Remembered.");
   });
 });

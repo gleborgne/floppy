@@ -20,6 +20,10 @@ export const ApprovalSettings = z.object({
   send: Rule.default("ask"),
   delete: Rule.default("ask"),
   physical: Rule.default("ask"),
+  /** Autorisations ciblées de l'utilisateur : identité exacte de l'entrée, outil et niveau. */
+  toolRules: z.array(z.object({
+    source: z.string().min(1), tool: z.string().min(1), level: Level, rule: Rule,
+  })).optional(),
   timeout_s: z.number().positive().default(90),
 }).prefault({});
 export type ApprovalSettings = z.infer<typeof ApprovalSettings>;

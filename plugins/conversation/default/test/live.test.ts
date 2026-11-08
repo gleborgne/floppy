@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { Kernel, definePlugin, AudioHistory, type Context } from "@floppy/core";
-import type { BodyHub, LiveService, LiveSession, LiveEvent, BrainRunInput } from "@floppy/contracts";
+import type { BodyHub, LiveService, LiveSession, LiveEvent, BrainRunInput, MemoryService, VocabularyService } from "@floppy/contracts";
 import type { KernelToBody } from "@floppy/protocol";
 import { LiveConversation, liveInstructions } from "../src/live.ts";
 
-async function fixture(kind: "function" | "delegation" = "function", timed = false) {
+async function fixture(kind: "function" | "delegation" = "function", timed = false, optional?: { memory: MemoryService; vocabulary?: VocabularyService }) {
   let ctx!: Context;
   let events!: (e: LiveEvent) => void;
   const sent: KernelToBody[] = [], audio: Uint8Array[] = [], replay: number[] = [];
@@ -12,10 +12,15 @@ async function fixture(kind: "function" | "delegation" = "function", timed = fal
   const service: LiveService = { name: "fake", capabilities: { tools: kind }, open: vi.fn(async (o) => { events = o.on; return session; }) };
   const order: string[] = [];
   const hub: BodyHub = { send: (_, m) => { sent.push(m); order.push(m.type); }, sendAudio: (_, data) => { audio.push(data); order.push("audio"); }, attach: () => {}, sessions: () => [], has: (_, cap) => timed && cap === "speech_timing", broadcast: () => {}, on: () => () => {} };
-  const provider = definePlugin({ manifest: { id: "body", version: "0", licence: "MIT", provides: ["body"] }, apply(c) { c.provide("body", hub); } });
-  const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["body"], optional: ["memory"], permissions: { approvals: "respond" } }, apply(c) { ctx = c; } });
-  const k = new Kernel({ logger: () => {}, plugins: [provider, probe] });
-  await k.applyConfig({ approvals: { timeout_s: 5 }, plugins: [{ id: "body", plugin: "body" }, { id: "probe", plugin: "probe" }] });
+  const unbind = vi.fn(), bind = vi.fn(() => unbind);
+  const provider = definePlugin({ manifest: { id: "body", version: "0", licence: "MIT", provides: ["body", "mcp"] }, apply(c) { c.provide("body", hub); c.provide("mcp", { url: "unused", token: "unused", bindContext: bind, scoped() { throw new Error("inutilisé"); } }); } });
+  const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["body"], optional: ["memory", "vocabulary", "mcp"], permissions: { approvals: "respond" } }, apply(c) { ctx = c; } });
+  const memories = definePlugin({ manifest: { id: "memories", version: "0", licence: "MIT", provides: ["memory", "vocabulary"] }, apply(c) {
+    if (optional) c.provide("memory", optional.memory);
+    if (optional?.vocabulary) c.provide("vocabulary", optional.vocabulary);
+  } });
+  const k = new Kernel({ logger: () => {}, plugins: [provider, probe, memories] });
+  await k.applyConfig({ approvals: { timeout_s: 5 }, plugins: [{ id: "body", plugin: "body" }, ...(optional ? [{ id: "memories", plugin: "memories" }] : []), { id: "probe", plugin: "probe" }] });
   const history = new AudioHistory(); history.push(new Float32Array([10, 11, 12, 13, 14]));
   const run = vi.fn(async function* (_input: BrainRunInput) { yield { type: "text" as const, delta: "Résultat confirmé." }; });
   const input = vi.fn();
@@ -24,10 +29,83 @@ async function fixture(kind: "function" | "delegation" = "function", timed = fal
   const states: string[] = [];
   const live = new LiveConversation({ ctx, body: "avatar", service, brain: { name: "fake", reset: () => {}, run }, history,
     tone: () => "sobre", profile: () => profile, freeListen: () => 1, onInput: input, onReply: reply, onState: (s) => states.push(s), onPlaying: () => {} });
-  return { k, service, session, live, audio, sent, history, run, input, reply, order, replay, states, setProfile: (p: typeof profile) => { profile = p; live.updateTone(); }, emit: (e: LiveEvent) => events(e) };
+  return { k, service, session, live, audio, sent, history, run, input, reply, order, replay, states, bind, unbind, setProfile: (p: typeof profile) => { profile = p; live.updateTone(); }, emit: (e: LiveEvent) => events(e) };
 }
 
 describe("conversation Live", () => {
+  it("transmet la mémoire et la corrélation MCP au cerveau direct délégué sans lui faire réenregistrer le tour", async () => {
+    const record = vi.fn<MemoryService["record"]>(() => {});
+    const f = await fixture("delegation", false, { memory: { snapshot: async () => ({ user: "", memory: "corps team → Core Team" }), record, search: () => [] } });
+    try {
+      await f.live.requestText("Lis corps team");
+      await vi.waitFor(() => expect(f.run).toHaveBeenCalledOnce());
+      const input = f.run.mock.calls[0]![0];
+      expect(input).toMatchObject({ recordMemory: false, session: "avatar", origin: "avatar", turn: expect.any(String) });
+      expect(JSON.stringify(input.context)).toContain("Core Team");
+      expect(f.bind).toHaveBeenCalledWith(expect.objectContaining({ session: "avatar", origin: "avatar", turn: input.turn }));
+      await vi.waitFor(() => expect(f.unbind).toHaveBeenCalledOnce());
+      f.emit({ type: "output_transcript", text: "Résultat confirmé.", final: true });
+      await vi.waitFor(() => expect(record).toHaveBeenCalledTimes(2));
+      expect(record.mock.calls.map(([e]) => [e.role, e.text])).toEqual([["user", "Lis corps team"], ["assistant", "Résultat confirmé."]]);
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("donne le vocabulaire aux instructions audio et l'actualise après un outil, sans réécrire le texte entendu", async () => {
+    let vocabulary = "corps team → Core Team";
+    const observe = vi.fn();
+    const record = vi.fn<MemoryService["record"]>(async () => {});
+    const f = await fixture("function", false, { memory: { snapshot: async () => ({ user: "Profil", memory: "" }), record, search: () => [] }, vocabulary: {
+      observe, context: async () => vocabulary, resolve: async () => ({ status: "none", candidates: [] }),
+    } });
+    try {
+      f.k.tools.register("test", [{ name: "corriger", description: "Corrige", level: "read", inputSchema: { type: "object" }, handler: async (_args, meta) => {
+        expect(meta.session).toBe("avatar");
+        expect(observe).toHaveBeenCalledWith(expect.objectContaining({ text: "Non, je dis Core Team", session: "avatar", origin: "avatar", turn: expect.any(String) }));
+        vocabulary = "corps team → Core Team confirmé";
+        return { status: "done", text: "Mémorisé" };
+      } }]);
+      await f.live.start(0, 5);
+      expect(vi.mocked(f.service.open).mock.calls[0]![0].instructions).toContain("corps team → Core Team");
+      expect(f.replay).toEqual([10, 11, 12, 13, 14]);
+      f.emit({ type: "input_transcript", text: "Non, je dis Core Team", final: false });
+      f.emit({ type: "tool_call", id: "correction", name: "corriger", args: {} });
+      await vi.waitFor(() => expect(f.session.toolResult).toHaveBeenCalledWith("correction", "corriger", expect.objectContaining({ text: expect.stringContaining("Core Team confirmé") })));
+      expect(f.session.append).toHaveBeenCalledWith("instruct", expect.stringContaining("Core Team confirmé"));
+      f.emit({ type: "output_transcript", text: "Compris.", final: true });
+      await vi.waitFor(() => expect(record).toHaveBeenCalledTimes(2));
+      expect(record.mock.calls.map(([e]) => [e.role, e.text])).toEqual([["user", "Non, je dis Core Team"], ["assistant", "Compris."]]);
+      expect(f.sent).toContainEqual({ type: "transcript", text: "Non, je dis Core Team", final: false });
+      expect(observe).toHaveBeenCalledOnce();
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("ignore un ancien chargement qui termine après l'oubli d'une correction", async () => {
+    const snapshot = vi.fn<MemoryService["snapshot"]>(async () => ({ user: "", memory: "Ancienne correction Core Team" }));
+    const f = await fixture("function", false, { memory: { snapshot, record: () => {}, search: () => [] } });
+    let release!: (value: { user: string; memory: string }) => void;
+    try {
+      await f.live.start(0, 5);
+      snapshot.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      f.emit({ type: "generation_done" });
+      await vi.waitFor(() => expect(release).toBeDefined());
+      snapshot.mockResolvedValue({ user: "", memory: "" });
+      f.emit({ type: "generation_done" });
+      await vi.waitFor(() => expect(f.session.append).toHaveBeenCalledWith("instruct", expect.stringContaining('"memory":""')));
+      release({ user: "", memory: "Ancienne correction Core Team" });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(f.session.append).toHaveBeenCalledOnce();
+      expect(vi.mocked(f.session.append).mock.calls[0]![1]).not.toContain("Core Team");
+    } finally { release?.({ user: "", memory: "" }); await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("poursuit l'audio quand le fournisseur mémoire asynchrone ne répond pas", async () => {
+    const snapshot = vi.fn<MemoryService["snapshot"]>(() => new Promise(() => {}));
+    const f = await fixture("function", false, { memory: { snapshot, record: async () => { throw new Error("hors ligne"); }, search: () => [] } });
+    try {
+      await f.live.start(0, 5);
+      expect(snapshot.mock.calls[0]![0]!.signal!.aborted).toBe(true);
+      f.emit({ type: "input_transcript", text: "Bonjour", final: true });
+      f.emit({ type: "audio", generation: 0, rate: 24000, pcm: new Int16Array(2400) });
+      expect(f.audio).toHaveLength(1);
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
   it.each(["function", "delegation"] as const)("aligne le texte sur le prochain bloc %s sans retarder le son", async (kind) => {
     const f = await fixture(kind, true);
     try {

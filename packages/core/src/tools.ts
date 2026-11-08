@@ -6,10 +6,17 @@ import type { Audit } from "./audit.ts";
 import type { Hooks } from "./plugin/hooks.ts";
 import type { Level, Rule } from "./config/schema.ts";
 import { errorText, T, tr, type Text } from "./i18n.ts";
+import { randomUUID } from "node:crypto";
 
 export type JsonSchema = Record<string, unknown>;
 
 export interface ToolCallMeta {
+  /** Conversation d'origine, attachée par l'appelant hôte (jamais par les arguments du modèle). */
+  session?: string;
+  /** Tour hôte, partagé avec les observations de mémoire. */
+  turn?: string;
+  /** Identifiant neuf fixé par le registre pour chaque appel. */
+  callId?: string;
   /** Qui appelle : "aisdk", "mcp", "cli"… */
   caller?: string;
   /** Corps d'origine du tour (routage de l'accord et des outils corps). */
@@ -36,7 +43,9 @@ export interface ToolDef {
   inputSchema: JsonSchema;
   level: Level;
   /** Règle propre à l'outil (ne peut que durcir la règle du niveau). */
-  rule?: Rule;
+  rule?: Rule | (() => Rule | undefined);
+  /** Réduit les paramètres du journal aux métadonnées utiles. En sa présence, l'erreur brute est aussi masquée. */
+  auditArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
   /** Phrase pour la demande d'accord (texte simple ou { fr, en }). Par défaut : nom + paramètres. */
   summary?: (args: Record<string, unknown>) => Text;
   handler: (args: Record<string, unknown>, meta: ToolCallMeta) => Promise<ToolOutput>;
@@ -133,10 +142,11 @@ export class ToolRegistry {
   }
 
   async call(name: string, args: Record<string, unknown>, meta: ToolCallMeta = {}): Promise<ToolResult> {
+    meta = { ...meta, callId: randomUUID() };
     const t0 = performance.now();
     const entry = this.hidden.has(name) ? undefined : this.tools.get(name);
     if (!entry) {
-      this.audit.write({ kind: "tool", tool: name, args, status: "failed", error: "outil inconnu", caller: meta.caller });
+      this.audit.write({ kind: "tool", tool: name, args, status: "failed", error: "outil inconnu", caller: meta.caller, callId: meta.callId, session: meta.session, turn: meta.turn });
       return { status: "failed", text: tr(T(`Outil inconnu : ${name}`, `Unknown tool: ${name}`), this.lang()) };
     }
     const { def, source } = entry;
@@ -149,9 +159,10 @@ export class ToolRegistry {
         const run = async (): Promise<ToolResult> => { const out = await def.handler(input.args, meta); return { ...out, text: tr(out.text, this.lang()) }; };
         if (def.selfApproved) return run();
         const decision = await this.approvals.check({
-          tool: name, args: input.args, level: def.level,
+          tool: name, source, args: input.args, level: def.level,
+          callId: meta.callId, session: meta.session, turn: meta.turn,
           summary: def.summary ? def.summary(input.args) : defaultSummary(name, input.args),
-          ...(def.rule ? { override: def.rule } : {}),
+          override: typeof def.rule === "function" ? def.rule() : def.rule,
           ...(meta.origin ? { origin: meta.origin } : {}),
           signal: meta.signal,
         });
@@ -164,9 +175,10 @@ export class ToolRegistry {
       result = { status: "failed", text: tr(T(`Erreur de l'outil ${name} : ${why}`, `Tool ${name} failed: ${why}`), this.lang()) };
     }
     this.audit.write({
-      kind: "tool", tool: name, source, level: def.level, args, status: result.status,
+      kind: "tool", tool: name, source, level: def.level, args: auditArgs(def, args), status: result.status,
+      callId: meta.callId, session: meta.session, turn: meta.turn,
       ms: Math.round(performance.now() - t0), caller: meta.caller, origin: meta.origin,
-      ...(result.status === "failed" ? { error: result.text.slice(0, 300) } : {}),
+      ...(result.status === "failed" ? { error: def.auditArgs ? "tool-failed" : result.text.slice(0, 300) } : {}),
     });
     return result;
   }
@@ -181,4 +193,10 @@ export class ToolRegistry {
 function defaultSummary(name: string, args: Record<string, unknown>): string {
   const a = JSON.stringify(args);
   return `${name} ${a.length > 160 ? a.slice(0, 157) + "…" : a}`;
+}
+
+function auditArgs(def: ToolDef, args: Record<string, unknown>): Record<string, unknown> {
+  if (!def.auditArgs) return args;
+  try { return def.auditArgs(args); }
+  catch { return { redacted: true }; } // Une erreur du filtre ne doit jamais exposer les paramètres d'origine.
 }

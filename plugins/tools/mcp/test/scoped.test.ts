@@ -23,6 +23,7 @@ describe("serveur MCP restreint", () => {
     k.tools.register("test", [
       { name: "outil_a", description: "a", inputSchema: { type: "object", properties: {} }, level: "read", handler: async () => { reached.push("a"); return { status: "done", text: "A" }; } },
       { name: "outil_b", description: "b", inputSchema: { type: "object", properties: {} }, level: "read", handler: async () => { reached.push("b"); return { status: "done", text: "B" }; } },
+      { name: "contexte", description: "contexte hôte", inputSchema: { type: "object", properties: {} }, level: "read", handler: async (_args, meta) => ({ status: "done", text: JSON.stringify({ session: meta.session ?? null, origin: meta.origin ?? null }) }) },
     ]);
     mcp = k.service<McpEndpoint>("mcp")!;
   });
@@ -34,6 +35,26 @@ describe("serveur MCP restreint", () => {
     expect(names).toContain("outil_a");
     expect(names).toContain("outil_b");
     await c.close();
+  });
+
+  it("transmet le contexte hôte, ignore la session du modèle et isole les jetons", async () => {
+    const master = await connect(mcp.url, mcp.token);
+    const scoped = mcp.scoped({ tools: ["contexte"] });
+    const child = await connect(scoped.url, scoped.token);
+    const release = mcp.bindContext!({ session: "avatar", origin: "micro" });
+    try {
+      expect(JSON.parse(text(await master.callTool({ name: "contexte", arguments: { session: "invente", origin: "autre" } })))).toEqual({ session: "avatar", origin: "micro" });
+      expect(JSON.parse(text(await child.callTool({ name: "contexte", arguments: {} })))).toEqual({ session: null, origin: null });
+      const childRelease = scoped.bindContext!({ session: "mission", origin: "chat" });
+      expect(JSON.parse(text(await child.callTool({ name: "contexte", arguments: {} })))).toEqual({ session: "mission", origin: "chat" });
+      childRelease();
+      const conflict = mcp.bindContext!({ session: "autre", origin: "chat" });
+      expect(JSON.parse(text(await master.callTool({ name: "contexte", arguments: {} })))).toEqual({ session: null, origin: null });
+      conflict();
+    } finally { release(); await master.close(); await child.close(); scoped.close(); }
+    const fresh = await connect(mcp.url, mcp.token);
+    try { expect(JSON.parse(text(await fresh.callTool({ name: "contexte", arguments: {} })))).toEqual({ session: null, origin: null }); }
+    finally { await fresh.close(); }
   });
 
   it("un jeton restreint ne liste que ses outils (et les outils en mémoire)", async () => {

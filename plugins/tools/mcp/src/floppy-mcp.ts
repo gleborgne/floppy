@@ -9,8 +9,9 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { Context } from "@floppy/core";
 import type { ExtraTool, McpEndpoint, ScopedEndpoint, ScopedOptions } from "@floppy/contracts";
+import { TurnContexts } from "./turn-context.ts";
 
-interface Scope { tools: Set<string>; extra: Map<string, ExtraTool> }
+interface Scope { tools: Set<string>; extra: Map<string, ExtraTool>; contexts: TurnContexts }
 
 const MAX_BODY = 4 * 1024 * 1024;
 
@@ -26,8 +27,11 @@ export async function startFloppyMcp(ctx: Context, port: number): Promise<McpEnd
   const want = Buffer.from(`Bearer ${token}`);
 
   const scopes = new Map<string, Scope>(); // jeton restreint -> portée
+  const contexts = new TurnContexts();
+  ctx.effect(() => { contexts.close(); for (const s of scopes.values()) s.contexts.close(); scopes.clear(); });
 
   const makeServer = (scope?: Scope): Server => {
+    const context = (scope?.contexts ?? contexts).snapshot();
     const server = new Server({ name: "floppy", version: "0.1.0" }, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
@@ -59,7 +63,7 @@ export async function startFloppyMcp(ctx: Context, port: number): Promise<McpEnd
           return { content: [{ type: "text", text: "Outil inconnu." }], isError: true };
         }
       }
-      const r = await ctx.tools.call(req.params.name, (req.params.arguments ?? {}) as Record<string, unknown>, { caller: "mcp" });
+      const r = await ctx.tools.call(req.params.name, (req.params.arguments ?? {}) as Record<string, unknown>, { caller: "mcp", ...context });
       return { content: [{ type: "text", text: r.text }], isError: r.status !== "done" && r.status !== "unverified" };
     });
     return server;
@@ -109,8 +113,9 @@ export async function startFloppyMcp(ctx: Context, port: number): Promise<McpEnd
   const url = `http://127.0.0.1:${actual}/mcp`;
   const scoped = (opts: ScopedOptions): ScopedEndpoint => {
     const t = randomBytes(24).toString("hex");
-    scopes.set(t, { tools: new Set(opts.tools), extra: new Map((opts.extraTools ?? []).map((e) => [e.name, e])) });
-    return { url, token: t, close: () => { scopes.delete(t); } };
+    const scopedContexts = new TurnContexts();
+    scopes.set(t, { tools: new Set(opts.tools), extra: new Map((opts.extraTools ?? []).map((e) => [e.name, e])), contexts: scopedContexts });
+    return { url, token: t, bindContext: context => scopedContexts.bind(context), close: () => { scopedContexts.close(); scopes.delete(t); } };
   };
-  return { url, token, scoped };
+  return { url, token, scoped, bindContext: context => contexts.bind(context) };
 }

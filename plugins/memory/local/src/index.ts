@@ -5,10 +5,12 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { definePlugin, T, writeFileAtomic } from "@floppy/core";
+import { definePlugin, errorText, T, TextError, writeFileAtomic } from "@floppy/core";
 import type { MemoryService } from "@floppy/contracts";
+import { correctionStore } from "./corrections.ts";
+import { storeOperation, type StoreReporter } from "./store-audit.ts";
 
 const Config = z.object({
   dir: z.string().optional(),
@@ -29,7 +31,7 @@ export function findLine(current: string, ancien: string): { index: number; line
   const lines = lineOf(current);
   const want = key(ancien);
   const idx = want ? lines.findIndex((l) => key(l) === want) : -1;
-  if (idx < 0) throw new Error(`ligne introuvable (il faut la ligne entière) : « ${ancien} »`);
+  if (idx < 0) throw new TextError(T(`ligne introuvable (il faut la ligne entière) : « ${ancien} »`, `Line not found (provide the whole line): “${ancien}”`));
   return { index: idx, line: lines[idx]! };
 }
 
@@ -39,11 +41,10 @@ export function applyEdit(current: string, action: string, texte: string, ancien
   const lines = lineOf(current);
   const bullet = (s: string) => (s.startsWith("- ") ? s : `- ${s}`);
   if (action === "ajouter") return [...lines, bullet(texte.trim())].join("\n") + "\n";
-  if (action !== "supprimer" && action !== "remplacer") throw new Error(`action inconnue : ${action}`);
+  if (action !== "supprimer" && action !== "remplacer") throw new TextError(T(`Action inconnue : ${action}`, `Unknown action: ${action}`));
   const idx = findLine(current, ancien ?? texte).index;
   if (action === "supprimer") lines.splice(idx, 1);
   else if (action === "remplacer") lines[idx] = bullet(texte.trim());
-  else throw new Error(`action inconnue : ${action}`);
   return lines.length ? lines.join("\n") + "\n" : "";
 }
 
@@ -52,33 +53,44 @@ export default definePlugin<Config>({
     id: "memory",
     version: "0.1.0",
     licence: "MIT",
-    description: "USER.md, MEMORY.md et historique SQLite FTS5.",
+    description: T("USER.md, MEMORY.md, historique SQLite FTS5 et corrections contextualisées.", "USER.md, MEMORY.md, SQLite FTS5 history and contextual corrections."),
     provides: ["memory"],
   },
   config: Config,
   apply(ctx, cfg) {
+    const report: StoreReporter = (event) => ctx.audit.write({ kind: "memory.store", source: ctx.id, ...event });
+    const { path, read, limit, corrections, insert, find } = storeOperation(report, "startup", () => {
     const dir = cfg.dir ?? join(ctx.home, "memory");
     mkdirSync(dir, { recursive: true });
     const path = (w: Which) => join(dir, FILES[w]);
-    for (const w of Object.keys(FILES) as Which[]) if (!existsSync(path(w))) writeFileSync(path(w), "", "utf8");
+    for (const w of Object.keys(FILES) as Which[]) if (!existsSync(path(w))) writeFileAtomic(path(w), "");
     const read = (w: Which) => readFileSync(path(w), "utf8");
     const limit = (w: Which) => (w === "utilisateur" ? cfg.userLimit : cfg.memoryLimit);
 
     const db = new DatabaseSync(join(dir, "history.db"));
-    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS history USING fts5(text, t UNINDEXED, session UNINDEXED, role UNINDEXED, origin UNINDEXED, tokenize='unicode61 remove_diacritics 2')");
     ctx.effect(() => db.close());
+    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS history USING fts5(text, t UNINDEXED, session UNINDEXED, role UNINDEXED, origin UNINDEXED, tokenize='unicode61 remove_diacritics 2')");
     const insert = db.prepare("INSERT INTO history (text, t, session, role, origin) VALUES (?, ?, ?, ?, ?)");
     const find = db.prepare("SELECT text, t, session, role FROM history WHERE history MATCH ? ORDER BY rank LIMIT ?");
+    const corrections = correctionStore(db, report);
+    return { path, read, limit, db, corrections, insert, find };
+    }, (store) => ({ correctionsCount: Number(store.db.prepare("SELECT count(*) AS n FROM memory_corrections").get()!.n) }));
 
     const service: MemoryService = {
-      snapshot: () => ({ user: read("utilisateur"), memory: read("notes") }),
-      record: (e) => { insert.run(e.text, new Date().toISOString(), e.session, e.role, e.origin ?? ""); },
-      search: (q, n = 5) => {
+      ...corrections,
+      snapshot: (options) => storeOperation(report, "snapshot", () => {
+        options?.signal?.throwIfAborted(); return { user: read("utilisateur"), memory: read("notes") };
+      }, undefined, options, true),
+      record: (e, options) => storeOperation(report, "history.record", () => {
+        options?.signal?.throwIfAborted(); insert.run(e.text, new Date().toISOString(), e.session, e.role, e.origin ?? "");
+      }, () => ({ count: 1 }), options),
+      search: (q, n = 5, options) => storeOperation(report, "history.search", () => {
+        options?.signal?.throwIfAborted();
         // Requête FTS5 sûre : chaque mot entre guillemets, reliés par OR.
         const words = q.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [];
         if (!words.length) return [];
         return find.all(words.map((w) => `"${w}"`).join(" OR "), n) as { t: string; role: string; text: string; session: string }[];
-      },
+      }, (rows) => ({ count: rows.length }), options),
     };
     ctx.provide("memory", service);
 
@@ -120,22 +132,22 @@ export default definePlugin<Config>({
               : T(`Remplacer dans ${file} (ligne introuvable) : « ${old} »`, `Replace in ${file} (line not found): “${old}”`);
           }
         },
-        handler: async (a) => {
+        handler: async (a, meta) => {
           const w = (a.fichier === "utilisateur" ? "utilisateur" : "notes") as Which;
           const before = read(w);
           const approved = seen.get(argsKey(a));
           seen.delete(argsKey(a));
           if (approved && approved !== hashOf(before)) {
-            return { status: "failed", text: `${FILES[w]} a changé depuis ta demande d'accord : rien n'a été écrit. Recommence.` };
+            return { status: "failed", text: T(`${FILES[w]} a changé depuis ta demande d'accord : rien n'a été écrit. Recommence.`, `${FILES[w]} changed since approval was requested: nothing was written. Try again.`) };
           }
           let next: string;
           try { next = applyEdit(before, String(a.action), String(a.texte ?? ""), a.ancien ? String(a.ancien) : undefined); }
-          catch (e) { return { status: "failed", text: e instanceof Error ? e.message : String(e) }; }
+          catch (e) { return { status: "failed", text: errorText(e) }; }
           if (next.length > limit(w)) {
-            return { status: "failed", text: `Mémoire pleine (${next.length}/${limit(w)} caractères). Résume ou supprime d'abord des lignes.` };
+            return { status: "failed", text: T(`Mémoire pleine (${next.length}/${limit(w)} caractères). Résume ou supprime d'abord des lignes.`, `Memory is full (${next.length}/${limit(w)} characters). Summarize or remove some lines first.`) };
           }
-          writeFileAtomic(path(w), next);
-          return { status: "done", text: "C'est retenu." };
+          storeOperation(report, "markdown.edit", () => writeFileAtomic(path(w), next), () => ({ count: 1, file: FILES[w] }), meta);
+          return { status: "done", text: T("C'est retenu.", "Remembered.") };
         },
       },
       {
@@ -143,10 +155,11 @@ export default definePlugin<Config>({
         description: "Cherche dans les conversations passées avec l'utilisateur (mots-clés). Utile pour « qu'est-ce que je t'avais dit sur… ».",
         inputSchema: { type: "object", properties: { requete: { type: "string" }, limite: { type: "number" } }, required: ["requete"] },
         level: "read",
-        handler: async (a) => {
-          const rows = service.search(String(a.requete ?? ""), Number(a.limite ?? 5));
-          if (!rows.length) return { status: "done", text: "Rien trouvé dans l'historique." };
-          return { status: "done", text: rows.map((r) => `${r.t.slice(0, 16)} ${r.role === "user" ? "Utilisateur" : "Assistant"} : ${r.text}`).join("\n") };
+        handler: async (a, meta) => {
+          const rows = await service.search(String(a.requete ?? ""), Number(a.limite ?? 5), meta);
+          if (!rows.length) return { status: "done", text: T("Rien trouvé dans l'historique.", "Nothing found in history.") };
+          const lines = (user: string) => rows.map((r) => `${r.t.slice(0, 16)} ${r.role === "user" ? user : "Assistant"} : ${r.text}`).join("\n");
+          return { status: "done", text: T(lines("Utilisateur"), lines("User")) };
         },
       },
     ]);
