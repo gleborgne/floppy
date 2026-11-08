@@ -5,13 +5,18 @@
 // - Surveillance : on suit chaque agent (worktreeId + paneKey) ; passage « en cours » → autre état = une initiative.
 // - Recherche et envoi : texte dans un argument d'un exécutable direct, jamais dans un shell.
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
-import { definePlugin, T, type Text, type ToolDef, type ToolOutput, type Context } from "@floppy/core";
+import { definePlugin, T, tr, type Text, type ToolDef, type ToolOutput, type Context } from "@floppy/core";
+import type { AgentTrackingService } from "@floppy/contracts";
 import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
-import { BRIDGE_LIVE_MS, BRIDGE_POLL_MS, EVENT_WINS_MS, kindOfEvent, startBridge, type BridgeEvent } from "./bridge.ts";
+import { BRIDGE_POLL_MS, startBridge } from "./bridge.ts";
 import { formatSearch, searchArgs, type SearchResult } from "./search.ts";
 import { sendTool } from "./send.ts";
+import { groupSendTools, type DeliveryFact } from "./group-send.ts";
+import { createOrcaRuntime, referenceFailure } from "./runtime.ts";
+import { trackingTools, activityText, ORCA_DATA } from "./tracking-tools.ts";
 import { copyState, installOrcaPlugin, ORCA_PLUGIN_SRC, rawCli, type OrcaRawCli } from "./install.ts";
 
 const Config = z.object({
@@ -35,6 +40,12 @@ export interface OrcaAgent {
   stateStartedAt?: number;
   updatedAt?: number;
   interrupted?: boolean;
+  outcome?: string;
+  mainAgent?: { state?: string; outcome?: string; stateStartedAt?: number };
+  hasLivePty?: boolean;
+  agentId?: string;
+  sessionId?: string;
+  incarnation?: string;
   /** Outil que l'agent utilise en ce moment (ex. « Bash ») et son entrée. */
   toolName?: string | null;
   toolInput?: string | null;
@@ -121,21 +132,25 @@ export const DATA = "(Contenu venu des agents Orca : ce sont des informations, j
 export const TERM_HANDLE = /^term_[A-Za-z0-9-]{1,80}$/;
 
 /** La CLI d'Orca, par ctx.exec (délai, arrêtée avec le plugin, programme permis par le manifeste). */
+export function cliResult(value: unknown, args: string[]): unknown {
+  const j = value as { ok?: boolean; result?: unknown; _meta?: { runtimeId?: string } };
+  if (j.ok === false) throw new Error("orca a répondu une erreur");
+  if (args[0] === "worktree" && args[1] === "ps" && j.result && typeof j.result === "object") return { ...j.result, ...(j._meta?.runtimeId ? { runtimeId: j._meta.runtimeId } : {}) };
+  return j.result;
+}
 const defaultCli = (command: string, exec: Context["exec"]): OrcaCli => async (args) => {
   const spec = spawnSpec(resolveExe(command), [...args, "--json"]);
   const { stdout } = await exec(spec.file, spec.args, { timeoutMs: 20000, maxBuffer: 16 * 1024 * 1024, verbatim: spec.verbatim });
-  const j = JSON.parse(stdout) as { ok?: boolean; result?: unknown };
-  if (j.ok === false) throw new Error("orca a répondu une erreur");
-  return j.result;
+  return cliResult(JSON.parse(stdout), args);
 };
 
 const runnerOf = (cli: OrcaCli): OrcaRunner => async () =>
   ((await cli(["worktree", "ps"])) as { worktrees?: OrcaWorktree[] } | undefined)?.worktrees ?? [];
 
-/** Le terminal d'un agent : même onglet et même volet (paneKey = tabId:leafId), sinon un terminal du même worktree. */
+/** Un seul terminal du même espace, onglet et volet ; aucun repli vers un voisin. */
 export function terminalFor(terms: OrcaTerminal[], w: OrcaWorktree, a: OrcaAgent): OrcaTerminal | undefined {
-  const ok = terms.filter((t) => TERM_HANDLE.test(t.handle));
-  return ok.find((t) => `${t.tabId}:${t.leafId}` === a.paneKey) ?? ok.find((t) => t.worktreeId === w.worktreeId);
+  const matches = terms.filter((t) => TERM_HANDLE.test(t.handle) && t.worktreeId === w.worktreeId && `${t.tabId}:${t.leafId}` === a.paneKey);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /** Écran du terminal réduit au texte utile : lignes de cadre et lignes vides retirées, fin gardée. */
@@ -291,6 +306,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       permissions: { exec: ["orca", "cmd"] },
       // LLM local (facultatif) : pour dire les annonces en langage parlé (langue de l'assistant), sans jargon.
       optional: ["llm"],
+      provides: ["agentTracking"],
       addable: {
         section: "connecteurs",
         single: true,
@@ -305,170 +321,162 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
     config: Config,
     apply(ctx, cfg) {
       const cli = opts.cli ?? defaultCli(cfg.command, ctx.exec);
-      const run = opts.run ?? runnerOf(cli);
       const now = opts.now ?? Date.now;
+      const t = T;
       let notifications = ctx.settings.saved<Config["notifications"]>("orca_notifications") ?? cfg.notifications;
-      // Ancien réglage « Surveillance Orca » (ou `surveillance: false` dans la config) : coupé = « Rien ».
-      // Un choix fait dans le nouveau réglage l'emporte sur l'ancien.
+      // L'ancien « aucune » coupe désormais les annonces seulement ; la collecte reste utile aux questions.
       if (ctx.settings.saved("orca_notifications") === undefined && !(ctx.settings.saved<boolean>("orca_surveillance") ?? cfg.surveillance)) notifications = "aucune";
-      let surveillance = notifications !== "aucune";
-      const states = new Map<string, string>();
-      let baseline = false;
-      let warned = false;
-      let busy = false;
-      /** Dernier agent annoncé : cible par défaut de « qu'est-ce qu'il demande ? ». */
-      let lastAnnounced: { worktreeId: string; paneKey: string } | undefined;
-      /** Dernier événement du pont, par agent : la vérification (plus lente) n'écrase pas un état plus récent. */
-      const eventAt = new Map<string, number>();
-      let bridgeSeen = 0;
+      const announced = new Map<string, number>();
+      let pendingAnnouncements = 0;
+      let deliveryAnnouncement = 0;
       let lastPoll = 0;
-      const bridgeLive = (): boolean => bridgeSeen > 0 && Date.now() - bridgeSeen < BRIDGE_LIVE_MS;
-
-      const t = (fr: string, en: string): Text => ({ fr, en });
-      const group = t("Orca", "Orca");
-      ctx.settings.declare([
-        // Un seul réglage : « Rien » coupe aussi la surveillance (avant : deux réglages qui se recouvraient).
-        {
-          key: "orca_notifications", label: t("Annonces des agents Orca", "Orca agent announcements"), group, section: "connecteurs", type: "enum", risk: "free",
-          description: t(
-            "Tout dire : chaque fin est dite à voix haute. Si un agent attend : à voix haute seulement quand un agent attend ta réponse ; les fins s'affichent par écrit. Rien : Floppy ne surveille plus Orca (tu peux toujours lui poser des questions).",
-            "Say everything: every finished job is said aloud. If an agent waits: aloud only when an agent waits for your answer; finished jobs are shown in writing. Nothing: Floppy stops watching Orca (you can still ask it questions)."),
-          options: [
-            { value: "toutes", label: t("Tout dire", "Say everything"), aliases: ["toutes", "tout", "chaque fin", "all", "every"] },
-            { value: "importantes", label: t("Si un agent attend", "If an agent waits"), aliases: ["importantes", "important", "quand il attend", "when waiting"] },
-            { value: "aucune", label: t("Rien", "Nothing"), aliases: ["aucune", "silence", "coupe la surveillance", "none", "off", "stop monitoring"] },
-          ],
-          get: () => (surveillance ? notifications : "aucune"),
-          set: (v) => {
-            notifications = v as Config["notifications"];
-            surveillance = notifications !== "aucune";
-            if (!surveillance) { states.clear(); baseline = false; }
-            showStatus();
-          },
-        },
-      ]);
-
-      const ok = (text: string): ToolOutput => ({ status: "done", text: `${text}\n${DATA}` });
-      const fail = (e: unknown): ToolOutput => {
-        const m = e instanceof Error ? e.message : String(e);
-        return { status: "failed", text: T(`Orca ne répond pas (est-il lancé ?) : ${m}`, `Orca is not responding (is it running?): ${m}`) };
-      };
-      const nope = (fr: string, en: string): ToolOutput => ({ status: "failed", text: T(fr, en) });
-      const isHit = (x: Hit | ToolOutput): x is Hit => "a" in x;
-
-      /** L'agent visé : par son nom ; sans nom, le dernier annoncé, sinon le seul qui attend. */
-      const target = (wts: OrcaWorktree[], nom: string, strict = false): Hit | ToolOutput => {
-        if (norm(nom)) {
-          const matches = matchAgents(wts, nom);
-          if (strict && matches.length > 1) return nope("Plusieurs agents correspondent. Précise le projet ou la tâche.", "Several agents match. Specify the project or task.");
-          return matches[0] ?? nope(`Aucun agent Orca ne correspond à « ${nom} ».`, `No Orca agent matches “${nom}”.`);
+      const runtime = createOrcaRuntime({ ctx, cli, run: opts.run, now, onChanges(events, hits) {
+        for (const event of events) {
+          if (event.kind !== "transition" || !["finished", "waiting"].includes(event.activity)) continue;
+          const hit = hits.find((h) => runtime.idOf(h.w, h.a) === event.id);
+          if (!hit || isWorker(hit.a) && event.activity === "waiting") continue;
+          const key = `orca:${event.id}:${event.cycleId}:${event.activity}`;
+          for (const [id, at] of announced) if (now() - at >= 10 * 60_000) announced.delete(id);
+          if (announced.has(key)) { runtime.diagnostics.record("announcement.deduped", { eventId: event.eventId, agentId: event.id, reason: "same_turn" }); continue; }
+          announced.set(key, now());
+          while (announced.size > 300) announced.delete(announced.keys().next().value!);
+          if (notifications === "aucune") { runtime.diagnostics.record("announcement.silent", { eventId: event.eventId, agentId: event.id, reason: "setting" }); continue; }
+          if (pendingAnnouncements >= 16) { runtime.diagnostics.record("announcement.dropped", { eventId: event.eventId, reason: "queue_capacity" }); continue; }
+          pendingAnnouncements++;
+          void (async () => {
+            let enriched = hit;
+            try {
+              const current = await runtime.sync();
+              enriched = current.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a }))).find((h) => runtime.idOf(h.w, h.a) === event.id) ?? hit;
+            } catch { /* Le fait reçu reste disponible même si son enrichissement échoue. */ }
+            const lang = ctx.assistant.language === "en" ? "en" : "fr";
+            const f = { ...facts(enriched.w, enriched.a, event.activity === "waiting" ? "en_attente" : event.outcome === "interruption" ? "interrompu" : "termines", lang), label: event.label, outcome: event.outcome };
+            const llm = ctx.maybe("llm");
+            // La phrase est bornée ; un callback de test n'est jamais attendu par l'admission HTTP.
+            const signal = AbortSignal.timeout(4500);
+            let onAbort: () => void = () => {};
+            const deadline = new Promise<undefined>((resolve) => { onAbort = () => resolve(undefined); signal.addEventListener("abort", onAbort, { once: true }); });
+            const phrase = opts.phrase ? opts.phrase(f) : llmSentence(llm?.baseURL ? { baseURL: llm.baseURL, model: llm.model } : undefined, f, 4000, (input, init) => ctx.fetch(input instanceof Request ? input.url : input, init));
+            try {
+              const said = await Promise.race([phrase, deadline]).catch(() => undefined);
+              if (!ctx.alive || (notifications as Config["notifications"]) === "aucune") return;
+              const ref = runtime.currentReferences().find((r) => r.identity === event.id) ?? { identity: event.id, label: event.label, project: event.project };
+              runtime.rememberAnnouncement(key, [ref]);
+              // Le nom stable et le résultat observé restent présents même si la reformulation omet ces faits.
+              const lead = `${event.label} (${event.project}) : ${activityText(event, lang === "en")}.`;
+              const report = f.last ? `${lang === "en" ? "Last report" : "Dernier message déclaré"} : ${f.last.slice(0, 180)}` : f.task;
+              const text = `${lead} ${said && (event.outcome === "success" || event.activity === "waiting") ? said : report || plainSentence(f)}`;
+              ctx.emit("initiative", { source: "orca", text, importance: notifications === "toutes" || event.activity === "waiting" ? "important" : "normal", key });
+              runtime.diagnostics.record("announcement.emitted", { eventId: event.eventId, agentId: event.id, queueLength: pendingAnnouncements });
+            } finally { signal.removeEventListener("abort", onAbort); }
+          })().catch(() => { runtime.diagnostics.record("announcement.failed", { eventId: event.eventId, agentId: event.id, reason: "enrichment_or_phrase" }); }).finally(() => { pendingAnnouncements--; });
         }
-        const all = wts.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a })));
-        const la = lastAnnounced;
-        const last = la && all.find((h) => h.w.worktreeId === la.worktreeId && h.a.paneKey === la.paneKey);
-        if (last) return last;
-        if (strict && la) return nope("L'agent annoncé n'est plus disponible. Précise à quel agent envoyer la consigne.", "The announced agent is no longer available. Specify which agent should receive the instruction.");
-        const waiting = all.filter((h) => kindOf(h.a) === "en_attente" && !isWorker(h.a));
-        if (waiting.length === 1) return waiting[0]!;
-        return nope("Quel agent ? Donne le nom du projet ou de la tâche.", "Which agent? Give the project or task name.");
+      } });
+      const direct = () => !!opts.cli || !/\.(cmd|bat)$/i.test(resolveExe(cfg.command));
+      const nope = (fr: string, en: string): ToolOutput => ({ status: "failed", text: T(fr, en) });
+      const fail = (): ToolOutput => nope("Orca ne répond pas. Réessaie quand le programme est disponible.", "Orca is not responding. Retry when the program is available.");
+      const ok = (text: string, raw?: unknown): ToolOutput => ({ status: "done", text: `${text}\n${tr(ORCA_DATA, ctx.assistant.language)}`, raw });
+      const delivery = (fact: DeliveryFact) => {
+        const ref = runtime.currentReferences().find((r) => r.hit?.w.worktreeId === fact.worktreeId && r.hit?.a.paneKey === fact.paneKey);
+        runtime.diagnostics.record(`delivery.${fact.stage}`, { agentId: ref?.identity, eventId: `delivery_${createHash("sha256").update(fact.correlationId).digest("hex").slice(0, 24)}`, reason: fact.reason, latencyMs: fact.elapsedMs }, fact);
+        const outcome = fact.stage === "input_accepted" || fact.stage === "turn_started" ? "accepted" : fact.stage === "refused" ? "refused" : fact.stage === "unknown" || fact.stage === "timeout" ? "unconfirmed" : undefined;
+        if (ref && outcome) runtime.appendDelivery({ agentId: ref.identity, correlationId: fact.correlationId, delivery: outcome, observedAt: fact.at, provenance: fact.provenance });
       };
-
+      const recipientLabel = (hit: Hit) => runtime.currentReferences().find((r) => r.identity === runtime.idOf(hit.w, hit.a))?.label ?? (cleanTask(hit.a) || hit.a.agentType || "Agent");
       const tools: ToolDef[] = [
-        sendTool({ ctx, cli, run, direct: () => !!opts.cli || !/\.(cmd|bat)$/i.test(resolveExe(cfg.command)), target: (wts, nom) => target(wts, nom, true) }),
+        sendTool({ ctx, cli, run: runtime.sync, direct, target: runtime.resolveTarget, onDelivery: delivery, label: recipientLabel }),
+        ...groupSendTools({ ctx, cli, run: runtime.sync, direct, now, onDelivery: delivery, label: recipientLabel, persistenceDiagnostic: (event) => runtime.diagnostics.record("delivery.persistence", { reason: event.reason }), announce: (text) => {
+          if (ctx.alive && notifications !== "aucune") ctx.emit("initiative", { source: "orca-delivery", key: `orca-delivery:${now()}:${++deliveryAnnouncement}`, text: tr(text, ctx.assistant.language), importance: notifications === "toutes" ? "important" : "normal" });
+        }, select: (wts, args, meta) => {
+          const result = runtime.resolve(String(args.nom ?? "eux"), meta, true);
+          if (!result.ok) return referenceFailure(result.reason, result.candidates);
+          if (args.filtre !== undefined && !["termines", "finished", "done", "tous", "all"].includes(String(args.filtre))) return nope("Précise le filtre des agents terminés ou tous.", "Specify finished agents or all as the filter.");
+          const refs = result.references.filter((r) => args.filtre === undefined || ["tous", "all"].includes(String(args.filtre)) || r.record.activity === "finished");
+          const current = wts.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a })));
+          const selected = refs.map((r) => current.find((hit) => runtime.idOf(hit.w, hit.a) === r.identity));
+          if (selected.some((hit) => !hit)) return referenceFailure("missing");
+          return selected as Hit[];
+        } }),
+        ...trackingTools(runtime, () => ctx.assistant.language, now),
         {
-          name: "orca_agents",
-          description: "Liste les agents de code Orca (Claude, Codex) : lesquels travaillent, lesquels ont fini, lesquels attendent une réponse, avec la tâche et le dernier message. À utiliser pour « où en sont mes jobs Orca », « synthèse de mes agents ». filtre : en_cours, termines, en_attente ou tous (par défaut).",
-          inputSchema: { type: "object", properties: { filtre: { type: "string", enum: ["en_cours", "termines", "en_attente", "tous"] } } },
-          level: "read",
-          handler: async (a) => {
-            try { return ok(formatAgents(await run(), String(a.filtre ?? "tous"), now())); } catch (e) { return fail(e); }
-          },
-        },
-        {
-          name: "orca_detail",
-          description: "Fiche d'un agent Orca précis : état, branche, PR liée, demande, action en cours (commande lancée), dernier message complet. À utiliser pour « qu'a dit l'agent de dev-mcp ? », « détaille le job X », « il est sur quelle branche ? », « il fait quoi là ? ». nom : nom du projet, du dépôt, de la branche ou de la tâche, tel que l'utilisateur l'a dit (la dictée déforme souvent les noms techniques : ne corrige pas, l'outil tolère les fautes) ; vide = l'agent annoncé en dernier, ou le seul qui attend (« celui qui attend », « le dernier »).",
-          inputSchema: { type: "object", properties: { nom: { type: "string" } } },
-          level: "read",
-          handler: async (a) => {
+          name: "orca_ecran", level: "read",
+          description: "Lit le terminal exact d'un agent nommé/id, ordinal ou pronom de cette conversation. Aucun autre terminal du projet ne le remplace. Résume la question et les conséquences des choix sans agir.",
+          inputSchema: { type: "object", properties: { nom: { type: "string" }, id: { type: "string" } } },
+          auditArgs: (args) => ({ explicit: !!(args.nom || args.id) }),
+          handler: async (args, meta) => {
             try {
-              const nom = String(a.nom ?? "");
-              const wts = await run();
-              if (norm(nom)) return ok(detail(wts, nom, now()));
-              const hit = target(wts, nom);
-              return isHit(hit) ? ok(describeHit(hit, now())) : hit;
-            } catch (e) { return fail(e); }
-          },
-        },
-        {
-          name: "orca_ecran",
-          description: "Lit ce que montre en ce moment le terminal d'un agent Orca : la question exacte qu'il pose, la permission qu'il demande (ex. la commande qu'il veut lancer), les choix proposés, ce qu'il est en train de faire. À utiliser pour « qu'est-ce qu'il me demande exactement ? », « il veut lancer quoi ? », « lis-moi son écran », avant que l'utilisateur réponde oui ou non. Résume-le en langage parlé : l'essentiel de la question et ce qui se passe si on dit oui. nom : comme orca_detail ; vide = l'agent annoncé en dernier, ou le seul qui attend.",
-          inputSchema: { type: "object", properties: { nom: { type: "string" } } },
-          level: "read",
-          handler: async (a) => {
-            try {
-              const hit = target(await run(), String(a.nom ?? ""));
-              if (!isHit(hit)) return hit;
-              const terms = ((await cli(["terminal", "list"])) as { terminals?: OrcaTerminal[] } | undefined)?.terminals ?? [];
-              const term = terminalFor(terms, hit.w, hit.a);
-              const n = nameOf(hit.w);
-              if (!term) return nope(`L'agent de ${n} n'a plus de terminal ouvert dans Orca.`, `The ${n} agent no longer has an open terminal in Orca.`);
-              const r = (await cli(["terminal", "read", "--terminal", term.handle, "--screen", "--limit", "60"])) as { terminal?: { tail?: string[] } } | undefined;
+              const wts = await runtime.sync();
+              const hit = runtime.resolveTarget(wts, String(args.id ?? args.nom ?? ""), meta);
+              if (!("a" in hit)) return hit;
+              const terms = (await cli(["terminal", "list"]) as { terminals?: OrcaTerminal[] } | undefined)?.terminals ?? [];
+              const terminal = terminalFor(terms, hit.w, hit.a);
+              if (!terminal) return nope("Cet agent n'a plus de terminal identifiable dans Orca.", "This agent no longer has an identifiable terminal in Orca.");
+              const r = await cli(["terminal", "read", "--terminal", terminal.handle, "--screen", "--limit", "60"]) as { terminal?: { tail?: string[] } } | undefined;
+              const ref = runtime.currentReferences().find((r) => r.identity === runtime.idOf(hit.w, hit.a));
               const text = screenText(r?.terminal?.tail ?? []);
-              return ok(`Écran de l'agent de ${n} (${LABEL[kindOf(hit.a)]}) :\n${text || "(écran vide)"}`);
-            } catch (e) { return fail(e); }
+              return ok(`${ctx.assistant.language === "en" ? "Agent screen" : "Écran de l'agent"} ${ref?.label ?? cleanTask(hit.a)} (${nameOf(hit.w)}) :\n${text || (ctx.assistant.language === "en" ? "(empty screen)" : "(écran vide)")}`);
+            } catch { return fail(); }
           },
         },
         {
-          name: "orca_recherche",
-          description: "Cherche dans les conversations passées et présentes des agents Orca (Claude, Codex), sur tous les projets : ce que l'utilisateur leur a demandé et ce qu'ils ont répondu. À utiliser pour « quel agent a travaillé sur les migrations ? », « qu'est-ce qu'on avait décidé pour l'authentification ? », « retrouve la conversation où on parlait du cache ». texte : les mots à chercher (recherche plein texte, pas de fautes tolérées : écris les termes techniques dans leur orthographe probable, la dictée les déforme, ex. « réacte » → « React », « jason » → « JSON »). recent : true pour les plus récentes d'abord (« ce matin », « hier »), sinon les plus pertinentes.",
-          inputSchema: { type: "object", properties: { texte: { type: "string" }, recent: { type: "boolean" } }, required: ["texte"] },
-          level: "read",
-          handler: async (a) => {
-            const texte = String(a.texte ?? "").trim();
-            const args = searchArgs(texte, a.recent === true);
-            if (!args) return nope("Que faut-il chercher ?", "What should I search for?");
-            // Un shim .cmd passe par cmd.exe : le texte de l'utilisateur n'y va jamais.
-            if (!opts.cli && /\.(cmd|bat)$/i.test(resolveExe(cfg.command))) {
-              return nope("Recherche impossible : le programme Orca trouvé passe par l'interpréteur de commandes. Règle le chemin vers orca.exe.", "Search unavailable: the Orca program found goes through the command interpreter. Set the path to orca.exe.");
-            }
+          name: "orca_recherche", level: "read",
+          description: "Recherche plein texte dans les conversations des agents sur l'hôte Orca sélectionné, pas tous les ordinateurs. texte : termes techniques probables (React, JSON), recent : plus récents d'abord ; chemin/depuis/agent/cursor filtrent ou paginent selon la CLI. Une absence de résultat ne prouve pas une absence de travail ; signale toute indexation ou couverture incomplète.",
+          inputSchema: { type: "object", properties: { texte: { type: "string" }, recent: { type: "boolean" }, chemin: { type: "string" }, depuis: { type: "string" }, agent: { type: "string" }, cursor: { type: "string" } }, required: ["texte"] },
+          auditArgs: (args) => ({ query: "redacted", pathFilter: !!args.chemin, agentFilter: !!args.agent, sinceFilter: !!args.depuis, paginated: !!args.cursor }),
+          handler: async (args) => {
+            const query = String(args.texte ?? "").trim();
+            const search = searchArgs(query, args.recent === true, { path: args.chemin, since: args.depuis, agent: args.agent, cursor: args.cursor });
+            if (!search) return nope("Précise les termes et des filtres valides (date ISO avec fuseau).", "Specify search terms and valid filters (ISO date with time zone).");
+            if (!direct()) return nope("Recherche impossible : règle le chemin vers le programme Orca, sans script intermédiaire.", "Search unavailable: set the path to the Orca program, without an intermediate script.");
             try {
-              const [r, st] = await Promise.all([
-                cli(args) as Promise<SearchResult | undefined>,
-                (cli(["search", "--index-status"]) as Promise<{ phase?: string } | undefined>).catch(() => undefined),
-              ]);
-              if (r?.kind === "unavailable") {
-                return r.reason === "disabled"
-                  ? nope("La recherche est éteinte dans Orca. Pour l'allumer : dans Orca, Réglages, Agent Session History.", "Search is off in Orca. To turn it on: in Orca, Settings, Agent Session History.")
-                  : nope(`La recherche d'Orca n'est pas disponible (${String(r.reason ?? "?")}).`, `Orca search is not available (${String(r.reason ?? "?")}).`);
-              }
-              return ok(formatSearch(r, texte, now(), st?.phase === "indexing"));
-            } catch (e) { return fail(e); }
+              const [r, status] = await Promise.all([cli(search) as Promise<SearchResult | undefined>, (cli(["search", "--index-status"]) as Promise<{ phase?: string } | undefined>).catch(() => undefined)]);
+              if (r?.kind === "unavailable") return r.reason === "disabled" ? nope("La recherche est éteinte dans Orca. Allume Agent Session History dans ses Réglages.", "Search is off in Orca. Enable Agent Session History in its Settings.") : nope("La recherche Orca n'est pas disponible.", "Orca search is unavailable.");
+              return ok(formatSearch(r, query, now(), status?.phase === "indexing", ctx.assistant.language === "en"), { ...r, indexing: status?.phase === "indexing" });
+            } catch { return fail(); }
           },
         },
       ];
-
-      // Application : l'utilisateur l'ajoute, l'éteint ou la retire dans Réglages → Connecteurs (manifest.addable).
-      // Éteinte, l'entrée s'arrête : outils retirés et surveillance coupée. L'état court est montré par ctx.status.
       ctx.tools.register(tools);
+      const tracking: AgentTrackingService = {
+        snapshot() {
+          const snapshot = runtime.snapshot();
+          const refs = new Map(runtime.currentReferences().map((ref) => [ref.identity, ref]));
+          return { at: snapshot.at, connection: snapshot.connection,
+            agents: snapshot.agents.map((r) => {
+              const hit = refs.get(r.id)?.hit;
+              return { id: r.id, label: r.label, project: r.project, workspaceLabel: r.workspaceLabel, activity: r.activity, outcome: r.outcome, presence: r.presence, observedAt: r.observedAt, lastSeenAt: r.lastSeenAt,
+                mission: clip(hit?.a.prompt || (hit ? cleanTask(hit.a) : "") || r.baseLabel, 300), declaredResult: r.declaredResult, lastAction: r.lastAction };
+            }),
+            events: snapshot.events.map((e) => ({ eventId: e.eventId, agentId: e.id, at: e.observedAt, kind: e.kind, summary: `${e.label} : ${activityText(e, ctx.assistant.language === "en")}` })),
+            diagnostics: snapshot.diagnostics.map((e) => ({ at: e.at, reason: e.reason ?? e.stage, component: "orca", stage: e.stage, agentId: e.agentId, eventId: e.eventId, callId: e.callId })),
+          };
+        },
+        subscribe: runtime.subscribe,
+        async refresh(signal) { signal?.throwIfAborted(); await runtime.sync(); signal?.throwIfAborted(); },
+      };
+      ctx.provide("agentTracking", tracking);
       const pluginSrc = opts.pluginSrc ?? ORCA_PLUGIN_SRC;
       const pluginCli = opts.pluginCli ?? rawCli(cfg.command, ctx.exec);
-      // Logo : l'icône du programme Orca (lue par l'app), si on le trouve sur la machine.
       const exe = resolveExe(cfg.command);
       ctx.items.logo(isAbsolute(exe) ? { program: orcaApp(exe) } : undefined);
-      const showStatus = (): void => {
-        if (warned) ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
-        else if (!surveillance) ctx.items.status(t("annonces coupées", "announcements off"));
-        else if (bridgeLive()) ctx.items.status(t("prévenu tout de suite (plugin Orca actif)", "told at once (Orca plugin active)"));
-        else {
-          const every = Math.round(cfg.pollSeconds);
-          ctx.items.status(copyState(ctx.home, pluginSrc) === "absent"
-            ? t(`vérifie toutes les ${every} s · installe le plugin Orca pour être prévenu tout de suite`, `checks every ${every} s · install the Orca plugin to be told at once`)
-            : t(`vérifie toutes les ${every} s · le plugin Orca prend le relais au prochain changement d'un agent`, `checks every ${every} s · the Orca plugin takes over at the next agent change`));
-        }
+      const showStatus = () => {
+        const snapshot = runtime.snapshot();
+        if (snapshot.connection.state === "offline") ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
+        else if (notifications === "aucune") ctx.items.status(t("annonces coupées · suivi actif", "announcements off · tracking active"));
+        else if (runtime.bridgeLive()) ctx.items.status(t("prévenu tout de suite (plugin Orca actif)", "told at once (Orca plugin active)"));
+        else ctx.items.status(copyState(ctx.home, pluginSrc) === "absent" ? t(`vérifie toutes les ${Math.round(cfg.pollSeconds)} s · installe le plugin Orca pour être prévenu tout de suite`, `checks every ${Math.round(cfg.pollSeconds)} s · install the Orca plugin to be told at once`) : t(`vérifie toutes les ${Math.round(cfg.pollSeconds)} s`, `checks every ${Math.round(cfg.pollSeconds)} s`));
       };
+      ctx.effect(runtime.subscribe(showStatus));
+      ctx.settings.declare([{
+        key: "orca_notifications", label: t("Annonces des agents Orca", "Orca agent announcements"), group: t("Orca", "Orca"), section: "connecteurs", type: "enum", risk: "free",
+        description: t("Tout dire : annonce chaque fin. Si un agent attend : seules les demandes sont dites. Rien : aucune annonce, le suivi reste actif ; éteins Orca pour arrêter aussi le suivi.", "Say everything: announce every finish. If an agent waits: only requests are spoken. Nothing: no announcements, tracking stays active; disable Orca to stop tracking too."),
+        options: [
+          { value: "toutes", label: t("Tout dire", "Say everything"), aliases: ["toutes", "tout", "chaque fin", "all", "every"] },
+          { value: "importantes", label: t("Si un agent attend", "If an agent waits"), aliases: ["importantes", "important", "quand il attend", "when waiting"] },
+          { value: "aucune", label: t("Rien", "Nothing"), aliases: ["aucune", "silence", "coupe les annonces", "none", "off"] },
+        ], get: () => notifications, set: (value) => { notifications = value as Config["notifications"]; showStatus(); },
+      }]);
       showStatus();
-
-      // Bouton « Installer dans Orca » / « Mettre à jour dans Orca » (voir install.ts). Clic seulement.
       const install = async (action: string) => {
         if (action !== "orca-plugin") return { ok: false, text: t(`Action inconnue : ${action}`, `Unknown action: ${action}`) };
         const r = await installOrcaPlugin(ctx.home, pluginCli, pluginSrc);
@@ -476,87 +484,23 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
         if (ctx.alive) { showButton(); showStatus(); }
         return r;
       };
-      const showButton = (): void => {
-        const st = copyState(ctx.home, pluginSrc);
-        const label = st === "absent" ? t("Installer dans Orca", "Install in Orca")
-          : st === "ancien" ? t("Mettre à jour dans Orca", "Update in Orca") : t("Réinstaller dans Orca", "Reinstall in Orca");
+      const showButton = () => {
+        const state = copyState(ctx.home, pluginSrc);
+        const label = state === "absent" ? t("Installer dans Orca", "Install in Orca") : state === "ancien" ? t("Mettre à jour dans Orca", "Update in Orca") : t("Réinstaller dans Orca", "Reinstall in Orca");
         ctx.items.actions([{ id: "orca-plugin", label }], install);
       };
       showButton();
-
-      // Annonce en langage parlé (voir speech.ts) : nettoyage du jargon, puis une phrase du LLM local si possible.
-      const announce = async (w: OrcaWorktree, a: OrcaAgent, k: Kind): Promise<void> => {
-        if (notifications === "aucune") return;
-        // Un worker lancé par un coordinateur attend son coordinateur, pas l'utilisateur.
-        if (isWorker(a) && k === "en_attente") return;
-        const f = facts(w, a, k, ctx.assistant.language === "en" ? "en" : "fr");
-        const llm = ctx.maybe("llm");
-        const said = await (opts.phrase ? opts.phrase(f) : llmSentence(llm?.baseURL ? { baseURL: llm.baseURL, model: llm.model } : undefined, f));
-        if (!ctx.alive) return;
-        lastAnnounced = { worktreeId: w.worktreeId, paneKey: a.paneKey };
-        const text = said ?? plainSentence(f);
-        const important = notifications === "toutes" || k === "en_attente";
-        // Clé par type d'état (pas l'état brut d'Orca) : la même fin vue par le pont puis par la vérification = une seule annonce.
-        ctx.emit("initiative", { source: "orca", text, importance: important ? "important" : "normal", key: `orca:${w.worktreeId}:${a.paneKey}:${k}` });
-      };
-
-      // Pont : le plugin Orca « Floppy » (dossier orca-plugin) envoie chaque changement d'état aussitôt.
-      // Vérifications et pont tiennent le même tableau d'états : le premier qui voit la fin l'annonce.
-      const onBridge = async (e: BridgeEvent): Promise<void> => {
-        const first = !bridgeLive();
-        bridgeSeen = Date.now();
-        if (first) showStatus();
-        if (e.kind !== "agent" || !surveillance || typeof e.paneKey !== "string" || typeof e.workspaceId !== "string") return;
-        const id = `${e.workspaceId}|${e.paneKey}`;
-        const k = kindOfEvent(e.state, e.outcome);
-        const prev = states.get(id);
-        states.set(id, k);
-        eventAt.set(id, Date.now());
-        if (!baseline || prev !== "en_cours" || k === "en_cours") return;
-        // Le message de l'agent n'est pas dans l'événement : une lecture d'Orca pour l'annonce.
-        let hit: Hit | undefined;
-        try {
-          for (const w of await run()) for (const a of w.agents ?? []) if (a.paneKey === e.paneKey) hit = { w, a };
-        } catch { /* Orca lent : annonce avec le titre seul */ }
-        const title = typeof e.title === "string" ? e.title : undefined;
-        void announce(hit?.w ?? { worktreeId: e.workspaceId, ...(title ? { displayName: title } : {}) }, hit?.a ?? { paneKey: e.paneKey, state: String(e.state ?? ""), ...(title ? { taskTitle: title } : {}) }, k);
-      };
-
-      const tick = async (): Promise<void> => {
-        if (!surveillance || busy || !ctx.alive) return;
-        // Pont actif : une vérification par minute suffit (filet de sécurité).
-        if (bridgeLive() && Date.now() - lastPoll < BRIDGE_POLL_MS) return;
-        busy = true;
-        lastPoll = Date.now();
-        try {
-          const wts = await run();
-          if (warned) { warned = false; showStatus(); }
-          const seen = new Set<string>();
-          for (const w of wts) {
-            for (const a of w.agents ?? []) {
-              const id = `${w.worktreeId}|${a.paneKey}`;
-              seen.add(id);
-              if (Date.now() - (eventAt.get(id) ?? 0) < EVENT_WINS_MS) continue;
-              const prev = states.get(id);
-              const k = kindOf(a);
-              states.set(id, k);
-              if (baseline && prev === "en_cours" && k !== "en_cours") void announce(w, a, k);
-            }
-          }
-          for (const id of [...states.keys()]) if (!seen.has(id) && !eventAt.has(id)) states.delete(id);
-          for (const [id, at] of eventAt) if (Date.now() - at > BRIDGE_LIVE_MS) eventAt.delete(id);
-          baseline = true;
-        } catch (e) {
-          if (!warned) { warned = true; showStatus(); ctx.log("warn", "Orca ne répond pas, on continue d'essayer en silence.", { erreur: String(e) }); }
-        } finally { busy = false; }
-      };
-
       if (opts.bridge !== false) {
-        const stop = startBridge(ctx.home, (e) => { void onBridge(e); }, (m, d) => ctx.log("warn", m, d));
+        const stop = startBridge(ctx.home, runtime.acceptBridge, (message, _data) => ctx.log("warn", message), { now, diagnostic: runtime.bridgeDiagnostic });
         ctx.effect(async () => { await (await stop)(); });
       }
-      void tick();
-      ctx.interval(() => { void tick(); }, Math.round(cfg.pollSeconds * 1000));
+      const tick = () => {
+        if (!ctx.alive || runtime.bridgeLive() && now() - lastPoll < BRIDGE_POLL_MS) return;
+        lastPoll = now();
+        void runtime.sync().catch(() => {});
+      };
+      void runtime.sync().catch(() => {});
+      ctx.interval(tick, Math.round(cfg.pollSeconds * 1000));
     },
   });
 }

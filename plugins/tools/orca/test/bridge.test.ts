@@ -32,9 +32,10 @@ async function start(data: { v: OrcaWorktree[]; calls: number }) {
 
 /** Le worker Orca, branché sur ce Floppy, avec un faux Orca qui émet des événements. */
 function orcaWorker(info: BridgeInfo, fetchImpl: typeof fetch = fetch) {
+  let clock = NOW;
   let handler: ((e: AgentEvent) => unknown) | undefined;
   const logs: string[] = [];
-  activate({ log: (l) => logs.push(l), events: { on: (_n, h) => { handler = h; } } }, { readInfo: () => info, fetchImpl });
+  activate({ log: (l) => logs.push(l), events: { on: (_n, h) => { handler = h; } } }, { readInfo: () => info, fetchImpl, now: () => ++clock });
   const emit = async (paneKey: string, state: string, outcome?: string) =>
     handler!({ workspaceId: WS, paneKey, terminalId: "term_1", title: "Migration", state, ...(outcome ? { mainAgent: { state, outcome } } : {}) });
   return { emit, logs };
@@ -52,8 +53,8 @@ describe("pont Orca → Floppy", () => {
     data.v = wt([ag("p1", "done", { taskTitle: "Migration des dates" })]);
     await orca.emit("p1", "done", "success");
     await vi.waitFor(() => expect(got.length).toBe(1));
-    expect(got[0]).toMatchObject({ key: `orca:${WS}:p1:termines`, importance: "normal" });
-    expect(got[0]!.text).toContain("migration des dates");
+    expect(got[0]).toMatchObject({ key: expect.stringMatching(/^orca:agent_.+:finished$/), importance: "normal" });
+    expect(got[0]!.text.toLowerCase()).toContain("migration des dates");
     await new Promise((r) => setTimeout(r, 100));
     expect(got).toHaveLength(1);
   });

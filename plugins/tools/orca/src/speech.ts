@@ -61,6 +61,9 @@ export function cleanMessage(s: string | null | undefined, n = 400): string {
 export interface Facts {
   project: string;
   task: string;
+  /** Nom individuel stable, distinct du projet. */
+  label?: string;
+  outcome?: "success" | "failure" | "interruption" | "unconfirmed" | "unknown";
   kind: Kind;
   asked: string;
   last: string;
@@ -81,6 +84,14 @@ export function facts(w: OrcaWorktree, a: OrcaAgent, kind: Kind, lang: "fr" | "e
 
 /** Phrase faite par le code (sans LLM). */
 export function plainSentence(f: Facts): string {
+  if (f.label && f.outcome) {
+    const states = f.lang === "en"
+      ? { success: "reports success", failure: "reports a failure", interruption: "was interrupted", unconfirmed: "has an unconfirmed result", unknown: "has an unknown result" }
+      : { success: "déclare une réussite", failure: "signale un échec", interruption: "a été interrompu", unconfirmed: "a un résultat non confirmé", unknown: "a un résultat inconnu" };
+    return f.lang === "en"
+      ? `On ${f.project}, ${f.label} ${f.kind === "en_attente" ? "is waiting for your answer" : states[f.outcome]}.`
+      : `Sur ${f.project}, ${f.label} ${f.kind === "en_attente" ? "attend ta réponse" : states[f.outcome]}.`;
+  }
   if (f.lang === "en") {
     const on = f.task ? `: ${f.task}` : "";
     if (f.kind === "en_attente") return `On ${f.project}, your agent is waiting for your answer${on}.`;
@@ -111,6 +122,8 @@ export function llmPrompt(f: Facts): string {
       "You are Floppy, a voice assistant. Tell the user, in ONE short sentence (20 words at most), in natural spoken English, that one of their code agents changed state.",
       "Rules: no branch name, hash, path, identifier or needless technical word; no markdown; say the project and the gist of the result; if the agent is waiting, say what for. Make nothing up: only say what is written in the information below.",
       `Project: ${f.project}`,
+      f.label ? `Agent name to preserve: ${f.label}` : "",
+      f.outcome ? `Observed outcome: ${f.outcome}. Finished does not mean successful or committed. Do not turn an unknown outcome into success.` : "",
       f.task ? `Topic: ${f.task}` : "",
       `State: the agent ${STATE_EN[f.kind]}${f.kind === "termines" ? " (it is not waiting for the user)" : ""}`,
       f.asked ? `Last request from the user: ${f.asked}` : "",
@@ -122,6 +135,8 @@ export function llmPrompt(f: Facts): string {
     "Tu es Floppy, un assistant vocal. Annonce à l'utilisateur, en UNE phrase courte (20 mots au plus), en français parlé et naturel, qu'un de ses agents de code a changé d'état.",
     "Règles : pas de nom de branche, de hash, de chemin, d'identifiant ni de mot technique inutile ; pas de markdown ; ne recopie pas l'anglais, résume-le en français ; dis le projet et l'essentiel du résultat ; si l'agent attend, dis ce qu'il attend. N'invente rien : dis seulement ce qui est écrit dans les informations ci-dessous.",
     `Projet : ${f.project}`,
+    f.label ? `Nom individuel à conserver : ${f.label}` : "",
+    f.outcome ? `Résultat observé : ${f.outcome}. Une fin ne prouve ni réussite ni commit. Ne transforme pas un résultat inconnu en succès.` : "",
     f.task ? `Sujet : ${f.task}` : "",
     `État : l'agent ${STATE_FR[f.kind]}${f.kind === "termines" ? " (il n'attend rien de l'utilisateur)" : ""}`,
     f.asked ? `Dernière demande de l'utilisateur : ${f.asked}` : "",

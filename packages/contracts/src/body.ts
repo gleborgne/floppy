@@ -2,6 +2,24 @@
 import type { BodyToKernel, BodyTransport, Capability, KernelToBody } from "@floppy/protocol";
 import type { Text } from "@floppy/core";
 
+/** Hook `initiative.presented` : programmation vocale ou demande d'affichage transmise,
+ * sans preuve que l'utilisateur a vu ou entendu. `completed` concerne seulement la voix. */
+export interface InitiativePresented {
+  origin: string;
+  session?: string;
+  source: string;
+  key?: string;
+  stage: "display-scheduled" | "scheduled" | "completed" | "interrupted";
+}
+
+/** Hook `initiative.delivery` : suivi de file uniquement, sans établir de référence parlée. */
+export interface InitiativeDelivery {
+  source: string;
+  key?: string;
+  stage: "queued" | "dropped" | "deduped";
+  queueLength: number;
+}
+
 export interface BodySessionInfo {
   id: string;
   name: string;

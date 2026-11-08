@@ -59,6 +59,7 @@ Un plugin fournit ou utilise un service par son nom ; il ne connaît jamais le p
 flowchart LR
   p_noyau[["noyau (tâches, documents)"]]
   s_agent(["agent"])
+  s_agentTracking(["agentTracking"])
   s_avatars(["avatars"])
   s_body(["body"])
   s_brain(["brain"])
@@ -122,6 +123,8 @@ flowchart LR
   p_body_electron["body-electron"]
   p_body_electron --> s_avatars
   s_body --> p_body_electron
+  p_display_agent_tracking["display-agent-tracking"]
+  s_agentTracking -.-> p_display_agent_tracking
   p_conversation["conversation"]
   s_body --> p_conversation
   s_brain -.-> p_conversation
@@ -133,6 +136,7 @@ flowchart LR
   s_tts == "voice.tts" ==> p_conversation
   s_wakeword == "listen.wakeword" ==> p_conversation
   p_orca["orca"]
+  p_orca --> s_agentTracking
   s_llm -.-> p_orca
   p_websearch["websearch"]
   p_websearch --> s_search
@@ -190,6 +194,7 @@ Sans service (outils seuls) : `browser`, `inbox`, `m365`.
 | Service | Contrat | Ce qu'il fait | Fournisseurs | Utilisé par |
 |---|---|---|---|---|
 | `agent` | `AgentService` (`packages/contracts/src/agents.ts`) | — | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `agent-copilot`, `agent-cursor`, `agent-aider` | `agent-sessions` (facultatif), `agent-jobs` (facultatif) |
+| `agentTracking` | `AgentTrackingService` (`packages/contracts/src/agents.ts`) | Le fournisseur conserve les observations ; une lecture ne commande jamais un agent | `orca` | `display-agent-tracking` (facultatif) |
 | `avatars` | `AvatarRegistry` (`packages/contracts/src/body.ts`) | Les avatars de l'app de bureau | `body-electron` | `avatar-tv` (facultatif), `avatar-pixel` (facultatif), `avatar-essaim` (facultatif), `avatar-gyre` (facultatif), `avatar-goutte` (facultatif), `avatar-oscillo` (facultatif), `avatar-iris` (facultatif), `avatar-pixelcat` (facultatif) |
 | `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
 | `brain` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-aisdk`, `brain-claude-cli` | `conversation` (facultatif) |
@@ -484,3 +489,7 @@ Spike `assistant\spikes\electron-utility` : Electron 45.2.3 embarque **Node 24.2
 ## Licences
 
 `npm run licences` : les dépendances **livrées** doivent être permissives (MIT, ISC, BSD, Apache-2.0…), sinon échec. Les outils de dev sont seulement signalés (exemple : `lightningcss`, MPL-2.0, tiré par vitest).
+
+### Contributions desktop
+
+Le noyau ne branche aucun service de suivi vers l'app. `@floppy/contracts` expose `registerDesktop` sur le canal générique `ctx.host` ; la déclaration et les abonnements appartiennent au plugin consommateur et à ses effets. Les états génériques `plugin.state` suffisent à révoquer ses vues côté hôte (y compris échec de démarrage et déconnexion), sans branche par service ou par fournisseur. `display-agent-tracking` lit `agentTracking` facultativement, reste actif hors ligne et suit les redémarrages normaux des liens faibles. `body-electron` déclare Réglages pour l'avatar ; l'hôte déclare la primitive locale Réglages pour le menu de l'icône dans le même registre, accessible même sans noyau ; voir [éléments : contributions de bureau](elements.md#contributions-de-bureau-déclarées-2026-11-08).

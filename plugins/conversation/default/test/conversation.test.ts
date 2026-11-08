@@ -276,6 +276,7 @@ describe("Live dans l'orchestrateur, sans cerveau", () => {
 });
 
 // ------------------------------------------------------------------ faux cerveau : écho, ou appel d'outil
+const brainInputs: Parameters<BrainService["run"]>[0][] = [];
 const fakeBrain = definePlugin({
   manifest: { id: "fake-brain", version: "0", licence: "MIT", provides: ["brain"] },
   apply(ctx) {
@@ -283,6 +284,7 @@ const fakeBrain = definePlugin({
       name: "faux",
       reset: () => {},
       async *run(input) {
+        brainInputs.push(input);
         if (/raconte/.test(input.text)) {
           yield { type: "emotion", emotion: "happy" };
           yield { type: "text", delta: "Première phrase. Deu" };
@@ -708,7 +710,7 @@ describe("conversation (2 corps)", () => {
     await vi.waitFor(() => expect(st.spoken).toEqual(["Le job build est terminé."]));
     expect(avatar.of("notify")[0]).toMatchObject({ text: "Le job build est terminé.", important: true });
     expect(chat.of("notify")).toHaveLength(1);
-    expect(k.audit.tail(50).find((r) => r.kind === "initiative")).toMatchObject({ source: "orca", spoken: true });
+    expect(k.audit.tail(50).find((r) => r.kind === "initiative")).toMatchObject({ source: "orca", spoken: false, stage: "scheduled" });
     await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
     avatar.send({ type: "playback", playing: false });
     await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("listening"));
@@ -722,6 +724,23 @@ describe("conversation (2 corps)", () => {
     expect(st.spoken).not.toContain("Revue terminée.");
     avatar.send({ type: "playback", playing: false });
     await vi.waitFor(() => expect(st.spoken).toContain("Revue terminée."));
+  });
+
+  it("une annonce vocale reste dans le contexte du corps qui la présente", async () => {
+    const st = streams.get("avatar")!;
+    k.bus.emit("initiative", { source: "orca", text: "Filtrage mails attend une réponse.", importance: "important", key: "mail-origin" });
+    await vi.waitFor(() => expect(st.spoken).toContain("Filtrage mails attend une réponse."));
+    await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
+    avatar.send({ type: "playback", playing: false });
+    await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("listening"));
+    chat.send({ type: "text", text: "Bonjour autre conversation" });
+    await vi.waitFor(() => expect(brainInputs.some((input) => input.origin === "test" && input.text === "Bonjour autre conversation")).toBe(true));
+    const other = brainInputs.findLast((input) => input.origin === "test")!;
+    expect(JSON.stringify(other.context ?? [])).not.toContain("Filtrage mails");
+    avatar.send({ type: "text", text: "Que demande cet agent" });
+    await vi.waitFor(() => expect(brainInputs.some((input) => input.origin === "avatar" && input.text === "Que demande cet agent")).toBe(true));
+    const own = brainInputs.findLast((input) => input.origin === "avatar")!;
+    expect(JSON.stringify(own.context)).toContain("Filtrage mails attend une réponse");
   });
 
   it("initiative importante pendant la veille : pas dite, mais notifiée", async () => {

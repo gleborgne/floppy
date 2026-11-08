@@ -19,6 +19,7 @@ import { safeWindow, bringToFront } from "./windows.ts";
 import { pageFile, preloadFile, missingUi } from "./ui.ts";
 import { avatarSpot } from "./placement.ts";
 import type { Area, Bilingual } from "./placement.ts";
+import { createDesktopContributions } from "./desktop-contributions.ts";
 
 /**
  * Message du noyau (utilityProcess) ou demande d'une page : les champs dépendent de `type` et ne sont pas vérifiés
@@ -100,6 +101,11 @@ function itemsPayload() {
 function sendItems() { if (lastItems) settingsWin?.webContents.send("items:update", itemsPayload()); }
 const coderSessions = new Set<string>(); // conversations de l'assistant ouvertes depuis la fenêtre des réglages
 const pending = new Map<number, Reply>();      // reqId → résolution de la réponse du noyau
+const contributions = createDesktopContributions({ create: safeWindow, lang: () => lang,
+  local: [{ id: "settings", title: { fr: "Réglages", en: "Settings" }, menus: ["tray"], order: 10, open: () => { openSettings(); } }],
+  send: (message) => kernel?.postMessage(message), changed: () => refreshTray(),
+  log: (id, reason) => console.log(`[desktop] ${id}: ${reason}`),
+});
 // Affichage (réglages du plugin body-electron, reçus du noyau).
 let display: Display = { avatar_visible: true, masquer_apres: 0, bulle: true, toujours_devant: true, avatar: "", avatarUrl: "" };
 let idleTimer: NodeJS.Timeout | undefined;           // masquage automatique après inactivité
@@ -182,6 +188,7 @@ const waitText = (missing?: string[]) => `${T("waits")} ${(missing ?? []).join("
 function setLang(l: unknown): void {
   if ((l !== "fr" && l !== "en") || l === lang) return;
   lang = l;
+  contributions.language();
   settingsWin?.setTitle(T("settingsTitle"));
   onbWin?.setTitle(T("onboardingTitle"));
   textWin?.setTitle(T("textTitle"));
@@ -215,7 +222,7 @@ function refreshTray() {
     { label: muted ? T("wake") : T("mute"), click: toggleMute },
     { label: win && !win.isDestroyed() && win.isVisible() ? T("hide") : T("show"), click: toggleWindow },
     { label: T("replace"), click: () => { placeHome(); showWin(); } },
-    { label: T("settings"), click: openSettings },
+    ...contributions.menu("tray"),
     { label: T("firstSetup"), click: openOnboarding },
     { type: "separator" },
     { label: T("restart"), click: () => restartKernel() },
@@ -255,6 +262,7 @@ function startKernel() {
     else if (m?.type === "kernel.failed") bootFailure = m.text ?? null;
     else if (m?.type === "restart") restartKernel();
     else if (m?.type === "display") applyDisplay(m.settings);
+    else if (typeof m?.type === "string" && m.type.startsWith("desktop.")) contributions.message(m);
     else if (m?.type === "settings.open") {
       const source = kernel;
       // Page demandée (« ouvre les réglages d'Orca ») : rubrique + élément, des textes courts seulement.
@@ -296,10 +304,12 @@ function startKernel() {
     else if (m?.type === "onboarding.result") { pending.get(m.reqId)?.({ ok: m.ok, value: m.value, text: m.text }); pending.delete(m.reqId); }
     else if (m?.type === "settings.result") { pending.get(m.reqId)?.({ ok: m.ok, text: m.text }); pending.delete(m.reqId); }
     else if (m?.type === "plugin.state") {
+      contributions.state(m.id, m.state);
       if (m.state === "error" || m.state === "waiting") problems.set(m.id, m.error ?? waitText(m.missing));
       else problems.delete(m.id);
       refreshTray();
     } else if (m?.type === "kernel.ready") {
+      contributions.reconcile(m.plugins.filter((p: Msg) => p.state === "active").map((p: Msg) => p.id));
       bootFailure = null;
       problems.delete("noyau");
       for (const p of m.plugins) if (p.state === "error" || p.state === "waiting") problems.set(p.id, p.error ?? waitText(p.missing));
@@ -314,6 +324,7 @@ function startKernel() {
   kernel.on("exit", (code: number) => {
     if (kernel !== source) return;
     kernel = null;
+    contributions.clear();
     currentPorts = null;
     // Les demandes en cours n'auront jamais de réponse : on les clôt tout de suite (sinon 30-60 s d'attente).
     for (const [id, done] of [...pending]) { pending.delete(id); try { done({ ok: false, text: T("noAnswer"), error: T("noAnswer") }); } catch { /* résolveur déjà parti */ } }
@@ -456,6 +467,7 @@ function createWindow() {
   // Comme les autres fenêtres : jamais de navigation ni de nouvelle fenêtre depuis l'avatar.
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
+  win.webContents.on("context-menu", openAvatarMenu);
   // Les yeux de l'avatar suivent la souris, même hors de sa fenêtre : position relative à la fenêtre, si elle a bougé.
   let lastCursor = "";
   cursorTimer = setInterval(() => {
@@ -585,6 +597,11 @@ function openDocuments(m: Msg | undefined): void {
   docsWin.loadFile(pageFile("documents"));
   docsWin.webContents.once("did-finish-load", () => { docsWin?.webContents.send("documents:show", payload); bringToFront(docsWin); });
   docsWin.on("closed", () => { docsWin = null; });
+}
+
+function openAvatarMenu() {
+  const items = contributions.menu("avatar");
+  if (items.length && win) Menu.buildFromTemplate(items).popup({ window: win });
 }
 
 function openSettings() {
@@ -752,6 +769,8 @@ app.whenReady().then(() => {
   ipcMain.on("activity", (_e, kind) => { approvalOpen = kind === "approval"; activity(); });
   ipcMain.on("approval-closed", () => { approvalOpen = false; settleIdle(); });
   ipcMain.handle("text:submit", (e, text) => submitText(e, text));
+  ipcMain.handle("desktop:get", (e, ...args) => contributions.get(e, ...args));
+  ipcMain.handle("desktop:action", (e, action, ...args) => contributions.action(e, action, ...args));
   ipcMain.on("text:close", (e) => { if (textWin && e.sender === textWin.webContents) textWin.close(); });
   ipcMain.on("open-settings", () => openSettings());
   // Réponse : { ok, text: { fr, en } } ; la page de l'avatar choisit la langue de l'assistant (c'est Floppy qui le dit).

@@ -24,6 +24,7 @@ export const PACKAGES: readonly string[] = [
   "@floppy/plugin-body-hub",
   "@floppy/plugin-body-ws",
   "@floppy/plugin-body-electron",
+  "@floppy/plugin-display-agent-tracking",
   "@floppy/plugin-body-reachy",
   "@floppy/plugin-conversation",
   "@floppy/plugin-orca",

@@ -14,3 +14,4 @@ export type * from "./body.ts";
 export type * from "./search.ts";
 export type * from "./notify.ts";
 export { defineAvatar, readAvatarDir } from "./avatars.ts";
+export { registerDesktop, type DesktopContribution, type DesktopRegistration, type DesktopContent } from "./desktop.ts";

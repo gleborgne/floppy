@@ -41,8 +41,8 @@ describe("outils", () => {
     const { k } = await start(data, { surveillance: false });
     const all = (await k.tools.call("orca_agents", {})).text;
     expect(all).toContain("dev-mcp");
-    expect(all).toContain("chantier");
-    expect(all).toContain("Claude en cours depuis 5 min : Migration");
+    expect(all).toContain("Migration — dev-mcp : en cours");
+    expect(all).toContain("présence inconnue");
     expect(all).not.toContain("vide");
     expect(all).not.toContain("x".repeat(141));
     expect(all.length).toBeLessThanOrEqual(1520);
@@ -81,8 +81,9 @@ describe("surveillance", () => {
     const n2 = data.calls;
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(n2 + 3));
     expect(got).toHaveLength(1);
-    expect(got[0]).toMatchObject({ source: "orca", importance: "normal", key: "orca:w1:p1:termines" });
-    expect(got[0]!.text).toBe("Sur Repo dev mcp, ton agent a fini : migration.");
+    expect(got[0]).toMatchObject({ source: "orca", importance: "normal", key: expect.stringMatching(/^orca:agent_.+:finished$/) });
+    expect(got[0]!.text).toContain("Migration");
+    expect(got[0]!.text).toContain("résultat inconnu");
   });
 
   it("importance selon le réglage", async () => {
@@ -96,20 +97,20 @@ describe("surveillance", () => {
     }
   });
 
-  it("rien : pas d'initiative, Orca n'est plus surveillé ; l'ancien « surveillance : non » vaut « rien »", async () => {
+  it("rien : pas d'initiative mais suivi actif ; l'ancien « surveillance : non » vaut « rien »", async () => {
     for (const cfg of [{ notifications: "aucune" }, { surveillance: false }]) {
       const data = { calls: 0, v: mk("working") };
       const { k, got } = await start(data, cfg);
       data.v = mk("done");
       await new Promise((r) => setTimeout(r, 120));
-      expect(data.calls).toBe(0);
+      expect(data.calls).toBeGreaterThan(0);
       expect(got).toEqual([]);
       expect(k.settings.list().find((x) => x.key === "orca_notifications")!.value).toBe("aucune");
       expect(JSON.stringify((await k.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!.statusText)).toContain("annonces coupées");
     }
   });
 
-  it("surveillance coupée : plus d'appels", async () => {
+  it("annonces coupées : la collecte continue", async () => {
     const data = { calls: 0, v: mk("working") };
     const { k } = await start(data);
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
@@ -117,7 +118,7 @@ describe("surveillance", () => {
     await new Promise((r) => setTimeout(r, 60));
     const n = data.calls;
     await new Promise((r) => setTimeout(r, 120));
-    expect(data.calls).toBe(n);
+    expect(data.calls).toBeGreaterThan(n);
   });
 
   it("Orca hors ligne : on continue sans planter", async () => {
@@ -142,13 +143,13 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     expect(it).toMatchObject({ id: "orca", enabled: true, status: "ok", removable: true });
     // Ses réglages sont montrés dans l'élément (« Configurer »), pas dans la rubrique.
     expect(it.settings).toEqual(["orca_notifications"]);
-    expect(it.children!.map((c) => c.id)).toEqual(["orca_envoyer", "orca_agents", "orca_detail", "orca_ecran", "orca_recherche"]);
+    expect(it.children!.map((c) => c.id)).toEqual(["orca_envoyer", "orca_envoyer_groupe", "orca_envois", "orca_annuler_envoi", "orca_agents", "orca_detail", "orca_historique", "orca_diagnostic", "orca_ecran", "orca_recherche"]);
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
 
     expect((await k.items.run({ op: "enable", provider: P, id: "orca", on: false }, "cli")).ok).toBe(true);
     expect(k.tools.list().some((t) => t.name.startsWith("orca_"))).toBe(false);
     expect(await orca(k)).toMatchObject({ enabled: false, status: "off" });
-    expect((await orca(k)).children!.length).toBe(5);
+    expect((await orca(k)).children!.length).toBe(10);
     const n = data.calls;
     await new Promise((r) => setTimeout(r, 120));
     expect(data.calls).toBe(n);

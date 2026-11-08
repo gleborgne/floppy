@@ -54,7 +54,7 @@ describe("build:ui", () => {
 
   it("chaque preload source devient un fichier .cjs à la racine de build/", () => {
     const sources = readdirSync(join(desktop, "src")).filter((f) => /^preload.*\.cts$/.test(f));
-    expect(sources.length).toBe(7);
+    expect(sources.length).toBe(8);
     for (const s of sources) {
       const target = join(out, s.replace(/\.cts$/, ".cjs"));
       expect(existsSync(target), s).toBe(true);

@@ -125,6 +125,7 @@ plugins:
   - { id: wakeword-porcupine, plugin: wakeword-porcupine }
   - { id: body, plugin: body-hub }
   - { id: bodyel, plugin: body-electron, config: { avatar: tv } }
+  - { id: agent-display, plugin: display-agent-tracking }
   # Avatars of the desktop app (plugins/avatar/).
   - { id: avatar-tv, plugin: avatar-tv }
   - { id: avatar-pixel, plugin: avatar-pixel }

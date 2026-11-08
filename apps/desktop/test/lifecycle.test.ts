@@ -9,6 +9,7 @@ import * as texts from '../src/main-texts.ts';
 import * as trayIcon from '../src/tray-icon.ts';
 import * as placement from '../src/placement.ts';
 import * as ui from '../src/ui.ts';
+import { createDesktopContributions } from '../src/desktop-contributions.ts';
 
 // Le vrai processus principal, dans un bac sans Electron ni processus/fichiers réels.
 function desktop(argv: string[] = []) {
@@ -20,16 +21,50 @@ function desktop(argv: string[] = []) {
   // main.ts sans ses types (comme Node le lit au lancement), puis sans ses imports : le contexte les fournit.
   const source = stripTypeScriptTypes(readFileSync(new URL('../src/main.ts', import.meta.url),'utf8'))
     .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.ts',import.meta.url).href));
-  const textWindow = Object.assign(new EventEmitter(), { webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), isDestroyed: () => false });
+  const textWindow = Object.assign(new EventEmitter(), { webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), setTitle: vi.fn(), show: vi.fn(), isDestroyed: () => false });
   Object.assign(app, { isReady: () => true });
   const shortcut = { unregisterAll() {}, register: vi.fn(() => true), unregister: vi.fn() };
   const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console,
     // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
-    ...texts, ...trayIcon, ...placement, ...ui, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
+    ...texts, ...trayIcon, ...placement, ...ui, createDesktopContributions, structuredClone, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
+  const popup = vi.fn();
+  const menu = { buildFromTemplate: vi.fn(() => ({ popup })) };
+  context.Menu = menu;
   context.globalShortcut = shortcut;
-  runInNewContext(source+';globalThis.api={applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};},pending:()=>pending};',context);
-  return { api:context.api,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
+  runInNewContext(source+';globalThis.api={contributions,openAvatarMenu,applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};},pending:()=>pending};',context);
+  return { api:context.api,menu,popup,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
+
+it("garde une seule entrée Réglages au boot, sans corps et après panne", () => {
+  const d = desktop();
+  const settings = () => d.api.contributions.menu('tray').filter((e: { label: string }) => e.label === 'Réglages');
+  expect(settings()).toHaveLength(1);
+  settings()[0].click(); expect(d.windows).toHaveBeenCalledOnce();
+  d.api.startKernel(); expect(settings()).toHaveLength(1);
+  const identity = { owner: 'bodyel', id: 'settings', token: 'one' };
+  d.child.emit('message', { type: 'desktop.register', ...identity, contribution: { ...identity, title: { fr: 'Réglages', en: 'Settings' }, menus: ['avatar'], order: 10, actions: ['open'] } });
+  expect(settings()).toHaveLength(1); expect(d.api.contributions.menu('avatar')).toHaveLength(1);
+  d.child.emit('message', { type: 'plugin.state', id: 'bodyel', state: 'error' });
+  expect(settings()).toHaveLength(1); expect(d.api.contributions.menu('avatar')).toHaveLength(0);
+  d.child.emit('exit', 1); expect(settings()).toHaveLength(1);
+});
+
+it("ignore le menu avatar vide et affiche les contributions actives", () => {
+  const d = desktop(); d.api.setWindow(d.textWindow);
+  d.api.openAvatarMenu(); expect(d.menu.buildFromTemplate).not.toHaveBeenCalled();
+  const identity = { owner: 'demo', id: 'view', token: 'one' };
+  d.api.contributions.message({ type: 'desktop.register', ...identity, contribution: { ...identity, title: { fr: 'Autre', en: 'Other' }, menus: ['avatar'], actions: ['open'] } });
+  d.api.openAvatarMenu(); expect(d.popup).toHaveBeenCalledWith({ window: d.textWindow });
+  d.api.contributions.clear(); d.api.openAvatarMenu(); expect(d.popup).toHaveBeenCalledOnce();
+});
+
+it("les contributions disparaissent quand le noyau s'arrête", () => {
+  const d = desktop(); d.api.startKernel();
+  d.child.emit('message', { type: 'desktop.register', owner: 'demo', id: 'action', token: 'one', contribution: { owner: 'demo', id: 'action', token: 'one', title: { fr: 'Action', en: 'Action' }, menus: ['avatar'], actions: ['open'] } });
+  expect(d.api.contributions.menu('avatar')).toHaveLength(1);
+  d.child.emit('exit', 0);
+  expect(d.api.contributions.menu('avatar')).toHaveLength(0);
+});
 
 it("le raccourci global ouvre la saisie, se remplace et se désactive", () => {
   const d = desktop();

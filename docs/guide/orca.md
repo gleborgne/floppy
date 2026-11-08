@@ -2,7 +2,7 @@
 
 [← Tous les guides](README.md)
 
-Floppy surveille les agents de code qui tournent dans **Orca**. Il te prévient quand un agent a fini ou attend ta réponse. Tu peux aussi lui demander où en est un agent, sans quitter ce que tu fais.
+Floppy suit individuellement les agents de code d'**Orca**, avec un nom de tâche et un projet. Tu peux consulter la fenêtre **Agents**, demander un récapitulatif et poursuivre sur un agent sans changer d'onglet dans Orca. Une fin indique seulement une fin observée : elle ne prouve ni la réussite du travail ni un commit.
 
 Ce guide prend 2 minutes.
 
@@ -15,7 +15,7 @@ Floppy regarde maintenant l'état des agents toutes les 15 secondes. Une fin d'a
 
 ## 2. Être prévenu tout de suite (conseillé)
 
-Un petit plugin, installé dans Orca, prévient Floppy **dès qu'un agent change d'état**. L'annonce arrive alors en moins d'une seconde.
+Un petit plugin, installé dans Orca, transmet le changement d'état **dès qu'il arrive**. Floppy accepte le fait, puis lit les informations utiles pour préparer l'annonce ; une lecture lente peut retarder cette annonce.
 
 1. Ouvre **Réglages → Connecteurs → Orca**.
 2. Clique **« Installer dans Orca »**. Orca doit être ouvert.
@@ -41,21 +41,28 @@ Dans **Réglages → Connecteurs → Orca**, le réglage **« Annonces des agent
 |---|---|
 | **Tout dire** | Chaque fin d'agent est dite à voix haute. |
 | **Si un agent attend** (par défaut) | À voix haute seulement quand un agent attend ta réponse. Les fins s'affichent par écrit, sans voix. |
-| **Rien** | Floppy ne surveille plus Orca. Tu peux toujours lui poser des questions sur tes agents. |
+| **Rien** | Aucune annonce. Floppy continue de suivre les agents et tu peux consulter leur état ou leur historique. |
 
-L'interrupteur en haut de la page allume ou éteint Orca entier dans Floppy : les annonces **et** les questions.
+L'interrupteur en haut de la page allume ou éteint Orca entier dans Floppy : le suivi, les annonces **et** les questions. L'ancien choix « aucune » ou « surveillance : non » devient ce mode silencieux ; pour arrêter la collecte, éteins le connecteur.
 
 ## 4. Ce que tu peux demander
 
-- « Où en sont mes agents ? »
-- « Qu'est-ce qu'il demande ? » : Floppy prend l'agent qu'il vient d'annoncer, ou le seul qui attend.
+- « Où en sont mes agents ? » : une liste nommée et ordonnée, avec un résumé individuel. Tu peux préciser un projet, un état ou une date.
+- « Celui sur les mails », « le deuxième », « il a changé quoi ? » : Floppy reprend le groupe présenté ou l'agent dont tu parles dans cette conversation. Les conversations de deux corps restent séparées. Une notification silencieuse d'un autre agent ne change jamais « lui ».
 - « Montre-moi l'écran de l'agent de la migration » : Floppy lit le terminal de l'agent et te le résume.
 - « Quel agent a travaillé sur le cache ? », « Qu'est-ce qu'on avait décidé pour les dates ? » : Floppy cherche dans les conversations de tous tes agents. Il faut d'abord allumer la recherche dans Orca : **Réglages → Agent Session History**.
-- « Dis-lui de commit », « Demande-lui de corriger les tests » : après une annonce, Floppy propose d'envoyer la consigne à cet agent. La confirmation indique le projet et le message. Tu peux aussi préciser le projet ou la tâche.
+- « Qu'est-ce qui a changé sur Floppy depuis ce matin ? » : Floppy récapitule les faits observés (48 heures au maximum), en nommant les agents. Une période sans observation ne prouve pas une inactivité.
+- « Dis-lui de commit », « Demande-lui de corriger les tests » : après avoir parlé de cet agent, Floppy propose la consigne avec son nom et son projet. Le projet « Floppy » seul reste ambigu si plusieurs agents y travaillent.
+- « Demande-leur de faire le commit » : le groupe présenté est figé pour l'accord. Les agents d'un même dossier passent successivement, après la fin observée du tour précédent. Demande ensuite où en sont les envois ; une transmission acceptée ne prouve pas un démarrage ou un commit.
+- « Diagnostic Orca » : état de la liaison, dernière synchronisation, couverture incomplète et traces techniques limitées, sans texte de tes demandes.
 
 Les noms de projets mal compris par la dictée sont tolérés : « différendum » trouve `differendum`.
 
 Floppy transmet tes consignes aux agents ouverts dans un terminal Orca, sans changer d'onglet. S'il ne peut pas identifier un agent unique, il demande de préciser. Les chats sans terminal et les workers pilotés par un coordinateur ne sont pas pris en charge pour l'envoi. Une consigne transmise ne signifie pas que l'agent a déjà fait le travail.
+
+Si un agent disparaît ou si la référence de conversation expire, Floppy le dit et demande de refaire la liste. Il ne choisit jamais un autre agent à sa place. Les références ne sont pas conservées après un redémarrage et expirent après 30 minutes sans utilisation.
+
+La fenêtre **Agents** montre les derniers faits, leur âge, la présence connue ou inconnue et la connexion. « Terminé », « réussite déclarée » et « présent » sont trois informations distinctes. En mode Live, une annonce envoyée à la voix est marquée comme programmée ; Floppy ne peut pas certifier qu'elle a été entendue.
 
 ## Ça ne marche pas ?
 

@@ -87,6 +87,7 @@ interface FloppyDictationApi {
 
 /** Icônes Lucide (icons.ts, script classique chargé avant les modules). */
 interface Window {
+  floppyDesktop?: FloppyDesktopApi;
   floppyHost?: FloppyHostApi;
   floppySettings?: FloppySettingsApi;
   floppyCoder?: FloppyCoderApi;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createServer } from "node:http";
-import { projectName, cleanTask, cleanMessage, isWorker, facts, plainSentence, llmSentence } from "../src/speech.ts";
+import { projectName, cleanTask, cleanMessage, isWorker, facts, plainSentence, llmSentence, llmPrompt } from "../src/speech.ts";
 import type { OrcaAgent, OrcaWorktree } from "../src/index.ts";
 
 const w = (displayName: string, repo: string) => ({ worktreeId: "x", displayName, repo }) as OrcaWorktree;
@@ -54,6 +54,13 @@ describe("annonces Orca sans jargon (données réelles)", () => {
 });
 
 describe("annonces Orca en anglais", () => {
+  it.each(["fr", "en"] as const)("préserve le nom individuel et ne transforme pas une fin inconnue en succès (%s)", (lang) => {
+    const f = { ...facts(w("Floppy", "Floppy"), a({ taskTitle: "Courrier" }), "termines", lang), label: "Courrier", outcome: "unknown" as const };
+    expect(plainSentence(f)).toContain("Courrier");
+    expect(plainSentence(f)).toContain(lang === "en" ? "unknown result" : "résultat inconnu");
+    expect(llmPrompt(f)).toContain(lang === "en" ? "Finished does not mean successful or committed" : "Une fin ne prouve ni réussite ni commit");
+    expect(plainSentence({ ...f, outcome: "failure" })).toContain(lang === "en" ? "failure" : "échec");
+  });
   it("phrase faite par le code et consigne du LLM dans la langue de l'assistant", async () => {
     const { llmPrompt } = await import("../src/speech.ts");
     const f = facts(w("env-stg", ""), a({ taskTitle: "Fix login" }), "en_attente", "en");

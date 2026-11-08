@@ -6,6 +6,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { definePlugin, T, TextError, tr, type ItemInfo, type Text } from "@floppy/core";
 import type { AvatarEntry, ConversationCommandInput, ConversationCommand } from "@floppy/contracts";
+import { registerDesktop } from "@floppy/contracts";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
 import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, type ShortcutAction } from "./shortcuts.ts";
 import type { BodyToKernel, BodyTransport, KernelToBody } from "@floppy/protocol";
@@ -121,6 +122,9 @@ export default definePlugin<Config>({
       });
       return;
     }
+    registerDesktop(ctx, { id: "settings", title: { fr: "Réglages", en: "Settings" }, menus: ["avatar"], order: 10 }, {
+      actions: { open: async (signal) => { const result = await openWindow({ signal }, "", undefined); if (result.status !== "done") throw new TextError(result.text); return { ok: true }; } },
+    });
     const hub = ctx.get("body");
     ctx.hook<ConversationCommandInput, ConversationCommand | undefined>("conversation.command", async (input, next) => {
       const text = input.text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’]/g, "'").trim();
