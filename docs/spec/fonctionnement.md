@@ -14,6 +14,10 @@
 8. L'utilisateur peut **interrompre** l'assistant à tout moment. Quand le micro entend de la voix pendant que l'assistant parle, le bureau **suspend** la lecture sans perdre les mots. Le texte reconnu tranche : s'il reprend ce que l'assistant vient de dire (2 mots qui se suivent, ou 70 % des mots dès 3 mots), c'est l'**écho** de sa voix ; la lecture reprend et le texte est ignoré. Un acquiescement ou une hésitation isolée (« oui », « yeah », « mhm », « euh ») reprend aussi la lecture : ce signal ambigu, parfois halluciné par le STT, ne détruit pas une explication. Cette règle ne s'applique ni aux accords attendus, ni au bouton parler, ni à une adresse explicite avec le mot d'activation, ni après la fin de lecture. « Stop », « attends », « non » et une vraie phrase interrompent : tout s'arrête et l'écoute libre se rouvre, la phrase est écoutée sans le mot d'activation. Sans texte reconnu (2,5 s après la fin de la parole, 8 s au plus), la voix reprend. Le bouton parler coupe tout de suite. Une phrase coupée par une pause est recollée.
 Une demande peut aussi être saisie avec **Ctrl+Alt+T** (réglable dans Système). Elle rejoint le corps vocal de l'avatar sans mot d'activation : le tour, la mémoire, les outils, les accords et la réponse à voix haute suivent le même chemin qu'après une transcription. Une nouvelle demande interrompt la réponse précédente. « Oui » et « non » tapés répondent à l'accord en cours. La saisie réveille Floppy ; « dors » le remet en veille. Les clients texte comme `floppy chat` restent des conversations à réponse écrite.
 
+Dans la bulle de conversation, « Je t'écoute… » suit l'état `listening` du noyau : recevoir une transcription ne
+masque pas cet indicateur. Il reste sous le texte défilant, avec une croix « Arrêter l'écoute » qui envoie `mute: true`
+au noyau et met Floppy en veille. Le raccourci parler ou le mot d'activation permettent de le réveiller.
+
 ## Tâches longues
 
 - Une tâche longue (Claude Code, agent Orca) tourne en fond. L'assistant répond tout de suite (« OK, je transmets ») et l'utilisateur continue à parler.

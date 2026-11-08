@@ -211,29 +211,36 @@ export class Face {
 
   target(now) {
     if (this.emotionUntil && now > this.emotionUntil) { this.emotion = "neutral"; this.emotionUntil = 0; this.intensity = 1; }
-    const preset = EMOTION_PRESETS[this.emotion] ?? {};
+    // Une émotion de repos ne doit pas faire dormir un visage en pleine conversation.
+    const active = ["listening", "thinking", "speaking"].includes(this.state);
+    const emotion = active && ["sleepy", "tired", "bored"].includes(this.emotion) ? "neutral" : this.emotion;
+    const preset = EMOTION_PRESETS[emotion] ?? {};
     const t = { ...BASE };
-    const k = this.emotion === "neutral" ? 0 : this.intensity;
+    const k = emotion === "neutral" ? 0 : this.intensity;
     blend(t, preset, k);
     t.hue = k >= 0.35 && preset.hue !== undefined ? preset.hue : 0;
     const fx = new Set((preset.fx ?? []).filter((f) => k >= 0.6 || KEEP_FX.has(f)));
     const { valence, energy } = this.mood;
     // Humeur : visible au repos, et un peu sous les émotions légères.
-    const moodW = this.emotion === "neutral" ? 1 : clamp(1 - k, 0, 0.5);
+    const moodW = emotion === "neutral" ? 1 : clamp(1 - k, 0, 0.5);
     if (moodW && this.state !== "sleep") {
       // Le sourire d'humeur commence au-dessus du caractère de base (0.2) : au repos normal, visage neutre.
       if (valence > 0.3) blend(t, EMOTION_PRESETS.happy, (valence - 0.3) * 0.8 * moodW);
       if (valence < -0.1) blend(t, EMOTION_PRESETS.sorry, (-valence - 0.1) * 0.7 * moodW);
-      if (energy < 0.35) blend(t, EMOTION_PRESETS.tired, ((0.35 - energy) / 0.35) * 0.8 * moodW);
+      if (energy < 0.35 && !active) blend(t, EMOTION_PRESETS.tired, ((0.35 - energy) / 0.35) * 0.8 * moodW);
       if (energy > 0.75) t.eyeH += (energy - 0.75) * 16 * moodW;
     }
     if (this.state === "sleep") { Object.assign(t, EMOTION_PRESETS.sleepy); delete t.fx; t.hue = 0; fx.clear(); fx.add("zzz"); }
     if (this.state === "listening") {
+      if (emotion === "neutral") {
+        blend(t, EMOTION_PRESETS.curious, 0.65);
+        t.mouth = 0.35; t.mouthW = 28;
+      }
       t.scale *= 1.06 + this.hearingSmooth * 0.06;
       t.eyeH += this.hearingSmooth * 8;
       t.lookX *= 0.3; t.lookY *= 0.3;
     }
-    if (this.state === "thinking" && this.emotion === "neutral") { Object.assign(t, EMOTION_PRESETS.thinking); delete t.fx; fx.add("dots"); }
+    if (this.state === "thinking" && emotion === "neutral") { Object.assign(t, EMOTION_PRESETS.thinking); delete t.fx; fx.add("dots"); }
     if (this.state === "speaking") {
       if (!t.mouthW) t.mouthW = 28;
       // L'émotion colore l'articulation mais ne maintient pas la bouche ouverte dans les pauses.

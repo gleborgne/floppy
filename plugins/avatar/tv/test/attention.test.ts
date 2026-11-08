@@ -3,6 +3,19 @@ import { describe, it, expect } from "vitest";
 import { Face } from "../renderer/face.js";
 
 describe("attention de la TV", () => {
+  it.each([false, true])("le réveil remplace les ZZZ par un visage attentif (mouvement réduit : %s)", (reducedMotion) => {
+    const face = new Face(null, { reducedMotion });
+    face.setState("sleep");
+    face.setEmotion("sleepy", 1, 1500);
+    expect(face.target(performance.now()).fx.has("zzz")).toBe(true);
+    face.cue("wake");
+    face.setState("listening");
+    const { t, fx } = face.target(performance.now());
+    expect(fx.has("zzz")).toBe(false);
+    expect(t.eyeH).toBeGreaterThan(50);
+    expect(t.mouth).toBeGreaterThan(0);
+    expect(t.hR).toBeGreaterThan(1);
+  });
   it("amorce chaque accent sans saut de cible et fond les changements de direction", () => {
     const face = new Face(null);
     face.t0 = 0; face.lastStep = 0; face.nextBlink = 1e9;

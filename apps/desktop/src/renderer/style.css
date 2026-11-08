@@ -46,7 +46,7 @@ body { font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-ser
 #cards { flex: none; max-height: 150px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(120, 220, 230, 0.3) transparent; }
 #cards:empty { display: none; }
 /* Conversation visible au-dessus : un trait sépare le texte des cartes. */
-body:not(.nobubble) #scroll:has(#you:not(:empty), #reply:not(:empty), #listen:not([hidden])) + #cards {
+body:not(.nobubble) #bubble:has(#you:not(:empty), #reply:not(:empty), #listen:not([hidden])) #cards {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 body.nobubble #scroll { display: none; }
@@ -73,9 +73,13 @@ body.nobubble #scroll { display: none; }
 body.nobubble #you, body.nobubble #reply, body.nobubble #listen { display: none; }
 
 /* « Je t'écoute… » : il attend qu'on parle. Les barres suivent le micro (--lvl, 0..1). */
-#listen { display: flex; align-items: center; gap: 8px; color: var(--accent); font-size: 13px; font-weight: 600; }
+#listen { display: flex; flex: none; align-items: center; gap: 8px; color: var(--accent); font-size: 13px; font-weight: 600; }
+#stopListening { margin-left: auto; padding: 4px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+#stopListening svg { width: 16px; height: 16px; }
+#stopListening:hover { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
+#stopListening:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #listen[hidden] { display: none; }
-#you:not(:empty) ~ #listen, #reply:not(:empty) ~ #listen { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+#scroll:has(#you:not(:empty), #reply:not(:empty)) + #listen { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
 #listen .bars { display: inline-flex; align-items: center; gap: 2px; height: 14px; }
 #listen .bars i { width: 3px; border-radius: 2px; background: var(--accent); height: calc(4px + var(--lvl, 0) * 10px); transition: height 80ms linear; animation: listenPulse 1.1s ease-in-out infinite; }
 #listen .bars i:nth-child(2) { animation-delay: 0.15s; height: calc(4px + var(--lvl, 0) * 14px); }

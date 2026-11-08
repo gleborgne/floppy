@@ -84,6 +84,11 @@ Mêmes messages sur les 2 transports : `MessagePort` (avatar, dans l'app) et Web
 
 ## Les émotions
 
+L'avatar TV donne priorité aux états actifs sur les émotions de repos (`sleepy`, `tired`, `bored`) : les ZZZ
+disparaissent dès le passage en écoute, réflexion ou parole. En écoute sans autre émotion, il ouvre les yeux,
+prend une expression curieuse et sourit légèrement ; le signal `wake` ajoute son rebond et son hochement habituels.
+Le visage attentif reste lisible lorsque les mouvements sont réduits.
+
 ### Profil d'expressivité
 
 Le réglage `expressivite` (Voix) propose **discret**, **naturel** et **joueur**, à chaud, avec **joueur par défaut**.

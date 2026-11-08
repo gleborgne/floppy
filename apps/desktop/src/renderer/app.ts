@@ -47,14 +47,14 @@ const $ = (id: string) => document.getElementById(id) as HTMLElement;
 // ------------------------------------------------------------------ textes (fr / en)
 // Ce qu'on lit (bulle, cartes) suit la langue de l'interface (message display) ; ce que Floppy dit (résultats d'outils,
 // repris par le cerveau) suit la langue de l'assistant (message welcome du noyau).
-type TextKey = "you" | "listen" | "faceTip" | "closeTip" | "micDown" | "ask" | "yes" | "no" | "important" | "info" | "error";
+type TextKey = "you" | "listen" | "stopListening" | "faceTip" | "closeTip" | "micDown" | "ask" | "yes" | "no" | "important" | "info" | "error";
 const TEXTS: Record<Lang, Record<TextKey, string>> = {
   fr: {
-    you: "Toi", listen: "Je t'écoute…", faceTip: "Floppy — Ctrl+Alt+F pour parler", closeTip: "Cliquer pour fermer",
+    you: "Toi", listen: "Je t'écoute…", stopListening: "Arrêter l'écoute", faceTip: "Floppy — Ctrl+Alt+F pour parler", closeTip: "Cliquer pour fermer",
     micDown: "Micro indisponible", ask: "Ton accord ?", yes: "Oui", no: "Non", important: "Important", info: "Info", error: "Erreur",
   },
   en: {
-    you: "You", listen: "I'm listening…", faceTip: "Floppy — Ctrl+Alt+F to talk", closeTip: "Click to close",
+    you: "You", listen: "I'm listening…", stopListening: "Stop listening", faceTip: "Floppy — Ctrl+Alt+F to talk", closeTip: "Click to close",
     micDown: "Microphone unavailable", ask: "Your approval?", yes: "Yes", no: "No", important: "Important", info: "Info", error: "Error",
   },
 };
@@ -82,8 +82,9 @@ const said = (x: unknown): string => {
 };
 function applyTexts() {
   document.documentElement.lang = lang;
-  const listen = $("listen");
-  if (listen?.lastChild?.nodeType === Node.TEXT_NODE) listen.lastChild.textContent = L("listen");
+  $("listenLabel").textContent = L("listen");
+  $("stopListening").setAttribute("title", L("stopListening"));
+  $("stopListening").setAttribute("aria-label", L("stopListening"));
   $("faceWrap")?.setAttribute("title", L("faceTip"));
   const you = $("you")?.querySelector("b");
   if (you) you.textContent = L("you");
@@ -308,7 +309,7 @@ function hideBubbleSoon(ms = 9000) {
     setTimeout(() => { if ($("bubble").classList.contains("hide")) { $("you").textContent = ""; $("reply").textContent = ""; } }, 250);
   }, ms);
 }
-// « Je t'écoute… » : visible pendant l'écoute, tant qu'il n'a rien entendu de nouveau.
+// Le noyau décide de la fin de l'écoute ; une transcription seule ne la termine pas.
 let listenShown = false;
 function showListening(on: boolean): void {
   if (on === listenShown) return;
@@ -316,6 +317,13 @@ function showListening(on: boolean): void {
   $("listen").hidden = !on;
   if (on) showBubble();
 }
+$("stopListening")?.addEventListener("click", () => {
+  muted = true;
+  if (pttOn) send({ type: "ptt", on: false });
+  pttOn = false;
+  stopPlayback();
+  send({ type: "mute", on: true });
+});
 /** Il entend son nom : anneau autour du visage + petit saut, puis « Je t'écoute… ». */
 let wokeTimer = 0;
 function woke() {
@@ -589,7 +597,6 @@ function onMessage(m: KernelMsg): void {
       if (m.cue === "wake") woke();
       break;
     case "transcript":
-      showListening(false);
       setYou(m.text); replyText = ""; $("reply").textContent = "";
       showBubble(); break;
     case "dictation": host?.dictation?.({ del: m.del, ins: m.ins }); break; // tapé dans la fenêtre active, pas de bulle
