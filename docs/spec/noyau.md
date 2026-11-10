@@ -67,6 +67,7 @@ flowchart LR
   s_avatars(["avatars"])
   s_body(["body"])
   s_brain(["brain"])
+  s_brief(["brief"])
   s_coder(["coder"])
   s_completion(["completion"])
   s_delegate(["delegate"])
@@ -145,6 +146,8 @@ flowchart LR
   p_websearch["websearch"]
   p_websearch --> s_search
   s_body -.-> p_websearch
+  p_m365["m365"]
+  p_m365 --> s_brief
   p_avatar_tv["avatar-tv<br/>avatar-pixel<br/>avatar-swarm<br/>avatar-gyre<br/>avatar-droplet<br/>avatar-neon-scope<br/>avatar-iris<br/>avatar-pixelcat"]
   s_avatars -.-> p_avatar_tv
   p_coder["coder"]
@@ -153,6 +156,7 @@ flowchart LR
   p_agent_sessions["agent-sessions"]
   s_agent -.-> p_agent_sessions
   p_agent_jobs["agent-jobs"]
+  p_agent_jobs --> s_brief
   s_agent -.-> p_agent_jobs
   s_documents -.-> p_agent_jobs
   p_tts_gemini["tts-gemini<br/>tts-elevenlabs<br/>tts-audiocpp<br/>tts-system"]
@@ -170,10 +174,17 @@ flowchart LR
   p_documents --> s_documents
   s_body -.-> p_documents
   p_scheduler["scheduler"]
+  p_scheduler --> s_brief
   s_notify -.-> p_scheduler
   s_documents -.-> p_scheduler
+  p_brief["brief"]
+  p_brief --> s_task
+  s_brief -.-> p_brief
+  s_documents -.-> p_brief
+  s_completion == "brief.writer" ==> p_brief
   p_watch["watch"]
   p_watch --> s_task
+  p_watch --> s_brief
   s_documents -.-> p_watch
   s_completion == "watch.triage" ==> p_watch
   s_search == "watch.search" ==> p_watch
@@ -193,7 +204,7 @@ flowchart LR
 
 Lecture : plugin → service = il le fournit. Service → plugin : trait plein = `inject` (obligatoire), pointillé = `optional`, trait double = un slot (le choix d'un élément, nommé sur la flèche). « type » : un contrat cite le type d'un autre service. Les plugins aux mêmes liens partagent un nœud.
 
-Sans service (outils seuls) : `browser`, `calc`, `inbox`, `m365`.
+Sans service (outils seuls) : `browser`, `calc`, `inbox`.
 
 | Service | Contrat | Ce qu'il fait | Fournisseurs | Utilisé par |
 |---|---|---|---|---|
@@ -202,10 +213,11 @@ Sans service (outils seuls) : `browser`, `calc`, `inbox`, `m365`.
 | `avatars` | `AvatarRegistry` (`packages/contracts/src/body.ts`) | Les avatars de l'app de bureau | `body-electron` | `avatar-tv` (facultatif), `avatar-pixel` (facultatif), `avatar-swarm` (facultatif), `avatar-gyre` (facultatif), `avatar-droplet` (facultatif), `avatar-neon-scope` (facultatif), `avatar-iris` (facultatif), `avatar-pixelcat` (facultatif) |
 | `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
 | `brain` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-aisdk`, `brain-claude-cli` | `conversation` (facultatif) |
+| `brief` | `BriefSource` (`packages/contracts/src/brief.ts`) | Une source du point (ex. « Microsoft 365 · agenda ») | `m365`, `agent-jobs`, `scheduler`, `watch` | `brief` (facultatif) |
 | `coder` | `CoderService` (`packages/contracts/src/coder.ts`) | L'assistant IA de la fenêtre des réglages | `coder` | — |
-| `completion` | `CompletionService` (`packages/contracts/src/brain.ts`) | Un appel au modèle hors conversation | `llm-llamacpp`, `llm-openai`, `brain-claude-cli` | `orca` (slot `orca.summary`), `watch` (slot `watch.triage`) |
+| `completion` | `CompletionService` (`packages/contracts/src/brain.ts`) | Un appel au modèle hors conversation | `llm-llamacpp`, `llm-openai`, `brain-claude-cli` | `orca` (slot `orca.summary`), `brief` (slot `brief.writer`), `watch` (slot `watch.triage`) |
 | `delegate` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `brain-aisdk` (slot `brain.delegate`) |
-| `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `agent-jobs` (facultatif), `scheduler` (facultatif), `watch` (facultatif), noyau |
+| `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `agent-jobs` (facultatif), `scheduler` (facultatif), `brief` (facultatif), `watch` (facultatif), noyau |
 | `live` | `LiveService` (`packages/contracts/src/voice.ts`) | Un modèle « Live » qui écoute et parle lui-même (Gemini, GPT) ; les outils passent par lui ou par délégation | `live-gemini`, `live-openai` | `conversation` (slot `conversation.live`) |
 | `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `brain-aisdk` (slot `brain.main`) |
 | `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `coder`, `brain-aisdk` (facultatif), `conversation` (facultatif) |
@@ -213,7 +225,7 @@ Sans service (outils seuls) : `browser`, `calc`, `inbox`, `m365`.
 | `notify` | `NotifyService` (`packages/contracts/src/notify.ts`) | Un canal d'envoi configuré (ex. « Telegram · mon canal », « Gmail · perso ») | `notify-telegram`, `notify-mail` | `scheduler` (facultatif) |
 | `search` | `SearchService` (`packages/contracts/src/search.ts`) | Recherche web en service, pour les autres plugins (la Veille) | `websearch`, `searxng` | `watch` (slot `watch.search`) |
 | `stt` | `SttService` (`packages/contracts/src/voice.ts`) | Transcription en service (l'élément choisi dans le slot listen.stt) | `stt-sherpa` | `voice-listen` (slot `listen.stt`) |
-| `task` | `TaskService` (`packages/core/src/services.ts`) | Un plugin qui a des tâches les déclare dans son manifeste (`tasks`) et fournit ce service | `watch` | noyau |
+| `task` | `TaskService` (`packages/core/src/services.ts`) | Un plugin qui a des tâches les déclare dans son manifeste (`tasks`) et fournit ce service | `brief`, `watch` | noyau |
 | `tts` | `TtsService` (`packages/contracts/src/voice.ts`) | Une voix en service (l'élément choisi dans le slot voice.tts) | `tts-gemini`, `tts-elevenlabs`, `tts-audiocpp`, `tts-system` | `conversation` (slot `voice.tts`) |
 | `vad` | `VadService` (`packages/contracts/src/voice.ts`) | Détecteur de parole en service (l'élément choisi dans le slot listen.vad) | `stt-sherpa` | `voice-listen` (slot `listen.vad`) |
 | `vocabulary` | `VocabularyService` (`packages/contracts/src/vocabulary.ts`) | Interprétation du vocabulaire personnel ; ne modifie jamais une transcription ni un message | `vocabulary` | `brain-aisdk` (facultatif), `conversation` (facultatif) |

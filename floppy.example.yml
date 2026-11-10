@@ -28,6 +28,7 @@ slots:
   watch.triage: claude/sonnet            # brain that sorts the news digest
   orca.summary: claude/sonnet             # short summaries of completed agents and any next action
   watch.search: websearch/claude         # web search engine of the digest ("@none" = RSS feeds only)
+  brief.writer: claude/sonnet            # writes the morning brief ("@none" = sections put end to end)
 plugins:
   # --- Tools (MCP servers). Add connectors in Settings → Connectors, or here.
   - id: tools
@@ -167,6 +168,8 @@ plugins:
             - https://simonwillison.net/atom/everything/
             - https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day
   # --- Notification channels (Settings → Notifications). Tokens live in the OS keychain.
+  # --- Morning brief: calendar, emails, reminders, agents and news in one message (Settings → Morning brief).
+  - { id: brief, plugin: brief }
   - { id: telegram, plugin: notify-telegram }
   - { id: mail, plugin: notify-mail }
   # --- SearXNG (local search): add it in Settings → Connectors, or uncomment with your address.

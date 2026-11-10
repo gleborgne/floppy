@@ -15,7 +15,7 @@
 import { z } from "zod";
 import { definePlugin, errorText, fold, T, TextError, tr, type ItemInfo, type OpResult, type TaskInfo, type TaskResult, type TaskSchedule, type Text } from "@floppy/core";
 import type { NotifyService } from "@floppy/contracts";
-import { registerReminders, type RemindersOptions } from "./reminders.ts";
+import { registerReminders, remindersSection, type RemindersOptions } from "./reminders.ts";
 
 const t = T;
 
@@ -253,6 +253,8 @@ export function createSchedulerPlugin(reminderOptions: Pick<RemindersOptions, "n
       ],
       // notify : les canaux d'envoi (offerts par les plugins Telegram, mail…) ; documents : le contenu à envoyer.
       optional: ["notify", "documents"],
+      // brief : les rappels du jour, rubrique du point du matin.
+      provides: ["brief"],
     },
     config: Config,
     apply(ctx, cfg) {
@@ -588,7 +590,11 @@ export function createSchedulerPlugin(reminderOptions: Pick<RemindersOptions, "n
       };
 
       declareNew();
-      registerReminders(ctx, { ...reminderOptions, startupDelay_s: cfg.reminderStartupDelay_s });
+      const reminders = registerReminders(ctx, { ...reminderOptions, startupDelay_s: cfg.reminderStartupDelay_s });
+      ctx.offer("brief", {
+        items: () => [{ id: "reminders", label: t("Rappels du jour", "Today's reminders") }],
+        start(f) { f.provide("brief", { collect: async (req) => remindersSection(reminders.list(), req) }); },
+      });
       ctx.tasks.onChange(() => { try { declareNew(); updateStatus(); ctx.items.changed(); } catch (e) { ctx.log("warn", `tâches : ${String(e)}`); } });
       updateStatus();
       ctx.timeout(() => { void check(); }, cfg.startupDelay_s * 1000);

@@ -11,6 +11,7 @@ import { teamsTools } from "./teams.ts";
 import { mailSearchTools } from "./mail-search.ts";
 import { calendarTools } from "./calendar.ts";
 import { unreadMailTool } from "./unread-mail.ts";
+import { BRIEF_ITEMS, calendarSection, mailSection } from "./brief.ts";
 import { DATA, norm, t, when, plain, wrap } from "./util.ts";
 
 export { GraphAuth, NotConnected } from "./graph.ts";
@@ -152,6 +153,8 @@ export function createM365Plugin(fetchImpl?: (url: string | URL, init?: RequestI
       description: "Microsoft 365 (mails, agenda, personnes, fichiers, Teams) par Microsoft Graph : lecture, ajout dans l'agenda, envoi de messages Teams.",
       // Connexion par code d'appareil (login.microsoftonline.com) puis Microsoft Graph.
       permissions: { net: ["login.microsoftonline.com", "graph.microsoft.com"] },
+      // brief : l'agenda du jour et les mails non lus, rubriques du point du matin.
+      provides: ["brief"],
       addable: {
         section: "connectors",
         single: true,
@@ -173,6 +176,12 @@ export function createM365Plugin(fetchImpl?: (url: string | URL, init?: RequestI
       };
       const g = new GraphAuth(store, fetchImpl ?? ctx.fetch);
       ctx.tools.register(m365Tools(g, cfg));
+      ctx.offer("brief", {
+        items: () => BRIEF_ITEMS,
+        start(f, item) {
+          f.provide("brief", { collect: (req) => (item === "calendar" ? calendarSection(g, req) : mailSection(g, req)) });
+        },
+      });
 
       let pending: AbortController | undefined;
       /** Permissions de base pas encore accordées (connexion faite avant l'ajout d'une fonction). */

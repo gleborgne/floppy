@@ -7,6 +7,7 @@
 // - Niveau `write` : l'accord suit la règle des réglages ; l'utilisateur peut la lever par une règle ciblée (toolRules).
 import { join } from "node:path";
 import { fold, readJsonFile, T, tr, writeJsonAtomic, type Context, type Text } from "@floppy/core";
+import type { BriefRequest, BriefSection } from "@floppy/contracts";
 
 export interface Reminder {
   id: string;
@@ -53,6 +54,18 @@ export function whenText(due: number, now: number): Text {
   const fr = diff === 0 ? "aujourd'hui" : diff === 1 ? "demain" : `le ${date}`;
   const en = diff === 0 ? "today" : diff === 1 ? "tomorrow" : `on ${date}`;
   return T(`${fr} à ${hhmm(d)}`, `${en} at ${hhmm(d)}`);
+}
+
+/** Rubrique du point du matin : les rappels prévus d'ici minuit (et ceux en retard). */
+export function remindersSection(list: Reminder[], req: BriefRequest): BriefSection {
+  const en = req.lang === "en";
+  const now = +req.now;
+  const end = new Date(req.now); end.setHours(24, 0, 0, 0);
+  const today = list.filter((r) => r.due < +end).sort((a, b) => a.due - b.due);
+  const title = en ? "Reminders today" : "Rappels du jour";
+  if (!today.length) return { title, markdown: en ? "No reminder today." : "Aucun rappel aujourd'hui.", empty: true };
+  const lines = today.map((r) => `- ${hhmm(new Date(r.due))}${en ? ": " : " : "}${r.text}${r.due < now ? (en ? " (late)" : " (en retard)") : ""}`);
+  return { title, markdown: lines.join("\n"), urgent: today.some((r) => r.due - now < 60 * MINUTE) };
 }
 
 const words = (s: string) => fold(s).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);

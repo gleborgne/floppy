@@ -12,7 +12,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { definePlugin, errorText, fold, T, TextError, tr, type ItemInfo, type OpResult, type Text, type ToolDef, type PluginDef } from "@floppy/core";
-import type { CompletionService, SearchService } from "@floppy/contracts";
+import type { BriefRequest, BriefSection, CompletionService, SearchService } from "@floppy/contracts";
 import { PrefsStore } from "./prefs.ts";
 import { fetchFeed } from "./feeds.ts";
 import { WatchDb, type DigestArticle } from "./store.ts";
@@ -123,7 +123,8 @@ export function createWatchPlugin(opts: WatchOptions = {}): PluginDef<Config> {
       version: "0.1.0",
       licence: "MIT",
       description: "Veille : flux RSS et recherches web sur tes centres d'intérêt, triés par un modèle, en digest Markdown chaque jour.",
-      provides: ["task"],
+      // brief : les meilleurs articles du digest du jour, rubrique du point du matin.
+      provides: ["task", "brief"],
       optional: ["documents"],
       permissions: { net: ["*"] },
       sections: [{ id: "watch", label: T("Veille", "News watch"), description: T("Tes centres d'intérêt, le cerveau qui trie, le moteur de recherche. Affine à la voix : « le 3 ne m'intéresse pas ».", "Your interests, the sorting brain, the search engine. Fine-tune by voice: “number 3 doesn't interest me”.") }],
@@ -357,6 +358,25 @@ export function createWatchPlugin(opts: WatchOptions = {}): PluginDef<Config> {
             rech?.release();
           }
         },
+      });
+
+      // ---------------------------------------------------------------- rubrique du point du matin
+      /** Le digest fait depuis minuit (ou depuis le dernier point) : ses premiers articles, numérotés comme le digest. */
+      const briefSection = async (req: BriefRequest): Promise<BriefSection> => {
+        const en = req.lang === "en";
+        const title = en ? "News watch" : "Veille";
+        const ref = (await ctx.maybe("documents")?.list({ tag: "watch", max: 1 }))?.[0];
+        const midnight = new Date(req.now); midnight.setHours(0, 0, 0, 0);
+        const fresh = ref && Date.parse(ref.date) >= Math.min(+midnight, req.since ? +req.since : +midnight);
+        const list = db.digest();
+        if (!fresh || !list.length) return { title, markdown: en ? "No new digest today." : "Pas de nouveau digest aujourd'hui.", empty: true };
+        const top = list.slice(0, 5).map((a) => `- ${a.number}. ${a.title} (${a.source})`);
+        const more = list.length > 5 ? `\n${en ? `…${list.length - 5} more in the digest.` : `…${list.length - 5} autres dans le digest.`}` : "";
+        return { title, markdown: `${top.join("\n")}${more}` };
+      };
+      ctx.offer("brief", {
+        items: () => [{ id: "watch", label: T("Veille du jour", "Today's news watch") }],
+        start(f) { f.provide("brief", { collect: briefSection }); },
       });
 
       // ---------------------------------------------------------------- outils pour le cerveau

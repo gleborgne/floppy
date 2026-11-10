@@ -340,3 +340,38 @@ describe("réglages de la veille", () => {
     expect(tr(r.children?.[1]?.detail, "en")).toBe("site not found (wrong address or no internet)");
   });
 });
+
+describe("rubrique veille du point du matin", () => {
+  it("donne les premiers articles du digest du jour, sinon « rien de nouveau »", async () => {
+    const feed = RSS([{ t: "A garder : Gemma 5", l: "https://blog.ai/1", d: new Date().toUTCString() }]);
+    const fetchFake = (async () => new Response(feed, { status: 200 })) as unknown as typeof fetch;
+    const docs: DocRef[] = [];
+    const docsPlugin = definePlugin({
+      manifest: { id: "fake-docs", version: "0", licence: "MIT", provides: ["documents"] },
+      apply(ctx) {
+        ctx.provide("documents", {
+          save: async (d): Promise<DocRef> => { const r = { id: `doc${docs.length + 1}`, title: d.title, date: new Date().toISOString(), source: d.source, tags: d.tags ?? [] }; docs.unshift(r); return r; },
+          show: async () => "avatar", list: async () => docs, get: async () => undefined,
+        });
+      },
+    });
+    let borrow: ((v: string) => Promise<any>) | undefined;
+    const reader = definePlugin({
+      manifest: { id: "reader", version: "0", licence: "MIT", optional: ["brief"] },
+      apply(ctx) { borrow = (v) => ctx.borrowItem("brief", v); },
+    });
+    k = new Kernel({ logger: () => {}, plugins: [fakeCompletion([]), docsPlugin, reader, createWatchPlugin({ fetch: fetchFake })] });
+    await k.applyConfig({
+      plugins: [{ id: "llm", plugin: "fake-llm" }, { id: "docs", plugin: "fake-docs" }, { id: "reader", plugin: "reader" },
+        { id: "watch", plugin: "watch", config: { interests: { ia: { name: "IA locale", feeds: ["https://blog.ai/rss"] } } } }],
+      slots: { "watch.triage": "llm/sonnet" },
+    });
+    const collect = async () => {
+      const b = await borrow!("watch/watch");
+      try { return await b.service.collect({ lang: "fr", now: new Date(), signal: AbortSignal.timeout(5000) }); } finally { b.release(); }
+    };
+    expect(await collect()).toMatchObject({ title: "Veille", empty: true });
+    await k.tasks.run("watch/daily", "manual");
+    expect(await collect()).toEqual({ title: "Veille", markdown: "- 1. A garder : Gemma 5 (Blog IA)" });
+  });
+});

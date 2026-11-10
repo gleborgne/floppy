@@ -12,5 +12,6 @@ export type * from "./mcp.ts";
 export type * from "./body.ts";
 export type * from "./search.ts";
 export type * from "./notify.ts";
+export type * from "./brief.ts";
 export type * from "./desktop.ts";
 export type * from "./memory-context.ts";

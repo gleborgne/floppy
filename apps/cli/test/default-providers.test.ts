@@ -16,6 +16,8 @@ const DEFAULTS: Record<string, string | undefined> = {
   avatars: "body-electron",
   body: "body-hub",
   brain: "brain-aisdk", // `claude` (brain-claude-cli) vient avant dans la config mais n'est que `delegate`
+  // Plusieurs sources du point du matin : le point les lit toutes (ctx.offers), ce fournisseur par défaut ne sert pas.
+  brief: "agent-jobs",
   coder: "coder",
   completion: "llm-llamacpp",
   delegate: "brain-claude-cli",

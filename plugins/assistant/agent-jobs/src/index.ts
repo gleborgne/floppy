@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { definePlugin, readJsonFile, writeJsonAtomic, T, TextError, tr, errorText, type Context } from "@floppy/core";
 import { borrowAgent, validAgentModel } from "@floppy/agent-cli";
-import type { AgentService } from "@floppy/contracts";
+import type { AgentService, BriefRequest, BriefSection } from "@floppy/contracts";
 
 const Job = z.object({
   id: z.string(), agent: z.string(), model: z.string().optional(), instruction: z.string(),
@@ -12,12 +12,29 @@ const Job = z.object({
   started: z.string(), finished: z.string().optional(), result: z.string().optional(), document: z.string().optional(),
 });
 type Job = z.infer<typeof Job>;
+/** Rubrique du point du matin : les travaux finis depuis le dernier point (24 h au plus sans point), et ceux en cours. */
+export function jobsSection(jobs: Job[], req: BriefRequest): BriefSection {
+  const en = req.lang === "en";
+  const from = req.since ? +req.since : +req.now - 86_400_000;
+  const ended = jobs.filter((j) => j.state !== "running" && j.finished && Date.parse(j.finished) >= from);
+  const running = jobs.filter((j) => j.state === "running");
+  const title = en ? "Agent tasks" : "Travaux des agents";
+  if (!ended.length && !running.length) return { title, markdown: en ? "No agent task since the last brief." : "Aucun travail d'agent depuis le dernier point.", empty: true };
+  const what = (j: Job) => j.instruction.replace(/\s+/g, " ").slice(0, 100);
+  const STATE = en
+    ? { done: "done", failed: "failed", cancelled: "stopped", interrupted: "interrupted (Floppy stopped)", running: "running" }
+    : { done: "fini", failed: "échoué", cancelled: "arrêté", interrupted: "interrompu (Floppy arrêté)", running: "en cours" };
+  const lines = [...ended, ...running].map((j) => `- ${j.agent}${en ? ": " : " : "}${what(j)} — ${STATE[j.state]}${j.state === "done" && j.result ? `. ${en ? "Result: " : "Résultat : "}${j.result.replace(/\s+/g, " ").slice(0, 200)}` : ""}`);
+  return { title, markdown: lines.join("\n"), urgent: ended.some((j) => j.state === "failed" || j.state === "interrupted") };
+}
+
 const Config = z.object({ maxConcurrent: z.number().int().min(1).max(10).default(3), timeout_s: z.number().int().min(1).max(3600).default(600) });
 
 export default definePlugin({
   manifest: {
     id: "agent-jobs", version: "0.1.0", licence: "MIT", description: "Délégation vers un agent nommé et travaux suivis.",
-    optional: ["agent", "documents"], permissions: { "fs.write": ["workspaces/agent-jobs"] },
+    // brief : les travaux finis ou en cours, rubrique du point du matin.
+    optional: ["agent", "documents"], provides: ["brief"], permissions: { "fs.write": ["workspaces/agent-jobs"] },
     addable: { section: "brain", label: T("Travaux des agents", "Agent tasks"), single: true,
       description: T("Confie une mission à un agent et retrouve son résultat. Les outils restent soumis aux accords de Floppy.",
         "Give an agent a task and retrieve its result. Tools remain subject to Floppy approvals.") },
@@ -36,6 +53,10 @@ export default definePlugin({
     ctx.effect(async () => {
       for (const r of running.values()) r.controller.abort();
       await Promise.allSettled([...running.values()].map((r) => r.done));
+    });
+    ctx.offer("brief", {
+      items: () => [{ id: "agents", label: T("Travaux des agents", "Agent tasks") }],
+      start(f) { f.provide("brief", { collect: async (req) => jobsSection(jobs, req) }); },
     });
     const failure = (fr: string, en: string) => ({ status: "failed" as const, text: T(fr, en) });
     const instruction = (a: Record<string, unknown>) => String(a.instruction ?? "").trim();
