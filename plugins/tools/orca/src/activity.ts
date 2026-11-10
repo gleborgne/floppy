@@ -49,6 +49,7 @@ const recordSchema = z.object({ ...fields, baseLabel: z.string().max(120), finge
 export type ActivityAgentRecord = z.infer<typeof recordSchema>;
 const eventSchema = z.object({ ...fields, eventId: z.string().max(80), sourceEventId: z.string().max(160).optional(),
   kind: z.enum(["baseline", "transition", "observation", "presence", "delivery"]),
+  previousActivity: activitySchema.optional(),
   delivery: z.enum(["accepted", "failed", "unconfirmed", "refused"]).optional(), correlationId: z.string().max(160).optional(),
 });
 export type ActivityEvent = z.infer<typeof eventSchema>;
@@ -111,7 +112,8 @@ export function activityObservation(w: OrcaWorktree, a: OrcaAgent, scope: { host
     presence: scope.presence ?? (raw.hasLivePty === true ? "live" : raw.hasLivePty === false ? "absent" : "unknown"),
     declaredResult: a.lastAssistantMessage ?? undefined, lastAction: a.toolName ?? undefined,
     observedAt: scope.observedAt, provenance: scope.provenance,
-    cycleId: a.stateStartedAt === undefined ? undefined : String(a.stateStartedAt), eventId: raw.eventId,
+    // La date de l'état courant n'identifie pas un tour ; le pont peut conserver une ancienne date.
+    eventId: raw.eventId,
   };
 }
 function classify(state: string | undefined, declared?: ActivityOutcome): { activity: AgentActivity; outcome: ActivityOutcome } {
@@ -250,6 +252,7 @@ export function createActivityStore(options: ActivityStoreOptions = {}): Activit
         records.set(id, record);
         const kind = !previous ? "baseline" : previous.activity !== record.activity || previous.outcome !== record.outcome || previous.cycleId !== record.cycleId ? "transition" : "observation";
         const event = eventOf(record, kind, observedAt, observation.eventId);
+        event.previousActivity = previous?.activity;
         accept(event); accepted.push(event);
         if (previous) diagnostic("transition", `${previous.activity}_to_${record.activity}`, { agentId: id, eventId: event.eventId });
       }

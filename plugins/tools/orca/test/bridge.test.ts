@@ -16,9 +16,9 @@ const wt = (agents: unknown[]): OrcaWorktree[] => [{ worktreeId: WS, repo: "diff
 let kernels: Kernel[] = [];
 afterEach(async () => { for (const k of kernels) await k.stopAll(); kernels = []; });
 
-async function start(data: { v: OrcaWorktree[]; calls: number }) {
+async function start(data: { v: OrcaWorktree[]; calls: number; fail?: boolean }) {
   const home = mkdtempSync(join(tmpdir(), "orca-pont-"));
-  const plugin = createOrcaPlugin({ run: async () => { data.calls++; return data.v; }, now: () => NOW, phrase: async () => undefined });
+  const plugin = createOrcaPlugin({ run: async () => { data.calls++; if (data.fail) throw new Error("hors ligne"); return data.v; }, now: () => NOW, phrase: async () => undefined });
   const k = new Kernel({ logger: () => {}, plugins: [plugin], home });
   kernels.push(k);
   const got: { text: string; key?: string; importance: string }[] = [];
@@ -44,6 +44,71 @@ function orcaWorker(info: BridgeInfo, fetchImpl: typeof fetch = fetch) {
 const statusOf = async (k: Kernel) => (await k.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!;
 
 describe("pont Orca → Floppy", () => {
+  it.each([
+    ["waiting", undefined, "votre réponse"], ["blocked", "approval", "votre validation"], ["blocked", undefined, "votre intervention"],
+  ])("annonce seulement le titre et l'action attendue (%s)", async (state, toolName, action) => {
+    const data = { calls: 0, v: wt([ag("p1", "working", { toolName, lastAssistantMessage: "Un long rapport du travail effectué. ".repeat(30) })]) };
+    const { got, info } = await start(data);
+    const orca = orcaWorker(info);
+    await orca.emit("p1", state);
+    await vi.waitFor(() => expect(got).toHaveLength(1));
+    expect(got[0]!.text).toBe(`Migration : l’agent attend ${action}.`);
+  });
+
+  it.each(["offline", "missing"])("ne filtre pas une fin à partir de métadonnées anciennes (%s)", async (mode) => {
+    const data = { calls: 0, fail: false, v: wt([ag("p1", "working", { prompt: "", activity: { listed: false } })]) };
+    const { got, info } = await start(data);
+    data.fail = mode === "offline";
+    if (mode === "missing") data.v = [];
+    const orca = orcaWorker(info);
+    await orca.emit("p1", "done");
+    await vi.waitFor(() => expect(got).toHaveLength(1));
+  });
+
+  it("ignore le cycle d'initialisation sans tâche, puis annonce le vrai travail du même thread", async () => {
+    const startup = { prompt: "", taskTitle: null, lastAssistantMessage: null, toolName: null, activity: { listed: false }, hasLivePty: true };
+    const data = { calls: 0, v: wt([ag("p1", "done", startup)]) };
+    const { got, info } = await start(data);
+    const orca = orcaWorker(info);
+    await orca.emit("p1", "working");
+    await orca.emit("p1", "done");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(got).toEqual([]);
+    data.v = wt([ag("p1", "working", { ...startup, prompt: "Corrige le bug", activity: { listed: true } })]);
+    await orca.emit("p1", "working");
+    data.v = wt([ag("p1", "done", { ...startup, prompt: "Corrige le bug", activity: { listed: true } })]);
+    await orca.emit("p1", "done");
+    await vi.waitFor(() => expect(got).toHaveLength(1));
+  });
+
+  it("annonce deux travaux distincts même si le pont conserve la date initiale du thread", async () => {
+    const data = { calls: 0, v: wt([ag("p1", "done", { stateStartedAt: NOW - 1000 })]) };
+    const { got, info } = await start(data);
+    const orca = orcaWorker(info);
+    for (let cycle = 1; cycle <= 2; cycle++) {
+      await orca.emit("p1", "working");
+      await orca.emit("p1", "done");
+      await vi.waitFor(() => expect(got).toHaveLength(cycle));
+    }
+    expect(got[0]!.key).not.toBe(got[1]!.key);
+  });
+
+  it.each(["done", "idle", "unknown"])("ouvrir un thread au repos (%s) ne déclenche pas une annonce de fin", async (state) => {
+    const data = { calls: 0, v: wt([ag("p1", state, { stateStartedAt: NOW - 1000 })]) };
+    const { got, info } = await start(data);
+    const response = await fetch(`http://127.0.0.1:${info.port}/orca`, {
+      method: "POST", headers: { Authorization: `Bearer ${info.token}` },
+      body: JSON.stringify({ kind: "agent", workspaceId: WS, paneKey: "p1", title: "Codex ready", state: "done", mainAgent: { state: "done", stateStartedAt: NOW + 1 } }),
+    });
+    expect(response.status).toBe(204);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(got).toEqual([]);
+    const orca = orcaWorker(info);
+    await orca.emit("p1", "working");
+    await orca.emit("p1", "done");
+    await vi.waitFor(() => expect(got).toHaveLength(1));
+  });
+
   it("de bout en bout : fin annoncée tout de suite, une seule fois, avec le message lu dans Orca", async () => {
     const data = { calls: 0, v: wt([ag("p1", "working")]) };
     const { k, got, info } = await start(data);
@@ -54,7 +119,7 @@ describe("pont Orca → Floppy", () => {
     await orca.emit("p1", "done", "success");
     await vi.waitFor(() => expect(got.length).toBe(1));
     expect(got[0]).toMatchObject({ key: expect.stringMatching(/^orca:agent_.+:finished$/), importance: "normal" });
-    expect(got[0]!.text.toLowerCase()).toContain("migration des dates");
+    expect(got[0]!.text).toBe("Migration des dates : terminé avec succès.");
     await new Promise((r) => setTimeout(r, 100));
     expect(got).toHaveLength(1);
   });

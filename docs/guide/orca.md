@@ -35,6 +35,10 @@ Si le plugin a changé, le bouton devient **« Mettre à jour dans Orca »**. Cl
 
 ## 3. Choisir ce que Floppy te dit
 
+L'annonce nomme le thread et résume en une phrase ce que l'agent a fait, par exemple « L'agent a terminé de restructurer les notes ». Si l'agent demande une réponse ou une validation pour la suite, une seconde phrase le précise. Floppy ne relit pas le rapport complet. Le réglage **« Synthèse des agents Orca »** choisit le modèle utilisé pour ce résumé ; s'il est indisponible, Floppy annonce seulement l'état connu.
+
+Cacher l'avatar ne coupe pas les annonces vocales. Le mode veille (« Floppy, dors ») les met en attente jusqu'au réveil.
+
 Dans **Réglages → Connecteurs → Orca**, le réglage **« Annonces des agents Orca »** a trois choix :
 
 | Choix | Ce qui se passe |

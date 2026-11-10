@@ -263,7 +263,8 @@ describe("activité Orca bornée", () => {
     const w = { worktreeId: "workspace", displayName: "Floppy" };
     const a = { paneKey: "pane", taskTitle: "Avatar wakeup", state: "done", stateStartedAt: 123, updatedAt: 456, sessionId: "session" };
     const observation = activityObservation(w, a, { hostId: "host", observedAt: START });
-    expect(observation).toMatchObject({ identity, label: "Avatar wakeup", cycleId: "123", observedAt: START });
+    expect(observation).toMatchObject({ identity, label: "Avatar wakeup", observedAt: START });
+    expect(observation.cycleId).toBeUndefined();
     expect(activityAgentId(observation.identity)).toBe(activityAgentId(activityObservation(w, { ...a, updatedAt: 999 }, { hostId: "host" }).identity));
   });
 

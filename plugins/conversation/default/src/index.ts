@@ -526,6 +526,8 @@ export default definePlugin<Config>({
           return g?.emotion;
         },
       });
+      // Une annonce a pu arriver avant que le flux vocal soit prêt.
+      if (ctx.alive && bodies.get(b.id) === b) drain();
       await attachWakeword(b);
     };
     if (wakeword) ctx.effect(wakeword.onChange(() => { wake.splice(0, wake.length, ...(wakeword.words?.() ?? ctx.assistant.wake_words)); for (const b of bodies.values()) if (b.voice) void attachWakeword(b); }));

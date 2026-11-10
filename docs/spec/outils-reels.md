@@ -110,6 +110,9 @@ sequenceDiagram
 ```
 
 - Premier passage : on note seulement les états (pas d'annonce pour les jobs déjà finis au démarrage).
+- Une annonce de fin exige un passage observé depuis le travail ou l'attente. Ouvrir ou restaurer un thread au repos, renouveler sa date d'état ou préciser son résultat sans travail observé ne déclenche aucune annonce ; ces observations restent consultables dans le suivi et l'historique. Cette règle vaut pour le pont comme pour la collecte périodique.
+- Le démarrage du programme peut lui-même produire `working → done`. Après relecture fraîche de l'agent, une fin sans résultat connu est silencieuse si Orca indique explicitement `activity.listed: false`, un prompt vide, aucun message de réponse et aucun outil. Une donnée absente, une collecte échouée, une attente, un échec ou une interruption ne suffisent pas à ce filtrage. Le travail ultérieur du même thread reste annoncé normalement.
+- `stateStartedAt` date un état, pas un tour : le connecteur ne l'utilise pas comme clé de dédoublonnage des annonces. Sans identifiant de tour explicite, chaque nouvelle entrée observée dans le travail crée un cycle local, conservé jusqu'à sa fin ; deux travaux successifs restent annoncés même si la source conserve une ancienne date.
 - Réglage unique `orca_notifications` : `toutes` dit chaque fin ; `importantes` dit les attentes et montre les autres fins ; `aucune` n'émet aucune annonce, mais **continue la collecte et le pont**. L'ancien `orca_surveillance: false` / `surveillance: false` vaut ce mode silencieux tant qu'aucun choix plus récent n'existe. Éteindre le connecteur arrête aussi la collecte, les timers, le pont, le service et les outils.
 - Les producteurs d'événements ne modifient jamais le focus. La conversation appelle le hook générique `initiative.presented` avec `origin`, `session`, `source`, `key` et `stage`. `scheduled`, `completed` et `interrupted` concernent la voix ; `display-scheduled` signale une demande d'affichage transmise sans exception à un corps présent et activé avec capacité display/text, uniquement pour une notification normale. Ce stade ne prouve ni affichage effectif, ni lecture, ni écoute : le protocole ne fournit aucun accusé du renderer. Une bulle ne crée, ne remplace et ne prolonge jamais le contexte de conversation : groupe, ordre présenté et focus utilisateur restent inchangés, dans chaque origine/session. L'agent de la bulle reste accessible par son nom dans les données courantes. Une file en attente n'établit aucun contexte. Une interruption révoque seulement le contexte encore détenu par sa propre annonce vocale dans la même origine/session ; elle conserve toute sélection explicite ou autre annonce plus récente. Sans preuve du segment réellement entendu, aucune durée ou position supposée de synthèse ne permet de conserver ce focus : un pronom sans cible certaine demande une précision, et l'agent reste accessible par son nom. Les clés d'annonce restent liées à l'identité et au tour ; deux événements distincts de même texte ne sont pas dédupliqués par ce texte. Sans clé explicite, le dédoublonnage historique par texte reste conservé.
 - `initiative.delivery` décrit séparément `queued`, `dropped`, `deduped` et la taille de file, sans établir de cible. Le mode Live partage les références par origine, mais son API ne donne pas de reçu d'écoute d'une annonce : seule la programmation est déclarée. Une programmation ou une lecture terminée ne certifie jamais que l'utilisateur a entendu.
@@ -166,10 +169,9 @@ flowchart LR
   O["Agent Orca<br/>en cours → fini / en attente"] --> N["Nettoyage<br/>nom de projet lisible, ids retirés,<br/>code / chemins / hash retirés"]
   N --> W{"worker d'orchestration<br/>en attente ?"}
   W -- oui --> X["pas d'annonce<br/>(il attend son coordinateur)"]
-  W -- non --> L["LLM local : une phrase<br/>en français parlé (4 s max)"]
-  L -- "lent / absent" --> P["phrase faite par le code"]
-  L --> I["initiative"]
-  P --> I
+  W -- non --> R["Rapport déclaré<br/>sinon écran du terminal exact"]
+  R --> P["Modèle de synthèse emprunté<br/>travail accompli + suite éventuelle"]
+  P --> I["initiative parlée, 2 phrases au plus"]
 ```
 
 | Avant | Après (Gemma, données réelles, ~0,5 s) |
@@ -178,7 +180,9 @@ flowchart LR
 | « L'agent Claude de env-stg attend ta réponse : fo: bug SSR bloc Custom Entity + PR env-stg. » | (worker d'orchestration : pas d'annonce) |
 | « L'agent Claude de master-agents a terminé : Job 59776 en erreur. » | « Sur le projet Agents, le job 59776 est terminé et la version K8S est prête dans le code. » |
 
-Le prompt interdit d'inventer : seulement ce qui est dans les informations données, avec le nom individuel à conserver et le résultat explicite. Les exemples du tableau décrivent le nettoyage historique ; depuis le suivi individuel, l'annonce commence toujours par le nom stable, le projet et les faits distincts d'activité, résultat et présence. Une fin inconnue ou un échec garde un texte déterministe, suivi au besoin d'un dernier message explicitement déclaré ; une reformulation ne transforme pas ce résultat en succès ou en commit.
+Le titre du thread est conservé pour l'identifier. L'annonce résume l'action accomplie et son résultat utile en une phrase naturelle : par exemple « L'agent a terminé de restructurer les notes ». Une seconde phrase indique seulement une réponse, une validation ou une action explicitement demandée pour la suite. Un tour terminé peut encore poser une question : `done` ne force pas à omettre cette demande. Le rapport n'est jamais relu en entier, et la demande initiale ne prouve pas que le travail a été fait. Le contexte conserve le début et la fin des longs rapports ; si le dernier message n'est pas fourni par Orca, le connecteur lit au plus 60 lignes de l'écran du terminal exactement identifié, sans repli sur un voisin.
+
+Le slot `orca.summary` (service `completion`, réglage « Synthèse des agents Orca ») choisit le modèle emprunté uniquement pour cette synthèse, sans outils ni historique de conversation, puis rendu. Le modèle peut être local ou distant selon le fournisseur choisi. L'ensemble de la préparation de synthèse est borné à 10 secondes, indépendant de l'acquittement du pont. Une erreur, une absence de contexte ou de modèle, un texte trop long ou plus de deux phrases utilise une annonce courte de l'état connu, jamais le rapport brut. Un échec ou une interruption explicite ne devient pas une réussite dans la reformulation. Français et anglais sont pris en charge. Les annonces importantes sont lues par la conversation quand la voix est prête et libre ; cacher l'avatar ne les rend pas muettes.
 
 ## Initiatives en général
 

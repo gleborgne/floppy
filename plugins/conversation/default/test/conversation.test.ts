@@ -716,6 +716,23 @@ describe("conversation (2 corps)", () => {
     await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("listening"));
   });
 
+  it("une annonce arrivée pendant l'ouverture de la voix est dite dès que la voix est prête", async () => {
+    avatar.leave();
+    const voice = k.service<VoiceService>("voice")!;
+    const original = voice.open.bind(voice);
+    const open = vi.spyOn(voice, "open").mockImplementationOnce(async (id) => {
+      const stream = await original(id);
+      k.bus.emit("initiative", { source: "orca", text: "Migration terminée, les tests passent.", importance: "important" });
+      return stream;
+    });
+    const late = new FakeBody("late-voice", ["voice", "display"]);
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(late.transport, { id: late.id }); late.hello();
+    try {
+      await vi.waitFor(() => expect(streams.get(late.id)?.spoken).toEqual(["Migration terminée, les tests passent."]));
+      expect(late.of("notify")).toHaveLength(1);
+    } finally { open.mockRestore(); }
+  });
+
   it("initiative pendant un tour : mise en file, dite après", async () => {
     const st = streams.get("avatar")!;
     st.emit({ type: "transcript", text: "Floppy, ça va ?", audio_s: 1, stt_ms: 50, merged: false });

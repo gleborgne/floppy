@@ -10,7 +10,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
 import { definePlugin, T, tr, type Text, type ToolDef, type ToolOutput, type Context } from "@floppy/core";
 import type { AgentTrackingService } from "@floppy/contracts";
-import { cleanTask, facts, isWorker, llmSentence, plainSentence, projectName, type Facts } from "./speech.ts";
+import { cleanTask, facts, isWorker, projectName, type Facts } from "./speech.ts";
+import { summarizeAnnouncement } from "./announcement.ts";
 import { BRIDGE_POLL_MS, startBridge } from "./bridge.ts";
 import { formatSearch, searchArgs, type SearchResult } from "./search.ts";
 import { sendTool } from "./send.ts";
@@ -46,6 +47,8 @@ export interface OrcaAgent {
   agentId?: string;
   sessionId?: string;
   incarnation?: string;
+  /** Verdict de la liste d'activité Orca, distinct de l'état du programme. */
+  activity?: { listed: boolean };
   /** Outil que l'agent utilise en ce moment (ex. « Bash ») et son entrée. */
   toolName?: string | null;
   toolInput?: string | null;
@@ -83,7 +86,7 @@ export interface OrcaOptions {
   /** Dossier du plugin Orca à installer (tests). */
   pluginSrc?: string;
   now?: () => number;
-  /** Phrase parlée d'une annonce (tests). Par défaut : LLM local, sinon phrase faite par le code. */
+  /** Synthèse injectée dans les tests ; sinon service completion choisi dans les réglages. */
   phrase?: (f: Facts) => Promise<string | undefined>;
 }
 
@@ -304,8 +307,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       description: "Outils Orca (agents, worktrees) et notification quand un job d'agent se termine.",
       // orca, et cmd pour lancer son script .cmd sous Windows (arguments fixes, voir spawnSpec).
       permissions: { exec: ["orca", "cmd"] },
-      // LLM local (facultatif) : pour dire les annonces en langage parlé (langue de l'assistant), sans jargon.
-      optional: ["llm"],
+      slots: [{ id: "orca.summary", service: "completion", section: "connecteurs", label: T("Synthèse des agents Orca", "Orca agent summaries"), description: T("Résume le travail effectué et la prochaine réponse attendue, en deux phrases au plus.", "Summarizes the work done and any next answer needed, in at most two sentences.") }],
       provides: ["agentTracking"],
       addable: {
         section: "connecteurs",
@@ -322,6 +324,8 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
     apply(ctx, cfg) {
       const cli = opts.cli ?? defaultCli(cfg.command, ctx.exec);
       const now = opts.now ?? Date.now;
+      const stop = new AbortController();
+      ctx.effect(() => stop.abort());
       const t = T;
       let notifications = ctx.settings.saved<Config["notifications"]>("orca_notifications") ?? cfg.notifications;
       // L'ancien « aucune » coupe désormais les annonces seulement ; la collecte reste utile aux questions.
@@ -333,6 +337,8 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const runtime = createOrcaRuntime({ ctx, cli, run: opts.run, now, onChanges(events, hits) {
         for (const event of events) {
           if (event.kind !== "transition" || !["finished", "waiting"].includes(event.activity)) continue;
+          // Ouvrir ou restaurer un thread peut renouveler l'état done sans travail effectué.
+          if (event.activity === "finished" && event.previousActivity !== "working" && event.previousActivity !== "waiting") continue;
           const hit = hits.find((h) => runtime.idOf(h.w, h.a) === event.id);
           if (!hit || isWorker(hit.a) && event.activity === "waiting") continue;
           const key = `orca:${event.id}:${event.cycleId}:${event.activity}`;
@@ -345,30 +351,39 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
           pendingAnnouncements++;
           void (async () => {
             let enriched = hit;
+            let refreshed = false;
             try {
               const current = await runtime.sync();
-              enriched = current.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a }))).find((h) => runtime.idOf(h.w, h.a) === event.id) ?? hit;
+              const found = current.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a }))).find((h) => runtime.idOf(h.w, h.a) === event.id);
+              if (found) { enriched = found; refreshed = true; }
             } catch { /* Le fait reçu reste disponible même si son enrichissement échoue. */ }
+            // Le démarrage du programme produit aussi working → done, sans tâche utilisateur.
+            // Exiger une collecte fraîche et des métadonnées explicites ; une lacune ne suffit pas.
+            if (refreshed && event.activity === "finished" && event.outcome === "unknown"
+              && enriched.a.activity?.listed === false && enriched.a.prompt?.trim() === ""
+              && !enriched.a.lastAssistantMessage?.trim() && !enriched.a.toolName?.trim()) {
+              runtime.diagnostics.record("announcement.silent", { eventId: event.eventId, agentId: event.id, reason: "startup_without_task" });
+              return;
+            }
             const lang = ctx.assistant.language === "en" ? "en" : "fr";
             const f = { ...facts(enriched.w, enriched.a, event.activity === "waiting" ? "en_attente" : event.outcome === "interruption" ? "interrompu" : "termines", lang), label: event.label, outcome: event.outcome };
-            const llm = ctx.maybe("llm");
-            // La phrase est bornée ; un callback de test n'est jamais attendu par l'admission HTTP.
-            const signal = AbortSignal.timeout(4500);
-            let onAbort: () => void = () => {};
-            const deadline = new Promise<undefined>((resolve) => { onAbort = () => resolve(undefined); signal.addEventListener("abort", onAbort, { once: true }); });
-            const phrase = opts.phrase ? opts.phrase(f) : llmSentence(llm?.baseURL ? { baseURL: llm.baseURL, model: llm.model } : undefined, f, 4000, (input, init) => ctx.fetch(input instanceof Request ? input.url : input, init));
-            try {
-              const said = await Promise.race([phrase, deadline]).catch(() => undefined);
-              if (!ctx.alive || (notifications as Config["notifications"]) === "aucune") return;
-              const ref = runtime.currentReferences().find((r) => r.identity === event.id) ?? { identity: event.id, label: event.label, project: event.project };
-              runtime.rememberAnnouncement(key, [ref]);
-              // Le nom stable et le résultat observé restent présents même si la reformulation omet ces faits.
-              const lead = `${event.label} (${event.project}) : ${activityText(event, lang === "en")}.`;
-              const report = f.last ? `${lang === "en" ? "Last report" : "Dernier message déclaré"} : ${f.last.slice(0, 180)}` : f.task;
-              const text = `${lead} ${said && (event.outcome === "success" || event.activity === "waiting") ? said : report || plainSentence(f)}`;
-              ctx.emit("initiative", { source: "orca", text, importance: notifications === "toutes" || event.activity === "waiting" ? "important" : "normal", key });
-              runtime.diagnostics.record("announcement.emitted", { eventId: event.eventId, agentId: event.id, queueLength: pendingAnnouncements });
-            } finally { signal.removeEventListener("abort", onAbort); }
+            if (!ctx.alive || (notifications as Config["notifications"]) === "aucune") return;
+            const ref = runtime.currentReferences().find((r) => r.identity === event.id) ?? { identity: event.id, label: event.label, project: event.project };
+            const named = { ...f, label: ref.label };
+            const text = await summarizeAnnouncement(ctx, named, {
+              signal: stop.signal, state: hit.a.state, toolName: enriched.a.toolName, phrase: opts.phrase,
+              ...(!opts.run || opts.cli ? { screen: async () => {
+                const terms = (await cli(["terminal", "list"]) as { terminals?: OrcaTerminal[] } | undefined)?.terminals ?? [];
+                const terminal = terminalFor(terms, enriched.w, enriched.a);
+                if (!terminal) return "";
+                const read = await cli(["terminal", "read", "--terminal", terminal.handle, "--screen", "--limit", "60"]) as { terminal?: { tail?: string[] } } | undefined;
+                return screenText(read?.terminal?.tail ?? []);
+              } } : {}),
+            });
+            if (!ctx.alive || (notifications as Config["notifications"]) === "aucune") return;
+            runtime.rememberAnnouncement(key, [ref]);
+            ctx.emit("initiative", { source: "orca", text, importance: notifications === "toutes" || event.activity === "waiting" ? "important" : "normal", key });
+            runtime.diagnostics.record("announcement.emitted", { eventId: event.eventId, agentId: event.id, queueLength: pendingAnnouncements });
           })().catch(() => { runtime.diagnostics.record("announcement.failed", { eventId: event.eventId, agentId: event.id, reason: "enrichment_or_phrase" }); }).finally(() => { pendingAnnouncements--; });
         }
       } });

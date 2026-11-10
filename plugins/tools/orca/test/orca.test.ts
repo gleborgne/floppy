@@ -68,6 +68,50 @@ describe("outils", () => {
 describe("surveillance", () => {
   const mk = (state: string, extra = {}) => [wt("w1", "dev-mcp", [ag("p1", state, { taskTitle: "Migration", ...extra })])];
 
+  it.each([
+    { name: "initialisation sans tâche", extra: {}, state: "done", count: 0 },
+    { name: "prompt utilisateur", extra: { prompt: "Vérifie le build" }, state: "done", count: 1 },
+    { name: "réponse déclarée", extra: { lastAssistantMessage: "Build vérifié" }, state: "done", count: 1 },
+    { name: "outil utilisé", extra: { toolName: "Bash" }, state: "done", count: 1 },
+    { name: "activité listée", extra: { activity: { listed: true } }, state: "done", count: 1 },
+    { name: "verdict absent", extra: { activity: undefined }, state: "done", count: 1 },
+    { name: "prompt inconnu", extra: { prompt: undefined }, state: "done", count: 1 },
+    { name: "échec", extra: {}, state: "failed", count: 1 },
+    { name: "interruption", extra: {}, state: "interrupted", count: 1 },
+    { name: "attente", extra: {}, state: "waiting-input", count: 1 },
+  ])("la collecte distingue $name d'un simple démarrage", async ({ extra, state, count }) => {
+    const fields = { prompt: "", lastAssistantMessage: null, toolName: null, activity: { listed: false }, ...extra };
+    const data = { calls: 0, v: mk("working", fields) };
+    const { got } = await start(data);
+    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
+    data.v = mk(state, fields);
+    const n = data.calls;
+    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(n + 3));
+    expect(got).toHaveLength(count);
+  });
+
+  it.each(["done", "idle", "unknown"])("la collecte ne confond pas une réouverture (%s) avec une fin de travail", async (state) => {
+    const data = { calls: 0, v: mk(state) };
+    const { got } = await start(data);
+    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
+    data.v = mk("done", { stateStartedAt: NOW + 1 });
+    const n = data.calls;
+    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(n + 2));
+    expect(got).toEqual([]);
+    data.v = mk("done", { stateStartedAt: NOW + 1, mainAgent: { state: "done", outcome: "success" } });
+    const n2 = data.calls;
+    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(n2 + 2));
+    expect(got).toEqual([]);
+  });
+
+  it("annonce la fin d'un agent précédemment en attente", async () => {
+    const data = { calls: 0, v: mk("waiting-input") };
+    const { got } = await start(data);
+    await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
+    data.v = mk("done");
+    await vi.waitFor(() => expect(got).toHaveLength(1));
+  });
+
   it("rien au premier relevé, une seule initiative à la fin", async () => {
     const data = { calls: 0, v: mk("done") };
     const { got } = await start(data);
@@ -83,7 +127,7 @@ describe("surveillance", () => {
     expect(got).toHaveLength(1);
     expect(got[0]).toMatchObject({ source: "orca", importance: "normal", key: expect.stringMatching(/^orca:agent_.+:finished$/) });
     expect(got[0]!.text).toContain("Migration");
-    expect(got[0]!.text).toContain("résultat inconnu");
+    expect(got[0]!.text).toBe("Migration : terminé.");
   });
 
   it("importance selon le réglage", async () => {

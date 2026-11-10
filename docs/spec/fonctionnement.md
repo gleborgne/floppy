@@ -29,6 +29,7 @@ au noyau et met Floppy en veille. Le raccourci parler ou le mot d'activation per
 - **Important** : dit à voix haute, après la fin de la phrase de l'utilisateur.
 - **Normal** : notification visuelle (bulle, icône).
 - « Floppy, dors » ou le mode muet coupe aussi les annonces à voix haute.
+- Une annonce reçue avant que le flux vocal soit prêt est mise en file, puis la file est reprise dès l'ouverture de la voix. Cacher l'avatar ne coupe pas ces annonces ; la veille explicite continue de les différer.
 
 ## Config à la voix
 

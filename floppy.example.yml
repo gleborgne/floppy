@@ -24,6 +24,7 @@ slots:
   conversation.live: "@none"       # "@none" = Local mode; "live-gemini/account" = Gemini Live
   listen.wakeword: wakeword-stt/account   # wake word engine ("@none" = push-to-talk only)
   veille.tri: claude/sonnet               # brain that sorts the news digest
+  orca.summary: claude/sonnet             # short summaries of completed agents and any next action
   veille.recherche: websearch/claude      # web search engine of the digest ("@none" = RSS feeds only)
 plugins:
   # --- Tools (MCP servers). Add connectors in Settings → Connectors, or here.

@@ -434,7 +434,7 @@ describe("suivi Orca intégré au noyau", () => {
     expect(f.calls).toHaveLength(count);
   });
 
-  it("le pont acquitte avant une phrase lente et un vieux poll ne remplace pas le push", async () => {
+  it("le pont acquitte sans attendre la synthèse et un vieux poll ne remplace pas le push", async () => {
     const f = await start({ options: { bridge: true, phrase: () => new Promise(() => {}) } });
     await vi.waitFor(() => expect(existsSync(join(f.home, "orca-bridge.json"))).toBe(true));
     const info = JSON.parse(readFileSync(join(f.home, "orca-bridge.json"), "utf8"));

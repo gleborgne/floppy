@@ -1,10 +1,43 @@
 import { describe, it, expect } from "vitest";
 import { createServer } from "node:http";
-import { projectName, cleanTask, cleanMessage, isWorker, facts, plainSentence, llmSentence, llmPrompt } from "../src/speech.ts";
+import { projectName, cleanTask, cleanMessage, isWorker, facts, plainSentence, completionSentence, waitingSentence, llmSentence, llmPrompt } from "../src/speech.ts";
 import type { OrcaAgent, OrcaWorktree } from "../src/index.ts";
 
 const w = (displayName: string, repo: string) => ({ worktreeId: "x", displayName, repo }) as OrcaWorktree;
 const a = (o: Partial<OrcaAgent>) => ({ paneKey: "p", ...o }) as OrcaAgent;
+
+describe("notifications de fin synthétiques", () => {
+  const f = { ...facts(w("Floppy", "Floppy"), a({}), "termines"), label: "Correction des notifications", outcome: "unknown" as const };
+  it("nomme le travail une seule fois sans métadonnées ni extrait de rapport", () => {
+    expect(completionSentence({ ...f, last: "Rapport très détaillé. ".repeat(30) })).toBe("Correction des notifications : terminé.");
+    expect(completionSentence({ ...f, lang: "en" })).toBe("Correction des notifications : finished.");
+  });
+  it.each([
+    ["success", "terminé avec succès", "completed successfully"],
+    ["failure", "échec", "failed"],
+    ["interruption", "interrompu", "interrupted"],
+    ["unconfirmed", "terminé, résultat à vérifier", "finished, result to verify"],
+  ] as const)("préserve le résultat %s dans les deux langues", (outcome, fr, en) => {
+    expect(completionSentence({ ...f, outcome })).toBe(`${f.label} : ${fr}.`);
+    expect(completionSentence({ ...f, outcome, lang: "en" })).toBe(`${f.label} : ${en}.`);
+  });
+  it("ne reprend jamais la réponse de l'agent, même en cas de réussite", () => {
+    expect(completionSentence({ ...f, outcome: "success", last: "Les tests passent. Voici les modifications…" })).toBe(`${f.label} : terminé avec succès.`);
+  });
+  it("borne les titres longs", () => {
+    expect(completionSentence({ ...f, label: "Titre ".repeat(50) }).length).toBeLessThan(160);
+  });
+  it.each([
+    ["waiting-input", undefined, "votre réponse", "your answer"],
+    ["permission", undefined, "votre validation", "your approval"],
+    ["waiting", "approval", "votre validation", "your approval"],
+    ["blocked", undefined, "votre intervention", "your intervention"],
+  ])("nomme le thread et le type d'attente %s sans relire le rapport", (state, tool, fr, en) => {
+    const waiting = { ...f, last: "Voici tout le travail effectué. ".repeat(30) };
+    expect(waitingSentence(waiting, state, tool)).toBe(`${f.label} : l’agent attend ${fr}.`);
+    expect(waitingSentence({ ...waiting, lang: "en" }, state, tool)).toBe(`${f.label} : the agent is waiting for ${en}.`);
+  });
+});
 
 describe("annonces Orca sans jargon (données réelles)", () => {
   it("noms de projet lisibles", () => {

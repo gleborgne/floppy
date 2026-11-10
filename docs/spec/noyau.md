@@ -137,7 +137,7 @@ flowchart LR
   s_wakeword == "listen.wakeword" ==> p_conversation
   p_orca["orca"]
   p_orca --> s_agentTracking
-  s_llm -.-> p_orca
+  s_completion == "orca.summary" ==> p_orca
   p_websearch["websearch"]
   p_websearch --> s_search
   s_body -.-> p_websearch
@@ -199,11 +199,11 @@ Sans service (outils seuls) : `browser`, `inbox`, `m365`.
 | `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
 | `brain` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-aisdk`, `brain-claude-cli` | `conversation` (facultatif) |
 | `coder` | `CoderService` (`packages/contracts/src/coder.ts`) | L'assistant IA de la fenêtre des réglages | `coder` | — |
-| `completion` | `CompletionService` (`packages/contracts/src/brain.ts`) | Un appel au modèle hors conversation | `llm-llamacpp`, `llm-openai`, `brain-claude-cli` | `veille` (slot `veille.tri`) |
+| `completion` | `CompletionService` (`packages/contracts/src/brain.ts`) | Un appel au modèle hors conversation | `llm-llamacpp`, `llm-openai`, `brain-claude-cli` | `orca` (slot `orca.summary`), `veille` (slot `veille.tri`) |
 | `delegate` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `brain-aisdk` (slot `brain.delegate`) |
 | `documents` | `DocumentsService` (`packages/core/src/services.ts`) | Les documents Markdown de Floppy (veille, résumés) | `documents` | `agent-jobs` (facultatif), `scheduler` (facultatif), `veille` (facultatif), noyau |
 | `live` | `LiveService` (`packages/contracts/src/voice.ts`) | Un modèle « Live » qui écoute et parle lui-même (Gemini, GPT) ; les outils passent par lui ou par délégation | `live-gemini`, `live-openai` | `conversation` (slot `conversation.live`) |
-| `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `orca` (facultatif), `brain-aisdk` (slot `brain.main`) |
+| `llm` | `LlmService` (`packages/contracts/src/brain.ts`) ; cite `brain` | Un modèle de langage en service | `llm-llamacpp`, `llm-openai`, `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes` | `brain-aisdk` (slot `brain.main`) |
 | `mcp` | `McpEndpoint` (`packages/contracts/src/mcp.ts`) | Le serveur MCP de Floppy | `tools` | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `coder`, `brain-aisdk` (facultatif), `conversation` (facultatif) |
 | `memory` | `MemoryService` (`packages/contracts/src/memory.ts`) | Un adaptateur peut être local ou distant ; les appelants attendent toujours ses résultats | `memory` | `vocabulary` (facultatif), `brain-aisdk` (facultatif), `conversation` (facultatif) |
 | `notify` | `NotifyService` (`packages/contracts/src/notify.ts`) | Un canal d'envoi configuré (ex. « Telegram · mon canal », « Gmail · perso ») | `notify-telegram`, `notify-mail` | `scheduler` (facultatif) |
