@@ -30,6 +30,19 @@ async function start(servers: Record<string, unknown> = {}) {
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pidOf = (f: string): number => Number(readFileSync(f, "utf8"));
+/**
+ * Attend (au plus `ms`) que le processus du fichier de pid ait disparu : le test regarde la condition réelle, pas un instant
+ * fixe, car la mort d'un processus et le moment où il écrit son pid dépendent de la charge de la machine. Le premier
+ * coup d'œil est immédiat (pas d'attente inutile, et un pid libéré n'a pas le temps d'être réattribué à un autre processus).
+ */
+async function waitGone(pidFile: string, ms: number): Promise<boolean> {
+  const end = Date.now() + ms;
+  for (;;) {
+    if (existsSync(pidFile) && !alive(pidOf(pidFile))) return true;
+    if (Date.now() >= end) return false;
+    await wait(50);
+  }
+}
 
 describe("commande : niveau et injection d'option", () => {
   const cmd = (extra: Record<string, unknown> = {}) => ({
@@ -96,8 +109,8 @@ describe("délais de connexion", () => {
     const t0 = Date.now();
     await expect(open("muet", spec({ PID_FILE: pidFile }), undefined, { timeoutMs: 800 })).rejects.toThrow(/pas de réponse/);
     expect(Date.now() - t0).toBeLessThan(10_000);
-    await wait(1500);
-    expect(alive(pidOf(pidFile))).toBe(false);
+    // open() attend la fermeture avant de rejeter : le processus est déjà parti (marge bornée pour l'OS chargé).
+    expect(await waitGone(pidFile, 5000)).toBe(true);
   }, 20_000);
 
   it("test() : un open() tardif est refermé (pas de processus laissé)", async () => {
@@ -107,8 +120,8 @@ describe("délais de connexion", () => {
     const r = await s.run({ op: "test", kind: "mcp-local", values: { label: "T", command: process.execPath, args: [slow], env: { PID_FILE: pidFile, DELAY_MS: "1500" } } });
     expect(r.ok).toBe(false);
     expect(String(r.text)).toContain("pas de réponse");
-    await wait(4000);
-    expect(existsSync(pidFile)).toBe(true);
-    expect(alive(pidOf(pidFile))).toBe(false);
+    // Le serveur répond après 1,5 s (plus sur une machine chargée) : open() aboutit alors, puis est refermé. On attend ce
+    // moment-là (borné), au lieu d'un délai fixe.
+    expect(await waitGone(pidFile, 12_000)).toBe(true);
   }, 20_000);
 });
