@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { STATES } from "@floppy/protocol";
-import { TRANSITIONS, canListenWithoutWake, isExpectedTransition, openListeningState, reduce, showState, type BodyEvent, type BodyFlags, type BodyPhase } from "../src/body-state.ts";
+import { LISTENING_TIMER_MARGIN_MS, TRANSITIONS, canListenWithoutWake, isExpectedTransition, openListeningState, reduce, showState, type BodyEvent, type BodyFlags, type BodyPhase } from "../src/body-state.ts";
 
 const flags = (f: Partial<BodyFlags> = {}): BodyFlags => ({ muted: false, turn: false, init: false, playing: false, awakeUntil: 0, ...f });
 const NOW = 1_000_000;
@@ -122,9 +122,9 @@ describe("réducteur : un test par événement", () => {
     expect(t.state).toBe("idle");
     expect(t.listenFor).toBeUndefined();
   });
-  it("turn_interrupted et announce_aborted : plus rien ne joue, la phase est laissée à ce qui suit", () => {
+  it("turn_interrupted et announce_aborted : plus rien ne joue, retour au repos", () => {
     for (const type of ["turn_interrupted", "announce_aborted"] as const) {
-      expect(run({ playing: true, phase: "speaking" }, { type })).toMatchObject({ state: "speaking", flags: { playing: false } });
+      expect(run({ playing: true, phase: "speaking" }, { type })).toMatchObject({ state: "idle", flags: { playing: false } });
     }
   });
   it("announce_started : speaking ; announce_finished : écoute libre", () => {
@@ -146,6 +146,76 @@ describe("réducteur : un test par événement", () => {
     expect(run({}, { type: "live_state", state: "speaking" }).state).toBe("speaking");
     expect(run({}, { type: "live_state", state: "listening" }).flags.awakeUntil).toBe(NOW + 8000);
     expect(run({ muted: true }, { type: "live_state", state: "listening" })).toMatchObject({ state: "sleep", flags: { awakeUntil: 0 } });
+  });
+});
+
+describe("réducteur : l'écoute qui se ferme", () => {
+  it("wake avec une durée, ptt_off et listening_started (avec durée) rendent le minuteur de retour au repos", () => {
+    expect(run({ muted: true }, { type: "wake", ms: 8000 }).listenFor).toBe(8050);
+    expect(run({ ptt: true, phase: "listening" }, { type: "ptt_off" }).listenFor).toBe(8050);
+    const l = run({ awakeUntil: 5 }, { type: "listening_started", ms: 10_000 });
+    expect(l).toMatchObject({ state: "listening", listenFor: 10_050, flags: { awakeUntil: 5 } });
+    expect(run({ awakeUntil: 5 }, { type: "listening_started" }).listenFor).toBeUndefined();
+    expect(run({ muted: true }, { type: "listening_started", ms: 10_000 }).listenFor).toBeUndefined();
+    expect(run({ phase: "idle" }, { type: "wake" }).listenFor).toBeUndefined();
+  });
+  it("une activation sans phrase : le minuteur ramène au repos", () => {
+    const l = run({ awakeUntil: 5 }, { type: "listening_started", ms: 10_000 });
+    expect(reduce(l.flags, { type: "listening_expired" }, NOW + 10_050, OPTS).state).toBe("idle");
+  });
+  it("listening_expired ne ferme rien tant que le bouton parler est tenu, qu'une parole est ouverte ou qu'un son joue", () => {
+    for (const f of [{ ptt: true }, { speechOpen: true }, { playing: true }] as const) {
+      expect(run({ phase: "listening", awakeUntil: NOW - 1, ...f }, { type: "listening_expired" }).state).toBe("listening");
+    }
+  });
+  it("la fin d'une lecture pendant l'écoute rearme le minuteur (sinon l'écoute resterait ouverte)", () => {
+    const l = run({ phase: "listening", awakeUntil: NOW - 1, playing: true }, { type: "playback", on: false });
+    expect(l).toMatchObject({ state: "listening", listenFor: 50 });
+    expect(reduce(l.flags, { type: "listening_expired" }, NOW + 50, OPTS).state).toBe("idle");
+  });
+  it("un vieux minuteur qui sonne après une fenêtre prolongée ne fait rien", () => {
+    const l = run({ phase: "listening", ptt: true }, { type: "ptt_off" });
+    expect(reduce(l.flags, { type: "listening_expired" }, NOW + 100, OPTS).state).toBe("listening");
+    expect(reduce(l.flags, { type: "listening_expired" }, NOW + 8050, OPTS).state).toBe("idle");
+  });
+  it("ptt_on ne rend aucun minuteur (60 s, tant que la touche est tenue)", () => {
+    expect(run({}, { type: "ptt_on" }).listenFor).toBeUndefined();
+  });
+  it("une parole commencée dans la fenêtre puis abandonnée après sa fin : le minuteur est rearmé", () => {
+    const r = run({ phase: "listening", speechOpen: true, awakeUntil: NOW - 500 }, { type: "speech_dropped" });
+    expect(r.listenFor).toBe(LISTENING_TIMER_MARGIN_MS);
+    expect(reduce(r.flags, { type: "listening_expired" }, NOW + 50, OPTS).state).toBe("idle");
+  });
+  it("live_state : le mode Live ferme lui-même son écoute (« idle »), le réducteur n'arme rien", () => {
+    expect(run({}, { type: "live_state", state: "listening" }).listenFor).toBeUndefined();
+    expect(run({ phase: "listening" }, { type: "live_state", state: "idle" }).state).toBe("idle");
+  });
+});
+
+describe("réducteur : après une coupure", () => {
+  it("turn_interrupted et announce_aborted sans suite : retour au repos", () => {
+    for (const type of ["turn_interrupted", "announce_aborted"] as const) {
+      for (const phase of ["speaking", "thinking"] as const) {
+        const r = run({ playing: true, phase }, { type });
+        expect(r).toMatchObject({ state: "idle", flags: { playing: false } });
+        expect(r.listenFor).toBeUndefined();
+      }
+    }
+  });
+  it("l'écoute libre encore ouverte continue, avec son minuteur ; le bouton parler tenu aussi, sans minuteur", () => {
+    expect(run({ phase: "speaking", awakeUntil: NOW + 3000 }, { type: "turn_interrupted" })).toMatchObject({ state: "listening", listenFor: 3050 });
+    expect(run({ phase: "speaking", ptt: true }, { type: "announce_aborted" })).toMatchObject({ state: "listening" });
+    expect(run({ phase: "speaking", ptt: true }, { type: "announce_aborted" }).listenFor).toBeUndefined();
+  });
+  it("un corps muet reste « sleep » ; un tour ou une annonce encore là garde sa phase", () => {
+    expect(run({ muted: true, phase: "speaking", awakeUntil: NOW + 3000 }, { type: "turn_interrupted" }).state).toBe("sleep");
+    expect(run({ phase: "speaking", init: true }, { type: "turn_interrupted" }).state).toBe("speaking");
+    expect(run({ phase: "speaking", turn: true }, { type: "announce_aborted" }).state).toBe("speaking");
+  });
+  it("coupure puis nouvelle demande : thinking (passage par idle, prévu par la table)", () => {
+    const cut = run({ playing: true, phase: "speaking" }, { type: "turn_interrupted" });
+    expect(isExpectedTransition("speaking", cut.state)).toBe(true);
+    expect(reduce(cut.flags, { type: "turn_started" }, NOW, OPTS).state).toBe("thinking");
   });
 });
 
@@ -193,7 +263,7 @@ describe("réducteur : toute transition produite est dans la table", () => {
   const phases: BodyPhase[] = ["idle", "listening", "thinking", "speaking"];
   const bools = [false, true];
   const events: BodyEvent[] = [
-    { type: "wake" }, { type: "wake", ms: 8000 }, { type: "listening_started" }, { type: "sleep" }, { type: "mute" }, { type: "unmute" },
+    { type: "wake" }, { type: "wake", ms: 8000 }, { type: "listening_started" }, { type: "listening_started", ms: 10_000 }, { type: "sleep" }, { type: "mute" }, { type: "unmute" },
     { type: "ptt_on" }, { type: "ptt_off" }, { type: "ptt_dropped" }, { type: "open_listening" }, { type: "close_listening" },
     { type: "listening_expired" }, { type: "speech_detected" }, { type: "transcript" }, { type: "speech_dropped" }, { type: "turn_started" },
     { type: "speech_started" }, { type: "turn_finished", voice: true }, { type: "turn_finished", voice: false }, { type: "turn_interrupted" },

@@ -48,8 +48,11 @@ export function showState(f: Pick<BodyFlags, "muted" | "phase">): BodyState {
 export type BodyEvent =
   /** Mot d'activation, saisie ou fin de la veille. `ms` : l'écoute libre s'ouvre pour cette durée (et « listening » est montré). */
   | { type: "wake"; ms?: number }
-  /** Le détecteur a entendu le mot d'activation : « listening » est montré, sans toucher à la fenêtre d'écoute libre. */
-  | { type: "listening_started" }
+  /**
+   * Le détecteur a entendu le mot d'activation : « listening » est montré, sans toucher à la fenêtre d'écoute libre.
+   * `ms` : durée de l'activation, qui sert seulement au minuteur de retour au repos si aucune phrase ne suit.
+   */
+  | { type: "listening_started"; ms?: number }
   /** « Floppy, dors » (voix, texte, Live). */
   | { type: "sleep" }
   /** Bouton muet du corps. */
@@ -125,18 +128,31 @@ export function reduce(flags: BodyFlags, event: BodyEvent, now: number, opts: Re
   const f: Reduced["flags"] = { ...flags, phase: flags.phase ?? "idle", speechOpen: !!flags.speechOpen, ptt: !!flags.ptt };
   const free = opts.freeListenMs;
   let listenFor: number | undefined;
+  /** Rend le minuteur de fin d'écoute quand « listening » est montré avec une fin prévue (jamais tant que le bouton parler est tenu). */
+  const rearm = () => {
+    if (f.phase === "listening" && !f.muted && !f.ptt && !f.turn && !f.init) listenFor = Math.max(f.awakeUntil - now, 0) + LISTENING_TIMER_MARGIN_MS;
+  };
+  /** Après une coupure sans suite : l'écoute libre encore ouverte continue (avec son minuteur), sinon repos. */
+  const afterCut = () => {
+    if (f.turn || f.init) return;
+    f.phase = !f.muted && (f.ptt || now < f.awakeUntil) ? "listening" : "idle";
+    rearm();
+  };
   const openWindow = () => { f.awakeUntil = now + free; f.phase = "listening"; listenFor = free + LISTENING_TIMER_MARGIN_MS; };
   switch (event.type) {
     case "wake":
       if (f.muted) f.phase = "idle";
       f.muted = false;
-      if (event.ms !== undefined) { f.awakeUntil = now + event.ms; f.phase = "listening"; }
+      if (event.ms !== undefined) { f.awakeUntil = now + event.ms; f.phase = "listening"; listenFor = event.ms + LISTENING_TIMER_MARGIN_MS; }
       break;
-    case "listening_started": f.phase = "listening"; break;
+    case "listening_started":
+      f.phase = "listening";
+      if (event.ms !== undefined && !f.muted) listenFor = event.ms + LISTENING_TIMER_MARGIN_MS;
+      break;
     case "sleep": case "mute": f.muted = true; f.awakeUntil = 0; f.speechOpen = false; f.phase = "idle"; break;
     case "unmute": f.muted = false; f.phase = "idle"; break;
     case "ptt_on": f.ptt = true; f.muted = false; f.awakeUntil = now + (opts.pttMs ?? PTT_MS); f.phase = "listening"; break;
-    case "ptt_off": f.ptt = false; f.awakeUntil = now + free; break;
+    case "ptt_off": f.ptt = false; f.awakeUntil = now + free; rearm(); break;
     case "ptt_dropped": f.ptt = false; break;
     case "open_listening": openWindow(); break;
     case "close_listening":
@@ -144,7 +160,8 @@ export function reduce(flags: BodyFlags, event: BodyEvent, now: number, opts: Re
       f.awakeUntil = 0; f.speechOpen = false; f.ptt = false; f.phase = "idle";
       break;
     case "listening_expired":
-      if (!f.turn && !f.init && showState(f) === "listening" && now >= f.awakeUntil) f.phase = "idle";
+      // Ni pendant le bouton parler, ni pendant une parole commencée dans la fenêtre (son transcript ou son abandon rearme).
+      if (!f.turn && !f.init && !f.playing && !f.ptt && !f.speechOpen && showState(f) === "listening" && now >= f.awakeUntil) f.phase = "idle";
       break;
     case "speech_detected": {
       const inWindow = !f.muted && now < f.awakeUntil;
@@ -156,19 +173,20 @@ export function reduce(flags: BodyFlags, event: BodyEvent, now: number, opts: Re
       // La fenêtre couvre cette phrase : elle a commencé dedans, même si elle arrive après la fin.
       if (f.speechOpen && !f.muted && now > f.awakeUntil) f.awakeUntil = now + LATE_SPEECH_MS;
       f.speechOpen = false;
+      rearm();
       break;
-    case "speech_dropped": f.speechOpen = false; break;
+    case "speech_dropped": f.speechOpen = false; rearm(); break;
     case "turn_started": case "quick_started": f.phase = "thinking"; break;
     case "speech_started": f.playing = true; f.phase = "speaking"; break;
     case "turn_finished":
       if (event.voice) openWindow(); else f.phase = "idle";
       break;
     case "quick_finished": f.phase = "idle"; break;
-    case "turn_interrupted": case "announce_aborted": f.playing = false; break;
+    case "turn_interrupted": case "announce_aborted": f.playing = false; afterCut(); break;
     case "announce_started": f.phase = "speaking"; break;
     case "announce_finished": f.playing = false; openWindow(); break;
     case "approval_barge_in": f.playing = false; f.phase = "listening"; break;
-    case "playback": f.playing = event.on; break;
+    case "playback": f.playing = event.on; if (!event.on) rearm(); break;
     case "live_state":
       f.phase = event.state === "sleep" ? "idle" : event.state;
       if (!f.muted && event.state === "listening") f.awakeUntil = now + free;

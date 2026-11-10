@@ -52,9 +52,12 @@ export function createTurns(d: TurnDeps) {
   const runTurn = async (b: Body, text: string, mode: TurnMode, tEnd: number) => {
     const turn = randomUUID();
     if (b.init) abortInit(b);
-    if (b.turn) interrupt(b, "nouvelle demande");
+    const cut = !!b.turn;
+    if (cut) interrupt(b, "nouvelle demande");
     const t: Turn = { n: d.nextSeq(), abort: new AbortController(), mode, pending: new Set(), brainDone: false, spoke: false, t0: tEnd, marks: {}, plans: new Map(), reply: "" };
     b.turn = t;
+    // Une réponse vient d'être coupée par cette demande : « réflexion » tout de suite, sans repasser par « repos ».
+    if (cut) turnStarted(b);
     const mark = (k: string) => { if (!(k in t.marks)) t.marks[k] = Math.round(performance.now() - t.t0); };
     // Un seul tour à la fois sur ce corps : les suivants attendent la fin (ou l'abandon) du précédent.
     const prev = locks.get(b.id) ?? Promise.resolve();

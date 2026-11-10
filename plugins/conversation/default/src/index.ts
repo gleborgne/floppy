@@ -32,6 +32,9 @@ import { deliveryFor, type SentencePlan } from "./plan.ts";
 import { voiceHandler } from "./voice-events.ts";
 import { expressivenessFactor } from "@floppy/toolkit";
 
+/** Durée d'une activation par mot d'activation sans phrase (ms) : passé ce délai, le corps revient au repos. */
+const WAKE_ACTIVATION_MS = 10_000;
+
 export { PHRASES };
 
 export * from "./text.ts";
@@ -153,7 +156,7 @@ export default definePlugin<Config>({
       b.muted = r.flags.muted; b.awakeUntil = r.flags.awakeUntil; b.ptt = r.flags.ptt; b.playing = r.flags.playing;
       b.speechOpen = r.flags.speechOpen; b.phase = r.flags.phase;
       if (r.state !== b.state) setState(b, r.state);
-      if (r.listenFor !== undefined) ctx.timeout(() => dispatch(b, { type: "listening_expired" }), r.listenFor);
+      if (r.listenFor !== undefined) ctx.timeout(() => { if (!b.live?.active) dispatch(b, { type: "listening_expired" }); }, r.listenFor); // le mode Live ferme lui-même son écoute
       return true;
     };
     // Humeur : fond émotionnel qui change lentement ; les corps la montrent quand aucune émotion n'est en cours.
@@ -239,11 +242,12 @@ export default definePlugin<Config>({
     /** L'utilisateur coupe la parole à Floppy : on se tait et ce qu'il dit ensuite s'adresse à Floppy. */
     function userBargeIn(b: Body) {
       endDuck(b, false);
-      if (b.init) { abortInit(b); dispatch(b, { type: "open_listening" }); return; }
+      if (b.init) { dispatch(b, { type: "open_listening" }); abortInit(b); return; }
       if (!b.turn) { dispatch(b, { type: "open_listening" }); return; }
-      interrupt(b, "l'utilisateur parle");
+      // L'écoute s'ouvre avant la coupure : celle-ci la trouve ouverte et reste sur « listening » (pas de passage par « idle »).
       // Sans écoute libre relancée, une coupure après sa fin jetait la phrase en silence.
       dispatch(b, { type: "open_listening" });
+      interrupt(b, "l'utilisateur parle");
       setEmotion("neutral");
     }
 
@@ -476,7 +480,7 @@ export default definePlugin<Config>({
             const start = event.startSample === undefined ? undefined : Math.max(event.startSample, history?.begin ?? 0);
             if (wakeword.input !== "transcript" && (!history || start === undefined || event.endSample === undefined || !history.slice(start, event.endSample))) return;
             dispatch(b, { type: "wake" });
-            b.wakeActivation = { ...event, startSample: start, expires: Date.now() + 10_000 };
+            b.wakeActivation = { ...event, startSample: start, expires: Date.now() + WAKE_ACTIVATION_MS };
             ctx.audit.write({ kind: "wakeword.detected", body: b.id, provider: wakeword.name, word: event.word });
             cue("wake"); // « oui ? » : réaction visible tout de suite, quel que soit le détecteur
             if (wakeword.input === "transcript") return; // le transcript courant sera routé, y compris les commandes locales
@@ -485,7 +489,7 @@ export default definePlugin<Config>({
               if ([...bodies.values()].some(other => other !== b && other.live?.active)) return;
               b.wakeActivation = undefined; // cette détection est consommée par l'ouverture audio immédiate
               void b.live.start(start, event.endSample).catch(e => { if (ctx.alive && !abort.signal.aborted) hub.send(b.id, { type: "error", text: shown(errorText(e)) }); });
-            } else dispatch(b, { type: "listening_started" });
+            } else dispatch(b, { type: "listening_started", ms: WAKE_ACTIVATION_MS });
           },
         });
         if (!ctx.alive || abort.signal.aborted || bodies.get(b.id) !== b) detector.close();

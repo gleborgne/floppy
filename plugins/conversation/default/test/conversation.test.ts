@@ -642,6 +642,21 @@ describe("conversation (2 corps)", () => {
     expect(chat.of("cue")).toHaveLength(0); // seulement les corps qui montrent des émotions
   });
 
+  it("bouton parler relâché sans phrase : l'écoute libre se ferme et le corps revient au repos", async () => {
+    vi.useFakeTimers();
+    try {
+      avatar.send({ type: "ptt", on: true });
+      expect(avatar.of("state").at(-1)?.state).toBe("listening");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(avatar.of("state").at(-1)?.state).toBe("listening"); // tenu : pas de retour au repos
+      avatar.send({ type: "ptt", on: false });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(avatar.of("state").at(-1)?.state).toBe("listening"); // écoute libre (2 s) encore ouverte
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(avatar.of("state").at(-1)?.state).toBe("idle");
+    } finally { vi.useRealTimers(); }
+  });
+
   it("le ton est un réglage de conversation, indépendant du cerveau", () => {
     expect(k.settings.list().find((s) => s.key === "tone")).toMatchObject({ section: "voice", source: "conv" });
   });
