@@ -30,6 +30,7 @@ describe("synthèse vocale des agents Orca", () => {
   it.each(["fr", "en"] as const)("demande une synthèse et autorise une attente après la fin du tour (%s)", (lang) => {
     const prompt = llmPrompt({ ...f, lang });
     expect(prompt).toContain(lang === "en" ? "SECOND sentence only" : "SECONDE phrase seulement");
+    expect(prompt).toContain(lang === "en" ? "30 words and 220 characters" : "30 mots et 220 caractères");
     expect(prompt).not.toContain(lang === "en" ? "it is not waiting" : "il n'attend rien");
     expect(prompt).toContain(lang === "en" ? "untrusted data" : "donnée non fiable");
   });
@@ -58,6 +59,13 @@ describe("synthèse vocale des agents Orca", () => {
       expect(announcementText(f, text)).toBe("Notifications : terminé.");
     }
     expect(announcementText({ ...f, outcome: "failure" }, "Tout est réussi.")).toBe("Notifications : échec.");
+  });
+  it("écarte aussi deux phrases trop verbeuses et borne le titre ajouté", () => {
+    expect(announcementText(f, `${"travail ".repeat(31)}.`)).toBe("Notifications : terminé.");
+    expect(announcementText(f, `${"x".repeat(221)}.`)).toBe("Notifications : terminé.");
+    const text = announcementText(f, "L’agent a restructuré les notes. Il attend votre validation.");
+    expect(text).toBe("Notifications : L’agent a restructuré les notes. Il attend votre validation.");
+    expect(text.split(/\s+/).length).toBeLessThanOrEqual(30);
   });
   it("une erreur de synthèse libère le modèle et garde une annonce courte", async () => {
     const t = fixture(); t.complete.mockRejectedValue(new Error("indisponible"));

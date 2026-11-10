@@ -338,6 +338,7 @@ flowchart TB
 ![Les états de l'avatar](img/avatar-states.png)
 
 - **La bulle de BD** au-dessus de la tête, avec une pointe vers le visage : ce que l'utilisateur a dit (« Toi »), la réponse qui s'écrit, les cartes d'accord (Oui / Non, barre de temps restant). La fenêtre a une **taille fixe et transparente** : les clics traversent les zones vides ; la tête et la bulle restent cliquables.
+- Une notification sans texte de conversation utilise toute la hauteur disponible au-dessus du visage, avec défilement pour les longs textes. Une carte d'information ne disparaît pas automatiquement pendant la parole ou l'écoute ; le retour au repos lui laisse dix secondes avant fermeture. La fermeture de la dernière carte sans autre contenu masque la bulle au lieu de laisser une pointe vide.
 - **Micro** : `AudioWorklet` à 16 kHz, annulation d'écho. **Voix** : lecture en file, coupure immédiate sur `interrupt`.
 - **Icône** dans la barre des tâches : couleur selon l'état, rouge si un plugin est en erreur ou en attente (détail au survol). Menu : parler, dormir, montrer/cacher (change le réglage avatar_visible), **Réglages…**, relancer le noyau, journaux, quitter.
 - **Affichage réglable** (aussi à la voix) : avatar visible, masquer après N minutes sans activité, bulle, toujours devant. **Caché, il revient dès qu'on l'active** (mot d'activation, raccourci, demande d'accord, tour en cours) ; s'il a été caché exprès, il repart ~10 s après la fin. Testé : caché → une demande → visible → caché à nouveau 25 s après.

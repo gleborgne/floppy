@@ -378,13 +378,23 @@ function card(kind: string, title: CardText, text: string, buttons?: { label: Ca
     if (kind !== "ask") el.title = L("closeTip");
   };
   el._relabel();
-  // Info, erreur : une carte identique déjà affichée n'est pas répétée ; clic = fermer ; départ seul après 12 s.
+  // Info, erreur : clic = fermer. L'expiration ne retire jamais le texte pendant la lecture.
   if (kind !== "ask") {
     const same = [...$("cards").querySelectorAll<CardEl>(`.card.${kind}`)].find((c) => c.textContent === el.textContent);
     if (same) { showBubble(); return same; }
     el.style.cursor = "pointer";
-    el.addEventListener("click", () => { el.remove(); if (!$("cards").children.length) hideBubbleSoon(1500); });
-    setTimeout(() => { el.remove(); if (!$("cards").children.length) hideBubbleSoon(1500); }, 12000);
+    const close = () => {
+      el.remove();
+      if ($("cards").children.length) return;
+      if (!$("you").textContent && !$("reply").textContent && !listenShown) $("bubble").classList.add("hide");
+      else hideBubbleSoon(1500);
+    };
+    el.addEventListener("click", close);
+    setTimeout(() => {
+      // Le retour au repos programmera la fermeture de la bulle et de ses cartes.
+      if (!atRest()) return;
+      close();
+    }, 12000);
   }
   $("cards").append(el);
   showBubble();
@@ -579,7 +589,7 @@ function onMessage(m: KernelMsg): void {
       showListening(m.state === "listening");
       // De retour au repos : la conversation s'efface au bout de 10 s (sauf demande d'accord en cours).
       // Rien n'a été dit (seulement « Je t'écoute… ») : elle part tout de suite.
-      if (m.state === "idle" || m.state === "sleep") hideBubbleSoon(!$("you").textContent && !$("reply").textContent ? 600 : 10000);
+      if (m.state === "idle" || m.state === "sleep") hideBubbleSoon(!$("you").textContent && !$("reply").textContent && !$("cards").children.length ? 600 : 10000);
       else clearTimeout(hideTimer);
       break;
     case "emotion":

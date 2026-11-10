@@ -278,7 +278,7 @@ Tokens live in CSS custom properties, one `:root` block per window. In the Setti
 
 **Documents window.** A 270px sidebar (190px below 640px) and a reading column centred at max 70ch (padding 26px 34px 48px).
 
-**Avatar window.** Transparent, 230px tall face area at the bottom, the bubble stacked above it, never taller than `calc(100vh - 236px)`; conversation scrolls inside, cards (approval, info, error) stay pinned below the conversation in their own 150px scroll area.
+**Avatar window.** Transparent, 230px tall face area at the bottom, the bubble stacked above it, never taller than `calc(100vh - 236px)`; conversation scrolls inside, cards (approval, info, error) stay pinned below the conversation in their own 150px scroll area. Without conversation text, cards use the available bubble height before scrolling, including when the listening indicator is present. Notification text stays visible throughout speech and listening; automatic dismissal resumes at rest. Removing the last content hides the bubble immediately.
 
 **Spacing rhythm.** Gaps of 8px between controls are the default; 10 to 12px between icon and label or inside rows; 16px row padding; 18 to 22px between blocks; 28 to 36px window padding. Values outside the frontmatter scale (2, 3, 5, 7, 9px) appear only inside controls for optical alignment.
 

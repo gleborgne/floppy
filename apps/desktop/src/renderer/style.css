@@ -45,6 +45,10 @@ body { font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-ser
 
 #cards { flex: none; max-height: 150px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(120, 220, 230, 0.3) transparent; }
 #cards:empty { display: none; }
+/* Une notification seule utilise toute la place au-dessus du visage, puis défile si nécessaire. */
+#bubble:not(:has(#you:not(:empty), #reply:not(:empty))) #cards {
+  flex: 0 1 auto; min-height: 0; max-height: none;
+}
 /* Conversation visible au-dessus : un trait sépare le texte des cartes. */
 body:not(.nobubble) #bubble:has(#you:not(:empty), #reply:not(:empty), #listen:not([hidden])) #cards {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08);

@@ -6,14 +6,15 @@ import { cleanMessage, completionSentence, waitingSentence, llmPrompt, type Fact
 export function announcementText(f: Facts, summary: string | undefined, state?: string, toolName?: string | null): string {
   const fallback = () => f.kind === "en_attente" ? waitingSentence(f, state, toolName) : completionSentence(f);
   const text = summary?.replace(/\s+/g, " ").trim();
-  if (!text || text.length > 420 || text.split(/\s+/).length > 65 || /[`#*<>]/.test(text)
+  if (!text || text.length > 220 || text.split(/\s+/).length > 30 || /[`#*<>]/.test(text)
     || (text.match(/[.!?](?:\s|$)/g)?.length ?? 0) > 2) return fallback();
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (f.outcome === "failure" && !/echec|echou|fail|error/.test(normalized)) return fallback();
   if (f.outcome === "interruption" && !/interromp|interrupt|cancel/.test(normalized)) return fallback();
   if (f.kind === "en_attente" && !/attend|attente|reponse|validation|approv|waiting|answer/.test(normalized)) return fallback();
   const name = (f.label || f.task || f.project).slice(0, 120);
-  return text.toLowerCase().startsWith(name.toLowerCase()) ? text : `${name} : ${text}`;
+  const result = text.toLowerCase().startsWith(name.toLowerCase()) ? text : `${name} : ${text}`;
+  return result.length <= 260 && result.split(/\s+/).length <= 35 ? result : fallback();
 }
 
 async function bounded<T>(promise: Promise<T>, signal: AbortSignal): Promise<T | undefined> {
