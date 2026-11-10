@@ -34,6 +34,7 @@ const Incoming = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ptt"), on: z.boolean() }),
   z.object({ type: z.literal("dictate"), on: z.boolean() }),
   z.object({ type: z.literal("mute"), on: z.boolean() }),
+  z.object({ type: z.literal("listen.stop") }),
   z.object({ type: z.literal("approval.response"), id: z.string(), ok: z.boolean() }),
   z.object({ type: z.literal("tool.result"), callId: z.string(), ok: z.boolean(), text: z.string() }),
   z.object({ type: z.literal("playback"), playing: z.boolean() }),

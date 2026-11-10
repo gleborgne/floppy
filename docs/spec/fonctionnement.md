@@ -15,8 +15,8 @@
 Une demande peut aussi être saisie avec **Ctrl+Alt+T** (réglable dans Système). Elle rejoint le corps vocal de l'avatar sans mot d'activation : le tour, la mémoire, les outils, les accords et la réponse à voix haute suivent le même chemin qu'après une transcription. Une nouvelle demande interrompt la réponse précédente. « Oui » et « non » tapés répondent à l'accord en cours. La saisie réveille Floppy ; « dors » le remet en veille. Les clients texte comme `floppy chat` restent des conversations à réponse écrite.
 
 Dans la bulle de conversation, « Je t'écoute… » suit l'état `listening` du noyau : recevoir une transcription ne
-masque pas cet indicateur. Il reste sous le texte défilant, avec une croix « Arrêter l'écoute » qui envoie `mute: true`
-au noyau et met Floppy en veille. Le raccourci parler ou le mot d'activation permettent de le réveiller.
+masque pas cet indicateur. Il reste sous le texte défilant, avec une croix « Arrêter l'écoute » qui envoie `listen.stop`
+au noyau : l'écoute libre se ferme et Floppy revient au repos, sans devenir muet. Les annonces importantes restent vocales et le mot d'activation continue de fonctionner. Un clic tardif pendant une réponse est ignoré. La commande « dors » et le mode muet restent les seuls à demander la veille.
 
 ## Tâches longues
 

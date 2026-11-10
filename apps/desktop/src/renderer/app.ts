@@ -318,11 +318,10 @@ function showListening(on: boolean): void {
   if (on) showBubble();
 }
 $("stopListening")?.addEventListener("click", () => {
-  muted = true;
+  muted = false;
   if (pttOn) send({ type: "ptt", on: false });
   pttOn = false;
-  stopPlayback();
-  send({ type: "mute", on: true });
+  send({ type: "listen.stop" });
 });
 /** Il entend son nom : anneau autour du visage + petit saut, puis « Je t'écoute… ». */
 let wokeTimer = 0;

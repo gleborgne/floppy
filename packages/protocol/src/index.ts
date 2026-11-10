@@ -107,6 +107,7 @@ export type BodyToKernel =
   | { type: "ptt"; on: boolean }                           // parler (raccourci clavier)
   | { type: "dictate"; on: boolean }                       // dictée : le texte est tapé dans la fenêtre active, sans réponse
   | { type: "mute"; on: boolean }                          // « dors » / réveil
+  | { type: "listen.stop" }                               // fin de l'écoute active, sans mise en veille
   | { type: "approval.response"; id: string; ok: boolean }
   | { type: "tool.result"; callId: string; ok: boolean; text: string }
   | { type: "document.open"; id: string }                // l'utilisateur choisit un ancien document dans la liste

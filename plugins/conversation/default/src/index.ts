@@ -589,6 +589,21 @@ export default definePlugin<Config>({
           b.stream?.ptt(m.on);
           if (m.on) { if (b.turn) interrupt(b, "parler"); b.muted = false; b.awakeUntil = Date.now() + 60_000; setState(b, "listening"); cue("perk"); mood.touch(); }
           else b.awakeUntil = Date.now() + freeListen * 1000;
+        } else if (m.type === "listen.stop") {
+          // La croix ferme seulement la fenêtre d'écoute ; une commande « dors » reste distincte.
+          // Un clic arrivé après le début d'une réponse ne doit pas couper cette réponse.
+          if (b.state !== "listening" || b.turn || b.init || b.playing) return;
+          b.awakeUntil = 0;
+          b.speechOpen = false;
+          b.speechAt = undefined;
+          b.wakeActivation = undefined;
+          b.history?.clear();
+          b.ptt = false;
+          b.stream?.ptt(false);
+          void b.live?.stop("fin de l'écoute active");
+          setState(b, "idle");
+          neutralSoon();
+          drain();
         } else if (m.type === "mute") {
           b.muted = m.on;
           if (m.on && b.turn) interrupt(b, "muet");

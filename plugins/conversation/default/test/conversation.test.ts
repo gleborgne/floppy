@@ -760,6 +760,34 @@ describe("conversation (2 corps)", () => {
     expect(JSON.stringify(own.context)).toContain("Filtrage mails attend une réponse");
   });
 
+  it("arrêter l'écoute active rend le repos sans bloquer les annonces importantes", async () => {
+    const st = streams.get("avatar")!;
+    st.emit({ type: "transcript", text: "Floppy", audio_s: 1, stt_ms: 0, merged: false });
+    await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("listening"));
+    avatar.send({ type: "listen.stop" });
+    await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("idle"));
+    const turns = brainInputs.length;
+    st.emit({ type: "transcript", text: "du bruit sans activation", audio_s: 1, stt_ms: 0, merged: false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(brainInputs).toHaveLength(turns);
+    st.emit({ type: "transcript", text: "Floppy", audio_s: 1, stt_ms: 0, merged: false });
+    await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("listening"));
+    avatar.send({ type: "listen.stop" });
+    await vi.waitFor(() => expect(avatar.of("state").at(-1)?.state).toBe("idle"));
+    k.bus.emit("initiative", { source: "orca", text: "L’agent a restructuré les notes.", importance: "important" });
+    await vi.waitFor(() => expect(st.spoken).toContain("L’agent a restructuré les notes."));
+  });
+
+  it("un arrêt d'écoute tardif ne coupe pas une annonce déjà en lecture", async () => {
+    k.bus.emit("initiative", { source: "orca", text: "L’agent a terminé les tests.", importance: "important" });
+    await vi.waitFor(() => expect(avatar.audio).toBeGreaterThan(0));
+    const interruptions = avatar.of("interrupt").length;
+    avatar.send({ type: "listen.stop" });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(avatar.of("state").at(-1)?.state).toBe("speaking");
+    expect(avatar.of("interrupt")).toHaveLength(interruptions);
+  });
+
   it("initiative importante pendant la veille : pas dite, mais notifiée", async () => {
     const st = streams.get("avatar")!;
     avatar.send({ type: "mute", on: true });

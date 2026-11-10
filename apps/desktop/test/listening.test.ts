@@ -18,7 +18,7 @@ function fixture() {
     + source.slice(source.indexOf("const approvals ="), source.indexOf("function connect("))
     + "\nglobalThis.input = onMessage;";
   runInNewContext(code, ctx);
-  return { elements, send, input: (ctx as typeof ctx & { input(m: object): void }).input };
+  return { elements, send, stopPlayback: ctx.stopPlayback, input: (ctx as typeof ctx & { input(m: object): void }).input };
 }
 it("garde le retour visuel tant que le noyau reste en écoute, même après une transcription", () => {
   const f = fixture();
@@ -28,12 +28,14 @@ it("garde le retour visuel tant que le noyau reste en écoute, même après une 
   f.input({ type: "state", state: "thinking" });
   expect(f.elements.listen.hidden).toBe(true);
 });
-it("la croix demande au noyau de mettre fin à l'écoute", () => {
+it("la croix arrête l'écoute active sans demander le mode muet", () => {
   const f = fixture();
   const click = f.elements.stopListening.addEventListener.mock.calls.find(([event]) => event === "click")?.[1];
   expect(click).toBeTypeOf("function");
   click();
-  expect(f.send).toHaveBeenCalledWith({ type: "mute", on: true });
+  expect(f.send).toHaveBeenCalledWith({ type: "listen.stop" });
+  expect(f.send).not.toHaveBeenCalledWith({ type: "mute", on: true });
+  expect(f.stopPlayback).not.toHaveBeenCalled();
 });
 it("garde l'indicateur et son bouton hors du texte défilant, avec un nom accessible", () => {
   const html = readFileSync("apps/desktop/src/renderer/index.html", "utf8");
