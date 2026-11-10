@@ -9,22 +9,27 @@ import type { SpeechDelivery, TtsService } from "@floppy/contracts";
 import audiocpp, { clean } from "../plugins/tts/audiocpp/src/index.ts";
 
 export const SCENES = [
-  { intent: "explain", text: "Un arc-en-ciel apparaît quand le soleil éclaire les gouttes de pluie. Chaque goutte sépare la lumière en plusieurs couleurs." },
-  { intent: "reassure", text: "Pas de souci. On peut prendre le temps et avancer ensemble, une étape à la fois." },
-  { intent: "playful", text: "J'ai retrouvé tes notes. Elles jouaient à cache-cache, mais j'ai gagné." },
-] satisfies { intent: SpeechDelivery["intent"]; text: string }[];
+  { id: "explain", intent: "explain", emotion: "focused", intensity: 1, text: "Un arc-en-ciel apparaît quand le soleil éclaire les gouttes de pluie. Chaque goutte sépare la lumière en plusieurs couleurs." },
+  { id: "reassure", intent: "reassure", emotion: "sorry", intensity: 1, text: "Pas de souci. On peut prendre le temps et avancer ensemble, une étape à la fois." },
+  { id: "playful", intent: "playful", emotion: "mischief", intensity: 1, text: "J'ai retrouvé tes notes. Elles jouaient à cache-cache, mais j'ai gagné." },
+  { id: "satisfaction", intent: "neutral", emotion: "proud", intensity: 1, text: "C'est réglé. Tout est en place pour ta réunion, tu peux partir tranquille." },
+  { id: "surprise-legere", intent: "neutral", emotion: "surprised", intensity: 0.45, text: "Ah, tu as déjà terminé ! Je pensais que ça prendrait toute la matinée." },
+  { id: "surprise-forte", intent: "neutral", emotion: "surprised", intensity: 1.25, text: "Ah, tu as déjà terminé ! Je pensais que ça prendrait toute la matinée." },
+  { id: "soulagement", intent: "neutral", emotion: "relieved", intensity: 1, text: "C'est bon, on a retrouvé la sauvegarde. Ton travail est toujours là." },
+] satisfies { id: string; intent: SpeechDelivery["intent"]; emotion: string; intensity: number; text: string }[];
 
 export function comparisonModel(values: { model?: string; family?: string; voice?: string; reference?: string; transcript?: string; seed?: string }) {
   const family = values.family ?? "qwen3_tts";
-  if (!values.model || !["qwen3_tts", "fish_audio"].includes(family)) throw new Error("Indiquer --model et --family qwen3_tts ou fish_audio.");
+  if (!values.model || !["qwen3_tts", "fish_audio", "voxcpm2"].includes(family)) throw new Error("Indiquer --model et --family qwen3_tts, fish_audio ou voxcpm2.");
   if (family === "qwen3_tts" && !/1[._-]7b.*customvoice/i.test(values.model)) throw new Error("Qwen : utiliser CustomVoice 1.7B.");
   if (family === "fish_audio" && (!values.reference || !values.transcript || !/fish[-_]audio[-_]s2[-_]pro[-_]/i.test(values.model))) throw new Error("Fish S2 : indiquer --reference (WAV) et --transcript (fichier texte).");
+  if (family === "voxcpm2" && (!values.reference || !/^voxcpm2[-_.]/i.test(values.model.replace(/\\/g, "/").split("/").at(-1)!))) throw new Error("VoxCPM2 : utiliser un modèle voxcpm2 et --reference (WAV).");
   const seed = Number(values.seed ?? "42");
   if (!Number.isSafeInteger(seed) || seed < 0) throw new Error("La graine doit être un entier positif ou nul.");
   const refText = values.transcript ? readFileSync(resolve(values.transcript), "utf8").trim() : "";
   if (family === "fish_audio" && !refText) throw new Error("La transcription Fish est vide.");
   return clean({ label: "Essai expressivité", model: resolve(values.model), famille: family, langue: "fr", seed,
-    voix: family === "fish_audio" ? "clone" : "integree", speaker: values.voice ?? "ono_anna",
+    voix: family !== "qwen3_tts" ? "clone" : "integree", speaker: values.voice ?? "ono_anna",
     refWav: values.reference ? resolve(values.reference) : "", refText });
 }
 
@@ -33,7 +38,7 @@ export function comparisonPage(model: string): string {
   return `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Floppy — essai vocal / voice comparison</title>
 <style>body{background:#0b0f15;color:#eef8fa;font:16px system-ui;max-width:960px;margin:40px auto;padding:20px}article{background:#111821;border-radius:14px;padding:20px;margin:18px 0}.pair{display:flex;gap:24px;flex-wrap:wrap}h1{color:#46e3ea}audio{display:block;margin-top:10px;max-width:100%}</style>
 <h1>Floppy — comparaison vocale / voice comparison</h1><p>${escape(model)}</p><p>Même texte, même voix et graine 42 par défaut. / Same text, voice and default seed 42.</p>
-${SCENES.map(s => `<article><p>${escape(s.text)}</p><div class="pair">${[false, true].map(on => `<label>${on ? "Expressif / Expressive" : "Témoin / Baseline"}<audio controls preload="none" src="${s.intent}-${on ? "joueur" : "temoin"}.wav"></audio></label>`).join("")}</div></article>`).join("")}</html>`;
+${SCENES.map(s => `<article><p>${escape(s.text)}</p><p>${escape(s.emotion)} · ${s.intensity}</p><div class="pair">${[false, true].map(on => `<label>${on ? "Expressif / Expressive" : "Témoin / Baseline"}<audio controls preload="none" src="${s.id}-${on ? "joueur" : "temoin"}.wav"></audio></label>`).join("")}</div></article>`).join("")}</html>`;
 }
 
 export async function sample(tts: TtsService, text: string, delivery?: SpeechDelivery) {
@@ -72,10 +77,11 @@ async function main() {
     if (!voice) throw new Error(`Voix indisponible : ${JSON.stringify(k.status().map(s => ({ id: s.id, state: s.state, error: s.error })))}`);
     writeFileAtomic(join(output, "index.html"), comparisonPage(model.model));
     for (const scene of SCENES) for (const expressive of [false, true]) {
-      const file = `${scene.intent}-${expressive ? "joueur" : "temoin"}.wav`;
-      const { wav, ...metrics } = await sample(voice, scene.text, expressive ? { intent: scene.intent, profile: "playful", language: "fr" } : undefined);
+      const file = `${scene.id}-${expressive ? "joueur" : "temoin"}.wav`;
+      const delivery: SpeechDelivery | undefined = expressive ? { intent: scene.intent, emotion: scene.emotion, intensity: scene.intensity, profile: "playful", language: "fr" } : undefined;
+      const { wav, ...metrics } = await sample(voice, scene.text, delivery);
       writeFileAtomic(join(output, file), wav);
-      results.push({ file, text: scene.text, expressive, ...metrics });
+      results.push({ file, text: scene.text, expressive, delivery, ...metrics });
       writeJsonAtomic(join(output, "results.json"), { model: values.model, voice: model.voix === "clone" ? "reference" : model.speaker, seed: model.seed, results });
       console.log(JSON.stringify({ file, ...metrics }));
     }

@@ -7,7 +7,7 @@ export * from "./memory-context.ts";
 export type * from "./vocabulary.ts";
 export type * from "./agents.ts";
 export type * from "./voice.ts";
-export { speechInstructions, liveDeliveryInstructions } from "./speech-delivery.ts";
+export { speechInstructions, speechStyle, liveDeliveryInstructions } from "./speech-delivery.ts";
 export type * from "./coder.ts";
 export type * from "./mcp.ts";
 export type * from "./body.ts";

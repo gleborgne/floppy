@@ -20,7 +20,7 @@ describe("profils expressifs audio.cpp", () => {
     expect(fishDeliveryText("Un.", d)).toBe("[slightly amused] Un.");
     expect(fishDeliveryText("Deux.", d)).toBe("[slightly amused] Deux.");
     expect(fishDeliveryText("Pourquoi ?", { ...d, emotion: "curious", intensity: 1 })).toBe("[curious] Pourquoi ?");
-    expect(fishDeliveryText("Bonjour.", { ...d, intent: "neutral", profile: "natural", intensity: 1 })).toBe("[relaxed] Bonjour.");
+    expect(fishDeliveryText("Bonjour.", { ...d, intent: "neutral", emotion: undefined, profile: "natural", intensity: 1 })).toBe("[relaxed] Bonjour.");
     expect(fishDeliveryText("[emphasis] Oui.", d)).toBe("[emphasis] Oui.");
     expect(fishDeliveryText("", d)).toBe("");
   });
@@ -44,7 +44,8 @@ describe("comparaison vocale locale", () => {
   it("la page associe chaque texte aux deux WAV et échappe le nom du modèle", () => {
     const html = comparisonPage('<model>"');
     expect(html).toContain("&lt;model&gt;&quot;");
-    for (const scene of SCENES) for (const variant of ["temoin", "joueur"]) expect(html).toContain(`${scene.intent}-${variant}.wav`);
+    for (const scene of SCENES) for (const variant of ["temoin", "joueur"]) expect(html).toContain(`${scene.id}-${variant}.wav`);
+    expect(new Set(SCENES.map(s => s.id)).size).toBe(SCENES.length);
   });
   it("la mesure traverse le vrai contrat TTS et refuse un son vide", async () => {
     const delivery = { intent: "explain", profile: "playful", language: "fr" } as const;

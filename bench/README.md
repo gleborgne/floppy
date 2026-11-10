@@ -30,8 +30,19 @@ Depuis la racine du dépôt, avec un modèle Qwen CustomVoice **1.7B** déjà in
 node bench/voice-compare.ts --model C:/models/qwen3-tts-1.7b-customvoice.gguf --exe C:/programs/audiocpp_server.exe --voice ono_anna
 ```
 
-Le banc utilise les vrais plugins et leur cycle de vie, dans un noyau isolé. Il produit trois paires WAV
-(expliquer, rassurer, plaisanter ; témoin puis profil joueur) et `results.json` dans `bench/out/voice-compare`.
+Le banc utilise les vrais plugins et leur cycle de vie, dans un noyau isolé. Il produit sept paires WAV
+(expliquer, rassurer, plaisanter, satisfaction, surprise légère/forte, soulagement ; témoin puis profil joueur)
+et `results.json` dans `bench/out/voice-compare`. La surprise utilise le même texte aux deux intensités.
+Les mesures conservent les émotions et intensités envoyées ; `index.html` permet l'écoute côte à côte.
+
+Pour les voix clonées locales, garder la même référence française entre les essais :
+
+```powershell
+node bench/voice-compare.ts --family voxcpm2 --model C:/models/voxcpm2-bf16.gguf --exe C:/programs/audiocpp_server.exe --reference C:/models/reference-fr.wav --output bench/out/voxcpm-expression
+node bench/voice-compare.ts --family fish_audio --model C:/models/fish-audio-s2-pro-q8_0.gguf --exe C:/programs/audiocpp_server.exe --reference C:/models/reference-fr.wav --transcript C:/models/reference-fr.txt --output bench/out/fish-expression
+```
+
+VoxCPM2 accepte une transcription facultative via `--transcript`. Aucun modèle n'est téléchargé par le banc.
 La voix habituelle et les réglages utilisateur restent intacts. Le serveur temporaire utilise le port 8099
 (`--port` pour en choisir un autre) et s'arrête à la fin, même en cas d'erreur. `--backend cpu` force le processeur.
 Un autre dossier de sortie se choisit avec `--output`.

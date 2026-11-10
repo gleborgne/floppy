@@ -22,12 +22,13 @@ it.each(["fr", "en"] as const)("transmet le jeu %s séparé de la transcription 
   const text = language === "fr" ? "Voici comment se forme un arc-en-ciel." : "Here is how a rainbow forms.";
   const chunks = [];
   for await (const chunk of f.service.speak!(text, { signal: new AbortController().signal,
-    delivery: { intent: "playful", profile: "playful", language, tone: "chaleureux" } })) chunks.push(chunk);
+    delivery: { intent: "playful", profile: "playful", language, tone: "chaleureux", emotion: "surprised", intensity: 1.25 } })) chunks.push(chunk);
   expect(chunks[0]!.pcm).toEqual(new Int16Array([1]));
   const payload = JSON.parse(f.fetch.mock.calls[0]![1].body as string);
   const prompt = payload.contents[0].parts[0].text;
   expect(prompt).toMatch(/^Synthesize speech\./);
   expect(prompt).toContain(language === "fr" ? "malice amicale" : "friendly mischief");
+  expect(prompt).toContain(language === "fr" ? "très surpris" : "very surprised");
   expect(prompt.endsWith("\n\n" + text)).toBe(true);
   expect(payload.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Kore");
 });

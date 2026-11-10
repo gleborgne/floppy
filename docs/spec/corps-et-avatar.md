@@ -119,10 +119,32 @@ Ces profils sont des adaptations explicites documentées, pas une découverte au
 Les sources sont la [fiche Fish S2 Pro](https://huggingface.co/fishaudio/s2-pro) et le
 [contrat audio.cpp v0.9.4](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/model_specs/fish_audio.json).
 
-`bench/voice-compare.ts` produit trois paires WAV (témoin/joueur), les temps du premier bloc, le temps total et
+Depuis le 10 novembre 2026, le jeu conserve aussi l'émotion précise et son intensité : satisfaction,
+fierté, surprise, soulagement, curiosité, etc. `speechStyle` produit une description courte commune,
+traduite en consignes pour Qwen/Gemini et en balises pour Fish. L'intensité est bornée entre 0 et 1,5,
+atténuée par le profil, puis exprimée en trois niveaux (léger, normal, fort). Zéro ne produit pas de couleur.
+La réassurance reste douce quelle que soit l'intensité ; rire, pleurs et colère deviennent un jeu vocal
+sans bruit ajouté ni agressivité. Les consignes demandent des contrastes d'intonation et des accents,
+sans remplacer l'émotion par une hausse du volume ou du débit. Le texte prononcé reste séparé des consignes.
+
+**VoxCPM2** reçoit désormais cette description entre parenthèses au début de l'entrée de synthèse,
+selon la [convention audio.cpp v0.9.4](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/docs/tts.md#voxcpm2).
+Seuls la famille `voxcpm2` et un nom standard `voxcpm2-*` activent cette adaptation : une variante comme
+VocalRender n'en hérite pas. La référence et sa transcription restent inchangées ; une description déjà
+présente dans un texte d'essai n'est pas doublée. Qwen Base/clonage et les autres familles ne reçoivent
+toujours aucune nouvelle syntaxe expressive. Aucun téléchargement ni changement de voix n'est automatique.
+
+Les canaux cloud utilisent le même jeu : Gemini dans ses instructions, ElevenLabs dans une balise
+pour `eleven_v3`, `eleven_v4` et `eleven_v4_turbo` seulement. Le modèle ElevenLabs configuré n'est pas changé ;
+Flash/v2 et les modèles inconnus gardent le texte brut. Les requêtes passent par `ctx.fetch`.
+
+`bench/voice-compare.ts` produit sept paires WAV (témoin/joueur), les temps du premier bloc, le temps total et
 la durée du son et une page d'écoute `index.html`, dans `bench/out/voice-compare`. Il lance un noyau isolé sur
 un autre port et ne change pas la voix sélectionnée. Qwen utilise `--voice` ; Fish utilise `--family fish_audio`,
-`--reference <WAV>` et `--transcript <fichier texte>`. La graine de comparaison vaut 42 par défaut (`--seed`),
+`--reference <WAV>` et `--transcript <fichier texte>`. VoxCPM2 utilise `--family voxcpm2 --reference <WAV>`
+(transcription facultative). Les scènes couvrent explication, réassurance, plaisanterie, satisfaction,
+surprise légère/forte sur le même texte et soulagement. Les fichiers de mesures gardent la direction envoyée.
+La graine de comparaison vaut 42 par défaut (`--seed`),
 sans fixer celle des conversations ordinaires. Une graine identique n'implique pas une réalisation acoustique identique
 quand on change le texte conditionnant le modèle. Les mesures excluent le chargement et ne prouvent pas la qualité
 perceptive. Les essais locaux du 8 novembre ont généré sans erreur trois paires Fish en français avec la référence

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { definePlugin, providerConfig, Pcm16Decoder, T, TextError } from "@floppy/core";
 import type { TtsService } from "@floppy/contracts";
+import { deliveryText } from "./expression.ts";
 
 const Config = z.object({
   model: z.string().min(1).default("eleven_flash_v2_5"),
@@ -37,10 +38,10 @@ export default definePlugin({
         const abort = new AbortController(); active.add(abort);
         const signal = AbortSignal.any([opts.signal, abort.signal, AbortSignal.timeout(60_000)]);
         try {
-          const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}/stream?output_format=pcm_24000`, {
+          const response = await ctx.fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}/stream?output_format=pcm_24000`, {
             method: "POST", signal,
             headers: { "xi-api-key": account.apiKey(), "content-type": "application/json" },
-            body: JSON.stringify({ text, model_id: cfg.model, ...(cfg.language ? { language_code: cfg.language } : {}) }),
+            body: JSON.stringify({ text: deliveryText(text, cfg.model, opts.delivery), model_id: cfg.model, ...(cfg.language ? { language_code: cfg.language } : {}) }),
           });
           if (!response.ok || !response.body) throw new Error(`ElevenLabs TTS : erreur HTTP ${response.status}`);
           const decoder = new Pcm16Decoder();
