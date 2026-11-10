@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@floppy/core";
 import type { BodyHub, BrainEvent, BrainService, SpeechDelivery, TurnMode } from "@floppy/contracts";
-import type { BodyState, Emotion } from "@floppy/protocol";
+import type { Emotion } from "@floppy/protocol";
 import { turnMemory, memoryContextMessage } from "@floppy/toolkit";
 import { guessEmotion } from "./feel.ts";
 import { EmotionSettler } from "./settle.ts";
@@ -32,7 +32,8 @@ export interface TurnDeps {
   nextSeq(): number;
   tone(): string;
   profile(): SpeechDelivery["profile"];
-  setState(b: Body, state: BodyState): void;
+  /** Le tour commence à réfléchir : la phase du corps est décidée par le réducteur (body-state.ts). */
+  turnStarted(b: Body): void;
   setEmotion(emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }, opts?: { mood?: boolean }): void;
   speakOut(b: Body, id: string, text: string, emotion?: string, intensity?: number): void;
   /** Une phrase du tour, mise en scène par son plan. */
@@ -44,7 +45,7 @@ export interface TurnDeps {
 }
 
 export function createTurns(d: TurnDeps) {
-  const { ctx, hub, cfg, brain, lang, inLang, errorReply, wake, setState, setEmotion, speakOut, speakPlanned, finish, maybeFinish, interrupt, abortInit } = d;
+  const { ctx, hub, cfg, brain, lang, inLang, errorReply, wake, turnStarted, setEmotion, speakOut, speakPlanned, finish, maybeFinish, interrupt, abortInit } = d;
   // Un verrou par corps : deux corps répondent en parallèle, un même corps garde un seul tour à la fois.
   const locks = new Map<string, Promise<void>>();
 
@@ -71,7 +72,7 @@ export function createTurns(d: TurnDeps) {
       // Longue pause : un cerveau qui sait « se reposer » garde un court résumé, sinon on oublie tout.
       if (Date.now() - b.lastTurnAt > cfg.idle_reset_s * 1000) { if (brain?.rest) brain.rest(b.id); else brain?.reset(b.id); }
       hub.send(b.id, { type: "transcript", text, final: true });
-      setState(b, "thinking");
+      turnStarted(b);
       // Réaction immédiate à ce qui vient d'être dit (« merci », « haha »…), puis la réflexion reprend le visage.
       const reaction = guessEmotion(stripWakeWord(text, wake), "user");
       if (reaction) setEmotion(reaction.emotion, 1200, reaction.intensity);

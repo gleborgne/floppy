@@ -3,6 +3,7 @@ import type { Context } from "@floppy/core";
 import type { BodyHub, InitiativePresented, LiveService } from "@floppy/contracts";
 import type { Body } from "../src/model.ts";
 import { createInitiatives } from "../src/initiatives.ts";
+import { reduce, type BodyEvent } from "../src/body-state.ts";
 
 function fixture(live = false) {
   const presented: InitiativePresented[] = [];
@@ -23,7 +24,13 @@ function fixture(live = false) {
   const chat = { id: "chat", voice: false, text: true } as Body;
   const spoken = vi.fn();
   let seq = 0;
-  const initiatives = createInitiatives({ ctx, hub, live: live ? {} as LiveService : undefined, bodies: new Map([[voice.id, voice], [chat.id, chat]]), nextSeq: () => ++seq, setState: (body, state) => { body.state = state; }, setEmotion() {}, neutralSoon() {}, speakOut: spoken, endDuck() {}, listenFreely(body) { body.awakeUntil = Date.now() + 8000; body.state = body.muted ? "sleep" : "listening"; } });
+  // Le vrai réducteur : le corps de test prend les mêmes phases que dans le plugin.
+  const dispatch = (body: Body, event: BodyEvent) => {
+    const r = reduce({ muted: body.muted, awakeUntil: body.awakeUntil, ptt: !!body.ptt, turn: !!body.turn, init: !!body.init, playing: body.playing, speechOpen: !!body.speechOpen, phase: body.phase }, event, Date.now(), { freeListenMs: 8000 });
+    Object.assign(body, { muted: r.flags.muted, awakeUntil: r.flags.awakeUntil, ptt: r.flags.ptt, playing: r.flags.playing, speechOpen: r.flags.speechOpen, phase: r.flags.phase, state: r.state });
+    return !r.ignored;
+  };
+  const initiatives = createInitiatives({ ctx, hub, live: live ? {} as LiveService : undefined, bodies: new Map([[voice.id, voice], [chat.id, chat]]), nextSeq: () => ++seq, dispatch, setEmotion() {}, neutralSoon() {}, speakOut: spoken, endDuck() {} });
   return { voice, presented, spoken, say, audit, send, has, sessions, initiatives, emit(text: string, importance: "normal" | "important" = "important", key?: string) { receive({ source: "orca", text, importance, key }); } };
 }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { T } from "@floppy/core";
 import type { TurnMode, VoiceStream, WakewordStream, WakewordDetection } from "@floppy/contracts";
 import type { BodyState } from "@floppy/protocol";
+import type { BodyPhase } from "./body-state.ts";
 import { encodeAudioOut } from "@floppy/protocol";
 import type { AudioHistory } from "@floppy/core";
 import type { SpeechQueue } from "./speech.ts";
@@ -88,6 +89,8 @@ export interface Body {
   turn?: Turn;
   playing: boolean;
   state: BodyState;
+  /** Phase de travail dont `state` découle (voir `body-state.ts` : jamais écrite ailleurs que par `dispatch`). */
+  phase?: BodyPhase;
   /** Demandes d'accord en cours venant d'un tour de ce corps : parler ne doit pas annuler le tour. */
   awaiting: Set<string>;
   /** Initiative en cours de lecture sur ce corps (hors tour). */

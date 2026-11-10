@@ -2,7 +2,8 @@
 // savent afficher ; les importantes sont dites sur le corps vocal principal quand il est libre, sinon mises en file.
 import type { Context } from "@floppy/core";
 import type { BodyHub, LiveService, InitiativePresented, InitiativeDelivery } from "@floppy/contracts";
-import type { BodyState, Emotion } from "@floppy/protocol";
+import type { Emotion } from "@floppy/protocol";
+import type { BodyEvent } from "./body-state.ts";
 import type { Body, Initiative } from "./model.ts";
 
 export interface InitiativeDeps {
@@ -11,17 +12,16 @@ export interface InitiativeDeps {
   live: LiveService | undefined;
   bodies: Map<string, Body>;
   nextSeq(): number;
-  setState(b: Body, state: BodyState): void;
+  /** Seul point d'entrée pour changer la phase d'un corps (propriétaire : `index.ts`). */
+  dispatch(b: Body, event: BodyEvent): boolean;
   setEmotion(emotion: Emotion | string, ms?: number, intensity?: number): void;
   neutralSoon(): void;
   speakOut(b: Body, id: string, text: string): void;
   endDuck(b: Body, restore: boolean): void;
-  /** Écoute libre puis retour au repos (propriétaire : `index.ts`). */
-  listenFreely(b: Body): void;
 }
 
 export function createInitiatives(d: InitiativeDeps) {
-  const { ctx, hub, live, bodies, setState, setEmotion, neutralSoon, speakOut, endDuck } = d;
+  const { ctx, hub, live, bodies, dispatch, setEmotion, neutralSoon, speakOut, endDuck } = d;
   const queue: Initiative[] = [];
   const recent: { text: string; at: number; origin: string }[] = [];
   const primary = () => [...bodies.values()].find((b) => b.voice && b.stream);
@@ -45,7 +45,7 @@ export function createInitiatives(d: InitiativeDeps) {
     if (previous) { pending.delete(b.id); presented(b, previous, "interrupted"); }
     const id = `i${d.nextSeq()}`;
     b.init = { id, done: false };
-    setState(b, "speaking");
+    dispatch(b, { type: "announce_started" });
     speakOut(b, id, text);
   };
   const speakInitiative = (b: Body, it: Initiative) => {
@@ -54,7 +54,7 @@ export function createInitiatives(d: InitiativeDeps) {
     recent.push({ text: it.text, at: Date.now(), origin: b.id });
     if (recent.length > 5) recent.shift();
     setEmotion("curious");
-    setState(b, "speaking");
+    dispatch(b, { type: "announce_started" });
     speakOut(b, id, it.text);
     pending.set(b.id, it);
     presented(b, it, "scheduled");
@@ -65,9 +65,8 @@ export function createInitiatives(d: InitiativeDeps) {
     const item = pending.get(b.id);
     if (item) { pending.delete(b.id); presented(b, item, "completed"); }
     b.init = undefined;
-    b.playing = false;
     b.stream?.setSpeaking(false);
-    d.listenFreely(b); // écoute libre : on peut répondre sans le mot
+    dispatch(b, { type: "announce_finished" }); // écoute libre : on peut répondre sans le mot
     neutralSoon();
     drain();
   };
@@ -79,7 +78,7 @@ export function createInitiatives(d: InitiativeDeps) {
     b.output?.cancel();
     hub.send(b.id, { type: "interrupt" });
     b.init = undefined;
-    b.playing = false;
+    dispatch(b, { type: "announce_aborted" });
     b.stream?.setSpeaking(false);
   };
   /** Dit la prochaine initiative en attente, si le corps vocal principal est libre. */

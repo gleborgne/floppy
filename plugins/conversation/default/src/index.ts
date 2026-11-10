@@ -16,7 +16,7 @@ import type { BrainService, LiveService, TtsService, WakewordService, TurnMode, 
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, matchQuickSetting } from "./text.ts";
 import { matchChoice, choicePrompt } from "./choice-match.ts";
-import { isExpectedTransition, openListeningState } from "./body-state.ts";
+import { isExpectedTransition, reduce, type BodyEvent } from "./body-state.ts";
 import { isRepeatRequest } from "./repeat.ts";
 import { spokenForm } from "./spoken-form.ts";
 
@@ -129,6 +129,7 @@ export default definePlugin<Config>({
     ctx.effect(() => clearTimeout(neutralTimer));
 
     // ------------------------------------------------------------ état et émotion (tous les corps)
+    /** Montre un état au corps. Seul `dispatch` l'appelle (l'état vient du réducteur), sauf le point d'entrée de `turn.ts`. */
     const setState = (b: Body, state: BodyState) => {
       // Filet de diagnostic : une transition hors de la table est journalisée, jamais refusée.
       if (!isExpectedTransition(b.state, state)) {
@@ -138,6 +139,22 @@ export default definePlugin<Config>({
       b.state = state;
       hub.broadcast({ type: "state", state }, "emotion");
       if (!hub.has(b.id, "emotion")) hub.send(b.id, { type: "state", state });
+    };
+    /**
+     * Le seul endroit où la phase d'un corps change : applique l'événement par le réducteur (`body-state.ts`), écrit les
+     * drapeaux dans le corps, montre l'état s'il change et arme le minuteur de fin d'écoute libre quand elle s'ouvre.
+     * Rend faux quand l'événement est ignoré (la croix « arrêter l'écoute » pendant une réponse).
+     */
+    const dispatch = (b: Body, event: BodyEvent): boolean => {
+      const r = reduce(
+        { muted: b.muted, awakeUntil: b.awakeUntil, ptt: !!b.ptt, turn: !!b.turn, init: !!b.init, playing: b.playing, speechOpen: !!b.speechOpen, phase: b.phase },
+        event, Date.now(), { freeListenMs: freeListen * 1000 });
+      if (r.ignored) return false;
+      b.muted = r.flags.muted; b.awakeUntil = r.flags.awakeUntil; b.ptt = r.flags.ptt; b.playing = r.flags.playing;
+      b.speechOpen = r.flags.speechOpen; b.phase = r.flags.phase;
+      if (r.state !== b.state) setState(b, r.state);
+      if (r.listenFor !== undefined) ctx.timeout(() => dispatch(b, { type: "listening_expired" }), r.listenFor);
+      return true;
     };
     // Humeur : fond émotionnel qui change lentement ; les corps la montrent quand aucune émotion n'est en cours.
     const mood = new MoodTracker();
@@ -172,8 +189,7 @@ export default definePlugin<Config>({
       b.lastTurnAt = Date.now();
       rememberReply(b, t);
       b.stream?.setSpeaking(false);
-      if (t.mode === "voice") listenFreely(b);
-      else setState(b, b.muted ? "sleep" : "idle");
+      dispatch(b, { type: "turn_finished", voice: t.mode === "voice" });
       neutralSoon();
       ctx.audit.write({ kind: "turn", body: b.id, mode: t.mode, ms: t.marks });
       drain();
@@ -220,21 +236,14 @@ export default definePlugin<Config>({
     };
     ctx.effect(() => { for (const b of bodies.values()) if (b.duck) clearTimeout(b.duck.timer); });
 
-    /** Écoute libre relancée : « j'écoute » pendant `freeListen` s, puis retour au repos si rien n'arrive. */
-    function listenFreely(b: Body) {
-      b.awakeUntil = Date.now() + freeListen * 1000;
-      setState(b, openListeningState(b));
-      ctx.timeout(() => { if (!b.turn && !b.init && b.state === "listening" && Date.now() >= b.awakeUntil) setState(b, "idle"); }, freeListen * 1000 + 50);
-    }
-
     /** L'utilisateur coupe la parole à Floppy : on se tait et ce qu'il dit ensuite s'adresse à Floppy. */
     function userBargeIn(b: Body) {
       endDuck(b, false);
-      if (b.init) { abortInit(b); listenFreely(b); return; }
-      if (!b.turn) { listenFreely(b); return; }
+      if (b.init) { abortInit(b); dispatch(b, { type: "open_listening" }); return; }
+      if (!b.turn) { dispatch(b, { type: "open_listening" }); return; }
       interrupt(b, "l'utilisateur parle");
       // Sans écoute libre relancée, une coupure après sa fin jetait la phrase en silence.
-      listenFreely(b);
+      dispatch(b, { type: "open_listening" });
       setEmotion("neutral");
     }
 
@@ -247,7 +256,7 @@ export default definePlugin<Config>({
       b.output?.cancel();
       hub.send(b.id, { type: "interrupt" });
       b.turn = undefined;
-      b.playing = false;
+      dispatch(b, { type: "turn_interrupted" });
       b.stream?.setSpeaking(false);
       ctx.log("info", `tour ${t.n} interrompu (${why})`);
       ctx.audit.write({ kind: "turn.interrupted", body: b.id, why, n: t.n, spoke: t.spoke, brain_done: t.brainDone, pending: t.pending.size, ms: t.marks });
@@ -256,14 +265,14 @@ export default definePlugin<Config>({
     // ------------------------------------------------------------ initiatives (annonces venant d'autres plugins)
     const { sayDirect, finishInit, abortInit, drain, recent } = createInitiatives({
       ctx, hub, live, bodies, nextSeq: () => ++turnSeq,
-      setState, setEmotion, neutralSoon, speakOut, endDuck, listenFreely,
+      dispatch, setEmotion, neutralSoon, speakOut, endDuck,
     });
 
     // ------------------------------------------------------------ un tour (voir turn.ts)
     const { runTurn } = createTurns({
       ctx, hub, cfg, brain, lang, inLang, errorReply, wake, recent: () => recent, nextSeq: () => ++turnSeq,
       tone: () => tone, profile: () => profile,
-      setState, setEmotion, speakOut, speakPlanned, finish, maybeFinish, interrupt, abortInit,
+      turnStarted: (b) => { dispatch(b, { type: "turn_started" }); }, setEmotion, speakOut, speakPlanned, finish, maybeFinish, interrupt, abortInit,
     });
 
     // ------------------------------------------------------------ entrée : un texte entendu ou tapé
@@ -304,22 +313,21 @@ export default definePlugin<Config>({
       const accepted = () => { if (!done) { done = true; mood.touch(); onAccepted(); } };
       const text = raw.trim();
       if (!text) return;
-      if (kind === "text" && (approvalsFor(b).length || choicesFor(b).length)) b.muted = false;
+      if (kind === "text" && (approvalsFor(b).length || choicesFor(b).length)) dispatch(b, { type: "wake" });
       if (answerPending(b, text)) { accepted(); return; }
       const woke = kind !== "voice";
       // 2. En veille : seul le mot d'activation réveille.
       if (b.muted) {
         if (kind === "voice") return;
         accepted();
-        b.muted = false;
         setEmotion("happy", 1500);
         const rest = stripWakeWord(text, wake);
         if (!rest || isWakeUpPhrase(rest)) {
-          setState(b, "listening");
-          b.awakeUntil = Date.now() + freeListen * 1000;
+          dispatch(b, { type: "wake", ms: freeListen * 1000 });
           drain();
           return;
         }
+        dispatch(b, { type: "wake" });
       } else if (kind === "voice" && !woke && Date.now() > b.awakeUntil) {
         ctx.log("debug", "ignoré (pas de mot d'activation)");
         return;
@@ -330,9 +338,7 @@ export default definePlugin<Config>({
         if (b.turn) interrupt(b, "sleep");
         void b.live?.stop("sleep");
         abortInit(b);
-        b.muted = true;
-        b.awakeUntil = 0;
-        setState(b, "sleep");
+        dispatch(b, { type: "sleep" });
         setEmotion("sleepy");
         return;
       }
@@ -363,7 +369,7 @@ export default definePlugin<Config>({
     const quickSetting = async (b: Body, q: { key: string; value: string; label: string; slow: boolean }, mode: TurnMode, said: string) => {
       if (b.turn) interrupt(b, "réglage");
       hub.send(b.id, { type: "transcript", text: said, final: true });
-      setState(b, "thinking");
+      dispatch(b, { type: "quick_started" });
       setEmotion("focused");
       const slow = q.slow;
       const voiceOut = mode === "voice" && !!b.stream;
@@ -378,7 +384,7 @@ export default definePlugin<Config>({
       hub.send(b.id, { type: "reply.done", text: reply });
       setEmotion(r.ok ? "happy" : "sorry", 3000);
       if (voiceOut) sayDirect(b, reply);
-      else setState(b, "idle");
+      else dispatch(b, { type: "quick_finished" });
       b.lastTurnAt = Date.now();
     };
 
@@ -452,7 +458,7 @@ export default definePlugin<Config>({
     // ------------------------------------------------------------ corps
     const onVoice = voiceHandler({
       ctx, hub, lang, shown, live, liveUnavailable, wake, freeListen: () => freeListen, bodies,
-      setState, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerPending, onUtterance, quickSetting,
+      dispatch, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerPending, onUtterance, quickSetting,
     });
     const attachWakeword = async (b: Body) => {
       b.wakeAbort?.abort(); b.wakeStream?.close(); b.wakeStream = undefined; b.wakeActivation = undefined;
@@ -469,7 +475,7 @@ export default definePlugin<Config>({
             const history = b.history;
             const start = event.startSample === undefined ? undefined : Math.max(event.startSample, history?.begin ?? 0);
             if (wakeword.input !== "transcript" && (!history || start === undefined || event.endSample === undefined || !history.slice(start, event.endSample))) return;
-            b.muted = false;
+            dispatch(b, { type: "wake" });
             b.wakeActivation = { ...event, startSample: start, expires: Date.now() + 10_000 };
             ctx.audit.write({ kind: "wakeword.detected", body: b.id, provider: wakeword.name, word: event.word });
             cue("wake"); // « oui ? » : réaction visible tout de suite, quel que soit le détecteur
@@ -479,7 +485,7 @@ export default definePlugin<Config>({
               if ([...bodies.values()].some(other => other !== b && other.live?.active)) return;
               b.wakeActivation = undefined; // cette détection est consommée par l'ouverture audio immédiate
               void b.live.start(start, event.endSample).catch(e => { if (ctx.alive && !abort.signal.aborted) hub.send(b.id, { type: "error", text: shown(errorText(e)) }); });
-            } else setState(b, "listening");
+            } else dispatch(b, { type: "listening_started" });
           },
         });
         if (!ctx.alive || abort.signal.aborted || bodies.get(b.id) !== b) detector.close();
@@ -501,11 +507,11 @@ export default definePlugin<Config>({
         ctx, service: live, brain, body: b.id, history: b.history!,
         tone: () => tone, profile: () => profile, freeListen: () => freeListen,
         onInput: (text) => {
-          if (isSleepCommand(text, wake)) { b.muted = true; b.history?.clear(); b.live?.stop("sleep"); setState(b, "sleep"); return; }
+          if (isSleepCommand(text, wake)) { dispatch(b, { type: "sleep" }); b.history?.clear(); b.live?.stop("sleep"); return; }
           answerPending(b, text);
         },
-        onState: (state) => { setState(b, b.muted ? "sleep" : state); b.stream?.setSpeaking(!b.muted && state === "speaking"); if (!b.muted && state === "listening") b.awakeUntil = Date.now() + freeListen * 1000; },
-        onPlaying: (on) => { b.playing = on; if (!on) { b.feeler?.reset(); neutralSoon(); } },
+        onState: (state) => { dispatch(b, { type: "live_state", state }); b.stream?.setSpeaking(!b.muted && state === "speaking"); },
+        onPlaying: (on) => { dispatch(b, { type: "playback", on }); if (!on) { b.feeler?.reset(); neutralSoon(); } },
         onIdle: drain,
         emotionTool: () => liveEmotionTool,
         // Le modèle Live a dit son émotion par l'outil : même chemin que la devinette (setEmotion, calé sur l'audio).
@@ -538,7 +544,7 @@ export default definePlugin<Config>({
     const createBody = (id: string, capabilities: readonly string[]) => {
       const b: Body = {
         id, voice: capabilities.includes("voice"), text: capabilities.includes("text"),
-        muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", awaiting: new Set(), history: new AudioHistory(),
+        muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", phase: "idle", awaiting: new Set(), history: new AudioHistory(),
       };
       bodies.set(b.id, b);
       wakeUp(b, capabilities);
@@ -579,7 +585,7 @@ export default definePlugin<Config>({
           if (m.on) {
             if (b.turn) interrupt(b, "dictée");
             abortInit(b);
-            if (b.ptt) { b.ptt = false; b.stream.ptt(false); }
+            if (b.ptt) { dispatch(b, { type: "ptt_dropped" }); b.stream.ptt(false); }
             b.dictation = new Dictation(); // une nouvelle dictée : les segments en retard de l'ancienne sont ignorés
             b.stream.dictate(true);
             ctx.audit.write({ kind: "dictation.start", body: b.id });
@@ -590,33 +596,27 @@ export default definePlugin<Config>({
           }
         } else if (m.type === "ptt") {
           if (m.on && b.dictation?.active) { b.dictation.active = false; b.stream?.dictate?.(false); }
-          b.ptt = m.on;
           b.stream?.ptt(m.on);
-          if (m.on) { if (b.turn) interrupt(b, "parler"); b.muted = false; b.awakeUntil = Date.now() + 60_000; setState(b, "listening"); cue("perk"); mood.touch(); }
-          else b.awakeUntil = Date.now() + freeListen * 1000;
+          if (m.on) { if (b.turn) interrupt(b, "parler"); dispatch(b, { type: "ptt_on" }); cue("perk"); mood.touch(); }
+          else dispatch(b, { type: "ptt_off" });
         } else if (m.type === "listen.stop") {
           // La croix ferme seulement la fenêtre d'écoute ; une commande « dors » reste distincte.
           // Un clic arrivé après le début d'une réponse ne doit pas couper cette réponse.
-          if (b.state !== "listening" || b.turn || b.init || b.playing) return;
-          b.awakeUntil = 0;
-          b.speechOpen = false;
+          if (!dispatch(b, { type: "close_listening" })) return;
           b.speechAt = undefined;
           b.wakeActivation = undefined;
           b.history?.clear();
-          b.ptt = false;
           b.stream?.ptt(false);
           void b.live?.stop("fin de l'écoute active");
-          setState(b, "idle");
           neutralSoon();
           drain();
         } else if (m.type === "mute") {
-          b.muted = m.on;
           if (m.on && b.turn) interrupt(b, "muet");
-          setState(b, m.on ? "sleep" : "idle");
+          dispatch(b, { type: m.on ? "mute" : "unmute" });
           setEmotion(m.on ? "sleepy" : "happy", 1500);
-          if (m.on) { b.awakeUntil = 0; b.speechOpen = false; b.wakeActivation = undefined; abortInit(b); b.live?.stop("muet"); b.history?.clear(); } else drain();
+          if (m.on) { b.wakeActivation = undefined; abortInit(b); b.live?.stop("muet"); b.history?.clear(); } else drain();
         } else if (m.type === "playback") {
-          b.playing = m.playing;
+          dispatch(b, { type: "playback", on: m.playing });
           if (!m.playing) b.playEndAt = Date.now();
           b.live?.playback(m.playing);
           if (!m.playing && b.init?.done) finishInit(b);
