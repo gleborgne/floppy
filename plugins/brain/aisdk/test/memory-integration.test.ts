@@ -7,7 +7,7 @@ import type { BrainRunInput, BrainService, MemoryService } from "@floppy/contrac
 import aisdk from "../src/index.ts";
 import localMemory from "../../../memory/local/src/index.ts";
 import vocabulary from "../../../voice/vocabulary/src/index.ts";
-import { optionalContext } from "@floppy/contracts";
+import { optionalContext } from "@floppy/toolkit";
 
 describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
   it("apprend une correction explicite, la fournit au prochain tour puis retire la correction oubliée", async () => {

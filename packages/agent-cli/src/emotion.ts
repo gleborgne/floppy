@@ -1,7 +1,8 @@
 // Étiquettes d'émotion des cerveaux CLI (Claude, Codex, Antigravity) : même mécanisme que le cerveau aisdk.
 // Le prompt demande « [content] C'est fait. » ; le texte en flux passe par EmotionTagFilter (dans @floppy/contracts) :
 // `text` ne contient jamais d'étiquette, les événements `emotion` sortent dans l'ordre, à leur place dans le texte.
-import { EmotionTagFilter, emotionTagPrompt, filterEvents, type BrainEvent } from "@floppy/contracts";
+import { type BrainEvent } from "@floppy/contracts";
+import { EmotionTagFilter, emotionTagPrompt, filterEvents } from "@floppy/toolkit";
 
 /** Ajoute la consigne d'étiquettes au prompt d'un cerveau CLI (langue de l'assistant), sauf si le réglage est coupé. */
 export function withEmotionTags(prompt: string, enabled: boolean, lang: string | undefined): string {

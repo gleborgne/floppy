@@ -1,5 +1,5 @@
 import { definePlugin, T } from "@floppy/core";
-import { registerDesktop } from "@floppy/contracts";
+import { registerDesktop } from "@floppy/toolkit";
 import { watchTracking, emptyTracking } from "./tracking-source.ts";
 
 export default definePlugin({

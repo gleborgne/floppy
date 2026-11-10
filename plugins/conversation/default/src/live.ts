@@ -1,11 +1,13 @@
 import { encodeAudioOut, type BodyState } from "@floppy/protocol";
 import { randomUUID } from "node:crypto";
 import { T, tr, TextError, type AudioHistory, type Context, type Text } from "@floppy/core";
-import { liveDeliveryInstructions, expressivenessFactor, type BrainService, type LiveEvent, type LiveService, type LiveSession, type MemorySnapshot, type SpeechDelivery } from "@floppy/contracts";
+import { type BrainService, type LiveEvent, type LiveService, type LiveSession, type MemorySnapshot, type SpeechDelivery } from "@floppy/contracts";
+import { liveDeliveryInstructions, expressivenessFactor } from "@floppy/toolkit";
 import { tokens, yesNo } from "./text.ts";
 import { sentenceGesture } from "./gesture.ts";
 import { EMOTION_TOOL, emotionToolInfo, parseEmotionCall } from "./emotion-tool.ts";
-import { optionalContext, prepareMemoryContext, memoryContextMessage, type PreparedMemoryContext, type ContextOperation } from "@floppy/contracts";
+import { type PreparedMemoryContext, type ContextOperation } from "@floppy/contracts";
+import { optionalContext, prepareMemoryContext, memoryContextMessage } from "@floppy/toolkit";
 
 interface Options {
   ctx: Context; service: LiveService; brain?: BrainService; body: string; history: AudioHistory;

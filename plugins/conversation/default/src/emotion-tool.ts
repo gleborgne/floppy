@@ -2,7 +2,7 @@
 // il dit son émotion en appelant cet outil. Il n'est JAMAIS enregistré dans ctx.tools : les cerveaux du mode séparé
 // ne le voient pas ; LiveConversation l'ajoute aux outils de la session et répond lui-même à l'appel.
 import type { ToolInfo } from "@floppy/core";
-import { PROMPT_EMOTIONS_EN } from "@floppy/contracts";
+import { PROMPT_EMOTIONS_EN } from "@floppy/toolkit";
 import { INTENSITY_LIGHT, INTENSITY_STRONG, type Emotion } from "@floppy/protocol";
 
 export const EMOTION_TOOL = "exprimer_emotion";

@@ -1,7 +1,8 @@
 // Le plan d'une phrase dite : tout ce qu'il faut pour la mettre en scène, calculé une fois quand elle part à la
 // synthèse (voir `planSentence`) et consommé quand son premier bloc audio arrive (voir voice-events.ts, « audio »).
 // Ordre de jeu à ce moment-là : silence de paragraphe, émotion, geste, puis le bloc audio.
-import { emotionInfo, expressivenessFactor, type SpeechDelivery } from "@floppy/contracts";
+import { type SpeechDelivery } from "@floppy/contracts";
+import { emotionInfo, expressivenessFactor } from "@floppy/toolkit";
 import type { Emotion, SpeechGesture } from "@floppy/protocol";
 import { sentenceGesture } from "./gesture.ts";
 import type { Settled } from "./settle.ts";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROMPT_EMOTIONS_EN } from "@floppy/contracts";
+import { PROMPT_EMOTIONS_EN } from "@floppy/toolkit";
 import { EMOTION_TOOL, emotionToolInfo, parseEmotionCall } from "../src/emotion-tool.ts";
 
 describe("outil d'émotion du Live", () => {

@@ -1,28 +1,6 @@
 import type { Context } from "@floppy/core";
+import type { DesktopContent, DesktopContribution, DesktopRegistration } from "@floppy/contracts";
 import { randomUUID } from "node:crypto";
-
-/** Contributions intégrées de confiance : page locale, menus et lectures nommées.
- * Propriétaire/jeton écartent les activations périmées, sans isoler les plugins du même processus.
- * Le SDK tiers n'expose pas ctx.host.
- */
-export interface DesktopContribution {
-  id: string;
-  title: { fr: string; en: string };
-  menus: ("tray" | "avatar")[];
-  order?: number;
-  view?: { page: string };
-}
-export interface DesktopRegistration extends DesktopContribution {
-  owner: string;
-  token: string;
-  actions: string[];
-}
-export interface DesktopContent {
-  snapshot?(): unknown;
-  subscribe?(publish: () => void): () => void;
-  /** Lectures uniquement ; aucun argument libre ni passerelle vers les outils. */
-  actions?: Record<string, (signal: AbortSignal) => unknown | Promise<unknown>>;
-}
 
 /** Les écouteurs, abonnements, demandes en cours et l'inscription vivent exactement avec ctx. */
 export function registerDesktop(ctx: Pick<Context, "id" | "host" | "effect" | "on">, contribution: DesktopContribution, content: DesktopContent) {

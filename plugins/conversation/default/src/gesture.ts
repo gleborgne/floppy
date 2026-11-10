@@ -1,5 +1,5 @@
 import type { SpeechGesture } from "@floppy/protocol";
-import { emotionInfo } from "@floppy/contracts";
+import { emotionInfo } from "@floppy/toolkit";
 import { norm } from "./text.ts";
 
 /** Première mise en scène par phrase : émotions du cerveau et indices bilingues, sans nouvel appel modèle. */

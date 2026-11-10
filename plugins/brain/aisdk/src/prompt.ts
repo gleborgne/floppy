@@ -5,7 +5,8 @@
 // Ajouts du noyau : nom, langue, date et forme (voix / texte) venant de la config ; émotion ; mémoire.
 // Langue : le prompt existe en français (défaut, inchangé) et en anglais (même structure, mêmes règles),
 // choisi par la langue de l'assistant (ctx.assistant.language). Les noms d'outils restent ceux du registre.
-import { emotionTagPrompt, type MemorySnapshot, type TurnMode } from "@floppy/contracts";
+import { type MemorySnapshot, type TurnMode } from "@floppy/contracts";
+import { emotionTagPrompt } from "@floppy/toolkit";
 
 /** Langue du prompt et des phrases dites : « en » pour l'anglais, sinon français. */
 export type PromptLang = "fr" | "en";
@@ -13,7 +14,7 @@ export function promptLang(lang: string | undefined): PromptLang {
   return lang === "en" ? "en" : "fr";
 }
 
-export { PROMPT_EMOTIONS_EN } from "@floppy/contracts";
+export { PROMPT_EMOTIONS_EN } from "@floppy/toolkit";
 
 export const WAIT_PHRASE = "Je regarde ça, une seconde.";
 

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { definePlugin, fold, T, TextError, tr, type ItemInfo, type Text } from "@floppy/core";
 import type { AvatarEntry } from "@floppy/contracts";
-import { registerDesktop } from "@floppy/contracts";
+import { registerDesktop } from "@floppy/toolkit";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
 import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, type ShortcutAction } from "./shortcuts.ts";
 import type { BodyToKernel, BodyTransport, KernelToBody } from "@floppy/protocol";
@@ -86,7 +86,8 @@ export interface DisplaySettings {
 }
 
 export { normalizeShortcut, SHORTCUT_DEFAULTS, type ShortcutAction } from "./shortcuts.ts";
-export { defineAvatar, readAvatarDir, type AvatarInfo, type AvatarEntry, type AvatarRegistry } from "@floppy/contracts";
+export { type AvatarInfo, type AvatarEntry, type AvatarRegistry } from "@floppy/contracts";
+export { defineAvatar, readAvatarDir } from "@floppy/toolkit";
 
 const Config = z.object({
   /** Avatar affiché au départ si l'utilisateur n'en a pas choisi (id). Absent : le premier par id. */

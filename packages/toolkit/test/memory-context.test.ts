@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MemoryAudit } from "@floppy/core";
-import { memoryContextMessage, prepareMemoryContext, MEMORY_OPERATION_TIMEOUT_MS, type MemoryContextDeps } from "../src/memory-context.ts";
+import type { MemoryContextDeps } from "@floppy/contracts";
+import { memoryContextMessage, prepareMemoryContext, MEMORY_OPERATION_TIMEOUT_MS } from "../src/memory-context.ts";
 
 const input = { session: "avatar", turn: "turn", heard: "court team", language: "fr" };
 const diagnostics = () => ({ log: vi.fn(), audit: new MemoryAudit() });

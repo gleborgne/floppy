@@ -372,7 +372,7 @@ Famille `plugins/avatar/<id>/` (comme `plugins/brain/`, `plugins/voice/`…) :
 | Fichier | Contenu |
 |---|---|
 | `avatar.json` | id, nom (fr/en), description (fr/en), émotions dessinées |
-| `src/index.ts` | le plugin du noyau : `export default defineAvatar(import.meta.url)` (de `@floppy/contracts`, `packages/contracts/src/avatars.ts`) |
+| `src/index.ts` | le plugin du noyau : `export default defineAvatar(import.meta.url)` (de `@floppy/toolkit`, `packages/toolkit/src/avatars.ts`) |
 | `renderer/index.js` | le dessin : `export function create(container, { reducedMotion })` → `{ setState, setEmotion(name, intensity, ms), setLevel, destroy }`, et en option `setMood(valence, energy)`, `setMouth(open, wide)` (0..1, forme de la bouche d'après le son, en plus de `setLevel` ; `wide` 0 = arrondie, 1 = étirée), `lookAt(x, y)` (-1..1), `setHearing(niveau)`, `cue(nom)` (`nod`, `perk`, `startle`, `wake`, `poke`), `resize` |
 | `renderer/life.js` | (goutte, iris, oscillo, pixelcat) le « vivant » commun : `makeLife`, `approach`, `moodTint` ; importé par `index.js` (`./life.js`), comme `tv` importe `./face.js` |
 

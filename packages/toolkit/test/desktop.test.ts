@@ -1,5 +1,6 @@
 ﻿import { expect, it, vi } from "vitest";
-import { registerDesktop, type DesktopRegistration } from "../src/desktop.ts";
+import type { DesktopRegistration } from "@floppy/contracts";
+import { registerDesktop } from "../src/desktop.ts";
 import { Kernel, definePlugin } from "@floppy/core";
 import { EventEmitter } from "node:events";
 

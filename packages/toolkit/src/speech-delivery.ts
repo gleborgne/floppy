@@ -1,4 +1,4 @@
-import type { SpeechDelivery } from "./voice.ts";
+import type { SpeechDelivery } from "@floppy/contracts";
 import { emotionInfo, expressivenessFactor } from "./emotion-sheet.ts";
 
 

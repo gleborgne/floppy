@@ -101,6 +101,23 @@ describe("frontières entre plugins", () => {
     expect(bad).toEqual([]);
   });
 
+  it("@floppy/contracts ne porte que des types ; le code partagé entre plugins vit dans @floppy/toolkit, que ni le noyau ni les contrats n'importent", () => {
+    const value = /^\s*export\s+(?:const|let|var|function|async|class|enum|default)|^\s*export\s*(?:\*\s*from|\{)/m;
+    const bad: string[] = [];
+    for (const f of walk(join(ROOT, "packages", "contracts", "src"), /\.ts$/)) {
+      const src = readFileSync(f, "utf8");
+      if (value.test(src)) bad.push(`${relative(ROOT, f)} : export de valeur`);
+      for (const s of specifiers(f)) if (s.startsWith("node:") || s === "@floppy/toolkit") bad.push(`${relative(ROOT, f)} → ${s}`);
+    }
+    for (const f of walk(join(ROOT, "packages", "core"), /\.(ts|js|mjs|json)$/)) {
+      const own = f.endsWith(".json") ? [...readFileSync(f, "utf8").matchAll(/"(@floppy\/toolkit)"/g)].map((m) => m[1]!) : specifiers(f);
+      for (const s of own) if (s === "@floppy/toolkit") bad.push(`${relative(ROOT, f)} → ${s}`);
+    }
+    const pkg = JSON.parse(readFileSync(join(ROOT, "packages", "toolkit", "package.json"), "utf8")) as { floppy?: unknown };
+    if (pkg.floppy) bad.push("packages/toolkit/package.json : champ floppy (le toolkit n'est pas un plugin)");
+    expect(bad).toEqual([]);
+  });
+
   it("l'app de bureau n'importe pas les plugins par chemin relatif (hors assemblage)", () => {
     const EXEMPT = new Set([join(ROOT, "apps", "desktop", "src", "kernel.ts")]);
     const bad: string[] = [];

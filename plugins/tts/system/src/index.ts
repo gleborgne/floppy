@@ -4,7 +4,8 @@
 // - Le système rend une phrase entière en WAV (pas de flux) : on la découpe en morceaux de 100 ms pour la lecture.
 import { z } from "zod";
 import { definePlugin, T, TextError, wavPcm, type OfferItem } from "@floppy/core";
-import { emotionNote, type TtsChunk, type TtsService } from "@floppy/contracts";
+import { type TtsChunk, type TtsService } from "@floppy/contracts";
+import { emotionNote } from "@floppy/toolkit";
 import { engineFor, type SystemVoice } from "./engines.ts";
 
 export { engineFor, parseEspeakVoices, parseSayVoices, parseWindowsVoices } from "./engines.ts";

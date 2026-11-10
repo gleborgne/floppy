@@ -9,6 +9,7 @@
   "dependencies": {
     "@floppy/contracts": "0.1.0",
     "@floppy/core": "0.1.0",
+    "@floppy/toolkit": "0.1.0",
     "zod": "4.6.7"
   }
 }

@@ -5,7 +5,7 @@
 // - Intensité : « [joie+] », « [content-] », « [très surpris] » (voir parseEmotionTag).
 // Partagé par tous les cerveaux texte (aisdk, Claude, Codex, Antigravity) : ils n'importent jamais un autre plugin.
 import { parseEmotionTag, PROMPT_EMOTIONS_FR, type Emotion } from "@floppy/protocol";
-import type { BrainEvent } from "./brain.ts";
+import type { BrainEvent } from "@floppy/contracts";
 
 export type FilterOut = { text?: string; emotion?: Emotion; intensity?: number };
 

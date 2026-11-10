@@ -2,7 +2,7 @@
 // ajouter une émotion au protocole sans la décrire ici ne compile pas.
 // Lue par l'humeur (mood.ts), le jeu vocal (speech-delivery.ts), l'intention de voix et le geste (conversation).
 import type { Emotion } from "@floppy/protocol";
-import type { SpeechDelivery } from "./voice.ts";
+import type { SpeechDelivery } from "@floppy/contracts";
 
 /** Rôle d'une émotion pour le geste d'une phrase : coupe le geste, ou impose un geste (voir sentenceGesture). */
 export type GestureRole = "none" | "playful" | "question" | "explain";

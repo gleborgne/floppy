@@ -3,7 +3,7 @@
 // - Elle revient doucement vers le caractère de base (plutôt content, assez en forme).
 // - Seul longtemps, Floppy perd de l'énergie : il s'ennuie, puis il a sommeil.
 import { EMOTIONS, type Emotion, type Mood } from "@floppy/protocol";
-import { EMOTION_SHEET, emotionInfo } from "@floppy/contracts";
+import { EMOTION_SHEET, emotionInfo } from "@floppy/toolkit";
 
 /** Effet d'une émotion sur l'humeur : [valence visée, énergie visée]. Lu dans la fiche des émotions (`@floppy/contracts`). */
 export const AFFECT = Object.fromEntries(EMOTIONS.map((e) => [e, EMOTION_SHEET[e].affect])) as Record<Emotion, [number, number]>;

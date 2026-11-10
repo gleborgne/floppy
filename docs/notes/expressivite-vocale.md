@@ -44,7 +44,7 @@ Hume Octave n'est pas un nouveau fournisseur à intégrer : la documentation off
 
 Constats issus de la lecture du code, à distinguer d'une mesure acoustique :
 
-- [speechInstructions](../../packages/contracts/src/speech-delivery.ts) fabrique des consignes à partir de l'intention, du profil et du ton, sans utiliser directement `emotion` ni `intensity`.
+- [speechInstructions](../../packages/toolkit/src/speech-delivery.ts) fabrique des consignes à partir de l'intention, du profil et du ton, sans utiliser directement `emotion` ni `intensity`.
 - La conversation ramène plusieurs émotions à quatre intentions. `happy`, `proud`, `surprised` et `relieved` aboutissent à l'intention neutre ; `joy` et `excited` sont regroupées avec le jeu.
 - L'adaptateur ElevenLabs utilise par défaut `eleven_flash_v2_5`, ne consomme pas `opts.delivery` et n'envoie pas de `voice_settings`.
 - [L'adaptation audio.cpp](../../plugins/tts/audiocpp/src/expression.ts) reconnaît surtout Qwen CustomVoice 1.7B et Fish S2 sous leurs noms attendus. Ajouter un autre modèle au catalogue ne raccorde pas automatiquement son expressivité.

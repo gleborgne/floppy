@@ -8,7 +8,8 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { definePlugin, findExe, httpHealthy, startLocalServer, scanGguf as scanAll, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
 import { modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild } from "@floppy/setup";
-import { emotionNote, speechInstructions, type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
+import { type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
+import { emotionNote, speechInstructions } from "@floppy/toolkit";
 import { dynamicCatalogue } from "./catalogue.ts";
 import { expressionProfile, fishDeliveryText, voxDeliveryText } from "./expression.ts";
 

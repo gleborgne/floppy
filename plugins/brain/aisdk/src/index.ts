@@ -12,13 +12,14 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { definePlugin, fold } from "@floppy/core";
 import type { BrainEvent, BrainRunInput, BrainService, LlmService } from "@floppy/contracts";
 import { buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases, type PromptLang } from "./prompt.ts";
-import { EmotionTagFilter, optionalContext, prepareMemoryContext, memoryContextMessage, type ContextOperation, type FilterOut } from "@floppy/contracts";
+import { type ContextOperation } from "@floppy/contracts";
+import { EmotionTagFilter, optionalContext, prepareMemoryContext, memoryContextMessage, type FilterOut } from "@floppy/toolkit";
 
 export {
   buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases,
   READ_PHRASES, READ_PHRASES_EN, WAIT_PHRASE, WAIT_PHRASE_EN, WAIT_PHRASES, WAIT_PHRASES_EN,
 } from "./prompt.ts";
-export { EmotionTagFilter } from "@floppy/contracts";
+export { EmotionTagFilter } from "@floppy/toolkit";
 
 /** Borne d'une requête au modèle, flux compris (voir `http` dans apply). */
 export const LLM_HTTP_TIMEOUT_MS = 1_800_000;

@@ -2,7 +2,8 @@
 import { z } from "zod";
 import { createHash, randomUUID } from "node:crypto";
 import { definePlugin, T, TextError, tr, type ToolOutput } from "@floppy/core";
-import { MEMORY_OPERATION_TIMEOUT_MS, type MemoryCorrection, type MemoryCorrectionScope, type MemoryOptions, type VocabularyService } from "@floppy/contracts";
+import { type MemoryCorrection, type MemoryCorrectionScope, type MemoryOptions, type VocabularyService } from "@floppy/contracts";
+import { MEMORY_OPERATION_TIMEOUT_MS } from "@floppy/toolkit";
 
 const Config = z.object({ automatic: z.boolean().default(true), traceText: z.boolean().default(false) });
 const text = z.string().trim().min(1).max(256);

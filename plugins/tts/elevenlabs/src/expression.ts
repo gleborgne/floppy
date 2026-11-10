@@ -1,4 +1,5 @@
-import { speechStyle, type SpeechDelivery } from "@floppy/contracts";
+import { type SpeechDelivery } from "@floppy/contracts";
+import { speechStyle } from "@floppy/toolkit";
 
 /** Seuls les modèles v3/v4 comprennent les balises de jeu (les Flash/v2 les liraient ou les ignoreraient). */
 export const playsEmotions = (model: string): boolean => /^eleven_v[34](?:_turbo)?$/.test(model);

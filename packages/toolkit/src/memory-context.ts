@@ -1,16 +1,8 @@
 import type { Context } from "@floppy/core";
-import type { MemoryService, MemorySnapshot } from "./memory.ts";
-import type { VocabularyService } from "./vocabulary.ts";
+import type { ContextOperation, MemoryContextDeps, MemoryContextInput, MemorySnapshot, PreparedMemoryContext } from "@floppy/contracts";
 
 /** Budget commun aux consommateurs et aux fournisseurs facultatifs, annulation parente prioritaire. */
 export const MEMORY_OPERATION_TIMEOUT_MS = 2000;
-
-export interface ContextOperation {
-  service: "memory" | "vocabulary";
-  consumer: "brain" | "conversation" | "live";
-  phase: "snapshot" | "context" | "record" | "observe";
-  session: string; origin?: string; turn: string; parent?: AbortSignal; available: boolean;
-}
 
 /** Un fournisseur facultatif en panne ou muet ne doit jamais retenir la conversation. */
 export async function optionalContext<T>(work: (signal: AbortSignal) => T | Promise<T>, ctx: Pick<Context, "log" | "audit">, operation: ContextOperation): Promise<T | undefined> {
@@ -43,23 +35,6 @@ export async function optionalContext<T>(work: (signal: AbortSignal) => T | Prom
   }
 }
 
-
-/** Photo autoritaire : vide, indisponible et absent sont trois états distincts. */
-export interface PreparedMemoryContext extends MemorySnapshot {
-  vocabulary: string;
-  availability: { memory: "ready" | "unavailable" | "absent"; vocabulary: "ready" | "unavailable" | "absent" };
-  warning?: string;
-}
-
-export interface MemoryContextDeps {
-  memory?: MemoryService;
-  vocabulary?: VocabularyService;
-  diagnostics: Pick<Context, "log" | "audit">;
-}
-export interface MemoryContextInput {
-  session: string; origin?: string; turn: string; heard?: string; language: string;
-  consumer: ContextOperation["consumer"]; signal?: AbortSignal;
-}
 
 /** Relit les deux domaines ensemble ; ne journalise ni n'observe le tour utilisateur. */
 export async function prepareMemoryContext(deps: MemoryContextDeps, input: MemoryContextInput): Promise<PreparedMemoryContext | undefined> {

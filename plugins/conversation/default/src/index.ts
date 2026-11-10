@@ -24,7 +24,7 @@ import { createInitiatives } from "./initiatives.ts";
 import { createTurns } from "./turn.ts";
 import { deliveryFor, type SentencePlan } from "./plan.ts";
 import { voiceHandler } from "./voice-events.ts";
-import { expressivenessFactor } from "@floppy/contracts";
+import { expressivenessFactor } from "@floppy/toolkit";
 
 export { PHRASES };
 

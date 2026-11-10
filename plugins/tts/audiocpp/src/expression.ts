@@ -1,5 +1,5 @@
 import type { SpeechDelivery } from "@floppy/contracts";
-import { speechStyle } from "@floppy/contracts";
+import { speechStyle } from "@floppy/toolkit";
 
 /** Profils explicites par variante : la famille seule ne garantit pas le même langage de contrôle. */
 export function expressionProfile(family: string, model: string, voice: "clone" | "integree"): "instructions" | "fish-s2-tags" | "voxcpm2-style" | "none" {

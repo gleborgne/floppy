@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { expect, it, vi } from "vitest";
 import { Kernel, definePlugin } from "@floppy/core";
-import { registerDesktop, type AgentTrackingService, type DesktopRegistration } from "@floppy/contracts";
+import { type AgentTrackingService, type DesktopRegistration } from "@floppy/contracts";
+import { registerDesktop } from "@floppy/toolkit";
 import tracking from "../src/index.ts";
 import { createDesktopContributions } from "../../../../apps/desktop/src/desktop-contributions.ts";
 import type { BrowserWindow } from "electron";

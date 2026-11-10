@@ -92,6 +92,8 @@ Heavy resources (a model on the GPU, a voice) run only while an active plugin us
 | Folder | Role |
 |---|---|
 | `packages/core` | The kernel: plugins (services, dependencies, effects, hooks), live YAML config, approvals, tool registry, audit log, local control endpoint. |
+| `packages/contracts` | Service contracts by domain: types and declarations only. |
+| `packages/toolkit` | Runtime code the plugins share: avatar helpers, speech and emotion helpers, memory context, desktop contribution. Depends on the kernel and the contracts. |
 | `packages/setup` | Product code outside the kernel: first launch, model and program libraries for local runners. Depends on the kernel, never the other way. |
 | `packages/protocol` | Kernel ↔ body protocol: emotions, states, capabilities. |
 | `plugins/<family>/<name>` | All plugins: `brain`, `llm`, `voice`, `tts`, `live`, `wakeword`, `body`, `avatar`, `tools`, `memory`, `tasks`, `veille` (news digest), `notify`, `conversation`… |

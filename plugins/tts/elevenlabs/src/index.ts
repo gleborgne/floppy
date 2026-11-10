@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { definePlugin, providerConfig, Pcm16Decoder, T, TextError } from "@floppy/core";
-import { emotionNote, type TtsService } from "@floppy/contracts";
+import { type TtsService } from "@floppy/contracts";
+import { emotionNote } from "@floppy/toolkit";
 import { deliveryText, playsEmotions } from "./expression.ts";
 
 const Config = z.object({
