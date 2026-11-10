@@ -46,7 +46,7 @@ Le noyau télécharge des fichiers ; il ne connaît aucun site ni aucun modèle 
 
 ## La bibliothèque : `modelLibrary(ctx, …)`
 
-Aide pour les plugins (`packages/core/src/model-library.ts`). Le plugin donne ses modèles (`entries`, fichiers figés
+Aide pour les plugins (`packages/setup/src/model-library.ts`). Le plugin donne ses modèles (`entries`, fichiers figés
 à un commit, avec sha256), et dit quoi faire quand un modèle est prêt (`installed` : ajouter l'élément), quand il est
 supprimé (`removed` : retirer l'élément, ou refuser par une `TextError`), et s'il a déjà l'élément (`has`). Optionnel :
 `search(query)` pour une recherche en ligne.
@@ -155,7 +155,7 @@ Sources : [paquets et empreintes](https://huggingface.co/audio-cpp/audio.cpp-ggu
 [VoxCPM2](https://github.com/0xShug0/audio.cpp/blob/v0.9.4/model_specs/voxcpm2.json).
 
 **Programmes** : llama.cpp et audio.cpp se téléchargent aussi, dans la bonne version pour la machine (archives
-décompressées par le noyau, `DownloadFile.extract`) : voir [Premier lancement](premier-lancement.md#télécharger-llamacpp-et-audiocpp-packagescoresrcprogram-libraryts).
+décompressées par le noyau, `DownloadFile.extract`) : voir [Premier lancement](premier-lancement.md#télécharger-llamacpp-et-audiocpp-packagessetupsrcprogram-libraryts).
 
 ## Pas encore
 

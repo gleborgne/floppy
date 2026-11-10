@@ -4,11 +4,7 @@
 // Voir docs/spec/telechargements.md.
 import { readdirSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Context } from "./plugin/context.ts";
-import type { ItemInfo, ModelNeeds, OpResult } from "./catalog.ts";
-import type { DownloadFile, DownloadState } from "./downloads.ts";
-import { safeJoin } from "./downloads.ts";
-import { T, tr, type Text } from "./i18n.ts";
+import { safeJoin, T, tr, type Context, type ItemInfo, type ModelNeeds, type OpResult, type DownloadFile, type DownloadState, type Text } from "@floppy/core";
 
 export interface LibraryEntry {
   /** Unique dans la bibliothèque (lettres, chiffres, « - _ . / »). Sert aussi de clé de téléchargement. */

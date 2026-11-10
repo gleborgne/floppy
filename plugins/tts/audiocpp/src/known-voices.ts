@@ -2,7 +2,8 @@
 // Fichiers du dépôt Hugging Face audio-cpp/audio.cpp-gguf, à un commit figé, avec leurs empreintes sha256.
 // Un modèle arrive avec toutes ses voix intégrées : chacune devient un choix dans la liste (étape 2 : la voix).
 // Fichier généré à partir de la liste du dépôt : garder les tailles et empreintes telles quelles.
-import type { LibraryEntry, Text } from "@floppy/core";
+import type { Text } from "@floppy/core";
+import type { LibraryEntry } from "@floppy/setup";
 
 const T = (fr: string, en: string) => ({ fr, en });
 const HF = "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/fd2fe4c3195bc410f8b817bf7c7519fd822686fb";

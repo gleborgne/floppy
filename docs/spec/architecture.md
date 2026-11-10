@@ -61,6 +61,7 @@ Inspirée de Cordis (voir [l'audit, section 1](../audit-liens.md#1-cordis-et-dee
 - **Plugin** : un module avec un manifeste et une fonction `apply(ctx, config)`.
 - **Service** : un nom sur le contexte (`ctx.voice`, `ctx.brain`). Un service peut avoir plusieurs fournisseurs ; la config choisit le fournisseur actif.
 - **Contrats par domaine** : les contrats de service (`llm`, `brain`, `delegate`, `memory`, `voice`, `tts`, `live`, `coder`, `mcp`, `body`, `avatars`…) sont dans `packages/contracts` (un fichier par domaine, `avatars.ts` pour `defineAvatar`) ; le noyau ne garde que `task` et `documents`. Un plugin ne parle aux autres que par eux et **n'importe jamais un autre plugin** (test `packages/core/test/boundaries.test.ts`). Voir [Le noyau](noyau.md#les-services-contrats).
+- **Code produit hors du noyau** : le premier lancement et les bibliothèques de modèles et de programmes (`modelLibrary`, `programLibrary`) vivent dans `packages/setup` (`@floppy/setup`), qui dépend du noyau ; le noyau ne l'importe jamais (testé dans `boundaries.test.ts`). Voir [Le noyau](noyau.md).
 - **Dépendances** : un plugin déclare les services qu'il attend. Si un fournisseur change, ses dépendants redémarrent sur le nouveau.
 - **Effets** : tout ce qu'un plugin ouvre (WebSocket, processus, micro) est enregistré avec sa fonction de fermeture. Décharger un plugin nettoie tout.
 - **Hooks en cascade** : middlewares avec `next()`, utilisés surtout avant chaque outil.

@@ -4,7 +4,8 @@ import { describe, it, expect, vi } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, type ProgramBuild } from "@floppy/core";
+import { Kernel } from "@floppy/core";
+import type { ProgramBuild } from "@floppy/setup";
 import { makePlugin } from "../src/index.ts";
 
 const exeName = process.platform === "win32" ? "audiocpp_server.exe" : "audiocpp_server";

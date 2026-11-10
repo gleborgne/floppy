@@ -1,6 +1,7 @@
 // Modèles sherpa-onnx proposés au téléchargement (Réglages → Écoute → Télécharger des modèles).
 // Adresses figées (version GitHub, commit Hugging Face) et empreintes sha256 : un fichier changé est refusé.
-import { T, type LibraryEntry } from "@floppy/core";
+import { T } from "@floppy/core";
+import type { LibraryEntry } from "@floppy/setup";
 
 export interface KnownModel extends LibraryEntry {
   /** Ce que l'élément ajouté désigne, relatif au dossier des téléchargements : le fichier (détecteur) ou le dossier (transcription). */

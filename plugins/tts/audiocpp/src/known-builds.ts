@@ -1,7 +1,8 @@
 // Programme audiocpp_server (audio.cpp) prêt à télécharger, une archive par système et par moteur.
 // Fichier généré à partir de la version v0.9.4 (API GitHub) : garder les tailles et empreintes telles quelles.
 // Pour changer de version : régénérer toutes les lignes, puis vérifier au moins une archive sur une vraie machine.
-import { T, type ProgramBuild } from "@floppy/core";
+import { T } from "@floppy/core";
+import type { ProgramBuild } from "@floppy/setup";
 
 export const AUDIOCPP_VERSION = "v0.9.4";
 

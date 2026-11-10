@@ -59,3 +59,24 @@ describe("Point de contrôle", () => {
     }
   });
 });
+
+describe("Point de contrôle : premier lancement fourni par l'hôte", () => {
+  it("GET /onboarding passe par le gestionnaire de l'hôte, 501 sans lui", async () => {
+    const home = mkdtempSync(join(tmpdir(), "home-"));
+    const k = new Kernel({ logger: quiet, plugins: [p] });
+    const sans = await startControl(k, home);
+    try {
+      expect((await controlCall(home, "GET", "/onboarding")).status).toBe(501);
+    } finally {
+      await sans();
+    }
+    const stop = await startControl(k, home, { onboardingPlan: async () => ({ levels: ["a"] }) });
+    try {
+      const r = await controlCall(home, "GET", "/onboarding");
+      expect(r.status).toBe(200);
+      expect(r.data).toEqual({ levels: ["a"] });
+    } finally {
+      await stop();
+    }
+  });
+});

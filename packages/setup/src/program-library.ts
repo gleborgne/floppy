@@ -4,14 +4,9 @@
 // Elle se montre dans la même bibliothèque que les modèles du plugin. Voir docs/spec/premier-lancement.md.
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
-import { writeJsonAtomic } from "./util/files.ts";
+import { writeJsonAtomic, driverMajor, T, tr, type Context, type ItemInfo, type OpResult, type DownloadFile, type Backend, type MachineInfo, type Text } from "@floppy/core";
 import type { ChildProcess } from "node:child_process";
-import type { Context } from "./plugin/context.ts";
-import type { ItemInfo, OpResult } from "./catalog.ts";
-import type { DownloadFile } from "./downloads.ts";
 import { formatBytes } from "./model-library.ts";
-import { driverMajor, type Backend, type MachineInfo } from "./machine.ts";
-import { T, tr, type Text } from "./i18n.ts";
 
 export interface ProgramBuild {
   /** Unique (lettres, chiffres, « - . »), ex. « b12177-win-cuda13-x64 ». Nom du dossier du programme. */

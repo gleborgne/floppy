@@ -5,7 +5,8 @@
 // ses fichiers, et chargé dans un fork seulement quand le plugin Écoute s'en sert.
 import { resolve } from "node:path";
 import { z } from "zod";
-import { definePlugin, modelLibrary, T, TextError, tr, type ItemInfo, type ItemKind, type OpResult, type PluginDef } from "@floppy/core";
+import { definePlugin, T, TextError, tr, type ItemInfo, type ItemKind, type OpResult, type PluginDef } from "@floppy/core";
+import { modelLibrary } from "@floppy/setup";
 import type { SttService, VadEvent, VadService, VadStream } from "@floppy/contracts";
 import { detect, recognizerConfig, vadConfig, type Detected } from "./models.ts";
 import { realNative, type Native } from "./native.ts";

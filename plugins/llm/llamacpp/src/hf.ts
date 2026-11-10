@@ -1,6 +1,7 @@
 // Recherche de modèles GGUF sur Hugging Face (comme LM Studio) : dépôts publics, quelques quantifications par dépôt.
 // Chaque fichier proposé est figé au commit lu (adresse /resolve/<commit>/) et vérifié par son empreinte sha256 (Git LFS).
-import { T, type DownloadFile, type LibraryEntry, type ModelNeeds, type Text } from "@floppy/core";
+import { T, type DownloadFile, type ModelNeeds, type Text } from "@floppy/core";
+import type { LibraryEntry } from "@floppy/setup";
 
 const API = "https://huggingface.co/api/models";
 

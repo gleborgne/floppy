@@ -92,6 +92,15 @@ describe("frontières entre plugins", () => {
     expect(keys).toEqual(["documents", "task"]);
   });
 
+  it("le noyau n'importe pas @floppy/setup (premier lancement, bibliothèques) : la dépendance va de setup vers le noyau", () => {
+    const bad: string[] = [];
+    for (const f of walk(join(ROOT, "packages", "core"), /\.(ts|js|mjs|json)$/)) {
+      const own = f.endsWith(".json") ? [...readFileSync(f, "utf8").matchAll(/"(@floppy\/setup)"/g)].map((m) => m[1]!) : specifiers(f);
+      for (const s of own) if (s === "@floppy/setup" || s.startsWith("@floppy/setup/") || /(^|\/)packages\/setup(\/|$)/.test(s) || /\.\.\/.*\/setup\//.test(s)) bad.push(`${relative(ROOT, f)} → ${s}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
   it("l'app de bureau n'importe pas les plugins par chemin relatif (hors assemblage)", () => {
     const EXEMPT = new Set([join(ROOT, "apps", "desktop", "src", "kernel.ts")]);
     const bad: string[] = [];

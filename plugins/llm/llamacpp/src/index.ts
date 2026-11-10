@@ -10,7 +10,8 @@ import { z } from "zod";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry, findExe, httpHealthy, startLocalServer, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult } from "@floppy/core";
+import { definePlugin, findExe, httpHealthy, startLocalServer, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type OpResult } from "@floppy/core";
+import { modelLibrary, programLibrary, restartsModels, failoverText, type LibraryEntry } from "@floppy/setup";
 import type { CompletionService, LlmService } from "@floppy/contracts";
 
 import { LLAMA_BUILDS, LLAMA_VERSION } from "./known-builds.ts";

@@ -5,11 +5,8 @@ import { join } from "node:path";
 import {
   Onboarding, planLevels, installSteps, type Candidate, cloudBrains, offeredVoices, findAgents, withManualMemory, MIN_SPEED, type Agent,
   type OnboardingDeps, type OnboardingState,
-} from "../src/onboarding.ts";
-import { GIB, type MachineInfo } from "../src/machine.ts";
-import type { CatalogOp, ItemInfo, ProviderSnapshot } from "../src/catalog.ts";
-import type { SettingInfo } from "../src/settings.ts";
-import { tr } from "../src/i18n.ts";
+} from "../src/index.ts";
+import { GIB, tr, type MachineInfo, type CatalogOp, type ItemInfo, type ProviderSnapshot, type SettingInfo } from "@floppy/core";
 
 const can = { add: false, update: false, remove: false, enable: false, child: false, test: false, action: true, search: false };
 const lib = (id: string, source: string, items: ItemInfo[], missing?: string): ProviderSnapshot =>

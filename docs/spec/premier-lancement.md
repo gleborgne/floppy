@@ -36,6 +36,8 @@ de fenêtre au démarrage.
 
 ## Lire la machine (`packages/core/src/machine.ts`)
 
+Ce fichier reste dans le noyau (`ctx.machine()` le lit) ; le premier lancement et les bibliothèques qui s'en servent sont dans `packages/setup`.
+
 `probeMachine(opts)` rend un `MachineInfo`. Chaque sonde est facultative ; une sonde qui échoue est ignorée.
 Les commandes passent par une fonction `run` injectable (tests : sorties simulées), avec 5 s au plus.
 
@@ -82,7 +84,7 @@ La bibliothèque dit aussi quel élément son modèle donne une fois installé (
 (`missing` : « llama-server est introuvable »). La fenêtre les reçoit dans l'instantané du catalogue
 (`ItemInfo.needs`, `ItemInfo.service`, `ItemInfo.uses`, `ProviderSnapshot.missing`).
 
-## Télécharger llama.cpp et audio.cpp (`packages/core/src/program-library.ts`)
+## Télécharger llama.cpp et audio.cpp (`packages/setup/src/program-library.ts`)
 
 Personne n'a à installer un programme à la main. Chaque plugin donne les archives figées d'une version
 (`known-builds.ts`, généré depuis l'API GitHub, avec taille et sha256) : llama.cpp b12177, audio.cpp v0.9.4.
@@ -154,7 +156,7 @@ L'onboarding le cherche (`findExe`, `findAgents`) et sait s'il est déjà dans l
 - Cerveau conseillé : le premier cerveau offert dont le programme est là, sinon le premier programme trouvé à ajouter.
 - Aucun : les niveaux cloud disent « installe Claude Code, Codex ou Antigravity, ou ajoute une clé ».
 
-## Les niveaux (`packages/core/src/onboarding.ts`, `planLevels`)
+## Les niveaux (`packages/setup/src/onboarding.ts`, `planLevels`)
 
 Le plan est calculé à partir des déclarations des plugins : aucun modèle n'est écrit en dur dans l'onboarding.
 « Le meilleur » d'un rôle = l'entrée qui tient et qui demande le plus de mémoire (les petites sont moins bonnes).

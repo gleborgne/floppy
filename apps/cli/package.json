@@ -14,6 +14,7 @@
   "dependencies": {
     "@floppy/contracts": "0.1.0",
     "@floppy/core": "0.1.0",
+    "@floppy/setup": "0.1.0",
     "@floppy/plugin-agent-aider": "0.1.0",
     "@floppy/plugin-agent-copilot": "0.1.0",
     "@floppy/plugin-agent-cursor": "0.1.0",

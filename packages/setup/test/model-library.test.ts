@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { Kernel, MemorySecrets, definePlugin, formatBytes, modelLibrary, tr, type Context, type LibraryEntry, type ProviderSnapshot } from "../src/index.ts";
+import { Kernel, MemorySecrets, definePlugin, tr, type Context, type ProviderSnapshot } from "@floppy/core";
+import { formatBytes, modelLibrary, type LibraryEntry } from "../src/index.ts";
 
 const quiet = () => {};
 const DATA = Buffer.alloc(30_000, 7);

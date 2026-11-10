@@ -2,7 +2,8 @@
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, pendingMoveFrom, defaultConfigPath, tr, T, onboardingFor, type HostChannel, type Logger, type Onboarding, type PluginDef } from "@floppy/core";
+import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, pendingMoveFrom, defaultConfigPath, tr, T, type HostChannel, type Logger, type PluginDef } from "@floppy/core";
+import { onboardingFor, type Onboarding } from "@floppy/setup";
 import { loadCatalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
@@ -111,6 +112,8 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
   // Le point de contrôle s'ouvre avant la config : la CLI répond (`floppy status`) pendant qu'un modèle se charge.
   const stopControl = await startControl(kernel, home, {
     reload: () => kernel.applyConfig(loadConfigFile(configPath)),
+    // Le noyau ne connaît pas le premier lancement : l'hôte donne le plan (sans les candidats, trop gros pour la CLI).
+    onboardingPlan: async () => { const { candidates: _c, ...plan } = await onboardingFor(kernel).plan({ fresh: true }); return plan; },
   });
   try { await kernel.applyConfig(loadConfigFile(configPath)); } catch (e) { await stopControl(); offSafety(); throw e; }
   const unwatch = opts.watch === false ? () => {} : watchConfig(configPath, kernel);

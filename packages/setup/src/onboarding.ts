@@ -2,13 +2,7 @@
 // Le plan vient des déclarations des plugins (bibliothèques de modèles : service, needs, uses) : aucun modèle en dur ici.
 // Voir docs/spec/premier-lancement.md.
 import { join } from "node:path";
-import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
-import type { CatalogOp, ItemInfo, ModelNeeds, OpReply, ProviderSnapshot } from "./catalog.ts";
-import { GIB, gbText, machineSummary, type MachineInfo } from "./machine.ts";
-import { T, tr, type Text } from "./i18n.ts";
-import type { SettingInfo } from "./settings.ts";
-import type { Kernel } from "./plugin/kernel.ts";
-import { findExe } from "./util/process.ts";
+import { readJsonFile, writeJsonAtomic, findExe, T, tr, GIB, gbText, machineSummary, type CatalogOp, type ItemInfo, type ModelNeeds, type OpReply, type ProviderSnapshot, type MachineInfo, type Text, type SettingInfo, type Kernel } from "@floppy/core";
 
 /** « program » : le programme qui fait tourner des modèles (llama.cpp, audio.cpp), à installer avant eux. */
 export type Role = "vad" | "stt" | "tts" | "llm" | "program";

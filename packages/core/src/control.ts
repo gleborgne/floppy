@@ -7,7 +7,6 @@ import { writeFileSync, readFileSync, rmSync, mkdirSync, existsSync, renameSync 
 import { join } from "node:path";
 import type { Kernel } from "./plugin/kernel.ts";
 import { errorText, T, TextError } from "./i18n.ts";
-import { onboardingFor } from "./onboarding.ts";
 
 export { floppyHome } from "./util/home.ts";
 
@@ -15,6 +14,8 @@ export interface ControlInfo { port: number; token: string; pid: number }
 
 export interface ControlHandlers {
   reload?: () => Promise<void>;
+  /** Plan du premier lancement (CLI `floppy machine`) : fourni par l'hôte, le noyau ne connaît pas le premier lancement. */
+  onboardingPlan?: () => Promise<unknown>;
 }
 
 export async function startControl(kernel: Kernel, home: string, handlers: ControlHandlers = {}): Promise<() => Promise<void>> {
@@ -43,10 +44,9 @@ export async function startControl(kernel: Kernel, home: string, handlers: Contr
       case "POST /settings/undo": return send(res, 200, await kernel.settings.undo("cli"));
       case "GET /items": return send(res, 200, await kernel.items.snapshot());
       // Ce que Floppy lit de la machine, et les niveaux du premier lancement (CLI `floppy machine`).
-      case "GET /onboarding": {
-        const { candidates: _c, ...plan } = await onboardingFor(kernel).plan({ fresh: true });
-        return send(res, 200, plan);
-      }
+      case "GET /onboarding":
+        if (!handlers.onboardingPlan) return send(res, 501, { error: "pas de premier lancement" });
+        return send(res, 200, await handlers.onboardingPlan());
       case "POST /items": return send(res, 200, await kernel.items.run(body as never, "cli"));
       case "POST /restart": await kernel.restart(String(body.id)); return send(res, 200, { ok: true });
       // Appel direct d'un outil (CLI `floppy tool`, mode debug) : même chemin que le modèle, accord compris.

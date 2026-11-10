@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
-import { Kernel, definePlugin, programLibrary, pickBuild, findProgram, programRuns, type ProgramBuild, type ProgramLibrary, type ProgramChange, type MachineInfo } from "../src/index.ts";
+import { Kernel, definePlugin, type MachineInfo } from "@floppy/core";
+import { programLibrary, pickBuild, findProgram, programRuns, type ProgramBuild, type ProgramLibrary, type ProgramChange } from "../src/index.ts";
 
 const GIB = 1024 ** 3;
 const f = (name: string) => ({ url: `https://github.com/x/releases/download/v1/${name}`, size: 10, sha256: "0".repeat(64) });
