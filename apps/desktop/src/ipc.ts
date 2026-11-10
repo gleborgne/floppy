@@ -125,7 +125,21 @@ export function registerIpc(deps: IpcDeps): void {
     type: "onboarding.get", fresh: o?.fresh === true,
     ...(typeof o?.manualBytes === "number" && o.manualBytes >= 0 && o.manualBytes < 2 ** 50 ? { manualBytes: o.manualBytes } : {}),
   }) : null);
-  ipcMain.handle("onboarding:apply", (e, level, brain) => fromOnb(e) ? kernelRequest({ type: "onboarding.apply", level: String(level).slice(0, 40), ...(brain ? { brain: String(brain).slice(0, 200) } : {}) }) : null);
+  ipcMain.handle("onboarding:language", (e, lang, manualBytes) => fromOnb(e) ? kernelRequest({
+    type: "onboarding.language", lang: String(lang).slice(0, 8),
+    ...(typeof manualBytes === "number" && manualBytes >= 0 && manualBytes < 2 ** 50 ? { manualBytes } : {}),
+  }) : null);
+  ipcMain.handle("onboarding:listen", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.listen" }) : null);
+  ipcMain.handle("onboarding:extras", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.extras" }) : null);
+  ipcMain.handle("onboarding:way", (e, way, value) => fromOnb(e) && (way === "wake" || way === "talk") ? kernelRequest({ type: "onboarding.way", way, value: String(value).slice(0, 200) }) : null);
+  ipcMain.handle("onboarding:tool", (e, id, on) => fromOnb(e) ? kernelRequest({ type: "onboarding.tool", id: String(id).slice(0, 200), on: on === true }) : null);
+  // Sélection : une valeur par rôle (chaînes bornées) ; le noyau refuse ce qui n'est pas dans le plan.
+  ipcMain.handle("onboarding:apply", (e, selection) => {
+    if (!fromOnb(e)) return null;
+    const pick = (v: unknown) => (typeof v === "string" ? v.slice(0, 200) : undefined);
+    const brain = pick(selection?.brain), stt = pick(selection?.stt), tts = pick(selection?.tts);
+    return kernelRequest({ type: "onboarding.apply", selection: { ...(brain !== undefined ? { brain } : {}), ...(stt !== undefined ? { stt } : {}), ...(tts !== undefined ? { tts } : {}) } });
+  });
   ipcMain.handle("onboarding:skip", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.skip" }) : null);
   // Répertoire de travail choisi dans « Bienvenue » : le noyau le note puis repart dans ce dossier (réglage dossier_floppy).
   ipcMain.handle("onboarding:home", async (e) => {

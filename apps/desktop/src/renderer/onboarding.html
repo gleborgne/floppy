@@ -3,18 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+<!-- media-src : les extraits sonores des voix viennent des bibliothèques de modèles (http ou https) ; img-src : l'aperçu de l'avatar (data:). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; media-src https: http:">
 <title>Floppy — Bienvenue</title>
 <link rel="stylesheet" href="./onboarding.css">
 </head>
 <body>
   <div id="app">
-    <header class="top">
-      <h1 id="title">Bienvenue</h1>
-      <ol id="steps" class="steps" aria-label="Étapes"></ol>
-    </header>
-    <main id="content" tabindex="-1" aria-live="polite"></main>
-    <footer id="actions" class="actions"></footer>
+    <aside class="side">
+      <div id="bubble" class="bubble" role="status" aria-live="polite"></div>
+      <div id="avatar" class="avatar" aria-hidden="true"></div>
+      <ol id="pieces" class="pieces" aria-label="Mes quatre réglages"></ol>
+    </aside>
+    <section class="main">
+      <main id="content" tabindex="-1"></main>
+      <footer id="actions" class="actions"></footer>
+    </section>
   </div>
   <script type="module" src="./onboarding.js"></script>
 </body>

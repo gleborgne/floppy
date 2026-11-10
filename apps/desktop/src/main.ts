@@ -93,10 +93,14 @@ app.whenReady().then(() => {
   // Fenêtres non compilées (npm run build:ui) : message clair plutôt que des fenêtres blanches.
   const missing = missingUi();
   if (missing) { console.error(missing); dialog.showErrorBox("Floppy", missing); app.quit(); return; }
-  // Micro : seulement pour nos fenêtres (fichiers locaux) : l'avatar, et les réglages (enregistrer une voix). Rien d'autre.
+  // Micro : seulement pour nos fenêtres (fichiers locaux) : l'avatar, les réglages (enregistrer une voix) et « Bienvenue »
+  // (l'essai du micro). Rien d'autre.
   const micOk = (wc: WebContents | null | undefined) => {
     const settingsWin = windows.settingsWin();
-    return !!wc && (wc === avatar.win()?.webContents || (!!settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents));
+    const onbWin = windows.onbWin();
+    return !!wc && (wc === avatar.win()?.webContents
+      || (!!settingsWin && !settingsWin.isDestroyed() && wc === settingsWin.webContents)
+      || (!!onbWin && !onbWin.isDestroyed() && wc === onbWin.webContents));
   };
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && micOk(wc)));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && micOk(wc));

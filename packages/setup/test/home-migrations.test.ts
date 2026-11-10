@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readMigrationMarker } from "@floppy/core";
+import { readMigrationMarker, runHomeMigrations } from "@floppy/core";
 import { HOME_MIGRATIONS, migrateHome } from "../src/index.ts";
 
 let home: string;
@@ -12,6 +12,9 @@ afterEach(() => { rmSync(home, { recursive: true, force: true }); });
 
 const read = (rel: string) => readFileSync(join(home, rel), "utf8");
 const write = (rel: string, text: string) => writeFileSync(join(home, rel), text);
+
+/** Passe les étapes jusqu'à celle-là incluse (les suivantes ne touchent pas encore au fichier). */
+const only = (id: string) => runHomeMigrations(home, HOME_MIGRATIONS.slice(0, HOME_MIGRATIONS.findIndex((x) => x.id === id) + 1));
 
 const OLD_DOC = '---\ntitre: "Veille du jour"\ndate: 2026-11-06T08:00:00.000Z\nsource: "veille"\ntags: ["veille"]\n---\n\n# Corps\n\ntitre: ceci est du texte, pas l\'en-tête\n';
 
@@ -66,7 +69,7 @@ describe("étape onboarding-level", () => {
       rmSync(join(home, "onboarding.json.bak-onboarding-level"), { force: true });
       rmSync(join(home, "migrations.json"), { force: true });
       write("onboarding.json", JSON.stringify({ done: false, level: old, brain: "claude-cli/claude" }));
-      const r = migrateHome(home).find((x) => x.step === "onboarding-level")!;
+      const r = only("onboarding-level").find((x) => x.step === "onboarding-level")!;
       expect(r.changes).toEqual([{ file: "onboarding.json", keys: ["level"] }]);
       expect(JSON.parse(read("onboarding.json"))).toEqual({ done: false, level: now, brain: "claude-cli/claude" });
       expect(JSON.parse(read("onboarding.json.bak-onboarding-level")).level).toBe(old);
@@ -77,18 +80,48 @@ describe("étape onboarding-level", () => {
     for (const body of [{ done: true, level: "voice" }, { done: true, level: "local-max" }, { done: false }]) {
       rmSync(join(home, "migrations.json"), { force: true });
       write("onboarding.json", JSON.stringify(body));
-      expect(migrateHome(home).find((x) => x.step === "onboarding-level")!.changes).toEqual([]);
+      expect(only("onboarding-level").find((x) => x.step === "onboarding-level")!.changes).toEqual([]);
       expect(JSON.parse(read("onboarding.json"))).toEqual(body);
     }
     rmSync(join(home, "onboarding.json")); rmSync(join(home, "migrations.json"));
-    expect(migrateHome(home).find((x) => x.step === "onboarding-level")).toMatchObject({ changes: [], skipped: [] });
+    expect(only("onboarding-level").find((x) => x.step === "onboarding-level")).toMatchObject({ changes: [], skipped: [] });
   });
 
   it("fichier abîmé : laissé tel quel, non déplacé", () => {
     write("onboarding.json", '{ "done": false, "level": "texte"');
-    const r = migrateHome(home).find((x) => x.step === "onboarding-level")!;
+    const r = only("onboarding-level").find((x) => x.step === "onboarding-level")!;
     expect(r.skipped).toEqual([{ file: "onboarding.json", why: "unreadable" }]);
     expect(read("onboarding.json")).toBe('{ "done": false, "level": "texte"');
+  });
+});
+
+
+describe("étape onboarding-selection", () => {
+  it("retire `level` et `brain`, garde le reste, sauvegarde l'original", () => {
+    write("onboarding.json", JSON.stringify({ done: false, level: "local", brain: "claude-cli/claude" }));
+    const r = only("onboarding-selection").find((x) => x.step === "onboarding-selection")!;
+    expect(r.changes).toEqual([{ file: "onboarding.json", keys: ["level", "brain"] }]);
+    expect(JSON.parse(read("onboarding.json"))).toEqual({ done: false });
+    expect(JSON.parse(read("onboarding.json.bak-onboarding-selection"))).toEqual({ done: false, level: "local", brain: "claude-cli/claude" });
+  });
+
+  it("installation terminée : `done`, `at` et `skipped` restent ; la suite des étapes mène un ancien `texte` jusqu'à la fin", () => {
+    write("onboarding.json", JSON.stringify({ done: true, level: "texte", at: "2026-11-07T10:00:00.000Z" }));
+    migrateHome(home);
+    expect(JSON.parse(read("onboarding.json"))).toEqual({ done: true, at: "2026-11-07T10:00:00.000Z" });
+  });
+
+  it("déjà au nouveau format (`selection`), ou fichier absent ou abîmé : rien n'est touché", () => {
+    const body = { done: false, selection: { brain: "claude/sonnet", stt: "sherpa-library/parakeet-tdt-v3-int8" } };
+    write("onboarding.json", JSON.stringify(body));
+    expect(only("onboarding-selection").find((x) => x.step === "onboarding-selection")!.changes).toEqual([]);
+    expect(JSON.parse(read("onboarding.json"))).toEqual(body);
+    rmSync(join(home, "onboarding.json")); rmSync(join(home, "migrations.json"));
+    expect(only("onboarding-selection").find((x) => x.step === "onboarding-selection")).toMatchObject({ changes: [], skipped: [] });
+    write("onboarding.json", '{ "done": false, "level": "local"');
+    rmSync(join(home, "migrations.json"));
+    expect(only("onboarding-selection").find((x) => x.step === "onboarding-selection")!.skipped).toEqual([{ file: "onboarding.json", why: "unreadable" }]);
+    expect(read("onboarding.json")).toBe('{ "done": false, "level": "local"');
   });
 });
 

@@ -68,3 +68,19 @@ it.each(added)("$id : téléchargement simulé, configuration de la voix, réajo
     expect((await provider("voix-locale")).items).toHaveLength(0);
   } finally { await k.stopAll(); }
 });
+
+it("les notes de langue des voix ne disent que ce que le catalogue dit déjà : codes à 2 lettres, niveaux connus, langue imposée cohérente", () => {
+  for (const m of KNOWN_VOICE_MODELS) {
+    for (const [lang, level] of Object.entries(m.languages ?? {})) {
+      expect(lang).toMatch(/^[a-z]{2}$/);
+      expect(["good", "fair", "poor"]).toContain(level);
+    }
+    // Un modèle à langue imposée (Pocket TTS) est bon dans cette langue.
+    if (m.langue) expect(m.languages?.[m.langue]).toBe("good");
+  }
+  const by = (id: string) => KNOWN_VOICE_MODELS.find((m) => m.id === id)!;
+  expect(by("pocket-tts-french").languages).toMatchObject({ fr: "good", en: "poor" });
+  expect(by("pocket-tts-english").languages).toMatchObject({ en: "good", fr: "poor" });
+  // Pas de note sans source : Supertonic ne dit aucune langue.
+  expect(by("supertonic-3").languages).toBeUndefined();
+});

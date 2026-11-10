@@ -3,6 +3,7 @@
 import { boot } from "@floppy/cli/boot";
 import { T, tr, errorText, type HostChannel } from "@floppy/core";
 import type { CoderService } from "@floppy/contracts";
+import { waysOf, wayChange, toolsOf, avatarPreviewOf } from "./onboarding-extras.ts";
 
 interface ParentPort {
   on(ev: "message", fn: (e: { data: unknown }) => void): void;
@@ -117,9 +118,15 @@ function handleCoder(d: CoderMsg) {
 }
 
 // ------------------------------------------------------------------ premier lancement (fenêtre « Bienvenue »)
-interface OnboardingMsg { type: string; reqId?: number; fresh?: boolean; manualBytes?: number; level?: string; brain?: string; gpus?: unknown }
+interface OnboardingMsg { type: string; reqId?: number; fresh?: boolean; manualBytes?: number; selection?: unknown; lang?: string; way?: unknown; value?: unknown; id?: string; on?: boolean; gpus?: unknown }
 const ob = running.onboarding;
 ob.onState((state) => parent.postMessage({ type: "onboarding.state", state }));
+
+/** Le plan tel que la fenêtre le lit : état en cours, langue de l'interface, dossier et aperçu de l'avatar. */
+function planReply(plan: object, providers: Awaited<ReturnType<typeof k.items.snapshot>>) {
+  const avatar = avatarPreviewOf(providers);
+  return { ...plan, state: ob.state, lang: k.uiLang, home: k.home, ...(avatar ? { avatar } : {}) };
+}
 
 function handleOnboarding(d: OnboardingMsg) {
   const reply = (ok: boolean, value?: unknown, text?: unknown) => parent.postMessage({ type: "onboarding.result", reqId: d.reqId, ok, value, text });
@@ -130,12 +137,40 @@ function handleOnboarding(d: OnboardingMsg) {
       k.machineHint = list.map((g) => ({ vendorId: Number((g as { vendorId?: unknown }).vendorId) || 0, name: String((g as { name?: unknown }).name ?? "").slice(0, 120) }));
     } else if (d.type === "onboarding.get") {
       const manual = typeof d.manualBytes === "number" && d.manualBytes >= 0 ? d.manualBytes : undefined;
-      ob.plan({ fresh: d.fresh === true, ...(manual !== undefined ? { manualBytes: manual } : {}) }).then(
-        ({ candidates: _c, ...plan }) => reply(true, { ...plan, state: ob.state, lang: k.uiLang, home: k.home }),
+      void Promise.all([ob.plan({ fresh: d.fresh === true, ...(manual !== undefined ? { manualBytes: manual } : {}) }), k.items.snapshot().catch(() => [])]).then(
+        ([{ candidates: _c, ...plan }, providers]) => reply(true, planReply(plan, providers)),
         (err) => reply(false, undefined, uiError(err)),
       );
+    } else if (d.type === "onboarding.language") {
+      const lang = String(d.lang ?? "");
+      if (lang !== "fr" && lang !== "en") return reply(false, undefined, T("Langue inconnue.", "Unknown language."));
+      const manual = typeof d.manualBytes === "number" && d.manualBytes >= 0 ? d.manualBytes : undefined;
+      void ob.setLanguage(lang, manual !== undefined ? { manualBytes: manual } : {}).then(async (r) => {
+        if (!r.plan) return reply(false, undefined, r.text);
+        const { candidates: _c, ...plan } = r.plan;
+        reply(true, planReply(plan, await k.items.snapshot().catch(() => [])));
+      }, (err) => reply(false, undefined, uiError(err)));
+    } else if (d.type === "onboarding.listen") {
+      void ob.prepareListening().then(() => reply(true), (err) => reply(false, undefined, uiError(err)));
+    } else if (d.type === "onboarding.extras") {
+      void k.items.snapshot().then((providers) => reply(true, { ways: waysOf(k.settings.list()), tools: toolsOf(providers) }), (err) => reply(false, undefined, uiError(err)));
+    } else if (d.type === "onboarding.way") {
+      const change = wayChange(d.way, d.value);
+      if (!change) return reply(false, undefined, T("Réglage inconnu.", "Unknown setting."));
+      void k.settings.change(change.key, change.value, "ui").then((r) => reply(r.ok, undefined, r.text), (err) => reply(false, undefined, uiError(err)));
+    } else if (d.type === "onboarding.tool") {
+      const id = String(d.id ?? "");
+      void k.items.snapshot().then((providers) => {
+        const tool = toolsOf(providers);
+        if (!tool.items.some((x) => x.id === id && x.toggleable)) return reply(false, undefined, T("Connecteur inconnu.", "Unknown connector."));
+        return k.items.run({ op: "enable", provider: tool.provider, id, on: d.on === true }, "ui").then((r) => reply(r.ok, undefined, r.text));
+      }).catch((err) => reply(false, undefined, uiError(err)));
     } else if (d.type === "onboarding.apply") {
-      const r = ob.apply(String(d.level ?? "") as never, d.brain ? { brain: String(d.brain) } : {});
+      // Sélection : une valeur (texte) par rôle ; le noyau vérifie qu'elle est dans le plan.
+      const sel = (d.selection && typeof d.selection === "object" ? d.selection : {}) as Record<string, unknown>;
+      const pick = (v: unknown) => (typeof v === "string" ? v : undefined);
+      const brain = pick(sel.brain), stt = pick(sel.stt), tts = pick(sel.tts);
+      const r = ob.apply({ ...(brain !== undefined ? { brain } : {}), ...(stt !== undefined ? { stt } : {}), ...(tts !== undefined ? { tts } : {}) });
       reply(r.ok, undefined, r.text);
     } else if (d.type === "onboarding.skip") {
       ob.skip();

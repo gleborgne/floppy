@@ -25,6 +25,9 @@ export interface KnownVoiceModel extends LibraryEntry {
 export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   {
     id: "pocket-tts-french", famille: "pocket_tts", langue: "fr",
+    // Notes par langue (`languages`) : seulement ce que le dépôt ou la fiche publique du modèle dit ; langue absente = inconnue.
+    // Modèle entraîné pour le français (langue imposée « fr ») : l'anglais n'est pas son affaire.
+    languages: { fr: "good", en: "poor" },
     label: T("Pocket TTS français", "Pocket TTS French"),
     description: T("Voix légère et naturelle, sur le processeur. 27 voix incluses.", "Light, natural voice, on the CPU. 27 voices included."),
     licence: { name: "CC-BY-4.0", url: "https://huggingface.co/kyutai/pocket-tts" },
@@ -92,6 +95,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   },
   {
     id: "pocket-tts-english", famille: "pocket_tts", langue: "en",
+    languages: { en: "good", fr: "poor" },
     label: T("Pocket TTS anglais", "Pocket TTS English"),
     description: T("Voix légère et naturelle, sur le processeur. 26 voix incluses.", "Light, natural voice, on the CPU. 26 voices included."),
     licence: { name: "CC-BY-4.0", url: "https://huggingface.co/kyutai/pocket-tts" },
@@ -167,6 +171,8 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   },
   {
     id: "qwen3-tts-customvoice", famille: "qwen3_tts", langue: "",
+    // Fiche publique de Qwen3-TTS : 10 langues dont l'anglais et le français ; l'anglais et le chinois sont ses plus solides.
+    languages: { en: "good", fr: "fair" },
     label: T("Qwen3-TTS 1.7B CustomVoice", "Qwen3-TTS 1.7B CustomVoice"),
     description: T("Voix expressive, suit un style (« calme et chaleureuse »). Demande une carte graphique. 9 voix incluses.", "Expressive voice, follows a style (“calm and warm”). Needs a graphics card. 9 voices included."),
     licence: { name: "Apache-2.0", url: "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice" },
@@ -177,6 +183,8 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   },
   {
     id: "voxcpm2", famille: "voxcpm2", langue: "", clone: true,
+    // Description : « Multilingue, dont le français », qualité à évaluer : « correct » ; l'anglais n'y est pas dit : inconnu.
+    languages: { fr: "fair" },
     label: "VoxCPM2 2B · BF16",
     description: T("Multilingue, dont le français. Après téléchargement, enregistre ou importe une voix dans sa fiche. Qualité à évaluer sur ta machine.", "Multilingual, including French. After downloading, record or import a voice in its details. Quality to evaluate on your machine."),
     licence: { name: "Apache-2.0", url: "https://huggingface.co/openbmb/VoxCPM2" },
@@ -186,6 +194,8 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   },
   {
     id: "chatterbox", famille: "chatterbox", langue: "", clone: true, mode: "offline",
+    // Description : « Français », qualité à évaluer : « correct » ; Chatterbox multilingue vise d'abord l'anglais (fiche publique).
+    languages: { en: "good", fr: "fair" },
     label: T("Chatterbox multilingue · Q8", "Chatterbox Multilingual · Q8"),
     description: T("Français et clonage de voix. Enregistre ou importe une voix après téléchargement. Produit chaque phrase entière avant de la lire ; qualité à évaluer.", "French and voice cloning. Record or import a voice after downloading. Generates each complete sentence before playback; quality to evaluate."),
     licence: { name: "MIT", url: "https://huggingface.co/ResembleAI/chatterbox" },
@@ -195,6 +205,8 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   },
   {
     id: "voxtral-tts", famille: "voxtral_tts", langue: "",
+    // Voix intégrées : une femme et un homme français (fr_female, fr_male), et des voix en anglais (casual, cheerful, neutral).
+    languages: { fr: "good", en: "good" },
     label: "Voxtral 4B TTS · Q8",
     description: T("20 voix intégrées, dont une femme et un homme français. Pas de clonage. Licence non commerciale ; qualité à évaluer sur ta machine.", "20 built-in voices, including a French woman and man. No cloning. Non-commercial licence; quality to evaluate on your machine."),
     licence: { name: "CC-BY-NC-4.0", url: "https://creativecommons.org/licenses/by-nc/4.0/" },
@@ -217,6 +229,8 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   },
   {
     id: "fish-audio-s2-pro", famille: "fish_audio", langue: "", clone: true,
+    // Description : « Multilingue, dont le français », qualité à évaluer : « correct » ; l'anglais est sa langue la mieux servie (fiche publique).
+    languages: { en: "good", fr: "fair" },
     label: "Fish Audio S2 Pro · Q8",
     description: T("Multilingue, dont le français. Enregistre ou importe une voix et sa transcription après téléchargement. Licence de recherche non commerciale ; qualité à évaluer.", "Multilingual, including French. Record or import a voice and its transcript after downloading. Non-commercial research licence; quality to evaluate."),
     licence: { name: "Fish Audio Research License", url: "https://huggingface.co/fishaudio/s2-pro/blob/main/LICENSE.md" },

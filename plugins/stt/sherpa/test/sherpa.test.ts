@@ -162,3 +162,11 @@ describe("bibliothèque : télécharger un modèle connu (réseau simulé)", () 
     }
   });
 });
+
+describe("notes de langue des modèles connus", () => {
+  it("Parakeet TDT v3 est bon en français et en anglais ; le détecteur de parole n'a pas de note", async () => {
+    const { KNOWN_MODELS } = await import("../src/known-models.ts");
+    expect(KNOWN_MODELS.find((m) => m.service === "stt")!.languages).toEqual({ fr: "good", en: "good" });
+    expect(KNOWN_MODELS.find((m) => m.service === "vad")!.languages).toBeUndefined();
+  });
+});

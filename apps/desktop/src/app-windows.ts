@@ -123,7 +123,7 @@ export function createAppWindows(deps: AppWindowsDeps): AppWindows {
   // ------------------------------------------------------------------ fenêtre « Bienvenue » (premier lancement)
   function openOnboarding() {
     if (onbWin && !onbWin.isDestroyed()) { bringToFront(onbWin); return onbWin; }
-    onbWin = safeWindow({ size: { width: 820, height: 700, minWidth: 420, minHeight: 480 }, title: T("onboardingTitle"), background: "#0b0f15", preload: "preload-onboarding.cjs" });
+    onbWin = safeWindow({ size: { width: 960, height: 680, minWidth: 720, minHeight: 560 }, title: T("onboardingTitle"), background: "#0b0f15", preload: "preload-onboarding.cjs" });
     onbWin.loadFile(pageFile("onboarding"));
     onbWin.once("ready-to-show", () => bringToFront(onbWin));
     onbWin.on("closed", () => { onbWin = null; });

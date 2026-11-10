@@ -7,7 +7,7 @@ export type { Context, Borrowed, ExecOptions, ExecResult, HostChannel, HostMessa
 export { DownloadManager, hostAllowed, safeJoin, type ContextDownloads, type DownloadFile, type DownloadRequest, type DownloadState, type DownloadPhase, type DownloadManagerOptions } from "./downloads.ts";
 export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
 export type { DocRef, DocumentsService, TaskReason, TaskRunInput, TaskResult, TaskService } from "./services.ts";
-export { CatalogRegistry, ItemStore, SECRET_SET, slug, type FieldDef, type FieldType, type ItemKind, type ItemChild, type ItemInfo, type ItemStatus, type OpResult, type OpReply, type ProviderDef, type ProviderSnapshot, type ModelNeeds, type CatalogOp, type CatalogVia, type ItemOverlay } from "./catalog.ts";
+export { CatalogRegistry, ItemStore, SECRET_SET, slug, type FieldDef, type FieldType, type ItemKind, type ItemChild, type ItemInfo, type ItemStatus, type OpResult, type OpReply, type ProviderDef, type ProviderSnapshot, type ModelNeeds, type LanguageLevel, type LanguageSupport, type CatalogOp, type CatalogVia, type ItemOverlay } from "./catalog.ts";
 export { MemorySecrets, OsSecrets, defaultSecrets, scopedSecrets, type Secrets } from "./secrets.ts";
 export { tr, allTexts, LANGS, T, TextError, errorText, isLang, type Lang, type Text } from "./i18n.ts";
 export { SettingsRegistry, type SettingDef, type SettingInfo, type SettingOption, type SettingRisk, type ChangeResult } from "./settings.ts";

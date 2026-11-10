@@ -1,18 +1,15 @@
-// Premier lancement : niveaux possibles selon la machine (du texte seul au tout local), puis installation du niveau choisi.
-// Le plan vient des déclarations des plugins (bibliothèques de modèles : service, needs, uses) : aucun modèle en dur ici.
+// Premier lancement : un choix de modèle par rôle (cerveau, écoute, voix) avec UN conseillé par rôle (selon la machine et
+// la langue de l'assistant), puis installation de la sélection.
+// Le plan vient des déclarations des plugins (bibliothèques de modèles : service, needs, languages, uses) : aucun modèle en dur ici.
 // Voir docs/spec/premier-lancement.md.
 import { join } from "node:path";
-import { readJsonFile, writeJsonAtomic, findExe, T, tr, GIB, gbText, machineSummary, type CatalogOp, type ItemInfo, type ModelNeeds, type OpReply, type ProviderSnapshot, type MachineInfo, type Text, type SettingInfo, type Kernel } from "@floppy/core";
+import { readJsonFile, writeJsonAtomic, findExe, T, tr, GIB, gbText, machineSummary, type CatalogOp, type ItemInfo, type ModelNeeds, type LanguageLevel, type LanguageSupport, type OpReply, type ProviderSnapshot, type MachineInfo, type Text, type SettingInfo, type Kernel } from "@floppy/core";
 
 /** « program » : le programme qui fait tourner des modèles (llama.cpp, audio.cpp), à installer avant eux. */
 export type Role = "vad" | "stt" | "tts" | "llm" | "program";
 const ROLES: Role[] = ["vad", "stt", "tts", "llm", "program"];
 /** Slot réglé pour chaque rôle de modèle. */
 export const ROLE_SLOT: Record<Exclude<Role, "program">, string> = { vad: "listen.vad", stt: "listen.stt", tts: "voice.tts", llm: "brain.main" };
-
-export type LevelId = "text" | "voice" | "hybrid" | "local" | "local-max";
-/** Du plus simple au plus complet. */
-export const LEVELS: LevelId[] = ["text", "voice", "hybrid", "local", "local-max"];
 
 /** En dessous, un cerveau local est trop faible pour bien utiliser les outils : le cloud est conseillé s'il est là. */
 export const MIN_LOCAL_BRAIN = 6e9;
@@ -28,6 +25,10 @@ export interface Candidate {
   label: Text;
   role: Role;
   needs: ModelNeeds;
+  description?: Text;
+  /** Sa note par langue (langue absente : inconnue). */
+  languages?: LanguageSupport;
+  sample?: string;
   installed: boolean;
   /** Installé : l'élément offert à choisir dans le slot. */
   uses?: string;
@@ -37,20 +38,6 @@ export interface Candidate {
   missing?: Text;
   /** Programme : son moteur (« cpu » : il ne fait pas tourner les modèles de la puce graphique). */
   backend?: string;
-}
-
-export interface Level {
-  id: LevelId;
-  label: Text;
-  description: Text;
-  voice: "none" | "cpu" | "gpu";
-  brain: "cloud" | "local";
-  picks: Candidate[];
-  possible: boolean;
-  /** Pourquoi ce niveau n'est pas possible. */
-  reason?: Text;
-  /** À télécharger (modèles pas encore sur le disque). */
-  downloadBytes: number;
 }
 
 /** Un cerveau cloud déjà offert (option du slot brain.main). `found: false` : son programme est introuvable. */
@@ -71,46 +58,53 @@ export interface Agent {
 /** Choix de cerveau « ajouter ce plugin, puis prendre son premier élément ». */
 export const ADD_PREFIX = "add:";
 
+/** Choix de voix « pas de voix » : Floppy répond par écrit. */
+export const NO_VOICE = "@none";
+
+export type ChoiceRole = "brain" | "stt" | "tts";
+const ROLE_OF: Record<ChoiceRole, Role> = { brain: "llm", stt: "stt", tts: "tts" };
+
+/** Un modèle (ou un cerveau, ou « pas de voix ») qu'on peut choisir pour un rôle. */
+export interface Choice {
+  /** Valeur à renvoyer dans Selection. */
+  value: string;
+  /** « local » : modèle de bibliothèque ; « cloud » : cerveau cloud (ou « add:<plugin> ») ; « offered » : voix déjà offerte ; « none » : pas de voix. */
+  kind: "local" | "cloud" | "offered" | "none";
+  label: Text;
+  description?: Text;
+  /** Tient dans la machine (l'écoute est déjà réservée). */
+  fits: boolean;
+  /** Pourquoi il ne tient pas. */
+  reason?: Text;
+  installed: boolean;
+  /** Octets à télécharger, programme compris. */
+  size: number;
+  device?: "cpu" | "gpu";
+  /** Note pour la langue de l'assistant ; absent : inconnue. */
+  language?: LanguageLevel;
+  /** Court extrait sonore (http(s)), s'il existe. */
+  sample?: string;
+  recommended: boolean;
+}
+
+/** Ce que l'utilisateur a choisi : la `value` d'un choix par rôle. Rôle absent : rien n'est changé pour lui (voix : « pas de voix »). */
+export interface Selection { brain?: string; stt?: string; tts?: string }
+
 export interface Plan {
   machine: MachineInfo;
   summary: Text;
-  levels: Level[];
-  recommended: LevelId;
+  /** Langue de l'assistant (code à 2 lettres) pour laquelle le conseil est calculé. */
+  language: string;
+  choices: Record<ChoiceRole, Choice[]>;
+  /** Un conseil par rôle (au plus) ; les trois tiennent ensemble dans la machine. */
+  recommended: Selection;
   cloudBrains: CloudBrain[];
   /** Programmes de cerveau cherchés sur la machine (Claude Code, Codex, Antigravity). */
   agents: Agent[];
-  /** Cerveau cloud conseillé : un déjà offert dont le programme est là, sinon un plugin trouvé à ajouter. */
+  /** Cerveau cloud utilisable : un déjà offert dont le programme est là, sinon un plugin trouvé à ajouter. Répond en attendant le cerveau local. */
   brain?: string;
   candidates: Candidate[];
 }
-
-const LEVEL_TEXT: Record<LevelId, { label: Text; description: Text }> = {
-  text: {
-    label: T("Texte", "Text"),
-    description: T("Tu parles, Floppy répond par écrit. Le cerveau est dans le cloud. Le plus léger.",
-      "You speak, Floppy replies in writing. The brain is in the cloud. The lightest."),
-  },
-  voice: {
-    label: T("Voix légère", "Light voice"),
-    description: T("Floppy répond à voix haute, avec une voix qui tourne sur le processeur. Le cerveau est dans le cloud.",
-      "Floppy replies out loud, with a voice that runs on the processor. The brain is in the cloud."),
-  },
-  hybrid: {
-    label: T("Voix expressive", "Expressive voice"),
-    description: T("Une voix plus vivante, sur la puce graphique. Le cerveau est dans le cloud.",
-      "A livelier voice, on the graphics chip. The brain is in the cloud."),
-  },
-  local: {
-    label: T("Tout local", "All local"),
-    description: T("Le cerveau tourne sur ta machine. La voix tourne sur le processeur.",
-      "The brain runs on your computer. The voice runs on the processor."),
-  },
-  "local-max": {
-    label: T("Tout local, au mieux", "All local, at its best"),
-    description: T("Le cerveau et une voix expressive tournent sur ta machine.",
-      "The brain and an expressive voice run on your computer."),
-  },
-};
 
 const join2 = (parts: Text[], sep = ""): Text => T(parts.map((p) => tr(p, "fr")).join(sep), parts.map((p) => tr(p, "en")).join(sep));
 
@@ -126,6 +120,7 @@ export function candidates(providers: ProviderSnapshot[]): Candidate[] {
       out.push({
         provider: p.id, source: p.source, id: it.id, label: it.label, role, needs: it.needs ?? { memory: 0, device: "cpu" },
         installed: it.status === "ok", size: it.size ?? 0,
+        ...(it.detail ? { description: it.detail } : {}), ...(it.languages ? { languages: it.languages } : {}), ...(it.sample ? { sample: it.sample } : {}),
         ...(it.uses ? { uses: it.uses } : {}), ...(p.missing ? { missing: p.missing } : {}), ...(it.backend ? { backend: it.backend } : {}),
       });
     }
@@ -220,33 +215,41 @@ function misfit(c: Candidate, m: MachineInfo, left: Left, cands: Candidate[] = [
   return c.needs.memory <= left.gpu ? undefined : join2([T("il manque ", "missing "), gbText(c.needs.memory - left.gpu)]);
 }
 
-/**
- * Le meilleur modèle d'un rôle qui tient : celui qui demande le plus (les petits sont moins bons) ; installé d'abord.
- * Cerveau : un modèle déjà sur la machine (LM Studio, Ollama, déjà téléchargé) passe devant s'il est assez grand,
- * pour ne rien télécharger.
- */
-function best(cands: Candidate[], role: Role, device: "cpu" | "gpu" | undefined, m: MachineInfo, left: Left): { pick?: Candidate; reason?: Text } {
-  const list = cands.filter((c) => c.role === role && (!device || c.needs.device === device));
-  if (!list.length) return { reason: T(`aucun modèle proposé pour : ${roleName(role).fr}`, `no model offered for: ${roleName(role).en}`) };
-  const ok = list.filter((c) => !misfit(c, m, left, cands));
-  if (ok.length) {
-    const have = (c: Candidate) => Number(role === "llm" && c.installed && c.needs.memory >= MIN_LOCAL_BRAIN);
-    ok.sort((a, b) => have(b) - have(a) || b.needs.memory - a.needs.memory || Number(b.installed) - Number(a.installed));
-    return { pick: ok[0]! };
-  }
-  // La raison du plus petit : c'est lui qui était le plus près de tenir.
-  const smallest = [...list].sort((a, b) => a.needs.memory - b.needs.memory)[0]!;
-  return { reason: join2([roleName(role), T(" : ", ": "), misfit(smallest, m, left, cands)!]) };
+/** Octets à télécharger pour ce modèle : ses fichiers (s'il n'est pas là) et le programme qu'il faut installer avant lui. */
+function downloadSize(c: Candidate, cands: Candidate[]): number {
+  return (c.installed ? 0 : c.size) + (programFor(c, cands).fix?.size ?? 0);
 }
 
-function roleName(role: Role): { fr: string; en: string } {
-  return {
-    vad: { fr: "détecteur de parole", en: "speech detector" },
-    stt: { fr: "transcription", en: "transcription" },
-    tts: { fr: "voix", en: "voice" },
-    llm: { fr: "cerveau", en: "brain" },
-    program: { fr: "programme", en: "program" },
-  }[role];
+/** Pourquoi ce modèle ne peut pas être pris maintenant : il ne tient pas dans la machine, ou le disque est trop plein. */
+function unfit(c: Candidate, m: MachineInfo, left: Left, cands: Candidate[]): Text | undefined {
+  const why = misfit(c, m, left, cands);
+  if (why) return why;
+  const need = downloadSize(c, cands);
+  if (m.diskFreeBytes !== undefined && need > 0 && need > m.diskFreeBytes - 2 * GIB) {
+    return join2([T("pas assez de place sur le disque : il faut ", "not enough disk space: needs "), gbText(need + 2 * GIB)]);
+  }
+  return undefined;
+}
+
+/** Code de langue à 2 lettres, en minuscules (« fr », « en »). */
+const langCode = (lang: string): string => lang.slice(0, 2).toLowerCase();
+/** Bonne note d'abord ; langue inconnue avant une mauvaise note (« poor » : conseillé seulement s'il n'y a rien d'autre). */
+const LANG_SCORE: Record<LanguageLevel, number> = { good: 3, fair: 2, poor: 0 };
+const langScore = (c: Candidate, lang: string): number => { const l = c.languages?.[lang]; return l ? LANG_SCORE[l] : 1; };
+
+/**
+ * Le meilleur ordre pour un rôle : la meilleure note pour la langue, puis celui qui demande le plus de mémoire (les petits
+ * sont moins bons), installé d'abord.
+ * Cerveau : un modèle déjà sur la machine (LM Studio, Ollama, déjà téléchargé) passe devant s'il est assez grand, pour ne rien télécharger.
+ */
+function byRank(lang: string) {
+  const have = (c: Candidate) => Number(c.role === "llm" && c.installed && c.needs.memory >= MIN_LOCAL_BRAIN);
+  return (a: Candidate, b: Candidate) => langScore(b, lang) - langScore(a, lang) || have(b) - have(a) || b.needs.memory - a.needs.memory || Number(b.installed) - Number(a.installed);
+}
+
+/** Les modèles d'un rôle qui tiennent, le meilleur d'abord. */
+function fitting(cands: Candidate[], role: Role, m: MachineInfo, left: Left, lang: string): Candidate[] {
+  return cands.filter((c) => c.role === role && !unfit(c, m, left, cands)).sort(byRank(lang));
 }
 
 /** Retire un modèle choisi du budget. Mémoire unifiée : processeur et puce graphique prennent dans la même RAM. */
@@ -254,34 +257,6 @@ function use(c: Candidate, m: MachineInfo, left: Left): void {
   const n = c.needs.memory;
   if (c.needs.device === "cpu") { left.cpu -= n; if (m.memory === "unified") left.gpu -= n; }
   else { left.gpu -= n; if (m.memory === "unified") left.cpu -= n; }
-}
-
-function buildLevel(id: LevelId, m: MachineInfo, cands: Candidate[], clouds: string[]): Level {
-  const voice: Level["voice"] = id === "text" ? "none" : id === "voice" || id === "local" ? "cpu" : "gpu";
-  const brain: Level["brain"] = id === "local" || id === "local-max" ? "local" : "cloud";
-  const left: Left = { gpu: m.modelBytes, cpu: m.cpuBytes };
-  const picks: Candidate[] = [];
-  let reason: Text | undefined;
-  const take = (role: Role, device?: "cpu" | "gpu") => {
-    const r = best(cands, role, device, m, left);
-    if (r.pick) { picks.push(r.pick); use(r.pick, m, left); } else reason ??= r.reason;
-  };
-  take("vad");
-  take("stt");
-  if (voice !== "none") take("tts", voice);
-  // La voix d'abord : sa taille est fixe ; le cerveau prend le plus grand qui tient dans le reste.
-  if (brain === "local") take("llm");
-  else if (!clouds.length) reason ??= T("aucun cerveau dans le cloud : installe Claude Code, Codex ou Antigravity, ou ajoute une clé (Réglages → Cerveau)",
-    "no cloud brain: install Claude Code, Codex or Antigravity, or add a key (Settings → Brain)");
-  // Les programmes à installer (llama.cpp, audio.cpp) passent avant leurs modèles : une ligne par programme.
-  const progs = new Map<string, Candidate>();
-  for (const p of picks) { const fix = programFor(p, cands).fix; if (fix) { const cur = progs.get(fix.source); if (!cur || (cur.backend === "cpu" && fix.backend !== "cpu")) progs.set(fix.source, fix); } }
-  picks.unshift(...progs.values());
-  const downloadBytes = picks.filter((p) => !p.installed).reduce((n, p) => n + p.size, 0);
-  if (!reason && m.diskFreeBytes !== undefined && downloadBytes > m.diskFreeBytes - 2 * GIB) {
-    reason = join2([T("pas assez de place sur le disque : il faut ", "not enough disk space: needs "), gbText(downloadBytes + 2 * GIB)]);
-  }
-  return { id, ...LEVEL_TEXT[id], voice, brain, picks, possible: !reason, ...(reason ? { reason } : {}), downloadBytes };
 }
 
 /**
@@ -304,16 +279,112 @@ export function installSteps(picks: Candidate[], brainReady: boolean): Candidate
   return [...order, rest].filter((s) => s.length);
 }
 
-/** Les niveaux et le conseil : le plus haut niveau possible (un cerveau local trop petit laisse passer le cloud devant). */
-export function planLevels(m: MachineInfo, providers: ProviderSnapshot[], clouds: CloudBrain[], agents: Agent[] = [], offered: Candidate[] = []): Plan {
+/** Valeur d'un modèle dans Selection : `<fournisseur>/<id>` (bibliothèque) ou `<entrée>/<élément>` (voix déjà offerte). */
+const valueOf = (c: Candidate): string => (c.provider ? `${c.provider}/${c.id}` : `${c.source}/${c.uses}`);
+
+/** Le détecteur de parole : le meilleur qui tient (il suit toujours la transcription). */
+function pickVad(cands: Candidate[], m: MachineInfo, lang = "fr"): Candidate | undefined {
+  return fitting(cands, "vad", m, { gpu: m.modelBytes, cpu: m.cpuBytes }, lang)[0];
+}
+
+/** Les programmes à installer (llama.cpp, audio.cpp) pour ces modèles : un par plugin, la version qui sert la puce graphique si l'un d'eux le demande. */
+function programsFor(models: Candidate[], cands: Candidate[]): Candidate[] {
+  const progs = new Map<string, Candidate>();
+  for (const p of models) {
+    const fix = programFor(p, cands).fix;
+    if (!fix) continue;
+    const cur = progs.get(fix.source);
+    if (!cur || (cur.backend === "cpu" && fix.backend !== "cpu")) progs.set(fix.source, fix);
+  }
+  return [...progs.values()];
+}
+
+/**
+ * Les choix par rôle et le conseil. Écoute d'abord (détecteur + transcription conseillée), puis la voix, puis le cerveau dans
+ * ce qui reste : les trois conseillés tiennent ensemble (processeur et puce graphique prennent dans la même RAM sur une
+ * mémoire unifiée). Voix et transcription : la meilleure note pour `language`, puis le plus gros qui tient.
+ * Cerveau : un modèle local d'au moins MIN_LOCAL_BRAIN s'il tient ; sinon un cerveau cloud utilisable.
+ */
+export function planChoices(
+  m: MachineInfo, providers: ProviderSnapshot[], clouds: CloudBrain[], agents: Agent[] = [], offered: Candidate[] = [], language = "fr",
+): Plan {
+  const lang = langCode(language);
   const cands = [...candidates(providers), ...offered];
   const usable = usableBrains(clouds, agents);
-  const levels = LEVELS.map((id) => buildLevel(id, m, cands, usable));
-  const ok = levels.filter((l) => l.possible);
-  const good = (l: Level) => l.brain === "cloud" || !usable.length || (l.picks.find((p) => p.role === "llm")?.needs.memory ?? 0) >= MIN_LOCAL_BRAIN;
-  const recommended = [...ok].reverse().find(good)?.id ?? ok.at(-1)?.id ?? "text";
+  const afterVad: Left = { gpu: m.modelBytes, cpu: m.cpuBytes };
+  const vad = fitting(cands, "vad", m, afterVad, lang)[0];
+  if (vad) use(vad, m, afterVad);
+  const stt = fitting(cands, "stt", m, afterVad, lang)[0];
+  const listen: Left = { ...afterVad };
+  if (stt) use(stt, m, listen);
+
+  // Cerveau dans ce qui reste : local s'il est assez grand (ou s'il n'y a pas de cloud), sinon cloud.
+  const brainIn = (left: Left): { value: string; local?: Candidate } | undefined => {
+    const local = fitting(cands, "llm", m, left, lang)[0];
+    if (local && (local.needs.memory >= MIN_LOCAL_BRAIN || !usable.length)) return { value: valueOf(local), local };
+    return usable[0] ? { value: usable[0] } : undefined;
+  };
+  // La voix : la mieux notée qui laisse un cerveau ; à défaut, la mieux notée seule.
+  const voices = fitting(cands, "tts", m, listen, lang);
+  let tts: Candidate | undefined;
+  let brain: { value: string; local?: Candidate } | undefined;
+  let settled = false;
+  for (const v of [...voices, undefined]) {
+    const left: Left = { ...listen };
+    if (v) use(v, m, left);
+    const b = brainIn(left);
+    if (b) { tts = v; brain = b; settled = true; break; }
+  }
+  if (!settled) tts = voices[0];
+
+  const recommended: Selection = {
+    ...(brain ? { brain: brain.value } : {}),
+    ...(stt ? { stt: valueOf(stt) } : {}),
+    tts: tts ? valueOf(tts) : NO_VOICE,
+  };
+
+  const models = (role: ChoiceRole, left: Left): Choice[] => {
+    const list = cands.filter((c) => c.role === ROLE_OF[role]).sort(byRank(lang));
+    const fits = (c: Candidate) => !unfit(c, m, left, cands);
+    // Ceux qui tiennent d'abord, chacun dans l'ordre de préférence.
+    return [...list.filter(fits), ...list.filter((c) => !fits(c))].map((c): Choice => {
+      const reason = unfit(c, m, left, cands);
+      const value = valueOf(c);
+      return {
+        value, kind: c.provider ? "local" : "offered", label: c.label, ...(c.description ? { description: c.description } : {}),
+        fits: !reason, ...(reason ? { reason } : {}), installed: c.installed, size: downloadSize(c, cands), device: c.needs.device,
+        ...(c.languages?.[lang] ? { language: c.languages[lang] } : {}), ...(c.sample ? { sample: c.sample } : {}),
+        recommended: value === recommended[role],
+      };
+    });
+  };
+  const cloudChoices: Choice[] = [
+    ...clouds.map((c): Choice => {
+      const agent = agents.find((a) => a.plugin === c.plugin);
+      const missing = c.found === false;
+      return {
+        value: c.value, kind: "cloud", label: c.label, fits: !missing,
+        ...(missing ? { reason: agent ? T(`${agent.program} est introuvable`, `${agent.program} cannot be found`) : T("son programme est introuvable", "its program cannot be found") } : {}),
+        installed: true, size: 0, recommended: c.value === recommended.brain,
+      };
+    }),
+    ...agents.filter((a) => a.found && !a.entries.length && a.section === "cerveau").map((a): Choice => ({
+      value: ADD_PREFIX + a.plugin, kind: "cloud", label: a.label,
+      description: T("Trouvé sur la machine : sera ajouté à Floppy.", "Found on this computer: it will be added to Floppy."),
+      fits: true, installed: false, size: 0, recommended: ADD_PREFIX + a.plugin === recommended.brain,
+    })),
+  ];
+  const first = (list: Choice[]) => [...list.filter((c) => c.recommended), ...list.filter((c) => !c.recommended)];
+  const choices: Record<ChoiceRole, Choice[]> = {
+    brain: first([...models("brain", listen), ...cloudChoices]),
+    stt: first(models("stt", afterVad)),
+    tts: first([...models("tts", listen), {
+      value: NO_VOICE, kind: "none", label: T("Pas de voix (réponses écrites)", "No voice (written replies)"),
+      fits: true, installed: true, size: 0, recommended: recommended.tts === NO_VOICE,
+    }]),
+  };
   return {
-    machine: m, summary: machineSummary(m), levels, recommended, cloudBrains: clouds, agents,
+    machine: m, summary: machineSummary(m), language: lang, choices, recommended, cloudBrains: clouds, agents,
     ...(usable[0] ? { brain: usable[0] } : {}), candidates: cands,
   };
 }
@@ -340,6 +411,10 @@ export interface OnboardingDeps {
   change(key: string, value: unknown): Promise<{ ok: boolean; text: Text }>;
   onItems(fn: () => void): () => void;
   machine(fresh?: boolean): Promise<MachineInfo>;
+  /** Langue de l'assistant (`assistant.language`) : celle pour laquelle le conseil est calculé. */
+  language(): string;
+  /** Change la langue de l'assistant, par le même chemin que les Réglages (les plugins redémarrent). */
+  setLanguage(lang: string): Promise<{ ok: boolean; text: Text }>;
   borrowLlm(value: string): Promise<{ service: MeasuredLlm; release(): void } | undefined>;
   /** Attend que le noyau ait fini ses changements (éléments ajoutés → slots recalculés). */
   idle(): Promise<void>;
@@ -352,16 +427,19 @@ export type RowState = "waiting" | "downloading" | "ready" | "error";
 export interface OnboardingRow { key: string; role: Role; label: Text; state: RowState; progress?: number; text?: Text }
 export interface OnboardingState {
   phase: "idle" | "installing" | "testing" | "done" | "error";
-  level?: LevelId;
+  selection?: Selection;
   rows: OnboardingRow[];
-  /** Phrases à montrer (ce qui vient de s'activer, descente de niveau, vitesse mesurée, fin). */
+  /** Phrases à montrer (ce qui vient de s'activer, descente vers un plus petit modèle, vitesse mesurée, fin). */
   notes: Text[];
   speed?: number;
   /** Floppy répond déjà (un cerveau est réglé) : le reste arrive en fond. */
   live?: boolean;
 }
-/** `level` sans `done` : une installation coupée (Floppy fermé), reprise au démarrage. */
-export interface OnboardingFile { done: boolean; level?: LevelId; brain?: string; skipped?: boolean; at?: string }
+/** `selection` sans `done` : une installation coupée (Floppy fermé), reprise au démarrage. */
+export interface OnboardingFile { done: boolean; selection?: Selection; skipped?: boolean; at?: string }
+
+/** Comment lire la machine pour le plan. */
+export interface PlanOptions { fresh?: boolean; manualBytes?: number }
 
 const rowKey = (c: Candidate) => `${c.provider}/${c.id}`;
 
@@ -370,6 +448,13 @@ export class Onboarding {
   private plan_: Plan | undefined;
   private st: OnboardingState = { phase: "idle", rows: [], notes: [] };
   private readonly listeners = new Set<(s: OnboardingState) => void>();
+  /** Écoute lancée en avance (`prepareListening`) : ce qui est demandé, et son téléchargement. */
+  private listening: { keys: Set<string>; done: Promise<Candidate[] | undefined> } | undefined;
+  private preparing: Promise<void> | undefined;
+  /** Transcription choisie par `apply` : celle qui prend le slot, même si une autre arrive plus tard. */
+  private chosenStt: string | undefined;
+  /** Blocs d'écoute déjà branchés (une seule fois, une seule phrase). */
+  private readonly activated = new Set<string>();
 
   constructor(deps: OnboardingDeps) { this.deps = deps; }
 
@@ -391,35 +476,99 @@ export class Onboarding {
   /** Installation coupée (Floppy fermé pendant les téléchargements) : la reprend. Rien à reprendre : false. */
   async resume(): Promise<boolean> {
     const f = this.read();
-    if (!f || f.done || !f.level || this.st.phase !== "idle") return false;
+    if (!f || f.done || !f.selection || this.st.phase !== "idle") return false;
     await this.plan();
-    return this.apply(f.level, f.brain ? { brain: f.brain } : {}).ok;
+    return this.apply(f.selection).ok;
   }
   onState(fn: (s: OnboardingState) => void): () => void { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
   private emit(): void { const s = { ...this.st, rows: this.st.rows.map((r) => ({ ...r })), notes: [...this.st.notes] }; for (const fn of this.listeners) fn(s); }
 
-  /** Lit la machine et calcule les niveaux. `manualBytes` : mémoire choisie à la main (rien n'a été lu). */
-  async plan(opts: { fresh?: boolean; manualBytes?: number } = {}): Promise<Plan> {
+  /** Lit la machine et calcule les choix et le conseil. `manualBytes` : mémoire choisie à la main (rien n'a été lu). */
+  async plan(opts: PlanOptions = {}): Promise<Plan> {
     let m = await this.deps.machine(opts.fresh);
     if (opts.manualBytes !== undefined) m = withManualMemory(m, opts.manualBytes);
     const agents = this.deps.agents();
     const settings = this.deps.settings();
     const snap = await this.deps.snapshot();
-    this.plan_ = planLevels(m, snap, cloudBrains(settings, agents, this.deps.entries()), agents, offeredVoices(settings, snap));
+    this.plan_ = planChoices(m, snap, cloudBrains(settings, agents, this.deps.entries()), agents, offeredVoices(settings, snap), this.deps.language());
     return this.plan_;
   }
 
-  /** Installe un niveau (rend la main tout de suite ; l'avancement passe par onState). */
-  apply(level: LevelId, opts: { brain?: string } = {}): { ok: boolean; text: Text } {
-    if (this.st.phase === "installing" || this.st.phase === "testing") return { ok: false, text: T("Une installation est déjà en cours.", "An installation is already running.") };
-    const plan = this.plan_;
-    const l = plan?.levels.find((x) => x.id === level);
-    if (!plan || !l) return { ok: false, text: T("Niveau inconnu : relis la machine.", "Unknown level: read the machine again.") };
-    const brain = opts.brain ?? plan.brain;
-    const steps = installSteps(l.picks, !!brain && (l.brain === "cloud" || l.picks.some((p) => p.role === "llm")));
-    this.st = { phase: "installing", level, rows: steps.flat().map((p) => ({ key: rowKey(p), role: p.role, label: p.label, state: "waiting" })), notes: [] };
+  /** Change la langue de l'assistant (comme dans les Réglages), puis recalcule le plan : le conseil dépend de la langue. */
+  async setLanguage(lang: string, opts: PlanOptions = {}): Promise<{ ok: boolean; text: Text; plan?: Plan }> {
+    const r = await this.deps.setLanguage(lang);
+    if (!r.ok) return r;
+    await this.deps.idle();
+    return { ...r, plan: await this.plan(opts) };
+  }
+
+  /** Le candidat d'un choix du plan (modèle de bibliothèque ou voix déjà offerte). */
+  private candidateOf(plan: Plan, role: ChoiceRole, value: string): Candidate | undefined {
+    return plan.candidates.find((c) => c.role === ROLE_OF[role] && valueOf(c) === value);
+  }
+
+  /**
+   * Écoute en avance : télécharge tout de suite le détecteur de parole et la transcription conseillée (avec leur programme), sans
+   * attendre `apply`, puis règle leurs slots quand ils sont prêts. Rend la main une fois lancé (l'avancement passe par les lignes
+   * de l'état). Sans effet la seconde fois. Si `apply` choisit une autre transcription, c'est elle qui prend le slot.
+   */
+  prepareListening(): Promise<void> {
+    return (this.preparing ??= this.startListening().catch(() => { this.preparing = undefined; }));
+  }
+
+  private async startListening(): Promise<void> {
+    const plan = this.plan_ ?? await this.plan();
+    const stt = plan.recommended.stt ? this.candidateOf(plan, "stt", plan.recommended.stt) : undefined;
+    const vad = pickVad(plan.candidates, plan.machine, plan.language);
+    const models = [vad, stt].filter((c): c is Candidate => !!c);
+    if (!models.length) return;
+    const picks = [...programsFor(models, plan.candidates), ...models];
+    for (const p of picks) if (!this.st.rows.some((r) => r.key === rowKey(p))) this.st.rows.push({ key: rowKey(p), role: p.role, label: p.label, state: "waiting" });
     this.emit();
-    void this.run(plan, l, brain, steps).catch((e) => {
+    const done = this.install(picks).then(async (got) => {
+      if (!got) return undefined;
+      await this.deps.idle();
+      await this.activate(got, undefined);
+      return got;
+    }).catch(() => undefined);
+    this.listening = { keys: new Set(picks.map(rowKey)), done };
+  }
+
+  /** Installe la sélection (rend la main tout de suite ; l'avancement passe par onState). */
+  apply(selection: Selection): { ok: boolean; text: Text } {
+    if (this.st.phase === "installing" || this.st.phase === "testing") return { ok: false, text: T("Une installation est déjà en cours.", "An installation is already running.") };
+    const unknown = { ok: false, text: T("Choix inconnu : relis la machine.", "Unknown choice: read the machine again.") };
+    const plan = this.plan_;
+    if (!plan) return unknown;
+    const find = (role: ChoiceRole, value: string | undefined) => (value === undefined ? undefined : plan.choices[role].find((c) => c.value === value));
+    const sttChoice = find("stt", selection.stt);
+    const ttsChoice = selection.tts === undefined || selection.tts === NO_VOICE ? undefined : find("tts", selection.tts);
+    const brainChoice = find("brain", selection.brain);
+    if ((selection.stt !== undefined && !sttChoice) || (selection.tts !== undefined && selection.tts !== NO_VOICE && !ttsChoice) || (selection.brain !== undefined && !brainChoice)) return unknown;
+    const sttC = sttChoice ? this.candidateOf(plan, "stt", sttChoice.value) : undefined;
+    const ttsC = ttsChoice ? this.candidateOf(plan, "tts", ttsChoice.value) : undefined;
+    const localC = brainChoice?.kind === "local" ? this.candidateOf(plan, "brain", brainChoice.value) : undefined;
+    if ((sttChoice && !sttC) || (ttsChoice && !ttsC) || (brainChoice?.kind === "local" && !localC)) return unknown;
+    // Le cerveau cloud choisi, sinon celui qui répond en attendant le cerveau local.
+    const cloudValue = brainChoice?.kind === "cloud" ? brainChoice.value : localC ? plan.brain : undefined;
+    const vad = sttC ? pickVad(plan.candidates, plan.machine, plan.language) : undefined;
+    const models = [vad, sttC, ttsC, localC].filter((c): c is Candidate => !!c);
+    const picks = [...programsFor(models, plan.candidates), ...models];
+    const steps = installSteps(picks, !!cloudValue);
+    const keep = this.st.phase === "idle" ? this.st : undefined;
+    this.chosenStt = sttC ? rowKey(sttC) : undefined;
+    // Les lignes de l'écoute en avance gardent leur avancement ; celles d'un téléchargement qu'on ne garde pas mais qui court encore restent montrées.
+    const old = this.st.rows;
+    const rows = steps.flat().map((p) => ({ ...(old.find((r) => this.listening?.keys.has(r.key) && r.key === rowKey(p)) ?? { key: rowKey(p), role: p.role, label: p.label, state: "waiting" as RowState }) }));
+    for (const r of old) if (this.listening?.keys.has(r.key) && !rows.some((x) => x.key === r.key)) rows.push({ ...r });
+    this.st = {
+      phase: "installing", selection: { ...selection },
+      rows,
+      notes: keep ? [...keep.notes] : [],
+      ...(keep?.live ? { live: true } : {}),
+    };
+    this.emit();
+    void this.run(plan, { ...selection }, localC, cloudValue, ttsC, steps).catch((e) => {
       this.st.phase = "error";
       this.st.notes.push(e instanceof Error ? T(`Échec : ${e.message}`, `Failed: ${e.message}`) : T("Échec.", "Failed."));
       this.emit();
@@ -431,14 +580,12 @@ export class Onboarding {
    * Floppy marche tout de suite avec le minimum (réponses écrites, cerveau cloud s'il y en a un), puis chaque bloc
    * s'active dès qu'il est téléchargé : l'écoute d'abord, puis la voix et le cerveau local.
    */
-  private async run(plan: Plan, l: Level, brain: string | undefined, steps: Candidate[][]): Promise<void> {
+  private async run(plan: Plan, selection: Selection, local: Candidate | undefined, cloudValue: string | undefined, tts: Candidate | undefined, steps: Candidate[][]): Promise<void> {
     // Noté avant les téléchargements : Floppy fermé en route, l'installation reprend au démarrage.
-    this.write({ done: false, level: l.id, ...(brain ? { brain } : {}) });
-    const local = l.picks.find((p) => p.role === "llm");
-    const cloud = brain && (l.brain === "cloud" || local) ? await this.cloudBrain(plan, brain) : undefined;
+    this.write({ done: false, selection });
+    const cloud = cloudValue ? await this.cloudBrain(plan, cloudValue) : undefined;
     // Pas de voix, ou une voix à télécharger : réponses écrites en attendant.
-    const tts = l.picks.find((p) => p.role === "tts");
-    if (!tts || tts.provider) await this.setSlot(ROLE_SLOT.tts, "@none");
+    if (!tts || tts.provider) await this.setSlot(ROLE_SLOT.tts, NO_VOICE);
     if (cloud) {
       await this.setSlot(ROLE_SLOT.llm, cloud);
       this.st.live = true;
@@ -450,33 +597,59 @@ export class Onboarding {
     this.emit();
     let failed = false;
     for (const step of steps) {
-      const got = await this.install(step);
+      const got = await this.installStep(step);
       if (!got) { failed = true; continue; }
       await this.deps.idle();
-      await this.activate(plan, got, cloud);
+      await this.activate(got, cloud, plan, local);
     }
     if (failed) {
       // Pas marqué fini : au prochain démarrage, l'installation reprend (les blocs déjà là sont prêts tout de suite).
       this.st.phase = "error";
-      this.st.notes.push(T("Un téléchargement a échoué : Floppy marche avec le reste. Il réessaiera au prochain démarrage, ou choisis un autre niveau.",
-        "A download failed: Floppy works with the rest. It will try again at the next start, or choose another level."));
+      this.st.notes.push(T("Un téléchargement a échoué : Floppy marche avec le reste. Il réessaiera au prochain démarrage, ou choisis d'autres modèles.",
+        "A download failed: Floppy works with the rest. It will try again at the next start, or choose other models."));
       this.emit();
       return;
     }
-    this.write({ done: true, level: l.id, at: new Date().toISOString() });
+    this.write({ done: true, selection, at: new Date().toISOString() });
     this.st.phase = "done";
     this.st.notes.push(T("Tout est installé.", "Everything is installed."));
     this.emit();
   }
 
+  /** Un bloc : ce que l'écoute en avance télécharge déjà n'est pas redemandé (on attend la fin de ce téléchargement). */
+  private async installStep(step: Candidate[]): Promise<Candidate[] | undefined> {
+    const pre = this.listening;
+    const early = pre ? step.filter((p) => pre.keys.has(rowKey(p))) : [];
+    const rest = step.filter((p) => !early.includes(p));
+    let got: Candidate[] | undefined = [];
+    if (early.length) {
+      const done = await pre!.done;
+      // L'écoute en avance a échoué : on réessaie ici.
+      got = done && early.every((p) => done.some((g) => rowKey(g) === rowKey(p))) ? early.map((p) => done.find((g) => rowKey(g) === rowKey(p))!) : await this.install(early);
+    }
+    const more = got && rest.length ? await this.install(rest) : [];
+    if (!got || !more) return undefined;
+    const all = [...got, ...more];
+    return step.map((p) => all.find((g) => rowKey(g) === rowKey(p))!);
+  }
+
   /** Branche un bloc qui vient d'arriver (son slot) et le dit. Le cerveau local passe d'abord le test de vitesse. */
-  private async activate(plan: Plan, got: Candidate[], cloud: string | undefined): Promise<void> {
+  private async activate(got: Candidate[], cloud: string | undefined, plan?: Plan, local?: Candidate): Promise<void> {
+    let heard = false;
     for (const p of got) {
       if (p.role === "program") continue;
-      if (p.role === "llm") await this.localBrain(plan, p, cloud);
-      else await this.setSlot(ROLE_SLOT[p.role], `${p.source}/${p.uses}`);
+      if (p.role === "llm") { if (plan && local) await this.localBrain(plan, p, cloud); continue; }
+      const key = rowKey(p);
+      if (p.role === "vad" || p.role === "stt") {
+        if (this.activated.has(key)) continue;
+        // Une transcription que l'utilisateur n'a pas gardée ne prend pas le slot de celle qu'il a choisie.
+        if (p.role === "stt" && this.chosenStt !== undefined && this.chosenStt !== key) continue;
+        this.activated.add(key);
+        if (p.role === "stt") heard = true;
+      }
+      await this.setSlot(ROLE_SLOT[p.role], `${p.source}/${p.uses}`);
     }
-    if (got.some((p) => p.role === "stt")) this.st.notes.push(T("Floppy t'entend : tu peux lui parler.", "Floppy hears you: you can talk to it."));
+    if (heard) this.st.notes.push(T("Floppy t'entend : tu peux lui parler.", "Floppy hears you: you can talk to it."));
     const voice = got.find((p) => p.role === "tts");
     if (voice) this.st.notes.push(join2([T("Floppy parle maintenant avec la voix ", "Floppy now speaks with the voice "), voice.label, T(".", ".")]));
     this.emit();
@@ -677,6 +850,8 @@ export function onboardingFor(kernel: Kernel): Onboarding {
     change: (key, value) => kernel.settings.change(key, value, "ui"),
     onItems: (fn) => kernel.items.onChange(fn),
     machine: (fresh) => kernel.machine(fresh),
+    language: () => kernel.assistantSettings.language,
+    setLanguage: (lang) => kernel.settings.change("langue_assistant", lang, "ui"),
     borrowLlm: (value) => kernel.borrowItem<MeasuredLlm>("llm", value),
     idle: () => kernel.idle(),
   });

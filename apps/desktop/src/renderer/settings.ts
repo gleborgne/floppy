@@ -117,6 +117,7 @@ function updateSettings(d: SettingsSnapshot | null | undefined): void {
   S.settings = { list: d.list ?? [], plugins: d.plugins ?? [], slots: d.slots ?? [] };
   S.sections = d.sections ?? [];
   render();
+  refreshDialog(); // la fenêtre ouverte suit aussi (les étiquettes de langue de la bibliothèque)
 }
 
 /** « Ouvre les réglages d'Orca » : page demandée, montrée dès que l'élément est connu (10 s au plus). */

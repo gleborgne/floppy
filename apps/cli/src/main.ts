@@ -161,9 +161,10 @@ async function main(): Promise<number> {
   }
 }
 
-/** `floppy machine` : ce que Floppy lit de la machine ; avec le noyau qui tourne, les niveaux du premier lancement aussi. */
+/** `floppy machine` : ce que Floppy lit de la machine ; avec le noyau qui tourne, les choix du premier lancement aussi. */
 async function machine(): Promise<number> {
-  let plan: { machine: MachineInfo; levels: { id: string; label: Text; possible: boolean; reason?: Text; picks: { label: Text }[] }[]; recommended: string; agents: { label: Text; program: string; found: boolean }[] } | undefined;
+  interface PlanChoice { value: string; label: Text; fits: boolean; reason?: Text; recommended: boolean; language?: string }
+  let plan: { machine: MachineInfo; language: string; choices: Record<"brain" | "stt" | "tts", PlanChoice[]>; agents: { label: Text; program: string; found: boolean }[] } | undefined;
   try {
     const r = await controlCall(home, "GET", "/onboarding");
     if (r.status === 200) plan = r.data;
@@ -179,12 +180,16 @@ async function machine(): Promise<number> {
   const agents = plan?.agents ?? [["Claude Code", "claude"], ["Codex", "codex"], ["Antigravity", "agy"]].map(([label, program]) => ({ label: label!, program: program!, found: !!findExe(program!) }));
   console.log(say("Programmes de cerveau :", "Brain programs:"));
   for (const a of agents) console.log(`  ${a.found ? "●" : "○"} ${tr(a.label, lang)} (${a.program})${a.found ? "" : say(" : pas installé", ": not installed")}`);
-  if (!plan) { console.log(say("Niveaux : lancez d'abord le noyau (floppy start).", "Levels: start the kernel first (floppy start).")); return 0; }
-  console.log(say("Niveaux :", "Levels:"));
-  for (const l of plan.levels) {
-    const mark = l.id === plan.recommended ? "★" : l.possible ? "●" : "✖";
-    const detail = l.possible ? l.picks.map((p) => tr(p.label, lang)).join(" · ") : tr(l.reason ?? "", lang);
-    console.log(`  ${mark} ${tr(l.label, lang)} — ${detail}`);
+  if (!plan) { console.log(say("Choix : lancez d'abord le noyau (floppy start).", "Choices: start the kernel first (floppy start).")); return 0; }
+  console.log(say(`Choix du premier lancement (langue de l'assistant : ${plan.language}) :`, `First-run choices (assistant language: ${plan.language}):`));
+  const roles: ["brain" | "stt" | "tts", string, string][] = [["brain", "Cerveau", "Brain"], ["stt", "Écoute", "Listening"], ["tts", "Voix", "Voice"]];
+  for (const [role, fr, en] of roles) {
+    console.log(`  ${say(fr, en)} :`);
+    for (const c of plan.choices[role]) {
+      const mark = c.recommended ? "★" : c.fits ? "●" : "✖";
+      const note = c.fits ? (c.language ? ` [${c.language}]` : "") : ` — ${tr(c.reason ?? "", lang)}`;
+      console.log(`    ${mark} ${tr(c.label, lang)}${note}`);
+    }
   }
   return 0;
 }

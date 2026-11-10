@@ -47,6 +47,8 @@ interface ProviderItem {
   kind?: string; values?: Record<string, unknown>; toggleable?: boolean; removable?: boolean; editable?: boolean; cloud?: boolean;
   group?: ItemGroup; actions?: ItemAction[]; tags?: KText[]; children?: ItemChild[]; childrenLabel?: KText; section?: string;
   settings?: string[]; logo?: string;
+  /** Modèle à télécharger : sa note par langue (« fr » → good / fair / poor) ; langue absente : inconnue. */
+  languages?: Record<string, string>;
 }
 interface ProviderCaps {
   add?: boolean; update?: boolean; remove?: boolean; enable?: boolean; child?: boolean; test?: boolean; action?: boolean; search?: boolean;

@@ -23,23 +23,43 @@ interface DocEntry { id: string; title: string; date: string; tags: string[] }
 interface DocsShow { id?: string; title?: string; html?: string; lang?: string; entries?: DocEntry[] }
 
 // ---- Fenêtre Bienvenue
-interface OnboardingRow { state: string; progress?: number; text?: AppText; label?: AppText; role: string }
+interface OnboardingRow { key?: string; state: string; progress?: number; text?: AppText; label?: AppText; role: string }
 /** Avancement de l'installation de départ. */
 interface OnboardingState { phase: string; rows: OnboardingRow[]; notes: AppText[]; live?: boolean }
 interface OnboardingMachine {
   gpu?: { name: string } | null; memory?: string; modelBytes?: number; ramBytes?: number; diskFreeBytes?: number;
   sources?: unknown[];
 }
-interface OnboardingLevel {
-  id: string; label?: AppText; description?: AppText; possible: boolean; reason?: AppText; downloadBytes: number;
-  brain?: string; picks: { label?: AppText }[];
+/** Un modèle (ou cerveau, ou « pas de voix ») à choisir pour un rôle : voir `Choice` de @floppy/setup. */
+interface OnboardingChoice {
+  value: string; kind: "local" | "cloud" | "offered" | "none"; label?: AppText; description?: AppText; fits: boolean; reason?: AppText;
+  installed: boolean; size: number; device?: string; language?: string; sample?: string; recommended: boolean;
 }
+type OnboardingRole = "brain" | "stt" | "tts";
+/** Le choix de chaque rôle (la `value` d'un `OnboardingChoice`). */
+interface OnboardingSelection { brain?: string; stt?: string; tts?: string }
 interface OnboardingCloudBrain { value: string; label?: AppText; found?: boolean }
 interface OnboardingAgent { plugin: string; label?: AppText; found?: boolean; entries: unknown[]; section?: string }
 interface OnboardingPlan {
-  machine: OnboardingMachine; levels: OnboardingLevel[]; recommended?: string; brain?: string | null; lang?: string;
+  machine: OnboardingMachine; summary?: AppText;
+  /** Langue de l'assistant (fr, en) pour laquelle le conseil est calculé. */
+  language: string;
+  choices: Record<OnboardingRole, OnboardingChoice[]>; recommended: OnboardingSelection;
+  brain?: string | null; lang?: string;
   cloudBrains: OnboardingCloudBrain[]; agents?: OnboardingAgent[]; home?: string; state?: OnboardingState | null;
+  /** Aperçu de l'avatar affiché (adresse data:image/…), s'il y en a un. */
+  avatar?: string;
 }
+/** Une façon d'appeler Floppy : mot d'activation et raccourci clavier. Réglage absent : null. */
+interface OnboardingWays {
+  /** Mot d'activation : allumé, et la valeur à remettre pour l'allumer. */
+  wake: { on: boolean; value: string; fallback: string } | null;
+  /** Raccourci « Parler » : écrit `Ctrl+Alt+…`, vide s'il est désactivé ; `fallback` : le raccourci par défaut. */
+  talk: { keys: string; fallback: string } | null;
+}
+/** Un connecteur que la fenêtre peut allumer ou éteindre (catalogue, op « enable »). */
+interface OnboardingTool { id: string; label?: AppText; detail?: AppText; enabled: boolean; toggleable: boolean }
+interface OnboardingExtras { ways: OnboardingWays; tools: { provider: string; items: OnboardingTool[] } }
 /** Réponse du noyau à une demande de la fenêtre Bienvenue. */
 interface OnboardingReply<T = unknown> { ok?: boolean; canceled?: boolean; text?: AppText; value?: T }
 

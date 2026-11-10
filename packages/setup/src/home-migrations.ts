@@ -43,8 +43,26 @@ const onboardingLevel: MigrationStep = {
   },
 };
 
+/**
+ * Étape 3. Premier lancement (`<home>/onboarding.json`) : les niveaux disparaissent au profit d'un choix de modèle par rôle
+ * (`selection`). `level` (et `brain`, qui vivait à côté) n'ont pas de valeur équivalente sans lire la machine : ils sont retirés.
+ * Une installation coupée (`done: false`) n'est donc pas reprise toute seule : la fenêtre « Bienvenue » revient, et l'utilisateur choisit.
+ */
+const onboardingSelection: MigrationStep = {
+  id: "onboarding-selection",
+  version: 3,
+  label: "premier lancement : les niveaux (`level`, `brain`) laissent place au choix par rôle (`selection`)",
+  run(env) {
+    env.editJson("onboarding.json", (data) => {
+      const keys = ["level", "brain"].filter((k) => Object.hasOwn(data, k));
+      for (const k of keys) delete data[k];
+      return keys;
+    });
+  },
+};
+
 /** Toutes les étapes, dans l'ordre. */
-export const HOME_MIGRATIONS: readonly MigrationStep[] = [documentTitle, onboardingLevel];
+export const HOME_MIGRATIONS: readonly MigrationStep[] = [documentTitle, onboardingLevel, onboardingSelection];
 
 /** Passe les étapes en attente sur ce répertoire de travail (au démarrage, ou `floppy migrate`). Ne lève jamais. */
 export function migrateHome(home: string, opts: MigrationOptions = {}): MigrationReport[] {

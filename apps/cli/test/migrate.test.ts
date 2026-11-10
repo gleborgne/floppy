@@ -33,6 +33,8 @@ describe("floppy migrate", () => {
       "  documents/a.md : titre",
       "[onboarding-level] premier lancement : les niveaux « texte / voix / hybride » deviennent « text / voice / hybrid » — 1 fichier(s) à modifier",
       "  onboarding.json : level",
+      "[onboarding-selection] premier lancement : les niveaux (`level`, `brain`) laissent place au choix par rôle (`selection`) — 1 fichier(s) à modifier",
+      "  onboarding.json : level",
       "Rien n'a été modifié. Pour appliquer (après une sauvegarde du dossier) : floppy migrate --apply",
     ]);
     expect(r.lines.join("\n")).not.toMatch(/hybride"|secret-body|Veille du jour/);
@@ -47,9 +49,9 @@ describe("floppy migrate", () => {
     expect(r.lines.at(-1)).toBe("Done: 1 file(s) changed. Originals are kept next to them (*.bak-<step>).");
     expect(readFileSync(join(home, "documents", "a.md"), "utf8")).toBe(OLD_DOC.replace("titre:", "title:"));
     expect(readFileSync(join(home, "documents", "a.md.bak-documents-title"), "utf8")).toBe(OLD_DOC);
-    expect(Object.keys(readMigrationMarker(home).applied)).toEqual(["documents-title", "onboarding-level"]);
+    expect(Object.keys(readMigrationMarker(home).applied)).toEqual(["documents-title", "onboarding-level", "onboarding-selection"]);
     const again = migrateCommand(home, {}, say);
-    expect(again.lines.slice(1, 3)).toEqual(["[documents-title] déjà faite", "[onboarding-level] déjà faite"]);
+    expect(again.lines.slice(1, 4)).toEqual(["[documents-title] déjà faite", "[onboarding-level] déjà faite", "[onboarding-selection] déjà faite"]);
     expect(again.lines.at(-1)).toBe("Rien à faire.");
   });
 

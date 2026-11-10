@@ -4,7 +4,7 @@
 // Voir docs/spec/telechargements.md.
 import { readdirSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { safeJoin, T, tr, type Context, type ItemInfo, type ModelNeeds, type OpResult, type DownloadFile, type DownloadState, type Text } from "@floppy/core";
+import { safeJoin, T, tr, type Context, type ItemInfo, type ModelNeeds, type LanguageSupport, type OpResult, type DownloadFile, type DownloadState, type Text } from "@floppy/core";
 
 export interface LibraryEntry {
   /** Unique dans la bibliothèque (lettres, chiffres, « - _ . / »). Sert aussi de clé de téléchargement. */
@@ -22,6 +22,8 @@ export interface LibraryEntry {
   service?: string;
   /** Ce qu'il demande pour tourner (mémoire, processeur ou puce graphique). Lu par le premier lancement. */
   needs?: ModelNeeds;
+  /** Sa note par langue (« fr », « en »…) : lue par le premier lancement pour conseiller selon la langue de l'assistant. Langue absente : inconnue. */
+  languages?: LanguageSupport;
 }
 
 export interface LibraryOptions {
@@ -96,6 +98,8 @@ export function modelLibrary(ctx: Context, opts: LibraryOptions): { refresh(): v
       id: e.id, label: e.label, enabled: true, tags,
       ...(e.description ? { detail: e.description } : {}),
       ...(e.needs ? { needs: e.needs } : {}),
+      ...(e.languages ? { languages: e.languages } : {}),
+      ...(e.sample ? { sample: e.sample } : {}),
       ...(size !== undefined ? { size } : {}),
       ...(service ? { service } : {}),
     };

@@ -13,6 +13,7 @@ const R = resolve(here, "../src/renderer");
 type Any = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 let DEMO: Any;
 let pushItems: (d: Any) => void = () => {};
+let pushSettings: (d: Any) => void = () => {};
 const itemOp = vi.fn(async () => ({ ok: true, text: "ok" }));
 
 const flush = async () => { for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0)); };
@@ -33,7 +34,7 @@ beforeAll(async () => {
   (window as Any).floppySettings = {
     get: async () => structuredClone(DEMO.settings),
     items: async () => structuredClone(DEMO.items),
-    onUpdate: () => {}, onItems: (cb: Any) => { pushItems = cb; }, onFocus: () => {}, onOnboarding: () => {},
+    onUpdate: (cb: Any) => { pushSettings = cb; }, onItems: (cb: Any) => { pushItems = cb; }, onFocus: () => {}, onOnboarding: () => {},
     onboardingState: async () => null,
     set: async () => ({ ok: true, text: "" }), itemOp, undo: async () => ({ ok: true }),
   };
@@ -68,6 +69,41 @@ describe("fenêtre des réglages (Preact)", () => {
     for (const tab of tabs) { tab.click(); await flush(); notes.push(...[...document.querySelectorAll("#content .srow .rd")].map((e) => e.textContent ?? "")); }
     expect(notes.some((n) => n.endsWith(" · Joue les émotions"))).toBe(true); // jointe au détail de la voix
     expect(notes.some((n) => n.includes("il faut un modèle v3 ou v4"))).toBe(true);
+  });
+
+  it("la bibliothèque de modèles montre la note de langue, dans la langue de la fenêtre, et suit la langue de l'assistant", async () => {
+    const lang = (value: string) => {
+      const d = structuredClone(DEMO.settings);
+      d.list = [...d.list.filter((x: Any) => x.key !== "langue_assistant"), { key: "langue_assistant", section: "general", label: "Langue de l'assistant", type: "enum", value, risk: "free", options: [] }];
+      return d;
+    };
+    const items = structuredClone(DEMO.items);
+    const rows = items.providers.find((p: Any) => p.id === "llm-library").items;
+    rows.find((i: Any) => i.id === "gemma-4b").languages = { fr: "good", en: "fair" };
+    rows.find((i: Any) => i.id === "qwen-8b").languages = { fr: "poor" };
+    // « llama-3b » n'a aucune note : pas d'étiquette.
+    pushItems(items);
+    pushSettings(lang("fr"));
+    await flush();
+    byText("#nav button", "Cerveau")!.click();
+    byText("#content button", "Télécharger des modèles")!.click();
+    await flush();
+    const row = (name: string) => byText("#editor .lrow", name)!;
+    const note = (name: string) => row(name).querySelector("[data-language]") as HTMLElement | null;
+    expect(note("Gemma 3 4B")!.textContent).toBe("Français : bien");
+    expect(note("Gemma 3 4B")!.className).toBe("chip tag");
+    expect(note("Qwen3 8B")!.textContent).toBe("Français : mal");
+    expect(note("Qwen3 8B")!.className).toBe("chip warn");
+    expect(note("Llama 3.2 3B")).toBeNull();
+    // L'assistant passe à l'anglais : les étiquettes suivent au dessin suivant.
+    pushSettings(lang("en"));
+    await flush();
+    expect(note("Gemma 3 4B")!.textContent).toBe("Anglais : moyen");
+    expect(note("Qwen3 8B")).toBeNull(); // pas de note en anglais pour ce modèle
+    (document.getElementById("editor") as HTMLDialogElement).close();
+    pushSettings(structuredClone(DEMO.settings));
+    pushItems(structuredClone(DEMO.items));
+    await flush();
   });
 
   it("un rafraîchissement garde la page : même bouton Retour, pas d'animation rejouée, retour au premier clic", async () => {

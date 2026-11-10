@@ -10,6 +10,7 @@ import { formNode, resetFieldState, visible } from "./fields.ts";
 import type { FieldAudioState } from "./fields.ts";
 import { addOutcome, missingFields as missingOf } from "./form-rules.ts";
 import { downloadSummary, librariesFor, percent } from "./library.ts";
+import { itemLanguageNote } from "./language-note.ts";
 import { offersOf } from "./slot-sources.ts";
 import { abortRecording } from "./voice-recorder.ts";
 import { trialPlayer } from "./settings-form.ts";
@@ -282,6 +283,10 @@ function libRow(p: ItemProvider, it: ProviderItem): VNode {
     if (main) side.push(btn(main, main.id === "download" ? "download" : null));
   }
   const tags = (it.tags ?? []).map((x) => h("span", { class: "chip tag", text: tr(x) }));
+  // Note du modèle pour la langue de l'assistant (réglage « langue_assistant », déjà reçu avec la liste des réglages).
+  const lang = String(S.settings.list.find((x) => x.key === "langue_assistant")?.value ?? "");
+  const note = lang ? itemLanguageNote(it.languages, lang, S.lang) : null;
+  if (note) tags.push(h("span", { class: note.tone === "warn" ? "chip warn" : "chip tag", "data-language": lang, text: note.text }));
   return h("div", { class: "srow lrow", key: `${p.id}/${it.id}` },
     h("div", { class: "rt" },
       h("div", { class: "rn" }, h("strong", { text: tr(it.label) })),

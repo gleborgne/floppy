@@ -37,6 +37,11 @@ export interface ModelNeeds {
   backends?: Backend[];
 }
 
+/** Qualité d'un modèle dans une langue : « good » (bien), « fair » (correct), « poor » (faible). */
+export type LanguageLevel = "good" | "fair" | "poor";
+/** Note par langue d'un modèle : clé = code de langue à 2 lettres (« fr », « en »…) ; langue absente = inconnue. */
+export type LanguageSupport = Record<string, LanguageLevel>;
+
 /**
  * « audio » : un enregistrement de voix, fait au micro ou importé dans la fenêtre. La valeur est soit une adresse
  * data:audio/wav (nouvel enregistrement, à lire avec wavFromDataUrl), soit ce que le plugin a rendu (ex. le chemin du
@@ -146,6 +151,10 @@ export interface ItemInfo {
   progress?: number;
   /** Modèle à télécharger : ce qu'il demande pour tourner. */
   needs?: ModelNeeds;
+  /** Modèle à télécharger : sa note par langue (langue absente : inconnue). */
+  languages?: LanguageSupport;
+  /** Modèle à télécharger : court extrait sonore (http(s)), s'il existe. */
+  sample?: string;
   /** Modèle à télécharger : taille des fichiers, en octets. */
   size?: number;
   /** Modèle à télécharger : le service que rendra son élément (« vad », « stt », « tts », « llm »). */

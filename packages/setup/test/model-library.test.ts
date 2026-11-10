@@ -64,6 +64,17 @@ describe("formatBytes", () => {
 });
 
 describe("modelLibrary", () => {
+  it("recopie la note par langue et l'extrait sonore dans l'instantané du catalogue (comme needs et service)", async () => {
+    const entry = (u: string): LibraryEntry => ({
+      ...vad(u), service: "stt", needs: { memory: 1e9, device: "cpu" }, languages: { fr: "good", en: "fair", de: "poor" }, sample: "https://example.org/extrait.mp3",
+    });
+    const s = await setup((u) => [entry(u), { ...vad(u), id: "sans-notes" }], await serve());
+    const [noted, plain] = (await s.snap()).items;
+    expect(noted).toMatchObject({ service: "stt", needs: { memory: 1e9, device: "cpu" }, languages: { fr: "good", en: "fair", de: "poor" }, sample: "https://example.org/extrait.mp3" });
+    expect(plain!.languages).toBeUndefined();
+    expect(plain!.sample).toBeUndefined();
+  });
+
   it("montre la taille, la licence et le bouton Télécharger", async () => {
     const s = await setup((u) => [vad(u)], await serve());
     const p = await s.snap();

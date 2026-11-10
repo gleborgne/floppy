@@ -34,6 +34,8 @@ export const KNOWN_MODELS: KnownModel[] = [
     licence: { name: "CC-BY-4.0", url: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" },
     tags: [T("français", "French"), T("anglais", "English"), T("processeur", "CPU")],
     service: "stt", needs: { memory: 1_300_000_000, device: "cpu" },
+    // Parakeet TDT 0.6b v3 : multilingue, 25 langues d'Europe dont le français et l'anglais (description ci-dessus, fiche du modèle).
+    languages: { fr: "good", en: "good" },
     target: "parakeet-tdt-v3-int8",
     files: [
       { url: `${PARAKEET}/encoder.int8.onnx`, path: "parakeet-tdt-v3-int8/encoder.int8.onnx", size: 652_184_281, sha256: "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247" },

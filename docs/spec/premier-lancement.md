@@ -1,38 +1,73 @@
 # Premier lancement : régler Floppy selon la machine
 
-Version 0.3 — 7 novembre 2026. Statut : implémenté (lecture de la machine, niveaux, fenêtre « Bienvenue », test de vitesse,
-téléchargement de llama.cpp et audio.cpp dans la bonne version).
+Version 0.4 — 10 novembre 2026. Statut : données et logique implémentées (lecture de la machine, un choix de modèle par
+rôle avec un conseil selon la machine et la langue, écoute en avance, test de vitesse, téléchargement de llama.cpp et
+audio.cpp dans la bonne version). La fenêtre « Bienvenue » suit : elle montre encore les anciens niveaux tant qu'elle n'est
+pas refaite.
 
 [← Spec](README.md)
 
 ## Pourquoi
 
-Au premier lancement, l'utilisateur ne sait pas quels modèles sa machine peut faire tourner. Floppy lit la machine,
-propose **le meilleur niveau qui tient dedans**, télécharge les modèles et règle les rôles (cerveau, écoute, voix).
-Le plus simple : la transcription locale et un cerveau dans le cloud, réponses écrites. Le plus complet : tout en local.
+Au premier lancement, l'utilisateur ne sait pas quels modèles sa machine peut faire tourner, ni lesquels parlent bien sa
+langue. Floppy lit la machine et la langue de l'assistant, et propose **pour chaque rôle (cerveau, écoute, voix) un vrai
+modèle** : le **conseillé** est le meilleur qui tient dans la machine, noté pour la langue. L'utilisateur peut en prendre un
+autre. Floppy télécharge, règle les rôles, et marche tout de suite avec le minimum.
 
 ## Ce que voit l'utilisateur
 
-Fenêtre **« Bienvenue »**, ouverte seule au premier lancement (`floppy.yml` vient d'être créé), depuis Réglages →
-Général → « Refaire le réglage de départ », et depuis le menu de l'icône (« Réglage de départ… »). 4 étapes :
+Fenêtre **« Bienvenue »** (960 x 680), ouverte seule au premier lancement (`floppy.yml` vient d'être créé), depuis Réglages →
+Général → « Refaire le réglage de départ », et depuis le menu de l'icône (« Réglage de départ… »). Floppy y parle à la
+première personne. Disposition commune : à gauche, sa bulle, son visage (l'aperçu fixe de l'avatar affiché, sinon des
+anneaux ; jamais de WebGL) et la liste des quatre morceaux (cerveau, oreilles, voix, outils) qui se cochent avec la valeur
+choisie ; à droite, le titre, une phrase, les choix, et le pied (Retour / Continuer). Six écrans : bonjour, quatre
+questions, installation. Le conseil du plan (`plan.recommended`) est présélectionné partout ; tout est modifiable plus tard
+dans les Réglages. Les textes sont dans `renderer/onboarding-i18n.ts` (fr / en), les règles sans DOM dans
+`onboarding-view.ts` et `onboarding-summary.ts` (testées), la page dans `onboarding.ts` et ses modules `onboarding-*.ts`.
 
-1. **Ta machine** : « Je regarde ta machine… », puis un résumé : la puce graphique, le type de mémoire, la mémoire
-   utilisable par les modèles, la RAM, la place libre sur le disque. Si rien n'est lu : choix manuel (« Pas de carte
-   graphique », « 8 Go », « 12 Go », « 16 Go », « 24 Go et plus »). En dessous : le **dossier de Floppy** (son chemin,
-   et « Changer… » : un sélecteur de dossiers ; Floppy repart dans ce dossier, voir [Le noyau → Le répertoire de
-   travail](noyau.md#le-répertoire-de-travail)), puis les **programmes de cerveau** trouvés (Claude Code, Codex,
-   Antigravity : « trouvé » ou « pas installé »).
-2. **Le niveau** : une carte par niveau. Le niveau conseillé est mis en avant. Un niveau trop lourd reste visible avec
-   la raison (« il manque 4 Go », « llama-server est introuvable ») ; on peut le forcer.
-3. **Le cerveau dans le cloud**, seulement si le niveau en a besoin : les cerveaux cloud déjà offerts (grisés si leur
-   programme est introuvable), puis les programmes trouvés pas encore dans la config (« sera ajouté »). Sans aucun :
-   un mot vers Réglages → Cerveau.
-4. **L'installation** : une ligne par modèle (barre d'avancement de la bibliothèque), puis le test de vitesse du cerveau
-   local. À la fin : « Floppy est prêt. »
+1. **Bonjour** : la **langue de l'assistant** (« Changer… » : Français / English, par `setLanguage` : même chemin que les
+   Réglages, le plan est recalculé et la fenêtre prend cette langue), la machine **en une phrase** (« assez costaude pour
+   que je fonctionne en entier chez toi », « un peu juste pour mon cerveau : je réfléchirai en ligne », « un peu juste »,
+   ou rien de lu) avec « Voir le détail » (puce, mémoire, RAM, place libre, « Relire la machine », programmes de cerveau
+   trouvés : Claude Code, Codex, Antigravity) et le **dossier de Floppy** (« Changer… » : un sélecteur de dossiers ; Floppy
+   repart dans ce dossier, voir [Le noyau → Le répertoire de travail](noyau.md#le-répertoire-de-travail)). Si rien n'a pu
+   être lu : le choix manuel de la mémoire (« Pas de carte », 8, 12, 16, 24 Go) s'ouvre tout de suite. Dès que le plan est lu,
+   la fenêtre appelle `prepareListening()` (une fois) : l'écoute se télécharge pendant les questions.
+2. **Cerveau** : « Chez toi » (choix `kind: "local"`) ou « En ligne » (`kind: "cloud"`, dont les programmes trouvés à ajouter) ;
+   l'onglet ouvert au départ est celui du conseil. Une ligne par modèle : nom, « Recommandé », « Déjà sur ton ordinateur »
+   ou la taille à télécharger (`size`, programme compris), l'étiquette de langue (`languageNote` : grise, ou jaune si la
+   langue est mal gérée). Un modèle qui ne tient pas est grisé avec sa raison et « Essayer quand même ». Sans cerveau en ligne
+   prêt : un mot et « Ouvrir les réglages ». Il n'y a pas de note « malin / rapide » dans les données : elle n'est pas montrée.
+3. **Oreilles** : le modèle de transcription choisi (« Changer de modèle » ouvre la même liste que les autres écrans), puis les
+   **façons d'appeler** Floppy, branchées sur de vrais réglages par le chemin des Réglages : « En disant mon nom » (slot
+   `listen.wakeword` : `@none` = éteint ; l'allumer remet l'entrée active ou la première offerte) et « Avec un raccourci du
+   clavier » (réglage `raccourci_parler`, vide = désactivé ; écrit `Ctrl+Alt+…`, `⌃⌥…` sur Mac). Un réglage absent : la ligne
+   n'est pas montrée. **Essai du micro** : des barres de niveau mesurées dans la fenêtre (`getUserMedia` et `AnalyserNode`),
+   sans rien enregistrer ni envoyer ; le flux est arrêté en quittant l'écran ; avec « mouvement réduit », quelques mises à
+   jour par seconde et pas de fondu. Pas de transcription dans cette version : le texte dit que le micro marche. Tant que
+   l'écoute n'est pas téléchargée, une barre d'avancement (lignes `vad` et `stt` de l'état) dit qu'on peut continuer.
+4. **Voix** : la liste des modèles de voix, un bouton rond « écouter » seulement si le choix a un `sample` (un seul son à la
+   fois, joué dans la fenêtre : la CSP n'autorise `media-src` qu'en http(s)), l'étiquette de langue, « Pas de voix (réponses
+   écrites) » en dernier.
+5. **Outils** : les connecteurs déjà ajoutés à Floppy (fournisseur `apps-connecteurs`), chacun avec un interrupteur qui
+   fait l'opération `enable` du catalogue, comme les Réglages ; sans connecteur : un mot et « Ouvrir les réglages ». Un
+   encadré rappelle que Floppy demande toujours avant d'envoyer, de modifier ou de supprimer. « Terminer » envoie la
+   sélection (`apply({ brain, stt, tts })`).
+6. **Installation** : une ligne par morceau, regroupées depuis les lignes de l'état : *oreilles* (détecteur de parole,
+   transcription et leur programme), *voix*, *cerveau* (programme, modèle, et le plus petit modèle pris après un test de
+   vitesse trop lent), avec la barre d'avancement (moyenne des lignes), la phrase du morceau (« En attendant, je réponds par
+   écrit », « je réfléchis en ligne » quand un cerveau en ligne répond déjà), les notes du noyau, le test de vitesse et la fin.
+   En cas d'échec : « Revenir aux choix ». Fenêtre rouverte pendant une installation : on revient sur cet écran.
 
-Fermer la fenêtre en cours de route : les téléchargements continuent ; la fenêtre revient au prochain démarrage tant
-que le réglage n'est pas fini (`<home>/onboarding.json`, `done: false`). Bouton « Passer » : rien n'est changé, plus
-de fenêtre au démarrage.
+L'état de l'installation (`onboarding.state`) va aussi aux Réglages (Général), qui lisent `installSummary` et `rowStatus`
+de `onboarding-view.ts`. Fermer la fenêtre en cours de route : les téléchargements continuent ; la fenêtre revient au
+prochain démarrage tant que le réglage n'est pas fini (`<home>/onboarding.json`, `done: false`). Bouton « Passer, je
+réglerai plus tard » : rien n'est changé, plus de fenêtre au démarrage.
+
+Passage par l'application : `preload-onboarding.cts` expose `plan`, `setLanguage`, `prepareListening`, `extras` (façons
+d'appeler et connecteurs), `setWay`, `setTool`, `apply`, `skip`… ; `ipc.ts` borne les chaînes et ne répond qu'à cette fenêtre ;
+`kernel.ts` appelle `Onboarding` et le catalogue (`onboarding-extras.ts` : règles pures, testées). Le micro n'est permis qu'à
+l'avatar, aux Réglages et à cette fenêtre.
 
 ## Lire la machine (`packages/core/src/machine.ts`)
 
@@ -78,11 +113,15 @@ Une entrée de bibliothèque (`LibraryEntry`) peut dire :
 
 - `service` : le service que rend son élément (« vad », « stt », « tts », « llm »), quand la bibliothèque en offre plusieurs ;
 - `needs: { memory, device, backends? }` : la mémoire en octets ; `device` = « cpu » (RAM), « gpu » (mémoire des
-  modèles) ; `backends` : les moteurs acceptés (Qwen3-TTS : cuda, vulkan, metal).
+  modèles) ; `backends` : les moteurs acceptés (Qwen3-TTS : cuda, vulkan, metal) ;
+- `languages` : sa note par langue (`LanguageSupport` : `{ fr: "good", en: "fair" }`, niveaux `good` / `fair` / `poor`,
+  langue absente = inconnue), pour la transcription et les voix. Elle ne s'écrit que si le dépôt ou la fiche publique du
+  modèle le dit (voir [Téléchargements](telechargements.md)) ; les voix déjà offertes (système) et les cerveaux n'en ont pas ;
+- `sample` : un court extrait sonore à écouter avant de choisir.
 
 La bibliothèque dit aussi quel élément son modèle donne une fois installé (`itemOf`), et si son programme manque
 (`missing` : « llama-server est introuvable »). La fenêtre les reçoit dans l'instantané du catalogue
-(`ItemInfo.needs`, `ItemInfo.service`, `ItemInfo.uses`, `ProviderSnapshot.missing`).
+(`ItemInfo.needs`, `ItemInfo.languages`, `ItemInfo.sample`, `ItemInfo.service`, `ItemInfo.uses`, `ProviderSnapshot.missing`).
 
 ## Télécharger llama.cpp et audio.cpp (`packages/setup/src/program-library.ts`)
 
@@ -153,60 +192,97 @@ L'onboarding le cherche (`findExe`, `findAgents`) et sait s'il est déjà dans l
 - Programme trouvé, plugin pas encore ajouté : choix « add:<plugin> ». À l'installation, l'onboarding ajoute le plugin
   (opération `add` du fournisseur `apps-<rubrique>`, comme le bouton « Ajouter » des réglages), puis prend son premier
   élément offert.
-- Cerveau conseillé : le premier cerveau offert dont le programme est là, sinon le premier programme trouvé à ajouter.
-- Aucun : les niveaux cloud disent « installe Claude Code, Codex ou Antigravity, ou ajoute une clé ».
+- Cerveau cloud utilisable (`Plan.brain`) : le premier cerveau offert dont le programme est là, sinon le premier programme trouvé à ajouter. Il répond en attendant un cerveau local.
+- Aucun : pas de cerveau conseillé ni de cloud à prendre ; la fenêtre dit « installe Claude Code, Codex ou Antigravity, ou ajoute une clé ».
 
-## Les niveaux (`packages/setup/src/onboarding.ts`, `planLevels`)
+## Les choix par rôle (`packages/setup/src/onboarding.ts`, `planChoices`)
 
 Le plan est calculé à partir des déclarations des plugins : aucun modèle n'est écrit en dur dans l'onboarding.
-« Le meilleur » d'un rôle = l'entrée qui tient et qui demande le plus de mémoire (les petites sont moins bonnes).
+`Plan.choices` donne, pour `brain`, `stt` et `tts`, la liste des `Choice` ; `Plan.recommended` (une `Selection`) donne le
+conseil ; `Plan.language` la langue pour laquelle il est calculé (code à 2 lettres, lu dans `assistant.language`).
 
-| Niveau | Écoute | Voix | Cerveau |
-|---|---|---|---|
-| `text` | VAD + transcription (processeur) | aucune (réponses écrites) | cloud |
-| `voice` | idem | meilleure voix processeur | cloud |
-| `hybrid` | idem | meilleure voix sur la puce graphique | cloud |
-| `local` | idem | meilleure voix processeur | meilleur modèle local qui tient |
-| `local-max` | idem | meilleure voix sur la puce graphique | meilleur modèle local qui tient à côté |
+| Champ de `Choice` | Sens |
+|---|---|
+| `value` | ce qu'on renvoie dans `Selection` : `<fournisseur>/<id>` (modèle de bibliothèque), `<entrée>/<élément>` (voix déjà offerte), la valeur du slot (cerveau cloud), `add:<plugin>`, `@none` |
+| `kind` | `local` (modèle de bibliothèque), `cloud` (cerveau cloud ou `add:<plugin>`), `offered` (voix déjà offerte), `none` (pas de voix) |
+| `fits`, `reason` | tient dans la machine (l'écoute est déjà réservée), sinon pourquoi |
+| `installed`, `size` | déjà sur la machine ; octets à télécharger, programme compris (llama.cpp, audio.cpp) |
+| `device` | `cpu` ou `gpu` |
+| `language` | note pour la langue de l'assistant ; absent : inconnue |
+| `sample`, `description` | extrait sonore, description du modèle |
+| `recommended` | le conseil de ce rôle (au plus un par rôle) |
 
-Les identifiants de niveau (`LevelId`) sont en anglais. Un `onboarding.json` écrit avec les anciens (`texte`, `voix`, `hybride`) est converti une fois par la migration du dossier (étape `onboarding-level`, voir [noyau](noyau.md)).
+Un modèle **tient** si sa mémoire entre dans ce qui reste (mémoire des modèles pour « gpu », RAM − 6 Go pour « cpu »),
+avec un moteur accepté, un programme présent ou téléchargeable, et la place sur le disque (modèle et programme). Les choix
+qui tiennent passent avant les autres, le conseillé en tête.
 
-- Un niveau est **possible** si chaque rôle a une entrée qui tient (mémoire des modèles pour « gpu », RAM − 6 Go
-  pour « cpu »), avec un moteur accepté, un programme présent ou téléchargeable, et la place sur le disque (programmes
-  compris). Sinon il porte la raison.
-- **Conseillé** : le plus haut niveau possible. Sans cerveau cloud offert, les niveaux locaux passent devant.
-- Une voix « gpu » et le cerveau partagent la mémoire des modèles : `local-max` additionne les deux.
+**Le conseil.**
+
+- **Écoute** (détecteur de parole, puis transcription) : réservée en premier. Transcription conseillée : parmi celles qui
+  tiennent, la meilleure note pour la langue (`good` avant `fair` avant langue **inconnue** avant `poor`), puis le plus gros
+  qui tient, installé d'abord. Un modèle `poor` n'est conseillé que s'il n'y a rien d'autre.
+- **Voix** : même règle, sur ce qui reste après l'écoute. Voix de bibliothèque et voix déjà offertes se classent ensemble
+  (une voix du système, sans note, passe devant une voix notée `poor`, et derrière une voix notée `good`). Rien ne tient :
+  « Pas de voix » est le conseil.
+- **Cerveau**, dans ce qui reste après l'écoute et la voix : un modèle local si un d'au moins `MIN_LOCAL_BRAIN` (6 Go)
+  tient (un modèle déjà sur la machine, assez grand, passe devant un plus grand à télécharger) ; sinon un cerveau cloud
+  utilisable ; sans cloud, le plus grand local qui tient, même petit.
+- **Ensemble** : processeur et puce graphique prennent dans la même RAM sur une mémoire unifiée, et une voix sur la puce
+  graphique partage la mémoire des modèles avec le cerveau local. La voix conseillée est la mieux classée qui laisse
+  encore un cerveau ; sinon, la mieux classée seule. Les trois conseillés tiennent donc ensemble.
+
+Changer la langue (`Onboarding.setLanguage`) passe par le réglage `langue_assistant`, comme dans les Réglages (les plugins
+redémarrent), puis recalcule le plan.
+
 - **Voix déjà offertes** (`offeredVoices`) : les voix du slot `voice.tts` hors cloud (ex. voix du système), sans
-  téléchargement, comptées « processeur » avec 0 Go. Elles servent de repli quand aucune voix de bibliothèque ne peut
-  tourner (audio.cpp introuvable) ; une voix de bibliothèque qui tient passe devant. Les voix d'un plugin dont le
-  programme manque ne sont pas proposées.
+  téléchargement, comptées « processeur » avec 0 Go (`kind: "offered"`). Elles servent de repli quand aucune voix de
+  bibliothèque ne peut tourner (audio.cpp introuvable) et restent un choix sinon. Les voix d'un plugin dont le programme
+  manque ne sont pas proposées.
 
-## Appliquer un niveau (`Onboarding`)
+## Appliquer une sélection (`Onboarding`)
+
+`apply(selection)` prend la `value` d'un choix par rôle (`Selection { brain?, stt?, tts? }`, souvent `plan.recommended`).
+Un rôle absent n'est pas touché (la voix absente vaut « pas de voix »). Une valeur qui n'est pas dans le plan : refusée.
+Un choix qui ne tient pas est permis (forcé).
 
 **Personne n'attend les téléchargements.** Floppy marche tout de suite avec le minimum, puis chaque bloc s'active
 dès qu'il est arrivé.
 
-1. **Tout de suite** : `onboarding.json` = `{ done: false, level, brain }` (pour reprendre si Floppy est fermé en
+1. **Tout de suite** : `onboarding.json` = `{ done: false, selection }` (pour reprendre si Floppy est fermé en
    route). Voix « aucune » (`slot.voice.tts` = `@none`) tant que la voix n'est pas là. Cerveau cloud dans
-   `slot.brain.main` s'il y en a un, même pour un niveau local (il répond en attendant le cerveau local) :
-   `state.live = true`, « Floppy répond déjà par écrit, avec Claude ».
-2. **Bloc par bloc** (`installSteps`) : l'écoute d'abord (détecteur de parole + Parakeet : Floppy entend vite), puis
-   la voix, puis le cerveau local. Sans cerveau qui répond déjà, le cerveau passe avant la voix. Chaque bloc vient
-   avec son programme (llama.cpp, audio.cpp). Un bloc à la fois : la bande passante va au plus utile.
+   `slot.brain.main` s'il y en a un (le choisi, ou `Plan.brain` quand le cerveau choisi est local), il répond en attendant le
+   cerveau local : `state.live = true`, « Floppy répond déjà par écrit, avec Claude ».
+2. **Bloc par bloc** (`installSteps`) : l'écoute d'abord (détecteur de parole + transcription : Floppy entend vite), puis
+   la voix, puis le cerveau local. Sans cerveau qui répond déjà, le cerveau passe avant la voix. Chaque bloc
+   vient avec son programme (llama.cpp, audio.cpp). Un bloc à la fois : la bande passante va au plus utile.
 3. Dans un bloc : modèle pas sur le disque : action `download` ; sur le disque mais absent de la liste : `use`.
    Prêt : `slot.<rôle>` = `<entrée>/<élément>` (via « ui »), et une phrase (« Floppy t'entend : tu peux lui parler »).
 4. Le cerveau local passe d'abord le test de vitesse ; il ne prend la place du cerveau cloud que s'il est assez rapide.
-5. Fin : `onboarding.json` = `{ done: true, level, at }`. Un bloc a échoué : phase `error`, Floppy marche avec le
+5. Fin : `onboarding.json` = `{ done: true, selection, at }`. Un bloc a échoué : phase `error`, Floppy marche avec le
    reste, et rien n'est marqué fini.
-6. **Reprise** (`resume`, au démarrage) : `level` sans `done` = installation coupée ; elle repart (les blocs déjà
-   téléchargés sont prêts tout de suite).
+6. **Reprise** (`resume`, au démarrage) : `selection` sans `done` = installation coupée ; elle repart (les blocs déjà
+   téléchargés sont prêts tout de suite). Un fichier sans `selection` (ancien format, voir la migration) n'est pas repris :
+   la fenêtre revient.
 
-**Le choix reste à l'utilisateur** : le niveau conseillé est seulement présélectionné. Une grosse machine peut
-prendre « Texte » ; la fenêtre le dit, et « Refaire le réglage de départ » permet de monter plus tard.
+**Écoute en avance** (`prepareListening`). Écouter est le premier besoin, et la transcription conseillée est presque toujours
+gardée : dès que le plan est lu, la fenêtre appelle `prepareListening()`, qui télécharge tout de suite le détecteur de parole
+et la transcription conseillée (avec leur programme) et règle leurs slots (`listen.vad`, `listen.stt`) quand ils sont prêts.
+Les lignes d'avancement sont dans `OnboardingState.rows` comme les autres (phase `idle`). Sans effet la seconde fois.
+`apply` ne retélécharge rien de ce qui est déjà là ou en cours : il attend le même téléchargement. Si l'utilisateur choisit
+une **autre** transcription, c'est elle qui prend le slot ; la première, déjà demandée, finit son téléchargement (sa ligne
+reste) sans toucher au slot. Un changement de langue après le lancement ne relance pas d'autre téléchargement.
 
-**Suivi** : l'avancement (`onboarding.state`) va à la fenêtre « Bienvenue » et à la rubrique Général des Réglages
-(bloc « Installation de départ » : une ligne par morceau, %, prêt, échec, et les phrases de ce qui s'est activé).
-La fenêtre « Bienvenue » peut se fermer : tout continue.
+**Le choix reste à l'utilisateur** : le conseillé est seulement présélectionné. « Refaire le réglage de départ » permet de
+changer plus tard.
+
+**Suivi** : l'avancement (`onboarding.state` : `phase`, `selection`, `rows`, `notes`, `speed`, `live`) va à la fenêtre
+« Bienvenue » et à la rubrique Général des Réglages (bloc « Installation de départ » : une ligne par morceau, %, prêt,
+échec, et les phrases de ce qui s'est activé). La fenêtre « Bienvenue » peut se fermer : tout continue.
+
+**Anciens fichiers.** Les niveaux (`level`, avec `brain` à côté) n'existent plus. La migration du dossier
+`onboarding-selection` ([noyau](noyau.md)) retire ces deux clés d'`onboarding.json` ; il n'y a pas de lecture des anciens
+noms. Une installation qui était coupée n'est pas reprise toute seule (aucune sélection n'en découle sans relire la machine) :
+la fenêtre « Bienvenue » revient.
 
 ## Modèles déjà sur la machine (LM Studio, Ollama)
 
@@ -240,11 +316,12 @@ Pourquoi un test et pas un tableau des puces : sur une mémoire unifiée, la vit
 ## Où c'est branché
 
 - `apps/cli/src/boot.ts` : `firstRun` (config créée à ce démarrage, ou `onboarding.json` pas fini) et l'objet `onboarding`.
-- `apps/desktop/src/kernel.ts` : messages `onboarding.get` (machine + niveaux), `onboarding.apply`, `onboarding.skip`,
-  état poussé `onboarding.state`.
+- `apps/desktop/src/kernel.ts` : messages `onboarding.get` (machine + choix + conseil), `onboarding.apply` (une
+  `Selection`), `onboarding.skip`, état poussé `onboarding.state`. À brancher (fenêtre refaite) : `prepareListening` et
+  `setLanguage`.
 - `apps/desktop/src/app-windows.ts` (ouverture par `kernel-messages.ts` à `kernel.ready`, relais dans `ipc.ts`) : fenêtre `onboarding.html` (pont `preload-onboarding.cts`, compilé dans `build/`), ouverte à `kernel.ready`
   si `firstRun`, ou depuis les réglages.
-- CLI : `floppy machine` montre ce que Floppy lit de la machine et les niveaux.
+- CLI : `floppy machine` montre ce que Floppy lit de la machine, la langue, et les choix par rôle (★ conseillé, ✖ ne tient pas).
 
 ## Pas encore
 
@@ -253,6 +330,6 @@ Pourquoi un test et pas un tableau des puces : sur une mémoire unifiée, la vit
   sans le dire) : pas détectée. Piste : `llama-server --list-devices` après l'installation.
 - Une voix ou un cerveau local qui tombe en panne en cours de route : le slot reste sur lui (pas de repli automatique
   sur la voix écrite ou le cerveau cloud).
-- windows arm64 et linux arm64 pour audio.cpp : pas d'archive publiée ; le niveau dit qu'il manque le programme.
+- windows arm64 et linux arm64 pour audio.cpp : pas d'archive publiée ; le choix dit qu'il manque le programme.
 - Lire le débit de la mémoire pour prévoir la vitesse avant de télécharger.
 - Serveurs d'Ollama et de LM Studio (API sur 11434 et 1234) : pas utilisés ; Floppy lit leurs fichiers à la place.

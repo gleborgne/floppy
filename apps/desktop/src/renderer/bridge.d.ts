@@ -65,7 +65,17 @@ interface FloppyPanelApi {
 
 interface FloppyOnboardingApi {
   plan(opts?: { fresh?: boolean; manualBytes?: number }): Promise<OnboardingReply<OnboardingPlan>>;
-  apply(level: string, brain?: string | null): Promise<OnboardingReply>;
+  /** Change la langue de l'assistant (comme les Réglages) et rend le plan recalculé. */
+  setLanguage(lang: string, opts?: { manualBytes?: number }): Promise<OnboardingReply<OnboardingPlan>>;
+  /** Lance en avance le téléchargement de l'écoute (sans effet la seconde fois). */
+  prepareListening(): Promise<OnboardingReply>;
+  /** Façons d'appeler Floppy et connecteurs que la fenêtre peut allumer. */
+  extras(): Promise<OnboardingReply<OnboardingExtras>>;
+  /** Mot d'activation (`wake`) ou raccourci « Parler » (`talk`) : même chemin que les Réglages. */
+  setWay(way: "wake" | "talk", value: string): Promise<OnboardingReply>;
+  /** Allume ou éteint un connecteur. */
+  setTool(id: string, on: boolean): Promise<OnboardingReply>;
+  apply(selection: OnboardingSelection): Promise<OnboardingReply>;
   skip(): Promise<OnboardingReply>;
   chooseHome(): Promise<OnboardingReply>;
   close(): void;

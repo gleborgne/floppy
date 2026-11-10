@@ -78,6 +78,21 @@ Chaque entrée dit aussi ce qu'elle demande (`needs` : mémoire, processeur ou p
 qu'elle rend (`service`) et, une fois installée, l'élément qu'elle donne (`itemOf` → `ItemInfo.uses`). Le premier
 lancement s'en sert pour choisir les modèles qui tiennent dans la machine : voir [Premier lancement](premier-lancement.md).
 
+**Note par langue** (`LibraryEntry.languages`, recopiée dans `ItemInfo.languages` et donc dans l'instantané du catalogue) :
+`{ fr: "good", en: "fair" }`, clé = code de langue à 2 lettres, niveau `good` / `fair` / `poor` (type `LanguageSupport` de
+`@floppy/core`). Une langue absente est **inconnue** (ni bonne ni mauvaise). Elle ne s'écrit que si le dépôt le dit déjà
+(étiquettes, description, langue imposée du modèle) ou si la fiche publique du modèle le dit sans ambiguïté ; au moindre
+doute, la langue reste absente. Elle ne concerne que l'écoute (transcription) et les voix ; le détecteur de parole et les
+cerveaux n'en ont pas. Le premier lancement s'en sert pour conseiller selon la langue de l'assistant. L'entrée peut aussi
+donner `sample` (extrait sonore), recopié dans `ItemInfo.sample`.
+
+La fenêtre des Réglages montre cette note sur la ligne du modèle, dans la bibliothèque « Modèles à télécharger » : une
+étiquette « Français : bien » ou « Français : moyen » (grise), « Français : mal » (jaune, `chip warn`), pour la langue de
+l'assistant (réglage `langue_assistant`, lu dans la liste des réglages que la fenêtre reçoit déjà : aucun message de plus).
+Pas de note pour cette langue, pas d'étiquette. Elle suit un changement de langue de l'assistant au dessin suivant. Les
+éléments déjà installés d'un rôle (liste des voix, de la transcription) n'ont pas cette étiquette : les plugins ne
+recopient pas `languages` dans les éléments qu'ils offrent.
+
 ### Catalogue audio.cpp étendu (7 novembre 2026)
 
 Les quatre nouveaux paquets viennent du dépôt `audio-cpp/audio.cpp-gguf`, figé au commit

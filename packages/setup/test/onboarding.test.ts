@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  Onboarding, planLevels, installSteps, type Candidate, cloudBrains, offeredVoices, findAgents, withManualMemory, MIN_SPEED, type Agent,
-  type OnboardingDeps, type OnboardingState,
+  Onboarding, planChoices, installSteps, type Candidate, cloudBrains, offeredVoices, findAgents, withManualMemory, MIN_SPEED, type Agent,
+  type OnboardingDeps, type OnboardingState, type Plan, type ChoiceRole,
 } from "../src/index.ts";
 import { GIB, tr, type MachineInfo, type CatalogOp, type ItemInfo, type ProviderSnapshot, type SettingInfo } from "@floppy/core";
 
@@ -14,18 +14,27 @@ const lib = (id: string, source: string, items: ItemInfo[], missing?: string): P
 const it_ = (id: string, service: string, memory: number, device: "cpu" | "gpu", extra: Partial<ItemInfo> = {}): ItemInfo =>
   ({ id, label: id, enabled: true, service, needs: { memory, device }, size: Math.round(memory * 0.8), ...extra });
 
-/** Les bibliothèques telles que les vrais plugins les déclarent (tailles proches des vraies). */
-function providers(opts: { llamaMissing?: boolean } = {}): ProviderSnapshot[] {
+/** Les bibliothèques telles que les vrais plugins les déclarent (tailles et notes de langue proches des vraies). */
+function providers(opts: { llamaMissing?: boolean; whisperEn?: boolean; onlyWhisperEn?: boolean } = {}): ProviderSnapshot[] {
+  const whisper = it_("whisper-en", "stt", 2.5e9, "cpu", { languages: { en: "good", fr: "poor" } });
+  const parakeet = it_("parakeet", "stt", 1.3e9, "cpu", { languages: { fr: "good", en: "good" } });
   return [
-    lib("sherpa-library", "sherpa", [it_("silero-vad", "vad", 50e6, "cpu"), it_("parakeet", "stt", 1.3e9, "cpu")]),
+    lib("sherpa-library", "sherpa", [it_("silero-vad", "vad", 50e6, "cpu"), ...(opts.onlyWhisperEn ? [whisper] : [parakeet, ...(opts.whisperEn ? [whisper] : [])])]),
     lib("voix-locale-library", "tts-local", [
-      it_("pocket-tts-french", "tts", 0.8 * GIB, "cpu"),
-      { ...it_("qwen3-tts", "tts", 4.5 * GIB, "gpu"), needs: { memory: 4.5 * GIB, device: "gpu", backends: ["cuda"] } },
+      it_("pocket-tts-french", "tts", 0.8 * GIB, "cpu", { languages: { fr: "good", en: "poor" } }),
+      { ...it_("qwen3-tts", "tts", 4.5 * GIB, "gpu", { languages: { en: "good", fr: "fair" } }), needs: { memory: 4.5 * GIB, device: "gpu", backends: ["cuda"] } },
     ]),
     lib("llm-local-library", "llm", [it_("qwen-4b", "llm", 3.94e9, "gpu"), it_("gemma-12b", "llm", 8.18e9, "gpu"), it_("mistral-24b", "llm", 15.5e9, "gpu")],
       opts.llamaMissing ? "llama-server est introuvable" : undefined),
   ];
 }
+
+/** Valeurs de choix (`fournisseur/id`). */
+const V = {
+  vad: "sherpa-library/silero-vad", parakeet: "sherpa-library/parakeet", whisper: "sherpa-library/whisper-en",
+  pocket: "voix-locale-library/pocket-tts-french", qwen: "voix-locale-library/qwen3-tts",
+  q4: "llm-local-library/qwen-4b", gemma: "llm-local-library/gemma-12b", mistral: "llm-local-library/mistral-24b",
+};
 
 const machine = (m: Partial<MachineInfo>): MachineInfo => ({
   os: "windows", arch: "x64", cpu: "CPU", cores: 8, ramBytes: 32 * GIB, freeRamBytes: 16 * GIB, gpus: [],
@@ -36,51 +45,83 @@ const mac16 = machine({ os: "mac", ramBytes: 16 * GIB, cpuBytes: 10 * GIB, memor
 const cpuOnly = machine({ ramBytes: 16 * GIB, cpuBytes: 10 * GIB });
 const CLAUDE = [{ value: "claude/sonnet", label: "Claude Sonnet" }];
 
-const lvl = (p: ReturnType<typeof planLevels>, id: string) => p.levels.find((l) => l.id === id)!;
-const ids = (p: ReturnType<typeof planLevels>, id: string) => lvl(p, id).picks.map((x) => x.id);
+const choice = (p: Plan, role: ChoiceRole, value: string) => p.choices[role].find((c) => c.value === value)!;
+const values = (p: Plan, role: ChoiceRole) => p.choices[role].map((c) => c.value);
+/** Au plus un conseil par rôle, et il est dans la liste. */
+const oneRecommendedPerRole = (p: Plan) => {
+  for (const role of ["brain", "stt", "tts"] as const) {
+    const rec = p.choices[role].filter((c) => c.recommended).map((c) => c.value);
+    expect(rec.length).toBeLessThanOrEqual(1);
+    expect(rec[0]).toBe(p.recommended[role]);
+  }
+};
 
-describe("niveaux selon la machine", () => {
-  it("sans puce graphique : texte et voix légère ; conseil : voix légère", () => {
-    const p = planLevels(cpuOnly, providers(), CLAUDE);
-    expect(p.levels.filter((l) => l.possible).map((l) => l.id)).toEqual(["text", "voice"]);
-    expect(ids(p, "text")).toEqual(["silero-vad", "parakeet"]);
-    expect(ids(p, "voice")).toEqual(["silero-vad", "parakeet", "pocket-tts-french"]);
-    expect(tr(lvl(p, "local").reason!, "fr")).toBe("cerveau : il faut une puce graphique");
-    expect(p.recommended).toBe("voice");
+describe("choix par rôle selon la machine", () => {
+  it("sans puce graphique : le cerveau local ne tient pas, le cloud est conseillé ; écoute et voix sur le processeur", () => {
+    const p = planChoices(cpuOnly, providers(), CLAUDE);
+    expect(p.recommended).toEqual({ brain: "claude/sonnet", stt: V.parakeet, tts: V.pocket });
+    oneRecommendedPerRole(p);
+    expect(tr(choice(p, "brain", V.q4).reason!, "fr")).toBe("il faut une puce graphique");
+    expect(choice(p, "brain", V.q4)).toMatchObject({ kind: "local", fits: false, recommended: false, device: "gpu" });
+    expect(choice(p, "brain", "claude/sonnet")).toMatchObject({ kind: "cloud", fits: true, recommended: true, size: 0, installed: true });
+    // Les choix qui tiennent d'abord, le conseil en tête ; « pas de voix » toujours là, en dernier.
+    expect(values(p, "stt")).toEqual([V.parakeet]);
+    expect(values(p, "tts")).toEqual([V.pocket, V.qwen, "@none"]);
+    expect(choice(p, "tts", "@none")).toMatchObject({ kind: "none", fits: true, installed: true, size: 0, recommended: false });
+    expect(choice(p, "tts", V.qwen).fits).toBe(false);
+    // Le détecteur de parole n'est pas un choix.
+    expect(values(p, "stt")).not.toContain(V.vad);
   });
 
-  it("carte NVIDIA avec 18 Go pour les modèles : tout est possible ; le cerveau prend le plus grand qui tient à côté de la voix", () => {
-    const p = planLevels(nvidia, providers(), CLAUDE);
-    expect(p.levels.every((l) => l.possible)).toBe(true);
-    expect(ids(p, "local")).toContain("mistral-24b");
-    expect(ids(p, "local-max")).toEqual(["silero-vad", "parakeet", "qwen3-tts", "gemma-12b"]);
-    expect(p.recommended).toBe("local-max");
+  it("carte NVIDIA, 18 Go : le cerveau prend le plus grand qui tient à côté de la voix conseillée", () => {
+    const p = planChoices(nvidia, providers(), CLAUDE, [], [], "fr");
+    expect(p.recommended).toEqual({ brain: V.mistral, stt: V.parakeet, tts: V.pocket });
+    oneRecommendedPerRole(p);
+    expect(p.choices.brain.every((c) => c.fits)).toBe(true);
   });
 
-  it("Mac 16 Go : pas de voix NVIDIA ; un cerveau local trop petit laisse le cloud devant", () => {
-    const p = planLevels(mac16, providers(), CLAUDE);
-    expect(tr(lvl(p, "hybrid").reason!, "fr")).toBe("voix : demande une carte NVIDIA");
-    // Mémoire unifiée : les modèles processeur (2,2 Go) sortent du même budget.
-    expect(ids(p, "local")).toContain("qwen-4b");
-    expect(p.recommended).toBe("voice");
-    // Sans cerveau cloud : le local passe devant.
-    expect(planLevels(mac16, providers(), []).recommended).toBe("local");
+  it("les trois conseillés tiennent ensemble : une voix sur la puce graphique laisse un cerveau plus petit", () => {
+    const p = planChoices(nvidia, providers(), CLAUDE, [], [], "en");
+    expect(p.recommended).toEqual({ brain: V.gemma, stt: V.parakeet, tts: V.qwen });
+    const gpu = [V.qwen, V.gemma].reduce((n, v) => n + p.candidates.find((c) => `${c.provider}/${c.id}` === v)!.needs.memory, 0);
+    expect(gpu).toBeLessThanOrEqual(nvidia.modelBytes);
+    // Pris seul, le plus gros cerveau tiendrait : c'est bien le budget commun qui a décidé.
+    expect(choice(p, "brain", V.mistral).fits).toBe(true);
   });
 
-  it("programme manquant, disque trop petit, pas de cerveau cloud : la raison est dite", () => {
-    const p = planLevels(nvidia, providers({ llamaMissing: true }), []);
-    expect(tr(lvl(p, "local").reason!, "fr")).toBe("cerveau : llama-server est introuvable");
-    expect(tr(lvl(p, "text").reason!, "fr")).toMatch(/aucun cerveau dans le cloud/);
-    expect(p.levels.some((l) => l.possible)).toBe(false);
-    const full = planLevels({ ...nvidia, diskFreeBytes: 4 * GIB }, providers(), CLAUDE);
-    expect(lvl(full, "text").possible).toBe(true);
-    expect(tr(lvl(full, "local").reason!, "en")).toMatch(/^not enough disk space/);
+  it("Mac 16 Go (mémoire unifiée) : pas de voix NVIDIA ; un cerveau local trop petit laisse le cloud devant", () => {
+    const p = planChoices(mac16, providers(), CLAUDE);
+    expect(tr(choice(p, "tts", V.qwen).reason!, "en")).toBe("needs an NVIDIA card");
+    expect(choice(p, "brain", V.q4).fits).toBe(true);
+    expect(p.recommended.brain).toBe("claude/sonnet");
+    // Sans cerveau cloud : le local passe devant, même petit.
+    expect(planChoices(mac16, providers(), []).recommended.brain).toBe(V.q4);
+  });
+
+  it("programme manquant, disque trop petit, pas de cerveau cloud : la raison est dite, rien n'est conseillé pour le cerveau", () => {
+    const p = planChoices(nvidia, providers({ llamaMissing: true }), []);
+    expect(tr(choice(p, "brain", V.mistral).reason!, "fr")).toBe("llama-server est introuvable");
+    expect(p.recommended.brain).toBeUndefined();
+    expect(p.choices.brain.some((c) => c.recommended)).toBe(false);
+    const full = planChoices({ ...nvidia, diskFreeBytes: 4 * GIB }, providers(), CLAUDE);
+    expect(choice(full, "stt", V.parakeet).fits).toBe(true);
+    expect(tr(choice(full, "brain", V.mistral).reason!, "en")).toMatch(/^not enough disk space/);
+    expect(full.recommended.brain).toBe("claude/sonnet");
+  });
+
+  it("rien ne tient pour la voix : « pas de voix » est le conseil", () => {
+    const p = planChoices(machine({ ramBytes: 2 * GIB, cpuBytes: 0.5 * GIB }), providers(), CLAUDE);
+    expect(p.recommended.tts).toBe("@none");
+    expect(choice(p, "tts", "@none").recommended).toBe(true);
+    oneRecommendedPerRole(p);
   });
 
   it("modèles déjà installés : rien à télécharger", () => {
     const pv = providers();
     for (const i of pv[0]!.items) i.status = "ok";
-    expect(lvl(planLevels(cpuOnly, pv, CLAUDE), "text").downloadBytes).toBe(0);
+    const p = planChoices(cpuOnly, pv, CLAUDE);
+    expect(choice(p, "stt", V.parakeet)).toMatchObject({ installed: true, size: 0 });
+    expect(choice(p, "tts", V.pocket)).toMatchObject({ installed: false, size: Math.round(0.8 * GIB * 0.8) });
   });
 
   it("mémoire choisie à la main et cerveaux cloud lus dans le slot", () => {
@@ -91,12 +132,56 @@ describe("niveaux selon la machine", () => {
   });
 });
 
+describe("conseil selon la langue de l'assistant", () => {
+  it("transcription : un modèle « poor » en français n'est pas conseillé si un « good » tient ; en anglais il l'est (plus gros)", () => {
+    const pv = providers({ whisperEn: true });
+    const fr = planChoices(cpuOnly, pv, CLAUDE, [], [], "fr");
+    expect(fr.recommended.stt).toBe(V.parakeet);
+    expect(choice(fr, "stt", V.whisper)).toMatchObject({ language: "poor", fits: true, recommended: false });
+    expect(choice(fr, "stt", V.parakeet).language).toBe("good");
+    const en = planChoices(cpuOnly, pv, CLAUDE, [], [], "en");
+    expect(en.recommended.stt).toBe(V.whisper);
+    expect(choice(en, "stt", V.whisper)).toMatchObject({ language: "good", recommended: true });
+    oneRecommendedPerRole(fr);
+    oneRecommendedPerRole(en);
+  });
+
+  it("un modèle « poor » reste conseillé s'il n'y a rien d'autre", () => {
+    const p = planChoices(cpuOnly, providers({ onlyWhisperEn: true }), CLAUDE, [], [], "fr");
+    expect(p.recommended.stt).toBe(V.whisper);
+    expect(choice(p, "stt", V.whisper).language).toBe("poor");
+  });
+
+  it("une langue inconnue passe devant une mauvaise note ; la langue est lue en 2 lettres", () => {
+    // Voix système (sans note) contre Pocket TTS français (« poor » en anglais) : en anglais, la voix système gagne.
+    const settings = [{ key: "slot.voice.tts", options: [{ value: "tts-system/hortense", label: "Hortense" }] }] as unknown as SettingInfo[];
+    const offered = offeredVoices(settings, providers());
+    const en = planChoices(cpuOnly, providers(), CLAUDE, [], offered, "en-US");
+    expect(en.language).toBe("en");
+    expect(en.recommended.tts).toBe("tts-system/hortense");
+    expect(choice(en, "tts", "tts-system/hortense")).toMatchObject({ kind: "offered", installed: true, size: 0, device: "cpu" });
+    expect(choice(en, "tts", "tts-system/hortense").language).toBeUndefined();
+    // En français, la voix française notée « good » gagne.
+    expect(planChoices(cpuOnly, providers(), CLAUDE, [], offered, "fr").recommended.tts).toBe(V.pocket);
+  });
+
+  it("le choix donne la note pour la langue, ou rien si elle est inconnue", () => {
+    const p = planChoices(nvidia, providers(), CLAUDE, [], [], "fr");
+    expect(choice(p, "tts", V.qwen).language).toBe("fair");
+    expect(choice(p, "tts", V.pocket).language).toBe("good");
+    expect(choice(p, "brain", V.mistral).language).toBeUndefined();
+    const other = planChoices(nvidia, providers(), CLAUDE, [], [], "de");
+    expect(choice(other, "tts", V.pocket).language).toBeUndefined();
+  });
+});
+
 /** Noyau simulé : téléchargements instantanés (un tour de boucle), slots enregistrés, vitesses données. */
-function fakeKernel(m: MachineInfo, speeds: number[], agents: Agent[] = []) {
-  const snap = providers();
+function fakeKernel(m: MachineInfo, speeds: number[], agents: Agent[] = [], opts: { lang?: string; providers?: Parameters<typeof providers>[0] } = {}) {
+  const snap = providers(opts.providers);
   const listeners = new Set<() => void>();
   const changes: [string, unknown][] = [];
   const ops: CatalogOp[] = [];
+  const lang = { value: opts.lang ?? "fr" };
   const fire = () => { for (const fn of [...listeners]) fn(); };
   const find = (prov: string, id: string) => snap.find((s) => s.id === prov)!.items.find((i) => i.id === id)!;
   const settings = [{ key: "slot.brain.main", options: [{ value: "claude/sonnet", label: "Claude", cloud: true }] }] as unknown as SettingInfo[];
@@ -124,6 +209,8 @@ function fakeKernel(m: MachineInfo, speeds: number[], agents: Agent[] = []) {
     change: async (key, value) => { changes.push([key, value]); return { ok: true, text: "" }; },
     onItems: (fn) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
     machine: async () => m,
+    language: () => lang.value,
+    setLanguage: async (l) => { lang.value = l; return { ok: true, text: "ok" }; },
     borrowLlm: async () => ({ service: { baseURL: "http://llm", model: "m" }, release: () => {} }),
     idle: async () => {},
     retryMs: 0,
@@ -133,13 +220,16 @@ function fakeKernel(m: MachineInfo, speeds: number[], agents: Agent[] = []) {
       return new Response(JSON.stringify({ timings: { predicted_per_second: v } }));
     }) as unknown as typeof fetch,
   };
-  return { deps, changes, ops, snap };
+  return { deps, changes, ops, snap, lang };
 }
 
 const until = async (o: Onboarding, phase: OnboardingState["phase"]) => vi.waitFor(() => expect(o.state.phase).toBe(phase), { timeout: 2000 });
+const idsOf = (ops: CatalogOp[]) => ops.map((x) => (x as { id: string }).id);
+const brainSlot = (changes: [string, unknown][]) => changes.filter(([key]) => key === "slot.brain.main").map(([, v]) => v);
+const sttSlot = (changes: [string, unknown][]) => changes.filter(([key]) => key === "slot.listen.stt").map(([, v]) => v);
 
-describe("installation d'un niveau", () => {
-  it("texte : Floppy répond tout de suite (sans voix, cerveau cloud), puis l'écoute s'active une fois téléchargée", async () => {
+describe("installation d'une sélection", () => {
+  it("écoute et cerveau cloud : Floppy répond tout de suite (sans voix), puis l'écoute s'active une fois téléchargée", async () => {
     const k = fakeKernel(cpuOnly, []);
     const o = new Onboarding(k.deps);
     o.begin();
@@ -147,9 +237,9 @@ describe("installation d'un niveau", () => {
     await o.plan();
     const states: OnboardingState[] = [];
     o.onState((s) => states.push(s));
-    expect(o.apply("text").ok).toBe(true);
+    expect(o.apply({ brain: "claude/sonnet", stt: V.parakeet }).ok).toBe(true);
     await until(o, "done");
-    expect(k.ops.map((x) => (x as { id: string }).id)).toEqual(["silero-vad", "parakeet"]);
+    expect(idsOf(k.ops)).toEqual(["silero-vad", "parakeet"]);
     // D'abord le minimum (avant tout téléchargement), puis l'écoute.
     expect(k.changes).toEqual([
       ["slot.voice.tts", "@none"],
@@ -159,12 +249,24 @@ describe("installation d'un niveau", () => {
     ]);
     const firstLive = states.find((s) => s.live)!;
     expect(firstLive.rows.every((r) => r.state === "waiting")).toBe(true);
+    expect(firstLive.selection).toEqual({ brain: "claude/sonnet", stt: V.parakeet });
     expect(tr(firstLive.notes[0]!, "fr")).toBe("Floppy répond déjà par écrit, avec Claude.");
     expect(o.state.notes.map((n) => tr(n, "fr"))).toContain("Floppy t'entend : tu peux lui parler.");
     expect(states.some((s) => s.rows.some((r) => r.state === "downloading" && r.progress === 0.5))).toBe(true);
     expect(o.state.rows.every((r) => r.state === "ready")).toBe(true);
     expect(o.needed()).toBe(false);
-    expect(JSON.parse(readFileSync(join(k.deps.home, "onboarding.json"), "utf8"))).toMatchObject({ done: true, level: "text" });
+    expect(JSON.parse(readFileSync(join(k.deps.home, "onboarding.json"), "utf8"))).toMatchObject({ done: true, selection: { brain: "claude/sonnet", stt: V.parakeet } });
+  });
+
+  it("le conseil tel quel s'applique : voix, écoute et cerveau local, chacun avec son slot", async () => {
+    const k = fakeKernel(nvidia, [40]);
+    const o = new Onboarding(k.deps);
+    const plan = await o.plan();
+    expect(o.apply(plan.recommended).ok).toBe(true);
+    await until(o, "done");
+    expect(k.changes).toContainEqual(["slot.voice.tts", "tts-local/pocket-tts-french-item"]);
+    expect(k.changes).toContainEqual(["slot.listen.stt", "sherpa/parakeet-item"]);
+    expect(brainSlot(k.changes)).toEqual(["claude/sonnet", "llm/mistral-24b-item"]);
   });
 
   it("modèle sur le disque mais pas dans la liste : « use » au lieu de télécharger", async () => {
@@ -172,20 +274,40 @@ describe("installation d'un niveau", () => {
     k.snap[0]!.items[0]!.status = "ok"; // silero sur le disque, sans élément (pas de uses)
     const o = new Onboarding(k.deps);
     await o.plan();
-    o.apply("text");
+    o.apply({ brain: "claude/sonnet", stt: V.parakeet });
     await until(o, "done");
     expect(k.ops.map((x) => (x as { action: string }).action)).toEqual(["use", "download"]);
+  });
+
+  it("choix inconnu, ou plan pas encore lu : refusé, rien n'est lancé", async () => {
+    const k = fakeKernel(cpuOnly, []);
+    const o = new Onboarding(k.deps);
+    expect(o.apply({ stt: V.parakeet }).ok).toBe(false);
+    await o.plan();
+    expect(o.apply({ stt: "sherpa-library/inconnu" }).ok).toBe(false);
+    expect(o.apply({ brain: "nulle-part/cerveau" }).ok).toBe(false);
+    expect(o.state.phase).toBe("idle");
+    expect(k.ops).toEqual([]);
+  });
+
+  it("un choix qui ne tient pas reste permis (forcé)", async () => {
+    const k = fakeKernel(cpuOnly, []);
+    const o = new Onboarding(k.deps);
+    const plan = await o.plan();
+    expect(choice(plan, "tts", V.qwen).fits).toBe(false);
+    expect(o.apply({ brain: "claude/sonnet", stt: V.parakeet, tts: V.qwen }).ok).toBe(true);
+    await until(o, "done");
+    expect(k.changes).toContainEqual(["slot.voice.tts", "tts-local/qwen3-tts-item"]);
   });
 
   it("cerveau local trop lent : le cloud répond en attendant ; Floppy prend un plus petit, le télécharge et le teste", async () => {
     const k = fakeKernel(nvidia, [MIN_SPEED - 7, 40]);
     const o = new Onboarding(k.deps);
     await o.plan();
-    o.apply("local");
+    o.apply({ brain: V.mistral, stt: V.parakeet, tts: V.pocket });
     await until(o, "done");
-    const brain = k.changes.filter(([key]) => key === "slot.brain.main").map(([, v]) => v);
     // Le cerveau trop lent n'est jamais branché : le cloud, puis le plus petit.
-    expect(brain).toEqual(["claude/sonnet", "llm/gemma-12b-item"]);
+    expect(brainSlot(k.changes)).toEqual(["claude/sonnet", "llm/gemma-12b-item"]);
     const notes = o.state.notes.map((n) => tr(n, "fr"));
     expect(notes[0]).toBe("Floppy répond déjà par écrit, avec Claude en attendant le cerveau local.");
     expect(notes).toContain("mistral-24b répondait à 8 jetons par seconde, trop lent pour parler : Floppy prend gemma-12b.");
@@ -197,9 +319,9 @@ describe("installation d'un niveau", () => {
     const k = fakeKernel(nvidia, [5, 5, 5]);
     const o = new Onboarding(k.deps);
     await o.plan();
-    o.apply("local");
+    o.apply({ brain: V.mistral, stt: V.parakeet });
     await until(o, "done");
-    expect(k.changes.filter(([key]) => key === "slot.brain.main").map(([, v]) => v)).toEqual(["claude/sonnet"]);
+    expect(brainSlot(k.changes)).toEqual(["claude/sonnet"]);
     expect(o.state.notes.map((n) => tr(n, "en"))).toContainEqual(expect.stringMatching(/too slow to talk: Floppy keeps Claude \(cloud\)\.$/));
   });
 
@@ -209,11 +331,12 @@ describe("installation d'un niveau", () => {
     const o = new Onboarding(k.deps);
     o.begin();
     await o.plan();
-    o.apply("text");
+    o.apply({ brain: "claude/sonnet", stt: V.parakeet });
     await until(o, "error");
     expect(o.state.rows[0]).toMatchObject({ state: "error", text: "réseau coupé" });
     expect(o.state.live).toBe(true); // le cerveau cloud répond quand même
     expect(o.needed()).toBe(true);
+    expect(JSON.parse(readFileSync(join(k.deps.home, "onboarding.json"), "utf8"))).toMatchObject({ done: false, selection: { brain: "claude/sonnet", stt: V.parakeet } });
     // Floppy relancé, le réseau revenu : la même installation reprend toute seule.
     const k2 = fakeKernel(cpuOnly, []);
     const o2 = new Onboarding({ ...k2.deps, home: k.deps.home });
@@ -223,18 +346,105 @@ describe("installation d'un niveau", () => {
     expect(await o2.resume()).toBe(false);
   });
 
+  it("un fichier sans sélection (ancien format migré) n'est pas repris : la fenêtre revient", async () => {
+    const k = fakeKernel(cpuOnly, []);
+    writeFileSync(join(k.deps.home, "onboarding.json"), JSON.stringify({ done: false }));
+    const o = new Onboarding(k.deps);
+    expect(o.needed()).toBe(true);
+    expect(await o.resume()).toBe(false);
+    expect(k.ops).toEqual([]);
+  });
+
   it("Passer : plus de fenêtre au démarrage ; une seule installation à la fois", async () => {
     const k = fakeKernel(cpuOnly, []);
     const o = new Onboarding(k.deps);
     o.begin();
     await o.plan();
-    o.apply("text");
-    expect(o.apply("text").ok).toBe(false);
+    o.apply({ brain: "claude/sonnet", stt: V.parakeet });
+    expect(o.apply({ brain: "claude/sonnet", stt: V.parakeet }).ok).toBe(false);
     await until(o, "done");
     const o2 = new Onboarding({ ...k.deps, home: mkdtempSync(join(tmpdir(), "onb-")) });
     o2.begin();
     o2.skip();
     expect(o2.needed()).toBe(false);
+  });
+});
+
+describe("écoute en avance (prepareListening)", () => {
+  it("télécharge le détecteur et la transcription conseillée sans attendre apply, règle leurs slots, et ne le fait qu'une fois", async () => {
+    const k = fakeKernel(cpuOnly, []);
+    const o = new Onboarding(k.deps);
+    await o.prepareListening();
+    await o.prepareListening();
+    // Les lignes d'avancement sont dans l'état, comme les autres.
+    expect(o.state.rows.map((r) => r.role)).toEqual(["vad", "stt"]);
+    await vi.waitFor(() => expect(o.state.rows.every((r) => r.state === "ready")).toBe(true));
+    expect(o.state.phase).toBe("idle");
+    expect(idsOf(k.ops)).toEqual(["silero-vad", "parakeet"]);
+    expect(k.changes).toEqual([["slot.listen.vad", "sherpa/silero-vad-item"], ["slot.listen.stt", "sherpa/parakeet-item"]]);
+    expect(o.state.notes.map((n) => tr(n, "fr"))).toEqual(["Floppy t'entend : tu peux lui parler."]);
+    await o.prepareListening();
+    expect(idsOf(k.ops)).toEqual(["silero-vad", "parakeet"]);
+  });
+
+  it("apply avec la même transcription ne retélécharge rien et ne règle pas deux fois les slots", async () => {
+    const k = fakeKernel(cpuOnly, []);
+    const o = new Onboarding(k.deps);
+    await o.prepareListening();
+    await vi.waitFor(() => expect(o.state.rows.every((r) => r.state === "ready")).toBe(true));
+    expect(o.apply({ brain: "claude/sonnet", stt: V.parakeet }).ok).toBe(true);
+    await until(o, "done");
+    expect(idsOf(k.ops)).toEqual(["silero-vad", "parakeet"]);
+    expect(k.changes.filter(([key]) => key.startsWith("slot.listen"))).toHaveLength(2);
+    expect(o.state.rows.map((r) => r.state)).toEqual(["ready", "ready"]);
+    expect(o.state.notes.map((n) => tr(n, "fr")).filter((n) => n === "Floppy t'entend : tu peux lui parler.")).toHaveLength(1);
+  });
+
+  it("apply pendant le téléchargement : on attend le même téléchargement, sans le redemander", async () => {
+    const k = fakeKernel(cpuOnly, []);
+    const o = new Onboarding(k.deps);
+    await o.prepareListening();
+    expect(o.apply({ brain: "claude/sonnet", stt: V.parakeet }).ok).toBe(true);
+    await until(o, "done");
+    expect(idsOf(k.ops)).toEqual(["silero-vad", "parakeet"]);
+    expect(sttSlot(k.changes)).toEqual(["sherpa/parakeet-item"]);
+  });
+
+  it("une autre transcription choisie ensuite prend le slot ; la première n'y touche pas", async () => {
+    const k = fakeKernel(cpuOnly, [], [], { providers: { whisperEn: true }, lang: "fr" });
+    const o = new Onboarding(k.deps);
+    await o.prepareListening(); // conseillé en français : Parakeet
+    expect(o.apply({ brain: "claude/sonnet", stt: V.whisper }).ok).toBe(true);
+    await until(o, "done");
+    expect(idsOf(k.ops).sort()).toEqual(["parakeet", "silero-vad", "whisper-en"]);
+    expect(sttSlot(k.changes)).toEqual(["sherpa/whisper-en-item"]);
+    // Le détecteur de parole, lui, est partagé : réglé une fois.
+    expect(k.changes.filter(([key]) => key === "slot.listen.vad")).toHaveLength(1);
+  });
+});
+
+describe("langue de l'assistant", () => {
+  it("la changer passe par la même voie que les Réglages, puis recalcule le conseil", async () => {
+    const k = fakeKernel(nvidia, [], [], { lang: "fr" });
+    const o = new Onboarding(k.deps);
+    const fr = await o.plan();
+    expect(fr.language).toBe("fr");
+    expect(fr.recommended.tts).toBe(V.pocket);
+    const r = await o.setLanguage("en");
+    expect(r.ok).toBe(true);
+    expect(k.lang.value).toBe("en");
+    expect(r.plan!.language).toBe("en");
+    expect(r.plan!.recommended.tts).toBe(V.qwen);
+    // Le plan recalculé est celui qu'`apply` utilise.
+    expect(o.apply({ tts: V.qwen }).ok).toBe(true);
+  });
+
+  it("un changement refusé laisse le plan tel quel", async () => {
+    const k = fakeKernel(nvidia, []);
+    k.deps.setLanguage = async () => ({ ok: false, text: "non" });
+    const o = new Onboarding(k.deps);
+    await o.plan();
+    expect(await o.setLanguage("en")).toEqual({ ok: false, text: "non" });
   });
 });
 
@@ -257,20 +467,25 @@ describe("Claude Code, Codex, Antigravity", () => {
     ]);
   });
 
-  it("Claude Code absent, Codex trouvé : le cerveau conseillé est Codex, à ajouter", () => {
+  it("Claude Code absent, Codex trouvé : le cerveau conseillé est Codex, à ajouter ; Claude est grisé", () => {
     const a = findAgents(manifests, entries, (p) => (p === "codex" ? "/bin/codex" : undefined));
     const clouds = cloudBrains(settings, a, entries);
     expect(clouds).toEqual([{ value: "claude/sonnet", label: "Claude", plugin: "brain-claude-cli", found: false }]);
-    const p = planLevels(cpuOnly, providers(), clouds, a);
+    const p = planChoices(cpuOnly, providers(), clouds, a);
     expect(p.brain).toBe("add:brain-codex-cli");
-    expect(lvl(p, "text").possible).toBe(true);
+    expect(p.recommended.brain).toBe("add:brain-codex-cli");
+    expect(choice(p, "brain", "add:brain-codex-cli")).toMatchObject({ kind: "cloud", fits: true, installed: false, recommended: true });
+    expect(choice(p, "brain", "claude/sonnet")).toMatchObject({ fits: false });
+    expect(tr(choice(p, "brain", "claude/sonnet").reason!, "fr")).toBe("claude est introuvable");
+    expect(values(p, "brain")).not.toContain("add:brain-agy-cli");
   });
 
-  it("aucun programme trouvé et rien d'autre : les niveaux cloud disent quoi installer", () => {
+  it("aucun programme trouvé et rien d'autre : pas de cerveau conseillé, et pas de cerveau cloud à choisir qui marche", () => {
     const a = findAgents(manifests, entries, () => undefined);
-    const p = planLevels(cpuOnly, providers(), cloudBrains(settings, a, entries), a);
+    const p = planChoices(cpuOnly, providers(), cloudBrains(settings, a, entries), a);
     expect(p.brain).toBeUndefined();
-    expect(tr(lvl(p, "text").reason!, "fr")).toMatch(/installe Claude Code, Codex ou Antigravity/);
+    expect(p.recommended.brain).toBeUndefined();
+    expect(p.choices.brain.filter((c) => c.kind === "cloud").every((c) => !c.fits)).toBe(true);
   });
 
   it("installer avec « add:… » ajoute le plugin, puis prend son cerveau", async () => {
@@ -279,7 +494,7 @@ describe("Claude Code, Codex, Antigravity", () => {
     const o = new Onboarding(k.deps);
     const plan = await o.plan();
     expect(plan.brain).toBe("add:brain-codex-cli");
-    o.apply("text");
+    o.apply({ brain: plan.recommended.brain!, stt: V.parakeet });
     await until(o, "done");
     expect(k.ops.find((x) => x.op === "add")).toEqual({ op: "add", provider: "apps-cerveau", kind: "brain-codex-cli", values: {} });
     expect(k.changes).toContainEqual(["slot.brain.main", "codex/gpt"]);
@@ -300,11 +515,14 @@ describe("voix déjà offertes (voix du système)", () => {
     pv[1]!.missing = "audio.cpp introuvable";
     const offered = offeredVoices(settings, pv);
     expect(offered.map((c) => `${c.source}/${c.uses}`)).toEqual(["tts-system/hortense", "tts-local/anna"].filter((v) => !v.startsWith("tts-local")));
-    const p = planLevels(cpuOnly, pv, CLAUDE, [], offered);
-    expect(ids(p, "voice")).toEqual(["silero-vad", "parakeet", "hortense"]);
-    expect(lvl(p, "voice").downloadBytes).toBe(Math.round(50e6 * 0.8) + Math.round(1.3e9 * 0.8));
-    // audio.cpp présent : Pocket TTS (bibliothèque) gagne.
-    expect(ids(planLevels(cpuOnly, providers(), CLAUDE, [], offeredVoices(settings, providers())), "voice")).toContain("pocket-tts-french");
+    const p = planChoices(cpuOnly, pv, CLAUDE, [], offered);
+    expect(p.recommended.tts).toBe("tts-system/hortense");
+    expect(tr(choice(p, "tts", V.pocket).reason!, "fr")).toBe("audio.cpp introuvable");
+    expect(choice(p, "tts", "tts-system/hortense")).toMatchObject({ kind: "offered", fits: true, size: 0 });
+    // audio.cpp présent : Pocket TTS (bibliothèque) gagne en français, la voix système reste un choix.
+    const pz = planChoices(cpuOnly, providers(), CLAUDE, [], offeredVoices(settings, providers()));
+    expect(pz.recommended.tts).toBe(V.pocket);
+    expect(values(pz, "tts")).toContain("tts-system/hortense");
   });
 
   it("installation : la voix offerte est prête tout de suite et réglée dans le slot", async () => {
@@ -314,9 +532,10 @@ describe("voix déjà offertes (voix du système)", () => {
     k.deps.settings = () => [...base(), ...settings];
     const o = new Onboarding(k.deps);
     await o.plan();
-    o.apply("voice");
+    o.apply({ brain: "claude/sonnet", stt: V.parakeet, tts: "tts-system/hortense" });
     await until(o, "done");
     expect(k.changes).toContainEqual(["slot.voice.tts", "tts-system/hortense"]);
+    expect(k.changes).not.toContainEqual(["slot.voice.tts", "@none"]);
   });
 });
 
@@ -332,23 +551,22 @@ describe("programmes à installer (llama.cpp, audio.cpp)", () => {
     return pv;
   }
 
-  it("un programme manquant mais téléchargeable ne bloque plus : il passe avant ses modèles", () => {
-    const p = planLevels(nvidia, withPrograms(), CLAUDE);
-    expect(p.levels.every((l) => l.possible)).toBe(true);
-    // Voix sur le processeur : la petite version d'audio.cpp suffit.
-    expect(ids(p, "voice")).toEqual(["audio-cpu", "silero-vad", "parakeet", "pocket-tts-french"]);
-    // Voix sur la puce graphique et cerveau local : les versions CUDA.
-    expect(ids(p, "local-max")).toEqual(["audio-cuda", "llama-cuda", "silero-vad", "parakeet", "qwen3-tts", "gemma-12b"]);
-    expect(lvl(p, "local-max").downloadBytes).toBeGreaterThan(1.4e9);
+  it("un programme manquant mais téléchargeable ne bloque plus : sa taille s'ajoute à celle du modèle", () => {
+    const p = planChoices(nvidia, withPrograms(), CLAUDE);
+    expect(p.choices.tts.concat(p.choices.brain).every((c) => c.fits)).toBe(true);
+    // Voix sur le processeur : la petite version d'audio.cpp suffit ; sur la puce graphique : la version CUDA.
+    expect(choice(p, "tts", V.pocket).size).toBe(Math.round(0.8 * GIB * 0.8) + 32e6);
+    expect(choice(p, "tts", V.qwen).size).toBe(Math.round(4.5 * GIB * 0.8) + 850e6);
+    expect(choice(p, "brain", V.mistral).size).toBe(Math.round(15.5e9 * 0.8) + 600e6);
   });
 
-  it("programme déjà installé en version processeur : une voix de la puce graphique demande la mise à jour", () => {
+  it("programme déjà installé en version processeur : une voix de la puce graphique demande la mise à jour (sa taille)", () => {
     const pv = withPrograms();
     pv[1]!.missing = undefined;
     pv[3]!.items[1]!.status = "ok"; // audio-cpu installé
-    const p = planLevels(nvidia, pv, CLAUDE);
-    expect(ids(p, "voice")).not.toContain("audio-cpu");
-    expect(ids(p, "hybrid")[0]).toBe("audio-cuda");
+    const p = planChoices(nvidia, pv, CLAUDE);
+    expect(choice(p, "tts", V.pocket).size).toBe(Math.round(0.8 * GIB * 0.8));
+    expect(choice(p, "tts", V.qwen).size).toBe(Math.round(4.5 * GIB * 0.8) + 850e6);
   });
 
   it("installation : le programme est prêt quand il est installé, sans slot à régler", async () => {
@@ -356,10 +574,10 @@ describe("programmes à installer (llama.cpp, audio.cpp)", () => {
     k.snap.splice(0, k.snap.length, ...withPrograms());
     const o = new Onboarding(k.deps);
     await o.plan();
-    o.apply("local");
+    o.apply({ brain: V.mistral, stt: V.parakeet, tts: V.pocket });
     await until(o, "done");
     // L'écoute d'abord, puis la voix (avec son programme), puis le cerveau (avec le sien).
-    expect(k.ops.map((x) => (x as { id: string }).id)).toEqual(["silero-vad", "parakeet", "audio-cpu", "pocket-tts-french", "llama-cuda", "mistral-24b"]);
+    expect(idsOf(k.ops)).toEqual(["silero-vad", "parakeet", "audio-cpu", "pocket-tts-french", "llama-cuda", "mistral-24b"]);
     expect(k.changes.map(([key]) => key)).not.toContain("slot.program");
     expect(o.state.rows.find((r) => r.role === "program")?.state).toBe("ready");
   });
@@ -381,19 +599,20 @@ describe("ordre d'installation", () => {
 });
 
 describe("modèles déjà sur la machine (LM Studio, Ollama)", () => {
+  const FOUND = "llm-local-found/ollama-qwen3-8b";
   const withFound = (memory: number): ProviderSnapshot[] => [
     ...providers(),
     lib("llm-local-found", "llm", [{ ...it_("ollama-qwen3-8b", "llm", memory, "gpu"), size: 0, status: "ok" }]),
   ];
 
   it("un modèle trouvé assez grand passe devant un plus grand à télécharger : rien à télécharger pour le cerveau", () => {
-    const p = planLevels(nvidia, withFound(7e9), CLAUDE);
-    expect(ids(p, "local")).toContain("ollama-qwen3-8b");
-    expect(lvl(p, "local").downloadBytes).toBe(lvl(planLevels(nvidia, providers(), CLAUDE), "voice").downloadBytes);
+    const p = planChoices(nvidia, withFound(7e9), CLAUDE);
+    expect(p.recommended.brain).toBe(FOUND);
+    expect(choice(p, "brain", FOUND)).toMatchObject({ installed: true, size: 0, kind: "local" });
   });
 
   it("trop petit pour bien parler : le catalogue garde la main", () => {
-    expect(ids(planLevels(nvidia, withFound(3e9), CLAUDE), "local")).toContain("mistral-24b");
+    expect(planChoices(nvidia, withFound(3e9), CLAUDE).recommended.brain).toBe(V.mistral);
   });
 
   it("installation : « use » l'ajoute à la liste ; s'il ne répond pas au test, le cerveau cloud reste", async () => {
@@ -402,10 +621,10 @@ describe("modèles déjà sur la machine (LM Studio, Ollama)", () => {
     k.deps.fetch = (async () => new Response("erreur", { status: 500 })) as unknown as typeof fetch;
     const o = new Onboarding(k.deps);
     await o.plan();
-    o.apply("local");
+    o.apply({ brain: FOUND, stt: V.parakeet });
     await until(o, "done");
     expect(k.ops).toContainEqual({ op: "action", provider: "llm-local-found", id: "ollama-qwen3-8b", action: "use" });
-    expect(k.changes.filter(([key]) => key === "slot.brain.main").map(([, v]) => v)).toEqual(["claude/sonnet"]);
+    expect(brainSlot(k.changes)).toEqual(["claude/sonnet"]);
     expect(o.state.notes.map((n) => tr(n, "fr"))).toContainEqual(expect.stringMatching(/^ollama-qwen3-8b n'a pas répondu au test : Floppy garde le cerveau du cloud/));
   });
 });
