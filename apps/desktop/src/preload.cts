@@ -15,6 +15,7 @@ ipcRenderer.on("document-delete", (_e, d: Loose) => window.postMessage({ floppyD
 // Conversation : la fenêtre est visible (la bulle s'efface), ou l'utilisateur y a répondu à un accord ou à un choix.
 ipcRenderer.on("chat-open", (_e, on) => window.postMessage({ floppyChatOpen: on === true }, "*"));
 ipcRenderer.on("chat-approval", (_e, d: Loose) => window.postMessage({ floppyChatApproval: { id: String(d?.id ?? ""), ok: d?.ok === true } }, "*"));
+ipcRenderer.on("chat-stop-listening", () => window.postMessage({ floppyChatStopListening: true }, "*"));
 ipcRenderer.on("chat-choice", (_e, d: Loose) => window.postMessage({ floppyChatChoice: { id: String(d?.id ?? ""), option: String(d?.option ?? "") } }, "*"));
 ipcRenderer.on("cursor", (_e, p: Loose) => window.postMessage({ floppyCursor: { x: Number(p?.x) || 0, y: Number(p?.y) || 0 } }, "*"));
 

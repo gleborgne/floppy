@@ -64,12 +64,14 @@ export function createProtocol(deps: ProtocolDeps) {
   };
   const send = (msg: BodyToKernel): void => link.send(msg);
 
-  $("stopListening")?.addEventListener("click", () => {
+  /** Arrêter l'écoute : le bouton de la bulle, ou celui de la fenêtre « Conversation » (qui passe par ici). */
+  const stopListening = (): void => {
     session.muted = false;
     if (session.pttOn) send({ type: "ptt", on: false });
     session.pttOn = false;
     send({ type: "listen.stop" });
-  });
+  };
+  $("stopListening")?.addEventListener("click", stopListening);
 
   $("openChat")?.addEventListener("click", () => host?.openChat?.());
 
@@ -214,6 +216,7 @@ export function createProtocol(deps: ProtocolDeps) {
     if (chatApproval && typeof chatApproval.id === "string") send({ type: "approval.response", id: chatApproval.id, ok: chatApproval.ok === true });
     const chatChoice = e.data?.floppyChatChoice;
     if (chatChoice && typeof chatChoice.id === "string" && typeof chatChoice.option === "string") send({ type: "choice.response", id: chatChoice.id, option: chatChoice.option });
+    if (e.data?.floppyChatStopListening === true) stopListening();
     const docOpen = e.data?.floppyDocumentOpen;
     if (typeof docOpen === "string") send({ type: "document.open", id: docOpen });
     const docDel = e.data?.floppyDocumentDelete;

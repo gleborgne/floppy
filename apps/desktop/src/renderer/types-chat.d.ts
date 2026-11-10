@@ -9,4 +9,4 @@ type ChatEntry =
   | { id: number; kind: "choice"; key: string; title: string; options: ChatOption[]; ttl_s: number; at: number; closed: boolean; picked: string };
 /** Ce qui change : entrées créées ou modifiées (par id) et entrées parties. */
 interface ChatDelta { changed: ChatEntry[]; removed: number[] }
-interface ChatInit { lang: string; entries: ChatEntry[] }
+interface ChatInit { lang: string; entries: ChatEntry[]; /** État de Floppy au chargement (« listening » : il écoute). */ state?: string }

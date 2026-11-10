@@ -16,12 +16,13 @@ async function mount(submit: () => Promise<boolean> = async () => true) {
   document.addEventListener = ((name: string, fn: EventListener, ...rest: unknown[]) => { listeners.push([name, fn]); (add as Function)(name, fn, ...rest); }) as typeof document.addEventListener;
   const html = readFileSync("apps/desktop/src/renderer/chat.html", "utf8");
   document.body.innerHTML = html.slice(html.indexOf("<body>") + 6, html.indexOf("</body>"));
-  const cb: { init?: Cb<ChatInit>; change?: Cb<ChatDelta>; lang?: Cb<string>; focus?: () => void } = {};
+  const cb: { init?: Cb<ChatInit>; change?: Cb<ChatDelta>; lang?: Cb<string>; state?: Cb<string>; focus?: () => void } = {};
   const host = {
-    submit: vi.fn(submit), close: vi.fn(), answerApproval: vi.fn(), answerChoice: vi.fn(), link: vi.fn(),
+    submit: vi.fn(submit), close: vi.fn(), stopListening: vi.fn(), answerApproval: vi.fn(), answerChoice: vi.fn(), link: vi.fn(),
     onInit: vi.fn((f: Cb<ChatInit>) => { cb.init = f; return () => {}; }),
     onChange: vi.fn((f: Cb<ChatDelta>) => { cb.change = f; return () => {}; }),
     onLang: vi.fn((f: Cb<string>) => { cb.lang = f; return () => {}; }),
+    onState: vi.fn((f: Cb<string>) => { cb.state = f; return () => {}; }),
     onFocus: vi.fn((f: () => void) => { cb.focus = f; return () => {}; }),
   };
   (window as unknown as { floppyChat: unknown }).floppyChat = host;
@@ -71,6 +72,39 @@ it("Maj+Entrée et la composition (IME) restent dans le champ ; Échap ferme", a
   expect(document.activeElement).toBe(f.prompt);
 });
 
+it("la barre de titre dessinée par la page : son bouton ferme la fenêtre", async () => {
+  const f = await mount();
+  f.$("close").click();
+  expect(f.host.close).toHaveBeenCalledOnce();
+  expect(f.host.submit).not.toHaveBeenCalled();          // ce n'est pas un bouton d'envoi du formulaire
+});
+
+it("« Je t'écoute… » s'affiche pendant l'écoute seulement, dans la langue de l'interface, et dès le chargement", async () => {
+  const f = await mount();
+  const listen = f.$("listen");
+  expect(listen.hidden).toBe(true);
+  f.cb.state!("listening");
+  expect(listen.hidden).toBe(false);
+  expect(listen.textContent).toContain("Je t'écoute");
+  expect(document.body.classList.contains("listening")).toBe(true);
+  // Le bouton à côté arrête l'écoute (sans envoyer le formulaire ni fermer la fenêtre).
+  expect(f.$("stop-listening").getAttribute("aria-label")).toBe("Arrêter l'écoute");
+  f.$("stop-listening").click();
+  expect(f.host.stopListening).toHaveBeenCalledOnce();
+  expect(f.host.submit).not.toHaveBeenCalled();
+  expect(f.host.close).not.toHaveBeenCalled();
+  f.cb.lang!("en");
+  expect(f.$("stop-listening").getAttribute("aria-label")).toBe("Stop listening");
+  expect(listen.textContent).toContain("I'm listening");
+  f.cb.state!("thinking");
+  expect(listen.hidden).toBe(true);
+  expect(document.body.classList.contains("listening")).toBe(false);
+  f.cb.init!({ lang: "fr", entries: [], state: "listening" });   // fenêtre ouverte pendant que Floppy écoute déjà
+  expect(listen.hidden).toBe(false);
+  f.cb.init!({ lang: "fr", entries: [] });
+  expect(listen.hidden).toBe(true);
+});
+
 it("échec : le brouillon reste, l'erreur est traduite et suit la langue", async () => {
   const f = await mount(async () => false);
   f.prompt.value = "Ma demande";
@@ -93,15 +127,19 @@ it("la langue de l'interface change les textes de la page et des entrées, en di
   f.cb.init!({ lang: "fr", entries: [{ id: 1, kind: "you", text: "Salut" }, { id: 2, kind: "info", title: "", text: "Fini", important: true }] });
   expect(f.log.textContent).toContain("Toi");
   expect(f.log.textContent).toContain("Important");
-  expect(f.send.textContent).toBe("Envoyer");
+  expect(f.send.getAttribute("aria-label")).toBe("Envoyer");
+  expect(f.$("close").getAttribute("aria-label")).toBe("Fermer");
   expect(document.documentElement.lang).toBe("fr");
   f.cb.lang!("en");
   expect(document.documentElement.lang).toBe("en");
-  expect(f.send.textContent).toBe("Send");
+  expect(f.send.getAttribute("aria-label")).toBe("Send");
+  expect(f.send.title).toBe("Send");
+  expect(f.$("close").getAttribute("aria-label")).toBe("Close");
+  expect(f.$("title").textContent).toBe("Conversation");
   expect(f.prompt.placeholder).toBe("Write to Floppy…");
   expect(f.log.textContent).toContain("You");
   expect(f.log.textContent).toContain("Salut");
-  expect(f.$("hint").textContent).toContain("Shift+Enter");
+  expect(document.getElementById("hint")).toBeNull();     // pas de ligne d'aide sous le champ
 });
 
 it("le journal entier au chargement, puis des changements : texte brut en cours, HTML nettoyé une fois terminée", async () => {

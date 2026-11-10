@@ -24,7 +24,7 @@ export interface IpcDeps {
   voice(): Pick<VoiceControls, "stateChanged">;
   dictation(): Pick<Dictation, "onDictation" | "onLevel" | "onStop">;
   windows(): Pick<AppWindows, "settingsWin" | "onbWin" | "panelWin" | "docsWin" | "coderSessions" | "openSettings" | "openOnboarding" | "openPanel" | "openDocuments">;
-  chat(): Pick<ChatWindow, "relay" | "openFromAvatar" | "submit" | "answerApproval" | "answerChoice" | "link" | "close">;
+  chat(): Pick<ChatWindow, "setState" | "relay" |"openFromAvatar" | "submit" | "answerApproval" | "answerChoice" | "stopListening" | "link" | "close">;
 }
 
 /** Branche tous les canaux (une fois, quand l'app est prête). */
@@ -43,6 +43,7 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.on("state", (_e, s) => {
     avatar().setState(s);
     deps.voice().stateChanged(s);
+    deps.chat().setState(s);
     if (s === "listening" || s === "thinking" || s === "speaking") avatar().activity(); else if (s === "idle") avatar().settleIdle();
     refreshTray();
   });
@@ -54,6 +55,7 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle("chat:submit", (e, text) => deps.chat().submit(e, text));
   ipcMain.on("chat:approval", (e, id, ok) => { deps.chat().answerApproval(e, id, ok); });
   ipcMain.on("chat:choice", (e, id, option) => { deps.chat().answerChoice(e, id, option); });
+  ipcMain.on("chat:stop-listening", (e) => { deps.chat().stopListening(e); });
   ipcMain.on("chat:link", (e, url) => { deps.chat().link(e, url); });
   ipcMain.on("chat:close", (e) => { deps.chat().close(e); });
   ipcMain.handle("desktop:get", (e, ...args) => contributions.get(e, ...args));

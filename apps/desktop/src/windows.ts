@@ -10,12 +10,16 @@ export interface SafeWindowOptions {
   background?: string;
   /** Nom du fichier preload compilé (dans build/, voir ui.ts). */
   preload: string;
+  /** Sans la barre de titre du système : la page dessine la sienne (zone à glisser, bouton fermer). Le bord reste étirable. */
+  frameless?: boolean;
 }
 
 /** Fenêtre secondaire sûre (cachée : la montrer quand elle est prête). */
-export function safeWindow({ size, title, background = "#0b0f15", preload }: SafeWindowOptions): BrowserWindow {
+export function safeWindow({ size, title, background = "#0b0f15", preload, frameless = false }: SafeWindowOptions): BrowserWindow {
   const w = new BrowserWindow({
     ...size, title, backgroundColor: background, autoHideMenuBar: true, show: false,
+    // Pas d'agrandissement plein écran sans cadre : un double-clic sur la barre dessinée ne doit rien faire.
+    ...(frameless ? { frame: false, maximizable: false, fullscreenable: false } : {}),
     webPreferences: { preload: preloadFile(preload), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   w.setMenu(null);

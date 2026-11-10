@@ -39,6 +39,9 @@ export interface ChatWindow {
   show(): void;
   /** Langue de l'interface changée : titre et page suivent tout de suite. */
   setLang(): void;
+  /** État de Floppy (repos, écoute, réflexion, parole) : la page montre « Je t'écoute… », et la fenêtre ouverte repasse
+   *  devant quand l'écoute commence (mot d'activation, raccourci), sans prendre le focus. */
+  setState(state: unknown): void;
   /** Ce que la page de l'avatar relaie du noyau (refusé de toute autre page). */
   relay(e: { sender: unknown }, raw: unknown): boolean;
   /** Bouton de la bulle : la page de l'avatar demande à ouvrir la conversation. */
@@ -47,6 +50,8 @@ export interface ChatWindow {
   submit(e: { sender: unknown }, raw: unknown): boolean;
   answerApproval(e: { sender: unknown }, id: unknown, ok: unknown): boolean;
   answerChoice(e: { sender: unknown }, id: unknown, option: unknown): boolean;
+  /** Bouton à côté de « Je t'écoute… » : Floppy arrête d'écouter (par l'avatar, comme le bouton de la bulle). */
+  stopListening(e: { sender: unknown }): boolean;
   /** Lien cliqué dans une réponse : navigateur externe, adresses http, https et mailto seulement. */
   link(e: { sender: unknown }, url: unknown): boolean;
   close(e: { sender: unknown }): boolean;
@@ -64,6 +69,8 @@ export function createChatWindow(deps: ChatWindowDeps): ChatWindow {
   let manual = false;                       // l'utilisateur l'a déplacée ou redimensionnée : elle reste où il l'a mise
   let announced = false;                    // dernier état dit à l'avatar (la bulle se cache quand la fenêtre est visible)
   let followed: BrowserWindow | null = null;
+  let state = "";                           // dernier état de Floppy reçu (la page l'apprend au chargement, puis en direct)
+  let lastSeen = 0;                        // id de la dernière entrée du journal vue passer (pour reconnaître une nouvelle)
 
   const alive = (): boolean => !!win && !win.isDestroyed();
   const avatarWin = (): BrowserWindow | null => { const w = deps.avatar().win(); return w && !w.isDestroyed() ? w : null; };
@@ -104,17 +111,31 @@ export function createChatWindow(deps: ChatWindowDeps): ChatWindow {
     if (!alive()) return;
     if (!ready) { pending = mode === "front" || pending === "front" ? "front" : "quiet"; return; }
     if (mode === "front") { bringToFront(win); win!.webContents.send("chat:focus"); }
-    else if (!win!.isMinimized()) { win!.showInactive(); win!.moveTop(); }
+    else if (!win!.isMinimized()) { win!.showInactive(); surface(); }
     syncOpen();
   }
 
+  /** Passe devant les autres fenêtres sans prendre le focus : « toujours devant » un instant (le système refuse sinon de
+   *  faire remonter la fenêtre d'une app en arrière-plan), puis elle redevient une fenêtre ordinaire, restée au-dessus. */
+  function surface(): void {
+    const w = win!;
+    w.setAlwaysOnTop(true, "screen-saver");
+    w.moveTop();
+    setTimeout(() => { if (!w.isDestroyed()) w.setAlwaysOnTop(false); }, 400);
+  }
+  /** Du nouveau dans le fil alors que la fenêtre est ouverte mais peut-être cachée derrière une autre : elle remonte.
+   *  La bulle de l'avatar est masquée tant que la fenêtre est ouverte, donc sans cela l'utilisateur ne verrait rien. */
+  function raise(): void {
+    if (alive() && ready && win!.isVisible() && !win!.isMinimized() && !win!.isFocused()) surface();
+  }
+
   function create(mode: "quiet" | "front"): BrowserWindow {
-    const w = safeWindow({ size: { width: CHAT_SIZE.width, height: CHAT_SIZE.height, minWidth: 340, minHeight: CHAT_SIZE.minHeight }, title: T("chatTitle"), preload: "preload-chat.cjs" });
+    const w = safeWindow({ size: { width: CHAT_SIZE.width, height: CHAT_SIZE.height, minWidth: 340, minHeight: CHAT_SIZE.minHeight }, title: T("chatTitle"), preload: "preload-chat.cjs", frameless: true });
     win = w; loaded = false; ready = false; manual = false; pending = mode;
     place();
     w.loadFile(pageFile("chat"));
     w.webContents.on("did-start-loading", () => { loaded = false; });
-    w.webContents.on("did-finish-load", () => { loaded = true; w.webContents.send("chat:init", { lang: texts.lang(), entries: log.entries() }); });
+    w.webContents.on("did-finish-load", () => { loaded = true; w.webContents.send("chat:init", { lang: texts.lang(), entries: log.entries(), state }); });
     w.once("ready-to-show", () => { ready = true; const how = pending ?? "quiet"; pending = null; reveal(how); });
     w.on("show", syncOpen); w.on("hide", syncOpen); w.on("minimize", syncOpen); w.on("restore", syncOpen);
     const av = avatarWin();
@@ -156,11 +177,12 @@ export function createChatWindow(deps: ChatWindowDeps): ChatWindow {
     const delta = log.apply(event);
     push(delta);
     // Floppy ouvre la conversation, sans voler le focus : une liste à choisir, ou une réponse trop longue pour la bulle.
-    if (event.type === "choice.request") show();
-    else if (event.type === "reply.done") {
-      const finished = delta.changed.find((c) => c.kind === "reply" && c.done);
-      if (finished?.kind === "reply" && isLongReply(finished.text)) show();
-    }
+    const finished = event.type === "reply.done" ? delta.changed.find((c) => c.kind === "reply" && c.done) : undefined;
+    const fresh = delta.changed.some((c) => c.id > lastSeen);
+    lastSeen = Math.max(lastSeen, ...delta.changed.map((c) => c.id));
+    if (event.type === "choice.request" || (finished?.kind === "reply" && isLongReply(finished.text))) show();
+    // Une nouvelle entrée (demande, réponse, carte) dans une fenêtre déjà ouverte : elle repasse devant, sans focus.
+    else if (fresh) raise();
     return true;
   }
 
@@ -191,6 +213,13 @@ export function createChatWindow(deps: ChatWindowDeps): ChatWindow {
     return true;
   }
 
+  function stopListening(e: { sender: unknown }): boolean {
+    const av = avatarWin();
+    if (!fromChat(e) || !av || state !== "listening") return false;
+    av.webContents.send("chat-stop-listening");
+    return true;
+  }
+
   function link(e: { sender: unknown }, url: unknown): boolean {
     if (!fromChat(e)) return false;
     try {
@@ -210,11 +239,18 @@ export function createChatWindow(deps: ChatWindowDeps): ChatWindow {
     open();
     return true;
   }
+  function setState(value: unknown): void {
+    const next = typeof value === "string" ? value.slice(0, 40) : "";
+    if (next === state) return;
+    state = next;
+    if (alive() && loaded) win!.webContents.send("chat:state", state);
+    if (state === "listening") raise();
+  }
   function setLang(): void {
     if (!alive()) return;
     win!.setTitle(T("chatTitle"));
     win!.webContents.send("chat:lang", texts.lang());
   }
 
-  return { win: () => win, open, show, setLang, relay, openFromAvatar, submit, answerApproval, answerChoice, link, close };
+  return { win: () => win, open, show, setLang, setState, relay, openFromAvatar, submit, answerApproval, answerChoice, stopListening, link, close };
 }

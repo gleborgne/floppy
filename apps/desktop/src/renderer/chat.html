@@ -9,15 +9,24 @@
   <script type="module" src="./chat.js"></script>
 </head>
 <body>
+  <header id="bar">
+    <span class="dot" aria-hidden="true"></span>
+    <h1 id="title">Conversation</h1>
+    <button type="button" id="close" aria-label="Fermer" title="Fermer">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+  </header>
   <main id="log" role="log" aria-live="polite" aria-label="Conversation" tabindex="0"></main>
   <p id="empty">Rien pour l'instant. Écris à Floppy ou parle-lui.</p>
   <form id="request">
+    <p id="listen" role="status" hidden><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="listen-text">Je t'écoute…</span><button type="button" id="stop-listening" aria-label="Arrêter l'écoute" title="Arrêter l'écoute"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></p>
     <p id="error" role="alert" hidden></p>
     <div class="field">
-      <textarea id="prompt" rows="2" maxlength="10000" aria-label="Écrire à Floppy" placeholder="Écrire à Floppy…"></textarea>
-      <button type="submit" id="send">Envoyer</button>
+      <textarea id="prompt" rows="1" maxlength="10000" aria-label="Écrire à Floppy" placeholder="Écrire à Floppy…"></textarea>
+      <button type="submit" id="send" aria-label="Envoyer" title="Envoyer">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+      </button>
     </div>
-    <p id="hint"></p>
   </form>
 </body>
 </html>

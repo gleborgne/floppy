@@ -89,10 +89,14 @@ interface FloppyChatApi {
   close(): void;
   answerApproval(id: string, ok: boolean): void;
   answerChoice(id: string, option: string): void;
+  /** Floppy arrête d'écouter (bouton à côté de « Je t'écoute… »). */
+  stopListening(): void;
   link(url: string): void;
   onInit(cb: (data: ChatInit) => void): Unsubscribe;
   onChange(cb: (delta: ChatDelta) => void): Unsubscribe;
   onLang(cb: (lang: string) => void): Unsubscribe;
+  /** État de Floppy (« listening », « thinking », « speaking », « idle »…). */
+  onState(cb: (state: string) => void): Unsubscribe;
   onFocus(cb: () => void): Unsubscribe;
 }
 

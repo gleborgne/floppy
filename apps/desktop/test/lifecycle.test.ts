@@ -30,9 +30,9 @@ function desktop(argv: string[] = []) {
   // La fenêtre « Conversation » : un faux qui garde sa place (setBounds / getBounds), sa visibilité et ce qu'on lui envoie.
   let chatBounds = { x: 0, y: 0, width: 0, height: 0 };
   const chatWindow = Object.assign(new EventEmitter(), {
-    webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), setTitle: vi.fn(), showInactive: vi.fn(), moveTop: vi.fn(), close: vi.fn(),
+    webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), setTitle: vi.fn(), showInactive: vi.fn(), moveTop: vi.fn(), setAlwaysOnTop: vi.fn(), close: vi.fn(),
     setBounds: vi.fn((b: typeof chatBounds) => { chatBounds = { ...b }; }), getBounds: () => ({ ...chatBounds }),
-    state: { visible: true, minimized: false }, isVisible() { return this.state.visible; }, isMinimized() { return this.state.minimized; }, isDestroyed: () => false,
+    state: { visible: true, minimized: false, focused: false }, isVisible() { return this.state.visible; }, isMinimized() { return this.state.minimized; }, isFocused() { return this.state.focused; }, isDestroyed: () => false,
   });
   const avatarBounds = { x: 1588, y: 472, width: 320, height: 560 };
   // La fenêtre de l'avatar (BrowserWindow d'Electron) : un faux qui garde ce que le vrai code lui demande.
@@ -124,12 +124,12 @@ it("la conversation s'ouvre devant avec le focus sur la saisie, près de l'avata
   const d = desktop(); d.api.createWindow();
   d.api.chat.open();
   expect(d.windows).toHaveBeenCalledOnce();
-  expect(d.windows.mock.calls[0]![0]).toMatchObject({ preload: 'preload-chat.cjs', title: 'Floppy — Conversation' });
+  expect(d.windows.mock.calls[0]![0]).toMatchObject({ preload: 'preload-chat.cjs', title: 'Floppy — Conversation', frameless: true });
   // Avatar en bas à droite : la conversation est juste au-dessus de sa tête, bords droits alignés.
   expect(d.chatWindow.setBounds).toHaveBeenLastCalledWith({ x: 1488, y: 274, width: 420, height: 520 });
   expect(d.front).not.toHaveBeenCalled();                       // rien n'est montré avant que la page soit prête
   d.chatWindow.webContents.emit('did-finish-load');
-  expect(d.chatWindow.webContents.send).toHaveBeenCalledWith('chat:init', { lang: 'fr', entries: [] });
+  expect(d.chatWindow.webContents.send).toHaveBeenCalledWith('chat:init', { lang: 'fr', entries: [], state: '' });
   d.chatWindow.emit('ready-to-show');
   expect(d.front).toHaveBeenCalledWith(d.chatWindow);
   expect(d.chatWindow.webContents.send).toHaveBeenCalledWith('chat:focus');
@@ -243,7 +243,7 @@ it("chaque canal de la conversation vérifie son expéditeur : l'avatar relaie e
 
 it("ipc.ts : chaque canal de la conversation passe l'expéditeur au module qui le vérifie", () => {
   const src = readFileSync(new URL('../src/ipc.ts', import.meta.url), 'utf8');
-  for (const channel of ['chat:event', 'chat:open', 'chat:submit', 'chat:approval', 'chat:choice', 'chat:link', 'chat:close'])
+  for (const channel of ['chat:event', 'chat:open', 'chat:submit', 'chat:approval', 'chat:choice', 'chat:stop-listening', 'chat:link', 'chat:close'])
     expect(src, channel).toMatch(new RegExp(`ipcMain\\.(on|handle)\\("${channel}", \\(e\\b[^)]*\\) => (\\{ )?deps\\.chat\\(\\)\\.\\w+\\(e\\b`));
 });
 
@@ -290,6 +290,58 @@ describe("ouverture par Floppy : visible, sans prendre le focus", () => {
     d.api.chat.relay(a, { type: 'choice.request', id: 'c2', title: '?', options: [{ id: 'x', label: 'X' }], ttl_s: 30 });
     expect(d.chatWindow.showInactive).not.toHaveBeenCalled();
     expect(d.chatWindow.moveTop).not.toHaveBeenCalled();
+  });
+  it("ouverte mais cachée derrière une autre fenêtre : une nouvelle entrée la fait repasser devant, sans focus", () => {
+    const d = desktop();
+    const a = connectAvatar(d);
+    d.api.chat.open(); d.chatWindow.emit('ready-to-show');
+    d.chatWindow.moveTop.mockClear(); d.front.mockClear(); d.timers.mockClear();
+    d.api.chat.relay(a, { type: 'transcript', text: 'Quelle heure ?', final: true });
+    expect(d.chatWindow.setAlwaysOnTop).toHaveBeenLastCalledWith(true, 'screen-saver');
+    expect(d.chatWindow.moveTop).toHaveBeenCalledOnce();
+    expect(d.front).not.toHaveBeenCalled();
+    // Un instant plus tard, elle redevient une fenêtre ordinaire.
+    (d.timers.mock.calls.at(-1)![0] as () => void)();
+    expect(d.chatWindow.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+    // La suite d'une réponse déjà commencée ne la fait pas remonter à chaque morceau.
+    d.api.chat.relay(a, { type: 'reply.delta', text: 'Il est ' });
+    expect(d.chatWindow.moveTop).toHaveBeenCalledTimes(2);
+    d.api.chat.relay(a, { type: 'reply.delta', text: 'midi.' });
+    d.api.chat.relay(a, { type: 'reply.done', text: 'Il est midi.' });
+    expect(d.chatWindow.moveTop).toHaveBeenCalledTimes(2);
+    // Avec le focus (l'utilisateur est dedans) ou réduite : rien à faire.
+    d.chatWindow.state.focused = true;
+    d.api.chat.relay(a, { type: 'transcript', text: 'Merci', final: true });
+    d.chatWindow.state.focused = false; d.chatWindow.state.minimized = true;
+    d.api.chat.relay(a, { type: 'transcript', text: 'Encore', final: true });
+    expect(d.chatWindow.moveTop).toHaveBeenCalledTimes(2);
+  });
+  it("Floppy se met à écouter : la conversation ouverte repasse devant sans focus et sa page l'apprend", () => {
+    const d = desktop();
+    d.api.chat.setState('listening');                       // fenêtre fermée : rien ne s'ouvre
+    expect(d.windows).not.toHaveBeenCalled();
+    d.api.chat.open(); d.chatWindow.webContents.emit('did-finish-load'); d.chatWindow.emit('ready-to-show');
+    expect(d.chatWindow.webContents.send).toHaveBeenCalledWith('chat:init', expect.objectContaining({ state: 'listening' }));
+    d.chatWindow.moveTop.mockClear(); d.front.mockClear();
+    d.api.chat.setState('thinking');
+    expect(d.chatWindow.webContents.send).toHaveBeenLastCalledWith('chat:state', 'thinking');
+    expect(d.chatWindow.moveTop).not.toHaveBeenCalled();
+    d.api.chat.setState('idle'); d.api.chat.setState('listening'); d.api.chat.setState('listening');
+    expect(d.chatWindow.webContents.send).toHaveBeenLastCalledWith('chat:state', 'listening');
+    expect(d.chatWindow.moveTop).toHaveBeenCalledOnce();
+    expect(d.front).not.toHaveBeenCalled();
+    expect(readFileSync(new URL('../src/ipc.ts', import.meta.url), 'utf8')).toContain('deps.chat().setState(s)');
+    // Le bouton « arrêter l'écoute » de la fenêtre : accepté d'elle seule, pendant l'écoute seulement, et relayé à l'avatar.
+    const a = connectAvatar(d);
+    const send = d.avatarWindow.webContents.send;
+    send.mockClear();
+    expect(d.api.chat.stopListening(a)).toBe(false);
+    expect(send).not.toHaveBeenCalledWith('chat-stop-listening');
+    expect(d.api.chat.stopListening({ sender: d.chatWindow.webContents })).toBe(true);
+    expect(send).toHaveBeenCalledWith('chat-stop-listening');
+    d.api.chat.setState('idle'); send.mockClear();
+    expect(d.api.chat.stopListening({ sender: d.chatWindow.webContents })).toBe(false);
+    expect(send).not.toHaveBeenCalledWith('chat-stop-listening');
   });
   it("l'ouverture par l'utilisateur gagne sur celle de Floppy tant que la page charge", () => {
     const d = open({ type: 'choice.request', id: 'c1', title: '?', options: [{ id: 'x', label: 'X' }], ttl_s: 30 });

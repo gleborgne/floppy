@@ -8,14 +8,14 @@ type Lang = "fr" | "en";
 const TXT: Record<Lang, Record<string, string>> = {
   fr: {
     log: "Conversation", empty: "Rien pour l'instant. Écris à Floppy ou parle-lui.", label: "Écrire à Floppy", placeholder: "Écrire à Floppy…", send: "Envoyer",
-    hint: "Entrée pour envoyer · Maj+Entrée : nouvelle ligne · Échap pour fermer · 1 à 9 pour choisir dans une liste (champ vide ou hors du champ)",
+    title: "Conversation", close: "Fermer", listen: "Je t'écoute…", stopListening: "Arrêter l'écoute",
     notReady: "Floppy n'est pas encore prêt. Réessaie dans un instant.",
     you: "Toi", info: "Info", important: "Important", error: "Erreur", ask: "Ton accord ?", yes: "Oui", no: "Non",
     approved: "Accordé", refused: "Refusé ou expiré", picked: "Choix :", noChoice: "Aucun choix",
   },
   en: {
     log: "Conversation", empty: "Nothing yet. Write to Floppy or talk to it.", label: "Write to Floppy", placeholder: "Write to Floppy…", send: "Send",
-    hint: "Enter to send · Shift+Enter for a new line · Escape to close · 1 to 9 to pick from a list (empty field or outside the field)",
+    title: "Conversation", close: "Close", listen: "I'm listening…", stopListening: "Stop listening",
     notReady: "Floppy is not ready yet. Try again in a moment.",
     you: "You", info: "Info", important: "Important", error: "Error", ask: "Your approval?", yes: "Yes", no: "No",
     approved: "Approved", refused: "Refused or expired", picked: "Chosen:", noChoice: "No choice",
@@ -29,6 +29,7 @@ const prompt = el<HTMLTextAreaElement>("prompt");
 const form = el<HTMLFormElement>("request");
 const send = el<HTMLButtonElement>("send");
 const error = el("error");
+const closeButton = el<HTMLButtonElement>("close");      // la barre de titre est dessinée par la page (fenêtre sans cadre)
 const entries = new Map<number, ChatEntry>();      // dans l'ordre d'arrivée
 const nodes = new Map<number, HTMLElement>();
 const answered = new Set<string>();                // accords et choix déjà envoyés (un seul clic compte)
@@ -157,6 +158,7 @@ function apply(delta: ChatDelta): void {
 /** Le journal entier (au chargement) : tout est refait, et le fil se place en bas. */
 function init(data: ChatInit): void {
   setLang(data.lang);
+  setState(data.state ?? "");
   log.replaceChildren(); entries.clear(); nodes.clear();
   stick = true;
   for (const e of data.entries) upsert(e);
@@ -171,8 +173,11 @@ function applyTexts(): void {
   el("empty").textContent = t("empty");
   prompt.setAttribute("aria-label", t("label"));
   prompt.placeholder = t("placeholder");
-  send.textContent = t("send");
-  el("hint").textContent = t("hint");
+  send.setAttribute("aria-label", t("send")); send.title = t("send");
+  el("title").textContent = t("title");
+  el("listen-text").textContent = t("listen");
+  el("stop-listening").setAttribute("aria-label", t("stopListening")); el("stop-listening").title = t("stopListening");
+  closeButton.setAttribute("aria-label", t("close")); closeButton.title = t("close");
   if (!error.hidden) error.textContent = t("notReady");
 }
 function setLang(value: string): void {
@@ -181,6 +186,13 @@ function setLang(value: string): void {
   lang = next;
   applyTexts();
   for (const e of entries.values()) { const old = nodes.get(e.id); if (!old) continue; const n = build(e); old.replaceWith(n); nodes.set(e.id, n); }
+}
+
+/** Floppy écoute (mot d'activation, raccourci) : « Je t'écoute… » au-dessus du champ, comme dans la bulle de l'avatar. */
+function setState(state: string): void {
+  const on = state === "listening";
+  el("listen").hidden = !on;
+  document.body.classList.toggle("listening", on);
 }
 
 // ------------------------------------------------------------------ écrire, répondre, fermer
@@ -219,9 +231,13 @@ log.addEventListener("click", (e) => {
   window.floppyChat.link(a.getAttribute("href") ?? "");
 });
 
+closeButton.addEventListener("click", () => window.floppyChat.close());
+el("stop-listening").addEventListener("click", () => window.floppyChat.stopListening());
+
 window.floppyChat.onInit(init);
 window.floppyChat.onChange(apply);
 window.floppyChat.onLang(setLang);
+window.floppyChat.onState(setState);
 window.floppyChat.onFocus(() => prompt.focus());
 applyTexts();
 showEmpty();
