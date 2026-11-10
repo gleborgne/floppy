@@ -18,6 +18,16 @@ Dans la bulle de conversation, « Je t'écoute… » suit l'état `listening` du
 masque pas cet indicateur. Il reste sous le texte défilant, avec une croix « Arrêter l'écoute » qui envoie `listen.stop`
 au noyau : l'écoute libre se ferme et Floppy revient au repos, sans devenir muet. Les annonces importantes restent vocales et le mot d'activation continue de fonctionner. Un clic tardif pendant une réponse est ignoré. La commande « dors » et le mode muet restent les seuls à demander la veille.
 
+### Règles de tour (conversation)
+
+- **Un verrou par corps** : deux corps répondent en parallèle (un message Telegram n'attend pas une longue réponse vocale) ; un même corps garde un seul tour à la fois. Les émotions restent envoyées à tous les corps.
+- **Longue pause** (`idle_reset_s`) : le cerveau est prévenu par `rest(session)` s'il existe (il garde un court résumé), sinon par `reset(session)` (oubli complet).
+- **« Répète »** : une phrase courte (7 mots au plus après le mot d'activation, avec seulement des mots de politesse autour : « répète », « redis », « tu peux répéter, s'il te plaît », « pardon ? » ou « comment ? » dits seuls, « repeat », « say that again », « come again »…) redit la dernière réponse du corps, terminée ou interrompue, sans appeler le cerveau (voix : dite directement ; texte : `reply.done`). Audit `reply.repeated`. Les phrases d'attente et les demandes d'accord ne comptent pas ; sans dernière réponse, la phrase passe au cerveau. « Répète après moi… » n'est pas une demande de répétition.
+- **Erreurs qui disent la cause** : aucun cerveau actif, silence trop long du cerveau, erreur réseau (fetch échoué, connexion refusée, délai) ou autre, chacun avec sa phrase courte dans les deux langues. `error_reply` ne remplace que le cas « autre ».
+- **État du corps** : `body-state.ts` calcule « peut-on écouter sans mot d'activation » d'après les drapeaux, et tient la table des transitions prévues. Une transition hors table est journalisée (debug + audit `state.unexpected`), jamais refusée.
+- **Découpe des phrases** : une phrase est coupée sur `. ! ? … ; :` suivi d'un blanc, sauf si le point termine une abréviation (M., Mme., Dr., etc., p. ex., cf., Mr., e.g., i.e., vs.), une initiale en majuscule (J. Dupont) ou un numéro de liste (1. Faire). La première phrase part toujours tôt.
+- **Forme parlée** : avant la synthèse, chaque phrase dite (réponse, annonce, demande d'accord) passe par `spoken-form.ts`, dans la langue de l'assistant : heures (14:30 → « 14 h 30 » ; « 2:30 PM » en anglais), adresses web (« un lien vers contoso.com »), chemins (« un fichier rapport.docx »), identifiants longs (« un identifiant »), symboles (%, €, &, →). Le texte affiché à l'écran n'est jamais modifié.
+
 ## Tâches longues
 
 - Une tâche longue (Claude Code, agent Orca) tourne en fond. L'assistant répond tout de suite (« OK, je transmets ») et l'utilisateur continue à parler.

@@ -16,6 +16,9 @@ import type { BrainService, LiveService, TtsService, WakewordService, TurnMode, 
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, matchQuickSetting } from "./text.ts";
 import { matchChoice, choicePrompt } from "./choice-match.ts";
+import { isExpectedTransition, openListeningState } from "./body-state.ts";
+import { isRepeatRequest } from "./repeat.ts";
+import { spokenForm } from "./spoken-form.ts";
 
 import { SpeechQueue } from "./speech.ts";
 import { LiveConversation } from "./live.ts";
@@ -127,6 +130,11 @@ export default definePlugin<Config>({
 
     // ------------------------------------------------------------ état et émotion (tous les corps)
     const setState = (b: Body, state: BodyState) => {
+      // Filet de diagnostic : une transition hors de la table est journalisée, jamais refusée.
+      if (!isExpectedTransition(b.state, state)) {
+        ctx.log("debug", `transition d'état inattendue sur ${b.id} : ${b.state} → ${state}`);
+        ctx.audit.write({ kind: "state.unexpected", body: b.id, from: b.state, to: state });
+      }
       b.state = state;
       hub.broadcast({ type: "state", state }, "emotion");
       if (!hub.has(b.id, "emotion")) hub.send(b.id, { type: "state", state });
@@ -156,14 +164,16 @@ export default definePlugin<Config>({
     };
 
     // ------------------------------------------------------------ fin de tour
+    /** Garde le texte de la réponse (terminée ou coupée) pour « répète ». */
+    const rememberReply = (b: Body, t: Turn) => { const text = t.reply.trim(); if (text) b.lastReply = text; };
     const finish = (b: Body, t: Turn) => {
       if (b.turn !== t) return;
       b.turn = undefined;
       b.lastTurnAt = Date.now();
-      if (t.mode === "voice") b.awakeUntil = Date.now() + freeListen * 1000;
+      rememberReply(b, t);
       b.stream?.setSpeaking(false);
-      setState(b, b.muted ? "sleep" : (t.mode === "voice" ? "listening" : "idle"));
-      if (t.mode === "voice") ctx.timeout(() => { if (!b.turn && b.state === "listening" && Date.now() >= b.awakeUntil) setState(b, "idle"); }, freeListen * 1000 + 50);
+      if (t.mode === "voice") listenFreely(b);
+      else setState(b, b.muted ? "sleep" : "idle");
       neutralSoon();
       ctx.audit.write({ kind: "turn", body: b.id, mode: t.mode, ms: t.marks });
       drain();
@@ -180,7 +190,7 @@ export default definePlugin<Config>({
     /** Envoie à la voix une phrase sans plan (erreur, accord, initiative) : même livraison que celle d'un plan, sans silence ni geste. */
     const speakOut = (b: Body, id: string, text: string, emotion?: string, intensity?: number) => {
       remember(b, text);
-      b.output!.speak(id, text, deliveryFor({ emotion, intensity, profile, language: lang, tone }));
+      b.output!.speak(id, spokenForm(text, lang), deliveryFor({ emotion, intensity, profile, language: lang, tone }));
     };
     /** Envoie à la voix une phrase du tour, avec la livraison de son plan. */
     const speakPlanned = (b: Body, id: string, plan: SentencePlan) => {
@@ -211,11 +221,11 @@ export default definePlugin<Config>({
     ctx.effect(() => { for (const b of bodies.values()) if (b.duck) clearTimeout(b.duck.timer); });
 
     /** Écoute libre relancée : « j'écoute » pendant `freeListen` s, puis retour au repos si rien n'arrive. */
-    const listenFreely = (b: Body) => {
+    function listenFreely(b: Body) {
       b.awakeUntil = Date.now() + freeListen * 1000;
-      setState(b, b.muted ? "sleep" : "listening");
+      setState(b, openListeningState(b));
       ctx.timeout(() => { if (!b.turn && !b.init && b.state === "listening" && Date.now() >= b.awakeUntil) setState(b, "idle"); }, freeListen * 1000 + 50);
-    };
+    }
 
     /** L'utilisateur coupe la parole à Floppy : on se tait et ce qu'il dit ensuite s'adresse à Floppy. */
     function userBargeIn(b: Body) {
@@ -231,6 +241,7 @@ export default definePlugin<Config>({
     const interrupt = (b: Body, why: string) => {
       const t = b.turn;
       if (!t) return;
+      rememberReply(b, t);
       endDuck(b, false);
       t.abort.abort();
       b.output?.cancel();
@@ -244,8 +255,8 @@ export default definePlugin<Config>({
 
     // ------------------------------------------------------------ initiatives (annonces venant d'autres plugins)
     const { sayDirect, finishInit, abortInit, drain, recent } = createInitiatives({
-      ctx, hub, live, bodies, freeListen: () => freeListen, nextSeq: () => ++turnSeq,
-      setState, setEmotion, neutralSoon, speakOut, endDuck,
+      ctx, hub, live, bodies, nextSeq: () => ++turnSeq,
+      setState, setEmotion, neutralSoon, speakOut, endDuck, listenFreely,
     });
 
     // ------------------------------------------------------------ un tour (voir turn.ts)
@@ -332,12 +343,23 @@ export default definePlugin<Config>({
         return;
       }
       const mode: TurnMode = b.voice && b.stream ? "voice" : "text";
+      // « Répète » : la dernière réponse est redite sans appeler le cerveau (sans réponse à redire, la phrase passe au cerveau).
+      if (b.lastReply && isRepeatRequest(text, wake)) { repeatReply(b, text, mode, b.lastReply); return; }
       // 4. Voie rapide des réglages (« passe sur Gemma ») : sans LLM, pour ne jamais rester bloqué sur un modèle faible.
       const quick = matchQuickSetting(text, wake, ctx.settings.list(), lang);
       if (quick) { void quickSetting(b, quick, mode, text); return; }
       void runTurn(b, text, mode, tEnd);
     };
 
+    const repeatReply = (b: Body, said: string, mode: TurnMode, last: string) => {
+      if (b.turn) interrupt(b, "répétition");
+      const reply = b.lastReply ?? last; // une réponse coupée à l'instant devient la dernière
+      hub.send(b.id, { type: "transcript", text: said, final: true });
+      ctx.audit.write({ kind: "reply.repeated", body: b.id, mode, chars: reply.length });
+      hub.send(b.id, { type: "reply.done", text: reply });
+      if (mode === "voice" && b.stream) sayDirect(b, reply);
+      b.lastTurnAt = Date.now();
+    };
     const quickSetting = async (b: Body, q: { key: string; value: string; label: string; slow: boolean }, mode: TurnMode, said: string) => {
       if (b.turn) interrupt(b, "réglage");
       hub.send(b.id, { type: "transcript", text: said, final: true });
@@ -512,15 +534,20 @@ export default definePlugin<Config>({
       hub.send(b.id, { type: "emotion", emotion: "neutral" });
       if (capabilities.includes("emotion")) hub.send(b.id, { type: "mood", ...mood.snapshot() });
     };
+    /** Un corps qui rejoint (événement `join`, ou déjà branché au démarrage) : son état, son réveil, son flux voix. */
+    const createBody = (id: string, capabilities: readonly string[]) => {
+      const b: Body = {
+        id, voice: capabilities.includes("voice"), text: capabilities.includes("text"),
+        muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", awaiting: new Set(), history: new AudioHistory(),
+      };
+      bodies.set(b.id, b);
+      wakeUp(b, capabilities);
+      if (b.voice) attachVoice(b).catch((e) => { ctx.log("error", `voix de ${b.id} : ${String(e)}`); hub.send(b.id, { type: "error", text: shown(T("L'écoute locale n'est pas prête. Vérifie le service voix.", "Local listening is not ready. Check the voice service.")) }); });
+      return b;
+    };
     const offHub = hub.on((ev) => {
       if (ev.type === "join") {
-        const b: Body = {
-          id: ev.body.id, voice: ev.body.capabilities.includes("voice"), text: ev.body.capabilities.includes("text"),
-          muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", awaiting: new Set(), history: new AudioHistory(),
-        };
-        bodies.set(b.id, b);
-        wakeUp(b, ev.body.capabilities);
-        if (b.voice) attachVoice(b).catch((e) => { ctx.log("error", `voix de ${b.id} : ${String(e)}`); hub.send(b.id, { type: "error", text: shown(T("L'écoute locale n'est pas prête. Vérifie le service voix.", "Local listening is not ready. Check the voice service.")) }); });
+        createBody(ev.body.id, ev.body.capabilities);
       } else if (ev.type === "leave") {
         const b = bodies.get(ev.bodyId);
         if (!b) return;
@@ -606,12 +633,7 @@ export default definePlugin<Config>({
     ctx.effect(() => { try { hub.broadcast({ type: "state", state: "sleep" }); } catch { /* hub arrêté */ } });
     // Corps déjà branchés avant ce plugin : au démarrage, la fenêtre se branche avant que les modèles soient
     // chargés ; ou la conversation redémarre. Sans « idle », Floppy resterait en « zzz ».
-    for (const s of hub.sessions()) {
-      const b: Body = { id: s.id, voice: s.capabilities.includes("voice"), text: s.capabilities.includes("text"), muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", awaiting: new Set(), history: new AudioHistory() };
-      bodies.set(b.id, b);
-      wakeUp(b, s.capabilities);
-      if (b.voice) attachVoice(b).catch((e) => { ctx.log("error", `voix de ${b.id} : ${String(e)}`); hub.send(b.id, { type: "error", text: shown(T("L'écoute locale n'est pas prête. Vérifie le service voix.", "Local listening is not ready. Check the voice service.")) }); });
-    }
+    for (const s of hub.sessions()) createBody(s.id, s.capabilities);
     ctx.effect(async () => { for (const b of bodies.values()) { b.wakeAbort?.abort(); b.wakeStream?.close(); b.turn?.abort.abort(); b.output?.cancel(); b.off?.(); b.stream?.close(); } await Promise.all([...bodies.values()].map((b) => b.live?.stop("déchargement"))); });
   },
 });

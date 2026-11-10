@@ -23,7 +23,7 @@ function fixture(live = false) {
   const chat = { id: "chat", voice: false, text: true } as Body;
   const spoken = vi.fn();
   let seq = 0;
-  const initiatives = createInitiatives({ ctx, hub, live: live ? {} as LiveService : undefined, bodies: new Map([[voice.id, voice], [chat.id, chat]]), freeListen: () => 8, nextSeq: () => ++seq, setState: (body, state) => { body.state = state; }, setEmotion() {}, neutralSoon() {}, speakOut: spoken, endDuck() {} });
+  const initiatives = createInitiatives({ ctx, hub, live: live ? {} as LiveService : undefined, bodies: new Map([[voice.id, voice], [chat.id, chat]]), nextSeq: () => ++seq, setState: (body, state) => { body.state = state; }, setEmotion() {}, neutralSoon() {}, speakOut: spoken, endDuck() {}, listenFreely(body) { body.awakeUntil = Date.now() + 8000; body.state = body.muted ? "sleep" : "listening"; } });
   return { voice, presented, spoken, say, audit, send, has, sessions, initiatives, emit(text: string, importance: "normal" | "important" = "important", key?: string) { receive({ source: "orca", text, importance, key }); } };
 }
 

@@ -10,13 +10,14 @@ export interface InitiativeDeps {
   hub: BodyHub;
   live: LiveService | undefined;
   bodies: Map<string, Body>;
-  freeListen(): number;
   nextSeq(): number;
   setState(b: Body, state: BodyState): void;
   setEmotion(emotion: Emotion | string, ms?: number, intensity?: number): void;
   neutralSoon(): void;
   speakOut(b: Body, id: string, text: string): void;
   endDuck(b: Body, restore: boolean): void;
+  /** Écoute libre puis retour au repos (propriétaire : `index.ts`). */
+  listenFreely(b: Body): void;
 }
 
 export function createInitiatives(d: InitiativeDeps) {
@@ -66,9 +67,7 @@ export function createInitiatives(d: InitiativeDeps) {
     b.init = undefined;
     b.playing = false;
     b.stream?.setSpeaking(false);
-    b.awakeUntil = Date.now() + d.freeListen() * 1000; // écoute libre : on peut répondre sans le mot
-    setState(b, b.muted ? "sleep" : "listening");
-    ctx.timeout(() => { if (!b.turn && !b.init && b.state === "listening" && Date.now() >= b.awakeUntil) setState(b, "idle"); }, d.freeListen() * 1000 + 50);
+    d.listenFreely(b); // écoute libre : on peut répondre sans le mot
     neutralSoon();
     drain();
   };

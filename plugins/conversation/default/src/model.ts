@@ -29,6 +29,9 @@ export const Config = z.object({
 export const PHRASES = {
   approval_prompt: T("J'ai besoin de ton accord.", "I need your approval."),
   error_reply: T("Désolé, je n'arrive pas à réfléchir pour l'instant.", "Sorry, I can't think right now."),
+  error_no_brain: T("Je n'ai aucun cerveau actif. Choisis-en un dans les réglages.", "No brain is active. Choose one in the settings."),
+  error_stalled: T("Mon cerveau ne répond plus. Réessaie dans un instant, ou change de cerveau dans les réglages.", "My brain has stopped answering. Try again in a moment, or switch brains in the settings."),
+  error_network: T("Je n'arrive pas à joindre le service. Vérifie la connexion, puis réessaie.", "I can't reach the service. Check the connection, then try again."),
   /** Ton par défaut tant que l'utilisateur n'en a pas choisi un. */
   tone: T("cordial et chaleureux", "friendly and warm"),
 };
@@ -45,6 +48,8 @@ export interface Turn {
   marks: Record<string, number>;
   /** Mise en scène de chaque phrase du tour, par id de phrase : retirée quand son premier audio arrive (ou à `speak_done`). */
   plans: Map<string, SentencePlan>;
+  /** Texte de la réponse reçu du cerveau jusqu'ici (la dernière réponse du corps, terminée ou interrompue). */
+  reply: string;
 }
 
 /** Silence entre deux paragraphes, comme une respiration. */
@@ -99,6 +104,8 @@ export interface Body {
   playEndAt?: number;
   /** Voix baissée après une possible coupure de parole, en attendant de savoir qui parle. */
   duck?: { timer: NodeJS.Timeout };
+  /** Texte complet de la dernière réponse terminée ou interrompue (ni phrase d'attente, ni accord) : pour « répète ». */
+  lastReply?: string;
   /** Mode Live : émotion devinée dans ce que dit le modèle. */
   feeler?: ReplyFeeler;
 }

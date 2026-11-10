@@ -5,6 +5,7 @@ import type { BodyHub, LiveService, TurnMode, VoiceEvent } from "@floppy/contrac
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, stripWakeWord, matchQuickSetting, isBackchannel, hasWakeWord } from "./text.ts";
 import { isEcho } from "./echo.ts";
+import { canListenWithoutWake } from "./body-state.ts";
 import { DUCK_MAX_MS, DUCK_WAIT_TRANSCRIPT_MS, PARAGRAPH_PAUSE_MS, silenceLike, type Body, type Turn } from "./model.ts";
 
 export interface VoiceDeps {
@@ -84,7 +85,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
             const startedOpen = !!b.speechOpen;
             b.speechOpen = false;
             if (startedOpen && !b.muted && Date.now() > b.awakeUntil) b.awakeUntil = Date.now() + 1000; // la fenêtre couvre cette phrase
-            if (!b.live?.active && !b.ptt && (b.muted || Date.now() > b.awakeUntil) && !activated) {
+            if (!b.live?.active && !canListenWithoutWake(b, Date.now()) && !activated) {
               // Trace sans le texte (parole non adressée à Floppy) : assez pour voir qu'une phrase a été jetée.
               ctx.audit.write({ kind: "transcript.ignored", body: b.id, why: b.muted ? "sleep" : "pas de mot d'activation", chars: ev.text.length, state: b.state, late_ms: b.muted ? undefined : Date.now() - b.awakeUntil });
               break;

@@ -81,6 +81,8 @@ export interface BrainService {
   run(input: BrainRunInput): AsyncIterable<BrainEvent>;
   /** Oublie l'historique d'une conversation. */
   reset(session: string): void;
+  /** Longue pause dans la conversation : garde un court résumé des derniers échanges au lieu de tout oublier. Absent : l'appelant utilise `reset`. */
+  rest?(session: string): void;
   /** Faux = désactivé dans les réglages : à ne pas proposer ni utiliser (absent = actif). */
   enabled?(): boolean;
 }

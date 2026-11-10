@@ -1,6 +1,6 @@
 // Un tour de conversation : toute sa vie, du verrou à la fin (commande locale, contexte mémoire, événements du
 // cerveau, phrases dites, émotions, chemin d'erreur). Reçoit ce qu'il utilise de `index.ts` par `TurnDeps` ;
-// le verrou « un seul tour à la fois » n'a pas d'autre utilisateur et vit ici.
+// le verrou « un seul tour à la fois par corps » n'a pas d'autre utilisateur et vit ici.
 import { randomUUID } from "node:crypto";
 import type { Context } from "@floppy/core";
 import type { BodyHub, BrainEvent, BrainService, SpeechDelivery, TurnMode } from "@floppy/contracts";
@@ -12,6 +12,7 @@ import { EmotionSettler } from "./settle.ts";
 import { planSentence } from "./plan.ts";
 import { withIdleTimeout } from "./idle.ts";
 import { SentenceSplitter, stripWakeWord } from "./text.ts";
+import { NoBrainError, classifyTurnError, errorPhrase } from "./errors.ts";
 import type { Body, Config, Turn } from "./model.ts";
 import type { SentencePlan } from "./plan.ts";
 
@@ -45,26 +46,31 @@ export interface TurnDeps {
 
 export function createTurns(d: TurnDeps) {
   const { ctx, hub, cfg, brain, lang, inLang, errorReply, wake, setState, setEmotion, speakOut, speakPlanned, finish, maybeFinish, interrupt, abortInit } = d;
-  let lock: Promise<void> = Promise.resolve();
+  // Un verrou par corps : deux corps répondent en parallèle, un même corps garde un seul tour à la fois.
+  const locks = new Map<string, Promise<void>>();
 
   const runTurn = async (b: Body, text: string, mode: TurnMode, tEnd: number) => {
     const turn = randomUUID();
     if (b.init) abortInit(b);
     if (b.turn) interrupt(b, "nouvelle demande");
-    const t: Turn = { n: d.nextSeq(), abort: new AbortController(), mode, pending: new Set(), brainDone: false, spoke: false, t0: tEnd, marks: {}, plans: new Map() };
+    const t: Turn = { n: d.nextSeq(), abort: new AbortController(), mode, pending: new Set(), brainDone: false, spoke: false, t0: tEnd, marks: {}, plans: new Map(), reply: "" };
     b.turn = t;
     const mark = (k: string) => { if (!(k in t.marks)) t.marks[k] = Math.round(performance.now() - t.t0); };
-    // Un seul tour à la fois (tous corps confondus) : les autres attendent.
-    const prev = lock;
+    // Un seul tour à la fois sur ce corps : les suivants attendent la fin (ou l'abandon) du précédent.
+    const prev = locks.get(b.id) ?? Promise.resolve();
     let release!: () => void;
-    lock = new Promise((r) => (release = r));
+    const mine = new Promise<void>((r) => (release = r));
+    locks.set(b.id, mine);
+    // Le cerveau qui se tait trop longtemps est arrêté (stall) : le tour échoue et Floppy le dit.
+    const stall = new AbortController();
     await prev;
     try {
       if (b.turn !== t) return; // annulé pendant l'attente
       const command = await ctx.runHook("conversation.command", { text: stripWakeWord(text, wake), origin: b.id }, async () => undefined);
       const availableCommand = command && ctx.tools.list().some(tool => tool.name === command.name) ? command : undefined;
-      if (!brain && !availableCommand) throw new Error("Aucun cerveau actif pour répondre en cascade ou en texte.");
-      if (Date.now() - b.lastTurnAt > cfg.idle_reset_s * 1000) brain?.reset(b.id);
+      if (!brain && !availableCommand) throw new NoBrainError();
+      // Longue pause : un cerveau qui sait « se reposer » garde un court résumé, sinon on oublie tout.
+      if (Date.now() - b.lastTurnAt > cfg.idle_reset_s * 1000) { if (brain?.rest) brain.rest(b.id); else brain?.reset(b.id); }
       hub.send(b.id, { type: "transcript", text, final: true });
       setState(b, "thinking");
       // Réaction immédiate à ce qui vient d'être dit (« merci », « haha »…), puis la réflexion reprend le visage.
@@ -109,8 +115,6 @@ export function createTurns(d: TurnDeps) {
         if (remembered) context.push({ role: "user", text: memoryContextMessage(remembered, lang) });
       }
       if (t.abort.signal.aborted) return;
-      // Le cerveau qui se tait trop longtemps est arrêté (stall) : le tour échoue et Floppy le dit.
-      const stall = new AbortController();
       const signal = AbortSignal.any([t.abort.signal, stall.signal]);
       const events = availableCommand ? (async function* (): AsyncGenerator<BrainEvent> {
         const result = await ctx.tools.call(availableCommand.name, availableCommand.args, { caller: "conversation.command", ...correlation, signal });
@@ -123,6 +127,7 @@ export function createTurns(d: TurnDeps) {
         if (ev.type === "text") {
           mark("brain_first_text");
           full += ev.delta;
+          t.reply = full;
           hub.send(b.id, { type: "reply.delta", text: ev.delta });
           for (const p of splitter.pushParts(ev.delta)) say(p.text, p.paragraph);
         } else if (ev.type === "emotion") {
@@ -151,17 +156,20 @@ export function createTurns(d: TurnDeps) {
       else maybeFinish(b, t);
     } catch (e) {
       if (t.abort.signal.aborted) return;
-      ctx.log("error", `tour ${t.n} : ${e instanceof Error ? e.message : String(e)}`);
+      const kind = classifyTurnError(e, stall.signal.aborted);
+      const reply = errorPhrase(kind, lang, errorReply);
+      ctx.log("error", `tour ${t.n} (${kind}) : ${e instanceof Error ? e.message : String(e)}`);
       setEmotion("sorry");
-      hub.send(b.id, { type: "reply.done", text: errorReply });
+      hub.send(b.id, { type: "reply.done", text: reply });
       t.brainDone = true;
       if (mode === "voice" && b.stream) {
         const id = `t${t.n}-err`;
         t.pending.add(id);
-        speakOut(b, id, errorReply, "sorry");
+        speakOut(b, id, reply, "sorry");
       } else finish(b, t);
     } finally {
       release();
+      if (locks.get(b.id) === mine) locks.delete(b.id);
     }
   };
   return { runTurn };
