@@ -115,7 +115,7 @@ export function createKernelProcess(deps: KernelProcessDeps): KernelProcess {
     kernelWantsPort = false;
     problems.clear();
     // La raison du dernier démarrage raté reste visible jusqu'à un démarrage réussi (kernel.ready).
-    if (bootFailure) problems.set("noyau", bootFailure);
+    if (bootFailure) problems.set("kernel", bootFailure);
     // Nouveau répertoire de travail choisi : le journal suit.
     const dir = homeDir();
     if (dir !== logDir) { kernelLog.end(); logDir = dir; kernelLog = openLog(logDir); }
@@ -142,12 +142,12 @@ export function createKernelProcess(deps: KernelProcessDeps): KernelProcess {
       const delay = restartDelay(crashes, now);
       if (delay === null) {
         // Le noyau s'arrête sans cesse (souvent : floppy.yml invalide) : on ne relance plus, on montre pourquoi.
-        problems.set("noyau", bootFailure ?? { fr: TEXTS.fr.kernelLoop, en: TEXTS.en.kernelLoop });
+        problems.set("kernel", bootFailure ?? { fr: TEXTS.fr.kernelLoop, en: TEXTS.en.kernelLoop });
         kernelLog.write(`\n[app] le noyau s'est arrêté ${crashes.length} fois en 2 min (code ${code}) : relance arrêtée\n`);
         deps.refreshTray();
         return;
       }
-      if (bootFailure) problems.set("noyau", bootFailure);
+      if (bootFailure) problems.set("kernel", bootFailure);
       deps.refreshTray();
       kernelLog.write(`\n[app] le noyau s'est arrêté (code ${code}) : relance dans ${delay / 1000} s\n`);
       setTimeout(() => { if (!kernel && !deps.quitting()) startKernel(); }, delay);
@@ -159,7 +159,7 @@ export function createKernelProcess(deps: KernelProcessDeps): KernelProcess {
     // Relance à la main : on repart de zéro (pannes oubliées, problème du noyau effacé).
     crashes = [];
     bootFailure = null;
-    problems.delete("noyau");
+    problems.delete("kernel");
     if (!kernel) return startKernel();
     restarting = true;
     kernel.postMessage({ type: "stop" });

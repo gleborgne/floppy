@@ -233,7 +233,7 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
             label: cfg.engine === "codex" ? "Recherche Codex" : "Recherche Claude", cloud: true,
             async search(q, opts) {
               const r = await searcher(q, cfg, workdir, opts?.signal, ctx.assistant.language, ctx.exec);
-              const hits = r.resultats.map((x) => ({ titre: x.titre, url: x.url, resume: x.resume || undefined, source: x.source || undefined, ...(publicationDate(x.date) ? { date: publicationDate(x.date)! } : {}) }));
+              const hits = r.resultats.map((x) => ({ title: x.titre, url: x.url, summary: x.resume || undefined, source: x.source || undefined, ...(publicationDate(x.date) ? { date: publicationDate(x.date)! } : {}) }));
               return opts?.max ? hits.slice(0, opts.max) : hits;
             },
           });

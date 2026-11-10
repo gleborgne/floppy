@@ -44,10 +44,10 @@ md.renderer.rules.fence = (tokens, i) =>
   `<pre style="background:#f6f8fa;padding:10px 12px;border-radius:4px;overflow:auto;margin:0 0 12px"><code style="font-family:Consolas,Menlo,monospace;font-size:90%">${md.utils.escapeHtml(tokens[i]!.content)}</code></pre>\n`;
 
 /** Page HTML d'un mail : le titre en haut, puis le texte Markdown mis en forme. `lang` : langue de l'assistant (pied de page). */
-export function mailHtml(titre: string, markdown: string, lang = "fr"): string {
+export function mailHtml(title: string, markdown: string, lang = "fr"): string {
   const corps = md.render(markdown);
   return `<div style="max-width:680px;margin:0 auto;padding:16px;font-family:${POLICE};font-size:15px;line-height:1.5;color:#1f2328">`
-    + `<h1 style="font-size:24px;margin:0 0 16px;line-height:1.3">${md.utils.escapeHtml(titre)}</h1>`
+    + `<h1 style="font-size:24px;margin:0 0 16px;line-height:1.3">${md.utils.escapeHtml(title)}</h1>`
     + corps
     + `<p style="margin:24px 0 0;font-size:12px;color:#8c959f">${lang === "en" ? "Sent by Floppy" : "Envoyé par Floppy"}</p>`
     + `</div>`;

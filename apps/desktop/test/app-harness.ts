@@ -16,11 +16,11 @@ export function fakePort() {
 export const asPort = (p: ReturnType<typeof fakePort>) => p as unknown as MessagePort;
 
 /** Monte index.html, assemble la page et charge l'avatar simulé (ses compteurs repartent de zéro). */
-export async function mountApp() {
+export async function mountApp(host?: object) {
   const html = readFileSync("apps/desktop/src/renderer/index.html", "utf8");
   document.body.innerHTML = html.slice(html.indexOf("<main"), html.indexOf("</main>") + 7);
   const avatar = fakeAvatar();
-  const app = createApp({ importModule: async () => ({ create: () => avatar }) });
+  const app = createApp({ importModule: async () => ({ create: () => avatar }), ...(host ? { host: host as never } : {}) });
   await app.loadAvatar("test", "file:///test.js");
   for (const fn of Object.values(avatar)) fn.mockClear();
   /** Message du noyau reçu par la page. */

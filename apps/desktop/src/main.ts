@@ -98,7 +98,7 @@ app.whenReady().then(() => {
   kernelProcess.start();
   if (process.env.FLOPPY_SETTINGS_PAGE) setTimeout(windows.openSettings, 3000);
   // Raccourcis globaux. Un raccourci déjà pris par une autre app (ex. Claude desktop prend Ctrl+Alt+Espace) est signalé.
-  voice.applyShortcuts(avatar.display().raccourcis ?? texts.shortcuts);
+  voice.applyShortcuts(avatar.display().shortcuts ?? texts.shortcuts);
   registerIpc({
     texts, contributions, refreshTray: () => tray.refresh(),
     kernel: () => kernelProcess, messages: () => messages, avatar: () => avatar, voice: () => voice, dictation: () => dictation, windows: () => windows,

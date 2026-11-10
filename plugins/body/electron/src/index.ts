@@ -8,7 +8,7 @@ import { definePlugin, fold, T, TextError, tr, type ItemInfo, type Text } from "
 import type { AvatarEntry } from "@floppy/contracts";
 import { registerDesktop } from "@floppy/toolkit";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
-import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, type ShortcutAction } from "./shortcuts.ts";
+import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, SHORTCUT_SETTING_KEY, type ShortcutAction } from "./shortcuts.ts";
 import type { BodyToKernel, BodyTransport, KernelToBody } from "@floppy/protocol";
 
 /** Port de message d'Electron côté utilityProcess (MessagePortMain). */
@@ -73,16 +73,16 @@ export function portTransport(port: PortMain): BodyTransport {
 /** Réglages d'affichage de l'avatar (appliqués par le processus principal de l'app). */
 export interface DisplaySettings {
   avatar_visible: boolean;
-  masquer_apres: number;
-  bulle: boolean;
-  toujours_devant: boolean;
-  /** Lancer Floppy à l'ouverture de la session (clé historique : demarrage_windows). */
-  demarrage_windows: boolean;
+  hide_after: number;
+  bubble: boolean;
+  always_on_top: boolean;
+  /** Lancer Floppy à l'ouverture de la session (réglage `demarrage_windows`). */
+  autostart: boolean;
   /** Avatar affiché (id d'un plugin plugins/avatar/<id>/) et adresse file:// de son dessin. */
   avatar: string;
   avatarUrl: string;
   /** Raccourcis clavier globaux (« Ctrl+Alt+F » ; vide = désactivé), appliqués par le processus principal. */
-  raccourcis: Record<ShortcutAction, string>;
+  shortcuts: Record<ShortcutAction, string>;
 }
 
 export { normalizeShortcut, SHORTCUT_DEFAULTS, type ShortcutAction } from "./shortcuts.ts";
@@ -192,14 +192,14 @@ export default definePlugin<Config>({
     // Réglages d'affichage : gardés ici, appliqués par le processus principal (message "display").
     const display: DisplaySettings = {
       avatar_visible: ctx.settings.saved<boolean>("avatar_visible") ?? true,
-      masquer_apres: ctx.settings.saved<number>("masquer_apres") ?? 0,
-      bulle: ctx.settings.saved<boolean>("bulle") ?? true,
-      toujours_devant: ctx.settings.saved<boolean>("toujours_devant") ?? true,
-      demarrage_windows: ctx.settings.saved<boolean>("demarrage_windows") ?? false,
+      hide_after: ctx.settings.saved<number>("masquer_apres") ?? 0,
+      bubble: ctx.settings.saved<boolean>("bulle") ?? true,
+      always_on_top: ctx.settings.saved<boolean>("toujours_devant") ?? true,
+      autostart: ctx.settings.saved<boolean>("demarrage_windows") ?? false,
       avatar: "",
       avatarUrl: "",
-      raccourcis: Object.fromEntries((Object.keys(SHORTCUT_DEFAULTS) as ShortcutAction[]).map((a) => {
-        const saved = ctx.settings.saved<string>(`raccourci_${a}`);
+      shortcuts: Object.fromEntries((Object.keys(SHORTCUT_DEFAULTS) as ShortcutAction[]).map((a) => {
+        const saved = ctx.settings.saved<string>(SHORTCUT_SETTING_KEY[a]);
         let v = SHORTCUT_DEFAULTS[a];
         if (typeof saved === "string") { try { v = normalizeShortcut(saved); } catch { /* valeur gardée illisible : défaut */ } }
         return [a, v];
@@ -227,41 +227,42 @@ export default definePlugin<Config>({
     const readAvatars = () => [...avatars.values()];
     const pushDisplay = () => parent.postMessage({ type: "display", settings: { ...display } });
     const GROUP: Text = { fr: "Affichage", en: "Display" };
-    const bool = (key: keyof Pick<DisplaySettings, "avatar_visible" | "bulle" | "toujours_devant" | "demarrage_windows">, label: Text, description: Text) => ({
+    // `key` : clé du réglage (encore française, voir le lot des réglages) ; `field` : champ du message `display`.
+    const bool = (key: string, field: "avatar_visible" | "bubble" | "always_on_top" | "autostart", label: Text, description: Text) => ({
       key, label, description, type: "boolean" as const, group: GROUP, section: "corps", risk: "free" as const,
-      get: () => display[key],
-      set: (v: unknown) => { display[key] = v === true || v === "true"; pushDisplay(); },
+      get: () => display[field],
+      set: (v: unknown) => { display[field] = v === true || v === "true"; pushDisplay(); },
     });
     ctx.settings.declare([
-      bool("avatar_visible", { fr: "Avatar visible", en: "Avatar visible" },
+      bool("avatar_visible", "avatar_visible", { fr: "Avatar visible", en: "Avatar visible" },
         { fr: "Montre ou cache l'avatar à l'écran. Il revient quand on lui parle.", en: "Shows or hides the avatar on screen. It comes back when you talk to it." }),
       {
         key: "masquer_apres", label: { fr: "Masquer après", en: "Hide after" }, type: "number", min: 0, max: 120, group: GROUP, section: "corps", risk: "free",
         description: { fr: "Minutes d'inactivité avant de cacher l'avatar (0 = jamais).", en: "Minutes of inactivity before hiding the avatar (0 = never)." },
-        get: () => display.masquer_apres,
-        set: (v) => { display.masquer_apres = Math.max(0, Math.min(120, Math.round(Number(v)))); pushDisplay(); },
+        get: () => display.hide_after,
+        set: (v) => { display.hide_after = Math.max(0, Math.min(120, Math.round(Number(v)))); pushDisplay(); },
       },
-      bool("bulle", { fr: "Bulle de texte", en: "Text bubble" },
+      bool("bulle", "bubble", { fr: "Bulle de texte", en: "Text bubble" },
         { fr: "Affiche la bulle avec ce qui est dit au-dessus de l'avatar.", en: "Shows the bubble with what is said above the avatar." }),
-      bool("toujours_devant", { fr: "Toujours devant", en: "Always on top" },
+      bool("toujours_devant", "always_on_top", { fr: "Toujours devant", en: "Always on top" },
         { fr: "Garde l'avatar au-dessus des autres fenêtres.", en: "Keeps the avatar above other windows." }),
       {
-        ...bool("demarrage_windows", { fr: "Démarrer avec l'ordinateur", en: "Start with the computer" },
+        ...bool("demarrage_windows", "autostart", { fr: "Démarrer avec l'ordinateur", en: "Start with the computer" },
           { fr: "Lance Floppy à l'ouverture de ta session.", en: "Starts Floppy when you sign in." }),
         group: { fr: "Système", en: "System" } as Text, section: "systeme",
       },
       // Raccourcis clavier : un réglage par action, dans Réglages → Système. Vide = raccourci désactivé.
       ...(Object.keys(SHORTCUT_DEFAULTS) as ShortcutAction[]).map((a) => ({
-        key: `raccourci_${a}`, label: SHORTCUT_LABELS[a].label,
+        key: SHORTCUT_SETTING_KEY[a], label: SHORTCUT_LABELS[a].label,
         description: { fr: `${tr(SHORTCUT_LABELS[a].description, "fr")} Par défaut : ${SHORTCUT_DEFAULTS[a]}. Vide : désactivé.`, en: `${tr(SHORTCUT_LABELS[a].description, "en")} Default: ${SHORTCUT_DEFAULTS[a]}. Empty: off.` } as Text,
         type: "text" as const, min: 0, maxLength: 40, section: "systeme", group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } as Text, risk: "free" as const,
         presets: [{ value: SHORTCUT_DEFAULTS[a], label: { fr: `${SHORTCUT_DEFAULTS[a]} (par défaut)`, en: `${SHORTCUT_DEFAULTS[a]} (default)` } }],
-        get: () => display.raccourcis[a],
+        get: () => display.shortcuts[a],
         set: (v: unknown) => {
           const next = normalizeShortcut(v);
-          const taken = next ? (Object.keys(display.raccourcis) as ShortcutAction[]).find((o) => o !== a && display.raccourcis[o].toLowerCase() === next.toLowerCase()) : undefined;
+          const taken = next ? (Object.keys(display.shortcuts) as ShortcutAction[]).find((o) => o !== a && display.shortcuts[o].toLowerCase() === next.toLowerCase()) : undefined;
           if (taken) throw new TextError(T(`${next} sert déjà à « ${tr(SHORTCUT_LABELS[taken].label, "fr")} ».`, `${next} is already used for “${tr(SHORTCUT_LABELS[taken].label, "en")}”.`));
-          display.raccourcis = { ...display.raccourcis, [a]: next };
+          display.shortcuts = { ...display.shortcuts, [a]: next };
           pushDisplay();
         },
       })),

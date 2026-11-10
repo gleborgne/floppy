@@ -164,12 +164,12 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
       };
 
       /** Envoie un message avec les réglages donnés. */
-      const sendWith = async (v: Values, pass: string | undefined, titre: string, markdown: string, signal?: AbortSignal) => {
+      const sendWith = async (v: Values, pass: string | undefined, title: string, markdown: string, signal?: AbortSignal) => {
         if (!pass) throw new TextError(T("Mail : pas de mot de passe d'application.", "Mail: no app password."));
         signal?.throwIfAborted();
         const t = transportOf(v, pass);
         try {
-          await t.sendMail({ from: v.adresse, to: v.destinataire || v.adresse, subject: titre, html: mailHtml(titre, markdown, lang()), text: markdown });
+          await t.sendMail({ from: v.adresse, to: v.destinataire || v.adresse, subject: title, html: mailHtml(title, markdown, lang()), text: markdown });
         } catch (e) {
           throw mailError(e);
         } finally {
@@ -188,7 +188,7 @@ export function createMailPlugin(factory: TransportFactory = defaultFactory): Pl
             send: async (msg, opts) => {
               const cur = all().find((x) => x.id === id);
               if (!cur) throw new TextError(T("Mail : cette boîte mail n'existe plus.", "Mail: this mailbox no longer exists."));
-              await sendWith(cur, secret.get(id), msg.titre, msg.markdown, opts?.signal);
+              await sendWith(cur, secret.get(id), msg.title, msg.markdown, opts?.signal);
             },
           });
         },

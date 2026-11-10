@@ -74,7 +74,7 @@ describe("coder : Claude", () => {
   });
 
   it("traduit les événements : texte, outils, fin", async () => {
-    const sid = await open("claude", "reglages");
+    const sid = await open("claude", "settings");
     const evs = await turn(sid, "hello");
     expect(textOf(evs)).toBe("Bonjour");
     expect(evs.filter((e) => e.type === "status").map((e) => (e as any).status)).toContain("busy");
@@ -91,7 +91,7 @@ describe("coder : Claude", () => {
   });
 
   it("garde un seul processus pour plusieurs tours", async () => {
-    const sid = await open("claude", "reglages");
+    const sid = await open("claude", "settings");
     const a = textOf(await turn(sid, "info"));
     const b = textOf(await turn(sid, "info"));
     const pid = (s: string) => /pid=(\d+)/.exec(s)![1];
@@ -102,7 +102,7 @@ describe("coder : Claude", () => {
   });
 
   it("ligne de commande : réglages (aucun outil intégré, refus du reste) et plugin (outils fichiers + validation)", async () => {
-    const r = await open("claude", "reglages");
+    const r = await open("claude", "settings");
     const ra = textOf(await turn(r, "info"));
     expect(ra).toContain("--strict-mcp-config");
     // Recherche web permise par défaut (réglage assistant_web) ; aucun autre outil intégré.
@@ -125,11 +125,11 @@ describe("coder : Claude", () => {
     const sys = systemPrompt("plugin", "Floppy", "C:/plugins");
     expect(sys).toContain("Commence par appeler doc_plugins");
     expect(sys).toMatch(/les outils de Floppy : doc_plugins, tester_plugin/);
-    expect(systemPrompt("reglages", "Floppy", "C:/plugins")).not.toContain("doc_plugins");
+    expect(systemPrompt("settings", "Floppy", "C:/plugins")).not.toContain("doc_plugins");
   });
 
   it("arrêt : tue le tour, puis le message suivant reprend la session (--resume)", async () => {
-    const sid = await open("claude", "reglages");
+    const sid = await open("claude", "settings");
     const first = textOf(await turn(sid, "info"));
     const from = events.length;
     coderSvc.send(sid, "slow");
@@ -145,7 +145,7 @@ describe("coder : Claude", () => {
   });
 
   it("connexion absente : done avec signIn et un message en français", async () => {
-    const sid = await open("claude", "reglages");
+    const sid = await open("claude", "settings");
     const d = done(await turn(sid, "auth"));
     expect(d).toMatchObject({ stopReason: "error", signIn: true });
     expect(d.error).toContain("claude auth login");
@@ -153,7 +153,7 @@ describe("coder : Claude", () => {
   });
 
   it("l'accès MCP de la session ne voit pas les autres outils", async () => {
-    const sid = await open("claude", "reglages");
+    const sid = await open("claude", "settings");
     const t = textOf(await turn(sid, "outside-tool"));
     expect(t).toContain("Outil inconnu");
     expect(reached).not.toContain("ecrire_note");
@@ -161,10 +161,10 @@ describe("coder : Claude", () => {
   });
 
   it("trois conversations au maximum", async () => {
-    const ids = [await open("claude", "reglages"), await open("claude", "reglages"), await open("claude", "reglages")];
-    await expect(open("claude", "reglages")).rejects.toThrow(/Trois conversations/);
+    const ids = [await open("claude", "settings"), await open("claude", "settings"), await open("claude", "settings")];
+    await expect(open("claude", "settings")).rejects.toThrow(/Trois conversations/);
     for (const id of ids) coderSvc.close(id);
-    const again = await open("claude", "reglages");
+    const again = await open("claude", "settings");
     coderSvc.close(again);
   });
 });
@@ -287,7 +287,7 @@ describe("coder : kit de développement", () => {
 
 describe("coder : Codex", () => {
   it("réglages : texte, outil MCP, fin", async () => {
-    const sid = await open("codex", "reglages");
+    const sid = await open("codex", "settings");
     const evs = await turn(sid, "bonjour");
     expect(textOf(evs)).toBe("Salut");
     const tl = evs.filter((e) => e.type === "tool") as Extract<CoderEvent, { type: "tool" }>[];
@@ -315,7 +315,7 @@ describe("coder : Codex", () => {
   });
 
   it("connexion absente : signIn avec « codex login »", async () => {
-    const sid = await open("codex", "reglages");
+    const sid = await open("codex", "settings");
     const d = done(await turn(sid, "auth"));
     expect(d).toMatchObject({ stopReason: "error", signIn: true });
     expect(d.error).toContain("codex login");

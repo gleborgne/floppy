@@ -84,7 +84,7 @@ describe("réglages d'affichage", () => {
       plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }],
     });
     const first = sent.find((m) => m.type === "display");
-    expect(first?.settings).toMatchObject({ avatar_visible: true, masquer_apres: 0, bulle: true, toujours_devant: true, demarrage_windows: false, avatar: "" });
+    expect(first?.settings).toMatchObject({ avatar_visible: true, hide_after: 0, bubble: true, always_on_top: true, autostart: false, avatar: "" });
     const keys = k.settings.list().filter((s) => s.section === "corps").map((s) => s.key);
     expect(keys.sort()).toEqual(["avatar_visible", "bulle", "masquer_apres", "toujours_devant"]);
     expect(k.settings.list().find((s) => s.key === "demarrage_windows")?.section).toBe("systeme");
@@ -93,7 +93,7 @@ describe("réglages d'affichage", () => {
     const r2 = await k.settings.change("avatar_visible", false, "ui");
     expect(r2.ok).toBe(true);
     const last = [...sent].reverse().find((m) => m.type === "display");
-    expect(last?.settings).toMatchObject({ masquer_apres: 15, avatar_visible: false });
+    expect(last?.settings).toMatchObject({ hide_after: 15, avatar_visible: false });
     await k.stopAll();
   });
 

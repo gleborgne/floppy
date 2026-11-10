@@ -36,9 +36,11 @@ describe("catalogue des éléments", () => {
     expect((await k.items.run({ op: "add", provider: "fake", kind: "k", values: { name: "b" } }, "ui")).id).toBe("b");
 
     // Activer un élément cloud à la voix : accord demandé (ici refusé).
-    k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, false, "test"); });
+    const requests: unknown[] = [];
+    k.bus.on("approval.request", (r) => { requests.push(r.args); k.approvals.respond(r.id, false, "test"); });
     const r = await k.items.run({ op: "enable", provider: "fake", id: "c", on: true }, "voice");
     expect(r.ok).toBe(false);
+    expect(requests).toEqual([{ provider: "fake", item: "c" }]);
     expect((await k.items.run({ op: "enable", provider: "fake", id: "a", on: false }, "voice")).ok).toBe(true);
 
     // Outil vocal : trouve par alias, dans n'importe quelle langue.

@@ -74,8 +74,8 @@ export async function runPipeline(d: PipelineDeps): Promise<PipelineResult> {
     }),
     ...(d.search ? it.requetes.map(async (q) => {
       try {
-        const hits = await d.search!.search(q, { max: 10, depuis, ...(d.signal ? { signal: d.signal } : {}) });
-        for (const h of hits) all.push({ titre: clean(h.titre), url: h.url, source: h.source ?? hostOf(h.url), ...(h.date ? { date: h.date } : {}), extrait: clean(h.resume ?? "").slice(0, 300), interet: it.id });
+        const hits = await d.search!.search(q, { max: 10, since: depuis, ...(d.signal ? { signal: d.signal } : {}) });
+        for (const h of hits) all.push({ titre: clean(h.title), url: h.url, source: h.source ?? hostOf(h.url), ...(h.date ? { date: h.date } : {}), extrait: clean(h.summary ?? "").slice(0, 300), interet: it.id });
       } catch (e) { erreurs.push(tr(T(`recherche « ${q} » : ${msg(e)}`, `search “${q}”: ${msg(e)}`), lang)); }
     }) : []),
   ]));

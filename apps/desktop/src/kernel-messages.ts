@@ -141,7 +141,7 @@ export function createKernelMessages(deps: KernelMessagesDeps): KernelMessages {
     } else if (m?.type === "kernel.ready") {
       contributions.reconcile(m.plugins.filter((p: Msg) => p.state === "active").map((p: Msg) => p.id));
       deps.kernel().setBootFailure(null);
-      problems.delete("noyau");
+      problems.delete("kernel");
       for (const p of m.plugins) if (p.state === "error" || p.state === "waiting") problems.set(p.id, p.error ?? waitText(p.missing));
       deps.refreshTray();
       // Fabricants des puces vues par l'appli : un indice pour la lecture de la machine, si aucune sonde ne répond.

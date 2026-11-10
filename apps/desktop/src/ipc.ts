@@ -1,7 +1,7 @@
 // Canaux IPC des pages (avatar, réglages, « Bienvenue », résultats, documents, saisie, dictée) vers le processus principal.
 // Chaque canal vérifie d'où vient l'appel (`e.sender`) avant d'agir ; l'état appartient aux modules appelés, pas à celui-ci.
 import { shell, ipcMain, dialog } from "electron";
-import type { Bilingual } from "./placement.ts";
+import { placeOptions, type Bilingual } from "./placement.ts";
 import type { Msg } from "./app-types.ts";
 import type { Texts } from "./app-texts.ts";
 import type { KernelProcess } from "./kernel-process.ts";
@@ -56,7 +56,7 @@ export function registerIpc(deps: IpcDeps): void {
     const win = avatar().win();
     if (!win || e.sender !== win.webContents) throw new Error("refusé");
     try {
-      return { ok: true, text: avatar().placeAvatar({ coin: String(a?.coin ?? "bas_droite"), ecran: a?.ecran === undefined ? undefined : Number(a.ecran), cible: a?.cible === "fenetre" ? "fenetre" : "ecran" }) };
+      return { ok: true, text: avatar().placeAvatar(placeOptions(a)) };
     } catch (error) {
       const err = error as { text?: Bilingual; message?: unknown };
       return { ok: false, text: err?.text ?? String(err?.message ?? error) };
@@ -95,11 +95,11 @@ export function registerIpc(deps: IpcDeps): void {
     avatar().win()?.webContents.send("document-delete", { id, current: DOC_ID.test(current) ? current : "" });
   });
   // Nouvelle liste (après une suppression) : de la page de l'avatar vers la fenêtre Documents, si elle est ouverte.
-  ipcMain.on("documents:list", (e, liste) => {
+  ipcMain.on("documents:list", (e, entries) => {
     const win = avatar().win();
     if (!win || e.sender !== win.webContents) return;
     const docsWin = windows().docsWin();
-    if (docsWin && !docsWin.isDestroyed()) docsWin.webContents.send("documents:list", cleanDocList(liste));
+    if (docsWin && !docsWin.isDestroyed()) docsWin.webContents.send("documents:list", cleanDocList(entries));
   });
   ipcMain.on("documents:link", async (e, url) => {
     const docsWin = windows().docsWin();

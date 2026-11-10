@@ -38,3 +38,4 @@ export { connectJsonSocket, type JsonSocket } from "./json-socket.ts";
 export type { Availability } from "./services.ts";
 export { agentPrompt } from "./agent-prompt.ts";
 export { probeMachine, machineSummary, modelBudget, driverMajor, gbText, GIB, type MachineInfo, type GpuInfo, type GpuVendor, type MemoryKind, type Backend, type ProbeOptions, type RunFn } from "./machine.ts";
+export { runHomeMigrations, readMigrationMarker, MIGRATION_MARKER, type MigrationStep, type MigrationEnv, type MigrationReport, type MigrationChange, type MigrationSkip, type MigrationMarker, type MigrationOptions } from "./util/home-migration.ts";

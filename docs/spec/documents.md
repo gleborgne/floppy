@@ -8,7 +8,7 @@
 
 Floppy peut répondre par un **document** au lieu d'une longue phrase : un tableau, une comparaison, une liste de liens, le digest de la [veille](veille.md). Le document s'affiche dans une fenêtre. À l'oral, Floppy dit une seule phrase de résumé.
 
-Les documents sont des fichiers Markdown dans `<home>\documents\` (`AAAA-MM-JJ-HHMM-titre.md`, avec un petit en-tête YAML : titre, date, source, tags). On peut les lire hors de Floppy.
+Les documents sont des fichiers Markdown dans `<home>\documents\` (`AAAA-MM-JJ-HHMM-titre.md`, avec un petit en-tête YAML : title, date, source, tags ; les fichiers écrits avec l'ancienne clé `titre` sont convertis une fois par la migration du dossier, voir [noyau](noyau.md)). On peut les lire hors de Floppy.
 
 ## Qui fait quoi
 
@@ -37,5 +37,5 @@ flowchart LR
 
 | Sens | Message | Rôle |
 |---|---|---|
-| noyau → corps | `document { id, titre, markdown, liste? }` | Montrer un document (+ les 30 derniers pour la liste) |
+| noyau → corps | `document { id, title, markdown, entries? }` | Montrer un document (+ les 30 derniers pour la liste) |
 | corps → noyau | `document.open { id }` | L'utilisateur a cliqué un document dans la liste |

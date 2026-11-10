@@ -12,8 +12,8 @@ export interface CoderAgentInfo {
   /** Commande à lancer pour se connecter (« claude /login »). */
   loginHint?: Text;
 }
-/** reglages : seulement les outils de réglages. plugin : écrire un plugin dans <home>/plugins (avec validation). */
-export type CoderMode = "reglages" | "plugin";
+/** settings : seulement les outils de réglages. plugin : écrire un plugin dans <home>/plugins (avec validation). */
+export type CoderMode = "settings" | "plugin";
 
 export type CoderEvent =
   | { type: "status"; sessionId: string; status: "starting" | "ready" | "busy" }

@@ -54,7 +54,7 @@ describe("noyau bilingue", () => {
   it("tâches : messages en français et en anglais", async () => {
     const k = new Kernel({ logger: () => {} });
     await k.applyConfig({ plugins: [] });
-    const out = await k.tasks.run("rien/du-tout", "manuel");
+    const out = await k.tasks.run("rien/du-tout", "manual");
     expect(out.ok).toBe(false);
     expect(tr(out.text, "fr")).toBe("Tâche inconnue : rien/du-tout.");
     expect(tr(out.text, "en")).toBe("Unknown task: rien/du-tout.");

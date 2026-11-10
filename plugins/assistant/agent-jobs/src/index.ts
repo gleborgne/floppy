@@ -117,7 +117,7 @@ export default definePlugin({
               job.result = (await execute(b.service, a, signal, meta.origin)).slice(0, 200000);
               const docs = ctx.maybe("documents");
               if (docs && job.result) {
-                try { job.document = (await docs.save({ titre: `${b.service.label} · ${job.instruction.slice(0, 80)}`,
+                try { job.document = (await docs.save({ title: `${b.service.label} · ${job.instruction.slice(0, 80)}`,
                   markdown: job.result, source: "agent-jobs", tags: ["agent", b.service.id] })).id; }
                 catch { ctx.log("warn", "document de la mission non enregistré ; résultat conservé dans le journal des travaux"); }
               }

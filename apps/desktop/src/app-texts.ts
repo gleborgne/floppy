@@ -3,8 +3,8 @@ import { TEXTS, keysForOS } from "./main-texts.ts";
 import type { Lang, TextKey } from "./main-texts.ts";
 import type { Bilingual } from "./placement.ts";
 
-// Raccourcis par défaut (les mêmes que plugins/body/electron/src/shortcuts.ts) ; le noyau envoie ceux choisis (display.raccourcis).
-export const SHORTCUT_DEFAULTS: Record<string, string> = { parler: "Ctrl+Alt+F", ecrire: "Ctrl+Alt+T", dicter: "Ctrl+Alt+D", dormir: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
+// Raccourcis par défaut (les mêmes que plugins/body/electron/src/shortcuts.ts) ; le noyau envoie ceux choisis (display.shortcuts).
+export const SHORTCUT_DEFAULTS: Record<string, string> = { talk: "Ctrl+Alt+F", write: "Ctrl+Alt+T", dictate: "Ctrl+Alt+D", sleep: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
 
 export interface Texts {
   /** Langue de l'interface (réglage « langue_interface » du noyau). */
@@ -32,8 +32,8 @@ export function createTexts(): Texts {
   const both = (k: TextKey): Bilingual => ({ fr: TEXTS.fr[k], en: TEXTS.en[k] });
   /** Texte simple, ou { fr, en } (venu du noyau), dans la langue de l'interface. */
   const trx = (x: unknown): string => (x && typeof x === "object" ? ((x as Record<string, unknown>)[lang] ?? (x as Record<string, unknown>).fr ?? Object.values(x).find((v) => typeof v === "string") ?? "") : String(x ?? "")) as string;
-  /** Nom d'un problème montré dans l'icône (id d'un plugin, ou « dictée », « raccourci »). */
-  const problemName = (id: string): string => ((TEXTS[lang] ?? TEXTS.fr).problemNames as Record<string, string>)[id.startsWith("raccourci_") ? "raccourci" : id] ?? id;
+  /** Nom d'un problème montré dans l'icône (id d'un plugin, ou « dictation », « shortcut »). */
+  const problemName = (id: string): string => ((TEXTS[lang] ?? TEXTS.fr).problemNames as Record<string, string>)[id.startsWith("shortcut_") ? "shortcut" : id] ?? id;
   /** Erreur dont le message existe en fr et en en (`text`). */
   const textError = (text: Bilingual): Error & { text: Bilingual } => Object.assign(new Error(text.fr), { text });
   const waitText = (missing?: string[]) => `${T("waits")} ${(missing ?? []).join(", ")}`;

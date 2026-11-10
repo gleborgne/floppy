@@ -266,7 +266,7 @@ export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pe
     },
     tasks: {
       list: () => kernel.tasks.list(),
-      run: (key, raison) => closed("tasks.run") ? Promise.reject(stoppedError()) : kernel.tasks.run(key, raison ?? "manuel"),
+      run: (key, reason) => closed("tasks.run") ? Promise.reject(stoppedError()) : kernel.tasks.run(key, reason ?? "manual"),
       onChange: (fn) => { scope.add(kernel.tasks.onChange(fn)); },
     },
     offer(service, od) {

@@ -16,14 +16,14 @@ Floppy peut **envoyer** un résultat hors de l'ordinateur : la veille du jour da
 flowchart LR
   T["Tâche finie<br/>(événement task.done)"] --> R
   V["Voix : outil envoyer"] --> R
-  R["Plugin Tâches<br/>réglage « Envoyer à »<br/>ctx.offers / ctx.borrowItem"] -- "{ titre, markdown }" --> TG["notify-telegram<br/>Markdown → HTML Telegram<br/>découpé en messages de 4 000 car."]
+  R["Plugin Tâches<br/>réglage « Envoyer à »<br/>ctx.offers / ctx.borrowItem"] -- "{ title, markdown }" --> TG["notify-telegram<br/>Markdown → HTML Telegram<br/>découpé en messages de 4 000 car."]
   R --> M["notify-mail<br/>Markdown → mail HTML + texte<br/>SMTP (Gmail, Outlook…)"]
 ```
 
 ## Le contrat
 
 ```ts
-interface NotifyService { label?: string; cloud?: boolean; send(msg: { titre: string; markdown: string }, opts?): Promise<void> }
+interface NotifyService { label?: string; cloud?: boolean; send(msg: { title: string; markdown: string }, opts?): Promise<void> }
 ```
 
 Un plugin canal **offre** `notify` élément par élément (une destination = un élément). Un plugin qui envoie liste tous les canaux (`ctx.offers("notify")`, nouveau) et en emprunte un le temps d'un envoi (`ctx.borrowItem`, nouveau). Rien ne tourne entre deux envois.

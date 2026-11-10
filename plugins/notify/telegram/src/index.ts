@@ -104,7 +104,7 @@ async function callTelegram(f: FetchLike, token: string, method: string, body: u
 
 /** Envoie le message découpé en morceaux de 4000 caractères au plus. */
 export async function sendTelegram(f: FetchLike, token: string, chat: string, msg: NotifyMessage, signal: AbortSignal): Promise<void> {
-  for (const text of telegramMessages(msg.titre, msg.markdown)) {
+  for (const text of telegramMessages(msg.title, msg.markdown)) {
     await callTelegram(f, token, "sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true }, signal);
   }
 }
@@ -186,7 +186,7 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
       const sendTest = async (token: string | undefined, chat: string): Promise<OpResult> => {
         if (!token) return { ok: false, text: T("Il faut le jeton du bot.", "The bot token is required.") };
         try {
-          await sendTelegram(doFetch, token, chat, { titre: "", markdown: tr(TEST_TEXT, lang()) }, signal());
+          await sendTelegram(doFetch, token, chat, { title: "", markdown: tr(TEST_TEXT, lang()) }, signal());
           return { ok: true, text: T("Ça marche : le message de test est parti.", "It works: the test message was sent.") };
         } catch (e) {
           return { ok: false, text: errorText(e) };

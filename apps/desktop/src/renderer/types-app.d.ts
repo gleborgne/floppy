@@ -19,8 +19,8 @@ interface A2uiMessage {
 interface PanelShow { title?: string; lang?: string; a2ui?: A2uiMessage[] }
 
 // ---- Fenêtre Documents
-interface DocEntry { id: string; titre: string; date: string; tags: string[] }
-interface DocsShow { id?: string; titre?: string; html?: string; lang?: string; liste?: DocEntry[] }
+interface DocEntry { id: string; title: string; date: string; tags: string[] }
+interface DocsShow { id?: string; title?: string; html?: string; lang?: string; entries?: DocEntry[] }
 
 // ---- Fenêtre Bienvenue
 interface OnboardingRow { state: string; progress?: number; text?: AppText; label?: AppText; role: string }

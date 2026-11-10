@@ -30,7 +30,7 @@ Il décrit aussi les services de Floppy (envoyer un message, demander au modèle
 
 ## Les outils
 
-Chaque outil a : `name` (snake_case), `description` (quand l'utiliser), `inputSchema` (JSON Schema, `type: "object"`),
+Chaque outil a : `name` (snake_case, en anglais), `description` (quand l'utiliser), `inputSchema` (JSON Schema, `type: "object"`),
 `level`, `handler(args, meta)` qui rend `{ status, text }`.
 
 Niveaux (ils décident de la demande d'accord) :
@@ -62,7 +62,7 @@ utilise `ctx.interval` / `ctx.timeout` (automatique) ou `ctx.effect(() => ...)`.
 Tout ce que l'utilisateur voit ou entend existe en français et en anglais, en phrases simples : `{ fr: "…", en: "…" }`.
 Cela vaut pour les libellés, les descriptions de réglages, les options et le `text` rendu par un outil. Floppy choisit la langue.
 La `description` d'un outil est lue par le modèle seulement : le français suffit.
-Le code (noms de variables) peut être en français ou en anglais simple.
+Les noms que lit un programme (champs, valeurs, clés de réglages, noms d'outils et de leurs arguments) sont en anglais, en snake_case pour les outils et les clés. Les commentaires, les `description` d'outils et les textes montrés à l'utilisateur restent en français (et en anglais pour ces derniers).
 Guide complet : docs/guide/plugins/README.md dans le dépôt de Floppy.
 
 ## Sécurité

@@ -41,6 +41,7 @@ Every text a user reads or hears exists in French and English.
 - What a window shows from plugin code: `ctx.uiLang()`.
 - Errors that reach the user: `throw new TextError(T(…))`.
 - Words recognised orally (aliases, yes/no, commands): accept both languages.
+- **Identifiers a program reads are English**: field names, enum and literal values, setting keys, config keys, tool names and their arguments, ids (plugin, avatar, task, slot, section), file names. They are not translated; the text that goes with them is (`T(…)`, labels, tool descriptions). The French emotion words the model may write in tags (`EMOTION_WORDS_FR`, `PROMPT_EMOTIONS_FR`) and the spoken phrases stay French: they are language, not identifiers. A name already saved on the user's disk changes only through a step of the home migration (`HOME_MIGRATIONS` in `packages/setup/src/home-migrations.ts`, see `docs/spec/noyau.md`): code reads the new name only, with no "accept both names" fallback.
 - French stays the default. Code comments, logs and tool descriptions read only by the model are written in French.
 
 ## Portable and neutral

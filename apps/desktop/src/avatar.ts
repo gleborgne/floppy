@@ -39,7 +39,7 @@ export interface AvatarWindow {
   setApprovalOpen(open: boolean): void;
   createWindow(): void;
   placeHome(): void;
-  placeAvatar(opts?: { coin?: string; ecran?: number; cible?: string }): Bilingual;
+  placeAvatar(opts?: { corner?: string; screen?: number; target?: string }): Bilingual;
   showWin(): void;
   hideWin(): void;
   activity(): void;
@@ -63,7 +63,7 @@ export function createAvatar(deps: AvatarDeps): AvatarWindow {
   let winReady = false;
   let state = "idle";
   // Affichage (réglages du plugin body-electron, reçus du noyau).
-  let display: Display = { avatar_visible: true, masquer_apres: 0, bulle: true, toujours_devant: true, avatar: "", avatarUrl: "" };
+  let display: Display = { avatar_visible: true, hide_after: 0, bubble: true, always_on_top: true, avatar: "", avatarUrl: "" };
   let idleTimer: NodeJS.Timeout | undefined;           // masquage automatique après inactivité
   let tempTimer: NodeJS.Timeout | undefined;           // retour au masquage après une apparition temporaire
   let tempShown = false;          // fenêtre montrée alors que avatar_visible est faux
@@ -98,13 +98,13 @@ export function createAvatar(deps: AvatarDeps): AvatarWindow {
     return [primary, ...screen.getAllDisplays().filter((d) => d.id !== primary.id).sort((a, b) => a.bounds.x - b.bounds.x)];
   }
   /**
-   * Placer l'avatar (outil vocal « placer_avatar »). coin : bas_droite, bas_gauche, haut_droite, haut_gauche, centre.
-   * ecran : numéro (1 = principal). cible "fenetre" : dans le coin de la fenêtre active (le terminal, le navigateur…).
+   * Placer l'avatar (outil vocal « placer_avatar »). corner : bottom_right, bottom_left, top_right, top_left, center.
+   * screen : numéro (1 = principal). target "window" : dans le coin de la fenêtre active (le terminal, le navigateur…).
    */
-  function placeAvatar(opts: { coin?: string; ecran?: number; cible?: string } = {}): Bilingual {
+  function placeAvatar(opts: { corner?: string; screen?: number; target?: string } = {}): Bilingual {
     if (!win || win.isDestroyed()) throw textError({ fr: "l'avatar n'a pas de fenêtre", en: "the avatar has no window" });
     let active: Area | null = null;
-    if (opts.cible === "fenetre") {
+    if (opts.target === "window") {
       const r = process.platform === "win32" ? foregroundRect() : null;
       const dip = r && r.width > 0 && r.height > 0 ? screen.screenToDipRect(null, r) : null;
       if (dip) {
@@ -193,8 +193,8 @@ export function createAvatar(deps: AvatarDeps): AvatarWindow {
   function armIdleTimer() {
     clearTimeout(idleTimer);
     idleTimer = undefined;
-    if (quitting() || !win || win.isDestroyed() || !display.masquer_apres || !display.avatar_visible || !win.isVisible()) return;
-    idleTimer = setTimeout(() => { if (state === "idle" && !approvalOpen) hideWin(); else armIdleTimer(); }, display.masquer_apres * 60000);
+    if (quitting() || !win || win.isDestroyed() || !display.hide_after || !display.avatar_visible || !win.isVisible()) return;
+    idleTimer = setTimeout(() => { if (state === "idle" && !approvalOpen) hideWin(); else armIdleTimer(); }, display.hide_after * 60000);
   }
 
   /** Toute activité (état actif, carte d'accord, raccourci, clic sur l'icône) : montre la fenêtre si besoin et relance le minuteur. */
@@ -233,10 +233,10 @@ export function createAvatar(deps: AvatarDeps): AvatarWindow {
   function applyDisplay(s: unknown): void {
     if (quitting() || !s || typeof s !== "object") return;
     display = { ...display, ...(s as Partial<Display>) };
-    if (typeof display.demarrage_windows === "boolean") applyLoginItem(display.demarrage_windows);
-    if (display.raccourcis && typeof display.raccourcis === "object") deps.voice().applyShortcuts(display.raccourcis);
+    if (typeof display.autostart === "boolean") applyLoginItem(display.autostart);
+    if (display.shortcuts && typeof display.shortcuts === "object") deps.voice().applyShortcuts(display.shortcuts);
     if (!win || win.isDestroyed()) return;
-    win.setAlwaysOnTop(!!display.toujours_devant, "floating");
+    win.setAlwaysOnTop(!!display.always_on_top, "floating");
     win.webContents.send("display", { ...display, lang: lang() });
     if (display.avatar_visible) { tempShown = false; clearTimeout(tempTimer); showWin(); }
     else if (!tempShown) hideWin();

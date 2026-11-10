@@ -33,7 +33,7 @@ interface Texts {
 const TXT: Record<Lang, Texts> = {
   fr: {
     title: "Assistant IA", fresh: "Nouvelle conversation", close: "Fermer", agentLabel: "Assistant", modeLabel: "Mode",
-    modes: { reglages: "Réglages", plugin: "Créer un plugin" },
+    modes: { settings: "Réglages", plugin: "Créer un plugin" },
     suggestions: {
       reglages: ["Rends Floppy plus discret", "Explique-moi les connecteurs"],
       plugin: ["Crée un plugin qui me rappelle de boire de l'eau toutes les heures", "Explique-moi comment marche un plugin"],
@@ -64,7 +64,7 @@ const TXT: Record<Lang, Texts> = {
   },
   en: {
     title: "AI assistant", fresh: "New conversation", close: "Close", agentLabel: "Assistant", modeLabel: "Mode",
-    modes: { reglages: "Settings", plugin: "Create a plugin" },
+    modes: { settings: "Settings", plugin: "Create a plugin" },
     suggestions: {
       reglages: ["Make Floppy more discreet", "Explain connectors to me"],
       plugin: ["Create a plugin that reminds me to drink water every hour", "Explain to me how a plugin works"],
@@ -212,7 +212,7 @@ export function initAssistant() {
   const toggle = toggleEl as HTMLButtonElement;
 
   let agent = store.get("assistant.agent", "");
-  let mode = store.get("assistant.mode", "reglages") === "plugin" ? "plugin" : "reglages";
+  let mode = store.get("assistant.mode", "settings") === "plugin" ? "plugin" : "settings";
   let agents: CoderAgent[] | null = null;       // agents donnés par le service, ou null (service absent)
   let availKnown = false;
   let sessionId: string | null = null;

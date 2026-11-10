@@ -369,7 +369,7 @@ export class CatalogRegistry {
           if (via === "voice") {
             const cloud = kind.cloud ? T(" (données dans le cloud)", " (data goes to the cloud)") : undefined;
             const d = await this.approvals.check({
-              tool: "ajouter_application", args: { fournisseur: o.provider, type: o.kind }, level: "write", override: "ask",
+              tool: "ajouter_application", args: { provider: o.provider, type: o.kind }, level: "write", override: "ask",
               summary: T(`Ajouter ${tr(kind.label, "fr")}${cloud ? tr(cloud, "fr") : ""}`, `Add ${tr(kind.label, "en")}${cloud ? tr(cloud, "en") : ""}`), ...(origin ? { origin } : {}),
             });
             if (!d.ok) return { ok: false, text: T("Refusé par l'utilisateur. Rien n'a changé. Ne le retente pas.", "Refused by the user. Nothing changed. Do not try again.") };
@@ -397,7 +397,7 @@ export class CatalogRegistry {
             if (item.cloud) {
               // override « ask » : la règle « write: always » ne dispense pas de demander pour le cloud.
               const d = await this.approvals.check({
-                tool: "activer_element", args: { fournisseur: o.provider, element: o.id }, level: "write", override: "ask",
+                tool: "activer_element", args: { provider: o.provider, item: o.id }, level: "write", override: "ask",
                 summary: T(`Activer ${tr(item.label, "fr")} (données dans le cloud)`, `Turn on ${tr(item.label, "en")} (data goes to the cloud)`), ...(origin ? { origin } : {}),
               });
               if (!d.ok) return { ok: false, text: T("Refusé par l'utilisateur. Rien n'a changé. Ne le retente pas.", "Refused by the user. Nothing changed. Do not try again.") };

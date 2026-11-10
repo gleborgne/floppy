@@ -105,7 +105,7 @@ function handleCoder(d: CoderMsg) {
       svc.agents().then((v) => reply(true, v), (err) => reply(false, undefined, uiError(err)));
     } else if (d.type === "coder.start") {
       if (!svc) return reply(false, undefined, tr(T("assistant indisponible", "assistant unavailable"), k.uiLang));
-      svc.start({ agent: String(d.agent ?? ""), mode: d.mode === "plugin" ? "plugin" : "reglages" })
+      svc.start({ agent: String(d.agent ?? ""), mode: d.mode === "plugin" ? "plugin" : "settings" })
         .then((v) => reply(true, v), (err) => reply(false, undefined, uiError(err)));
     } else if (d.type === "coder.send") svc?.send(sid, String(d.text ?? ""));
     else if (d.type === "coder.cancel") svc?.cancel(sid);

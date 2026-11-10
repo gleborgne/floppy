@@ -44,7 +44,7 @@ function desktop(argv: string[] = []) {
   const menu = { buildFromTemplate: vi.fn(() => ({ popup })) };
   context.Menu = menu;
   context.globalShortcut = shortcut;
-  runInNewContext(source+';globalThis.api={contributions,openAvatarMenu:()=>avatar.openAvatarMenu(),applyDisplay:(s)=>avatar.applyDisplay(s),startKernel:()=>kernelProcess.start(),restartDelay,openTextInput:()=>windows.openTextInput(),submitText:(e,t)=>windows.submitText(e,t),applyShortcuts:(s)=>voice.applyShortcuts(s),problems:()=>tray.problems,createWindow:()=>avatar.createWindow(),pending:()=>kernelProcess.pending};',context);
+  runInNewContext(source+';globalThis.api={contributions,openAvatarMenu:()=>avatar.openAvatarMenu(),applyDisplay:(s)=>avatar.applyDisplay(s),startKernel:()=>kernelProcess.start(),restartDelay,openTextInput:()=>windows.openTextInput(),submitText:(e,t)=>windows.submitText(e,t),applyShortcuts:(s)=>voice.applyShortcuts(s),cleanDocList,problems:()=>tray.problems,createWindow:()=>avatar.createWindow(),pending:()=>kernelProcess.pending};',context);
   return { api:context.api,menu,popup,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,avatarWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
 
@@ -86,10 +86,10 @@ it("le raccourci global ouvre la saisie, se remplace et se désactive", () => {
   expect(write).toBeDefined();
   write[1]();
   expect(d.windows).toHaveBeenCalledOnce();
-  d.api.applyShortcuts({ecrire: 'Ctrl+Shift+T'});
+  d.api.applyShortcuts({write: 'Ctrl+Shift+T'});
   expect(d.shortcut.unregister).toHaveBeenCalledWith('Ctrl+Alt+T');
   expect(d.shortcut.register).toHaveBeenCalledWith('Ctrl+Shift+T', expect.any(Function));
-  d.api.applyShortcuts({ecrire: ''});
+  d.api.applyShortcuts({write: ''});
   expect(d.shortcut.unregister).toHaveBeenCalledWith('Ctrl+Shift+T');
 });
 
@@ -191,5 +191,28 @@ it("un démarrage impossible devient un problème visible, et la relance s'arrê
   expect(d.timers.mock.calls.length).toBe(timersBefore); // aucune relance programmée
   expect(relaunches()).toHaveLength(4);
   expect(d.forked).toHaveLength(5);
-  expect(d.api.problems().get('noyau')).toEqual({fr:'config invalide',en:'invalid config'});
+  expect(d.api.problems().get('kernel')).toEqual({fr:'config invalide',en:'invalid config'});
+});
+
+it("le message `display` du noyau (champs en anglais) règle la fenêtre, passe les raccourcis et arrive tel quel à la page", () => {
+  const d = desktop();
+  d.api.createWindow();
+  d.avatarWindow.webContents.send.mockClear();
+  d.api.applyDisplay({ avatar_visible: true, hide_after: 3, bubble: false, always_on_top: false, autostart: false, shortcuts: { talk: 'Ctrl+Alt+G' } });
+  expect(d.avatarWindow.setAlwaysOnTop).toHaveBeenLastCalledWith(false, 'floating');
+  expect(d.shortcut.register).toHaveBeenCalledWith('Ctrl+Alt+G', expect.any(Function));
+  expect(d.avatarWindow.webContents.send).toHaveBeenCalledWith('display', expect.objectContaining({ hide_after: 3, bubble: false, always_on_top: false, shortcuts: { talk: 'Ctrl+Alt+G' } }));
+});
+
+it("la liste de documents venue de la page de l'avatar est nettoyée sous ses noms anglais (`title`)", () => {
+  const d = desktop();
+  expect(d.api.cleanDocList([
+    { id: 'a1', title: 'Un'.repeat(200), date: '2026-11-06', tags: ['veille', 3] },
+    { id: '../evil', title: 'x' },
+    { id: 'b2', titre: 'ancien nom' },
+  ])).toEqual([
+    { id: 'a1', title: 'Un'.repeat(200).slice(0, 200), date: '2026-11-06', tags: ['veille', '3'] },
+    { id: 'b2', title: '', date: '', tags: [] },
+  ]);
+  expect(d.api.cleanDocList('pas une liste')).toEqual([]);
 });

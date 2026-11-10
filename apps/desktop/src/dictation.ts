@@ -78,7 +78,7 @@ export function createDictation(deps: DictationDeps): Dictation {
     if (dictating) {
       try { typer ??= new Typer((msg) => { kernelLog.write(`[app] ${msg}
 `); console.log(`[app] ${msg}`); }); }
-      catch (e) { const err = e as { text?: Bilingual; message?: unknown }; dictating = false; problems.set("dictée", err?.text ?? String(err?.message ?? e)); refreshTray(); return; }
+      catch (e) { const err = e as { text?: Bilingual; message?: unknown }; dictating = false; problems.set("dictation", err?.text ?? String(err?.message ?? e)); refreshTray(); return; }
       typer.reset();
       showDictationPill();
     } else finishDictationPill();

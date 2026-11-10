@@ -43,7 +43,7 @@ export function createVoiceControls(deps: VoiceControlsDeps): VoiceControls {
   function togglePtt() { activity(); pttOn = !pttOn; deps.avatar().win()?.webContents.send("shortcut", pttOn ? "ptt-on" : "ptt-off"); refreshTray(); }
   function toggleMute() { muted = !muted; deps.avatar().win()?.webContents.send("shortcut", muted ? "mute-on" : "mute-off"); refreshTray(); }
 
-  const SHORTCUT_ACTIONS: Record<string, () => void> = { ecrire: () => deps.windows().openTextInput(), parler: () => togglePtt(), dicter: () => deps.dictation().toggleDictate(), dormir: () => toggleMute(), avatar: () => deps.avatar().toggleWindow() };
+  const SHORTCUT_ACTIONS: Record<string, () => void> = { write: () => deps.windows().openTextInput(), talk: () => togglePtt(), dictate: () => deps.dictation().toggleDictate(), sleep: () => toggleMute(), avatar: () => deps.avatar().toggleWindow() };
   const registered = new Map<string, string>(); // action -> raccourci posé
   /** Pose les raccourcis globaux choisis. Un raccourci déjà pris par une autre app (ex. Ctrl+Alt+Espace) est signalé. */
   function applyShortcuts(next: unknown): void {
@@ -56,13 +56,13 @@ export function createVoiceControls(deps: VoiceControlsDeps): VoiceControls {
       const old = registered.get(a);
       if (old) { try { globalShortcut.unregister(old); } catch { /* déjà retiré */ } }
       registered.delete(a);
-      problems.delete(`raccourci_${a}`);
+      problems.delete(`shortcut_${a}`);
       if (!keys) continue;
       let ok = false;
       try { ok = globalShortcut.register(keys, fn); } catch { ok = false; }
       kernelLog.write(`[app] raccourci ${keys} (${a}) : ${ok ? "ok" : "DÉJÀ PRIS par une autre app"}\n`);
       if (ok) registered.set(a, keys);
-      else problems.set(`raccourci_${a}`, { fr: `${keysForOS(keys)} ${TEXTS.fr.taken}`, en: `${keysForOS(keys)} ${TEXTS.en.taken}` });
+      else problems.set(`shortcut_${a}`, { fr: `${keysForOS(keys)} ${TEXTS.fr.taken}`, en: `${keysForOS(keys)} ${TEXTS.en.taken}` });
     }
     refreshTray();
   }

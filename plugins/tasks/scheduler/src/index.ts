@@ -1,6 +1,6 @@
 // Plugin `scheduler` (Planificateur) : l'HORLOGE. Il ne connaît aucune tâche en particulier.
 //
-// - Il lit les tâches du noyau (ctx.tasks.list) et lance celles qui sont « dues » (ctx.tasks.run(clé, "horloge")).
+// - Il lit les tâches du noyau (ctx.tasks.list) et lance celles qui sont « dues » (ctx.tasks.run(clé, "clock")).
 // - La planification de l'utilisateur gagne sur celle du manifeste. Elle est un réglage texte par tâche, changeable
 //   à la voix : « Floppy, fais ma veille à 8 h » → "08:00" ; « …du lundi au vendredi » → "08:00 lun-ven" ;
 //   « toutes les 3 heures » → "toutes les 3h" ; "jamais". « 8h » tout seul est une HEURE (08:00), jamais une période.
@@ -120,23 +120,23 @@ export function parseSchedule(input: string): ParsedSchedule {
   const rest = at[4]!.trim();
   const heure = `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
   if (!rest) return { ok: true, schedule: { at: heure } };
-  const jours = parseDays(rest);
-  if (!jours) return bad();
-  return { ok: true, schedule: jours.length === 7 ? { at: heure } : { at: heure, jours } };
+  const days = parseDays(rest);
+  if (!days) return bad();
+  return { ok: true, schedule: days.length === 7 ? { at: heure } : { at: heure, days } };
 }
 
 /** Écrit une planification comme on la dit : "07:30", "07:30 lun-ven", "3h", "jamais". */
 export function formatSchedule(schedule: TaskSchedule | null | undefined): string {
   if (!schedule) return "jamais";
   if ("every" in schedule) return `toutes les ${schedule.every.endsWith("m") ? `${schedule.every.slice(0, -1)} min` : schedule.every}`;
-  const jours = [...new Set(schedule.jours ?? [])].sort((a, b) => a - b);
-  if (!jours.length || jours.length === 7) return schedule.at;
+  const days = [...new Set(schedule.days ?? [])].sort((a, b) => a - b);
+  if (!days.length || days.length === 7) return schedule.at;
   const parts: string[] = [];
-  for (let i = 0; i < jours.length;) {
+  for (let i = 0; i < days.length;) {
     let j = i;
-    while (j + 1 < jours.length && jours[j + 1] === jours[j]! + 1) j++;
-    if (j - i >= 2) parts.push(`${NOMS_JOURS[jours[i]! - 1]}-${NOMS_JOURS[jours[j]! - 1]}`);
-    else for (let k = i; k <= j; k++) parts.push(NOMS_JOURS[jours[k]! - 1]!);
+    while (j + 1 < days.length && days[j + 1] === days[j]! + 1) j++;
+    if (j - i >= 2) parts.push(`${NOMS_JOURS[days[i]! - 1]}-${NOMS_JOURS[days[j]! - 1]}`);
+    else for (let k = i; k <= j; k++) parts.push(NOMS_JOURS[days[k]! - 1]!);
     i = j + 1;
   }
   return `${schedule.at} ${parts.join(",")}`;
@@ -147,14 +147,14 @@ export function scheduleText(schedule: TaskSchedule | null | undefined): Text {
   const fr = formatSchedule(schedule);
   if (!schedule) return t(fr, "never");
   if ("every" in schedule) return t(fr, `every ${schedule.every.endsWith("m") ? `${schedule.every.slice(0, -1)} min` : schedule.every}`);
-  const jours = [...new Set(schedule.jours ?? [])].sort((a, b) => a - b);
-  if (!jours.length || jours.length === 7) return t(fr, schedule.at);
+  const days = [...new Set(schedule.days ?? [])].sort((a, b) => a - b);
+  if (!days.length || days.length === 7) return t(fr, schedule.at);
   const parts: string[] = [];
-  for (let i = 0; i < jours.length;) {
+  for (let i = 0; i < days.length;) {
     let j = i;
-    while (j + 1 < jours.length && jours[j + 1] === jours[j]! + 1) j++;
-    if (j - i >= 2) parts.push(`${DAYS_SHORT[jours[i]! - 1]}-${DAYS_SHORT[jours[j]! - 1]}`);
-    else for (let k = i; k <= j; k++) parts.push(DAYS_SHORT[jours[k]! - 1]!);
+    while (j + 1 < days.length && days[j + 1] === days[j]! + 1) j++;
+    if (j - i >= 2) parts.push(`${DAYS_SHORT[days[i]! - 1]}-${DAYS_SHORT[days[j]! - 1]}`);
+    else for (let k = i; k <= j; k++) parts.push(DAYS_SHORT[days[k]! - 1]!);
     i = j + 1;
   }
   return t(fr, `${schedule.at} ${parts.join(",")}`);
@@ -176,7 +176,7 @@ export function lastOccurrence(schedule: TaskSchedule, now: Date): Date | undefi
   for (let back = 0; back <= 7; back++) {
     const c = atOn(now, back, schedule.at);
     if (c.getTime() > now.getTime()) continue;
-    if (!schedule.jours || schedule.jours.includes(isoDay(c))) return c;
+    if (!schedule.days || schedule.days.includes(isoDay(c))) return c;
   }
   return undefined;
 }
@@ -187,7 +187,7 @@ export function nextOccurrence(schedule: TaskSchedule, now: Date): Date | undefi
   for (let ahead = 0; ahead <= 7; ahead++) {
     const c = atOn(now, -ahead, schedule.at);
     if (c.getTime() <= now.getTime()) continue;
-    if (!schedule.jours || schedule.jours.includes(isoDay(c))) return c;
+    if (!schedule.days || schedule.days.includes(isoDay(c))) return c;
   }
   return undefined;
 }
@@ -286,15 +286,15 @@ export function createSchedulerPlugin() {
       };
 
       /** Envoie un message sur un canal (emprunté le temps de l'envoi). Lève une erreur claire. */
-      const sendTo = async (value: string, msg: { titre: string; markdown: string }): Promise<void> => {
+      const sendTo = async (value: string, msg: { title: string; markdown: string }): Promise<void> => {
         const b = await ctx.borrowItem<NotifyService>("notify", value);
         if (!b) throw new TextError(t("canal indisponible (désactivé ou supprimé)", "channel unavailable (disabled or removed)"));
         try { await b.service.send(msg); } finally { b.release(); }
       };
       /** Le contenu d'un résultat : le document s'il y en a un, sinon le résumé. */
-      const messageOf = async (label: Text, result: TaskResult): Promise<{ titre: string; markdown: string }> => {
+      const messageOf = async (label: Text, result: TaskResult): Promise<{ title: string; markdown: string }> => {
         const doc = result.document ? await ctx.maybe("documents")?.get(result.document.id) : undefined;
-        return doc ? { titre: doc.titre, markdown: doc.markdown } : { titre: tr(label, lang()), markdown: result.resume };
+        return doc ? { title: doc.title, markdown: doc.markdown } : { title: tr(label, lang()), markdown: result.summary };
       };
       ctx.on("task.done", ({ key, label, result }) => {
         const text = destinations.get(key);
@@ -346,19 +346,19 @@ export function createSchedulerPlugin() {
           const q = norm(String(a.quoi ?? "dernier"));
           const list = await docs.list({ max: 50 });
           const ref = !q || q === "dernier" || q === "derniere" || q === "last" || q === "latest" ? list[0]
-            : list.find((d) => d.tags.some((t2) => norm(t2) === q)) ?? list.find((d) => q.split(" ").every((w) => norm(d.titre).includes(w)));
+            : list.find((d) => d.tags.some((t2) => norm(t2) === q)) ?? list.find((d) => q.split(" ").every((w) => norm(d.title).includes(w)));
           if (!ref) return { status: "failed", text: t("Je ne trouve pas ce document.", "I can't find this document.") };
           const doc = await docs.get(ref.id);
           if (!doc) return { status: "failed", text: t("Je ne trouve pas ce document.", "I can't find this document.") };
           const done: string[] = [];
           for (const c of found) {
-            try { await sendTo(c.value, { titre: doc.titre, markdown: doc.markdown }); done.push(c.label); }
+            try { await sendTo(c.value, { title: doc.title, markdown: doc.markdown }); done.push(c.label); }
             catch (e) {
               const why = errorText(e);
               return { status: "failed", text: t(`L'envoi sur ${c.label} a échoué : ${tr(why, "fr")}.`, `Sending to ${c.label} failed: ${tr(why, "en")}.`) };
             }
           }
-          return { status: "done", text: t(`« ${doc.titre} » envoyé sur ${done.join(" et ")}.`, `"${doc.titre}" sent to ${done.join(" and ")}.`) };
+          return { status: "done", text: t(`« ${doc.title} » envoyé sur ${done.join(" et ")}.`, `"${doc.title}" sent to ${done.join(" and ")}.`) };
         },
       }]);
 
@@ -401,7 +401,7 @@ export function createSchedulerPlugin() {
             if (tried !== undefined && now.getTime() - tried < RETRY_APRES_ECHEC_MS) continue;
             lastAttempt.set(info.key, now.getTime());
             try {
-              const out = await ctx.tasks.run(info.key, "horloge");
+              const out = await ctx.tasks.run(info.key, "clock");
               if (out.ok) lastAttempt.delete(info.key);
               else ctx.log("warn", `tâche ${info.key} : échec`, { text: out.text });
             } catch (e) {
@@ -485,7 +485,7 @@ export function createSchedulerPlugin() {
           if (!info || action !== "run") return { ok: false, text: t("Action inconnue.", "Unknown action.") };
           const fr = tr(info.label, "fr"), en = tr(info.label, "en");
           if (info.running) return { ok: false, text: t(`« ${fr} » est déjà en cours.`, `"${en}" is already running.`) };
-          void ctx.tasks.run(info.key, "manuel").finally(() => ctx.items.changed());
+          void ctx.tasks.run(info.key, "manual").finally(() => ctx.items.changed());
           setTimeout(() => ctx.items.changed(), 50);
           return { ok: true, text: t(`« ${fr} » est lancée. Le résultat arrivera tout seul.`, `"${en}" is running. The result will come by itself.`) };
         },

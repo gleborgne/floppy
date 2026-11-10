@@ -21,7 +21,7 @@ import type { MachineInfo } from "../machine.ts";
 export interface ContextTasks {
   list(): TaskInfo[];
   /** Lance une tâche et attend sa fin (un seul passage à la fois ; le résultat est annoncé par le noyau). */
-  run(key: string, raison?: "horloge" | "manuel"): Promise<TaskOutcome>;
+  run(key: string, reason?: "clock" | "manual"): Promise<TaskOutcome>;
   /** La liste ou l'état d'une tâche a changé. */
   onChange(fn: () => void): void;
 }

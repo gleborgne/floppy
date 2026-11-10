@@ -10,7 +10,7 @@ const api: FloppyDocsApi = {
     return () => { ipcRenderer.removeListener("documents:show", fn); };
   },
   onList: (cb) => {
-    const fn = (_e: IpcRendererEvent, liste: DocEntry[]) => cb(liste);
+    const fn = (_e: IpcRendererEvent, entries: DocEntry[]) => cb(entries);
     ipcRenderer.on("documents:list", fn);
     return () => { ipcRenderer.removeListener("documents:list", fn); };
   },

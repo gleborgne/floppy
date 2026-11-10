@@ -2,7 +2,7 @@
 
 /** Ce qu'on envoie : un titre et un texte Markdown (le canal le met en forme : HTML pour un mail, message Telegram…). */
 export interface NotifyMessage {
-  titre: string;
+  title: string;
   markdown: string;
 }
 

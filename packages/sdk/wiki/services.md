@@ -47,7 +47,7 @@ const channels = ctx.offers("notify");
 if (!channels.length) return { status: "failed", text: { fr: "Aucun canal d'envoi. Ajoute Telegram ou un mail dans les réglages, rubrique Notifications.", en: "No sending channel. Add Telegram or a mail in Settings, Notifications section." } };
 const b = await ctx.borrowItem("notify", channels[0].value);
 if (!b) return { status: "failed", text: { fr: "Canal indisponible.", en: "Channel unavailable." } };
-try { await b.service.send({ titre: "Reminder", markdown: "Drink a glass of water." }); }
+try { await b.service.send({ title: "Reminder", markdown: "Drink a glass of water." }); }
 finally { b.release(); }
 ```
 
@@ -69,17 +69,17 @@ try {
 
 If `cloud` is true on the item, the data goes to the internet: say so in the plugin description.
 
-Search the web: same with `"search"` and `b.service.search("query", { max: 5 })`, which returns `[{ titre, url, resume?, source?, date? }]`.
+Search the web: same with `"search"` and `b.service.search("query", { max: 5 })`, which returns `[{ title, url, summary?, source?, date? }]`.
 
 Show a Markdown document (a Floppy window):
 
 ```ts
 // manifest.optional: ["documents"]
 const docs = ctx.maybe("documents");
-if (docs) { const ref = await docs.save({ titre: "Summary", markdown: "# Summary\n…", source: "water" }); await docs.show(ref.id); }
+if (docs) { const ref = await docs.save({ title: "Summary", markdown: "# Summary\n…", source: "water" }); await docs.show(ref.id); }
 ```
 
-Field names of the contracts are French (`titre`, `resume`): copy them as they are.
+Field names of the contracts are English (`title`, `summary`): copy them as they are.
 
 ## Good to know
 

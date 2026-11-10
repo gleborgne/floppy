@@ -107,7 +107,7 @@ async function setup(reply: (call: Call) => { status?: number; json?: unknown } 
   const send = async (value: string, markdown = "Salut") => {
     const b = await ctxRef.borrowItem<NotifyService>("notify", value);
     expect(b).toBeDefined();
-    try { await b!.service.send({ titre: "Veille", markdown }); } finally { b!.release(); }
+    try { await b!.service.send({ title: "Veille", markdown }); } finally { b!.release(); }
   };
   return { calls, secrets, add, send, ctx: () => ctxRef };
 }

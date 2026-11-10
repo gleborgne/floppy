@@ -29,6 +29,12 @@ const TOOLS: BodyToolDecl[] = [
       cible: { type: "string", enum: ["ecran", "fenetre"], description: "fenetre : dans la fenêtre active (celle où l'utilisateur travaille) au lieu de tout l'écran." },
     } }, level: "read" },
 ];
+/**
+ * Frontière avec l'outil `placer_avatar` : ses arguments et valeurs restent en français jusqu'au lot des outils ;
+ * la fenêtre de l'app (IPC `avatar:place`) reçoit déjà les noms anglais. Un lot suivant supprime cette table.
+ */
+const CORNER_OF_TOOL: Record<string, string> = { bas_droite: "bottom_right", bas_gauche: "bottom_left", haut_droite: "top_right", haut_gauche: "top_left", centre: "center" };
+
 const CAPABILITIES: Capability[] = ["voice", "display", "emotion", "approval", "panel", "document", "speech_timing"];
 
 export interface ProtocolDeps {
@@ -66,7 +72,8 @@ export function createProtocol(deps: ProtocolDeps) {
         send({ type: "tool.result", callId: m.callId, ok: true, text: texts.S("cardShown") });
       } else if (m.name === "placer_avatar" && host?.place) {
         // Réponse de l'app : { ok, text: { fr, en } } (ou une phrase, version plus ancienne).
-        const r = await host.place(m.args ?? {});
+        const a = m.args;
+        const r = await host.place({ corner: CORNER_OF_TOOL[a?.coin ?? ""] ?? a?.coin, screen: a?.ecran, target: a?.cible === "fenetre" ? "window" : "screen" });
         const ok = r && typeof r === "object" && "ok" in r ? r.ok !== false : true;
         send({ type: "tool.result", callId: m.callId, ok, text: texts.said(r && typeof r === "object" && "ok" in r ? r.text : r) });
       } else send({ type: "tool.result", callId: m.callId, ok: false, text: texts.S("unknownTool")(m.name) });
@@ -138,7 +145,7 @@ export function createProtocol(deps: ProtocolDeps) {
       case "card": bubble.card("info", m.title, m.lines.join("\n")); break;
       case "panel": host?.openPanel?.(m); break;
       case "document": host?.openDocument?.(m); break;
-      case "documents": host?.updateDocuments?.(m.liste); break;
+      case "documents": host?.updateDocuments?.(m.entries); break;
       case "notify": bubble.card("info", { key: m.important ? "important" : "info" }, m.text); bubble.hideSoon(); break;
       case "error": bubble.card("error", { key: "error" }, m.text); break;
     }
@@ -170,10 +177,10 @@ export function createProtocol(deps: ProtocolDeps) {
     if (e.data === "floppy:body-port" && e.ports[0]) connect(e.ports[0]);
     const disp = e.data?.floppyDisplay;
     if (disp) {
-      if (typeof disp.raccourcis?.parler === "string") texts.setTalkKeys(disp.raccourcis.parler);
+      if (typeof disp.shortcuts?.talk === "string") texts.setTalkKeys(disp.shortcuts.talk);
       if (typeof disp.lang === "string") texts.setLang(disp.lang);
       if (typeof disp.avatar === "string") void loadAvatar(disp.avatar, disp.avatarUrl);
-      bubble.setEnabled(disp.bulle !== false);
+      bubble.setEnabled(disp.bubble !== false);
     }
     const docOpen = e.data?.floppyDocumentOpen;
     if (typeof docOpen === "string") send({ type: "document.open", id: docOpen });

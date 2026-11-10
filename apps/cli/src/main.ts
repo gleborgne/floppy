@@ -12,6 +12,7 @@
 //   floppy undo                                          annuler le dernier changement de réglage
 //   floppy chat                                          corps texte : parler à Floppy au clavier (comme Telegram)
 //   floppy tool <outil> ['{"json"}']                     appelle un outil (accord demandé dans ce terminal)
+//   floppy migrate [--apply] [--force]                   met à niveau les fichiers de l'utilisateur (à blanc par défaut)
 //   floppy dev <dossier> [--home d] [--inspect]          mode debug : Floppy + ce plugin, rechargé à chaque sauvegarde
 //   floppy plugin new <id> | check <d> | test <d>        écrire un plugin
 //   floppy plugin install <source> | list | approve <id> | remove <id>   plugins tiers
@@ -28,6 +29,7 @@ import { newPlugin } from "./plugins/scaffold.ts";
 import { installKey } from "./plugins/store.ts";
 import { loadPluginDir, throwawayTest } from "./user-plugins.ts";
 import { chat } from "./chat.ts";
+import { migrateCommand } from "./migrate.ts";
 import { cliLang, sayer } from "./lang.ts";
 
 const { values, positionals } = parseArgs({
@@ -39,6 +41,8 @@ const { values, positionals } = parseArgs({
     home: { type: "string" },
     inspect: { type: "boolean", default: false },
     dir: { type: "string" },
+    apply: { type: "boolean", default: false },
+    force: { type: "boolean", default: false },
   },
 });
 const [cmd = "help", ...rest] = positionals;
@@ -141,12 +145,17 @@ async function main(): Promise<number> {
       return r.status === "done" || r.status === "unverified" ? 0 : 1;
     }
     case "machine": return await machine();
+    case "migrate": {
+      const r = migrateCommand(home, { apply: values.apply, force: values.force }, say);
+      console.log(r.lines.join("\n"));
+      return r.code;
+    }
     case "dev": return await dev();
     case "plugin": return await plugin();
     default:
       console.log(say(
-        "Commandes : start [--config f] [--headless] | machine | chat | settings | set <clé> <valeur> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <outil> [json] | dev <dossier> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <dossier>",
-        "Commands: start [--config f] [--headless] | machine | chat | settings | set <key> <value> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <tool> [json] | dev <folder> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <folder>",
+        "Commandes : start [--config f] [--headless] | machine | migrate [--apply] [--force] | chat | settings | set <clé> <valeur> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <outil> [json] | dev <dossier> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <dossier>",
+        "Commands: start [--config f] [--headless] | machine | migrate [--apply] [--force] | chat | settings | set <key> <value> | undo | plugins | log [n] | approvals | approve <id> [--no] | restart <id> | reload | tool <tool> [json] | dev <folder> [--inspect] | plugin new|check|test|install|list|approve|remove … | option --home <folder>",
       ));
       return cmd === "help" ? 0 : 1;
   }

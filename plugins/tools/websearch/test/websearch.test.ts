@@ -80,8 +80,8 @@ describe("service search (slot)", () => {
     const b = await ctxRef!.borrow<SearchService>("veille.recherche");
     expect(b!.service.cloud).toBe(true);
     expect(await b!.service.search("ia")).toEqual([
-      { titre: "A", url: "https://a.test/", resume: "ra", source: "A.test", date: "2026-11-05T00:00:00.000Z" },
-      { titre: "B", url: "https://b.test/" },
+      { title: "A", url: "https://a.test/", summary: "ra", source: "A.test", date: "2026-11-05T00:00:00.000Z" },
+      { title: "B", url: "https://b.test/" },
     ]);
     expect(await b!.service.search("ia", { max: 1 })).toHaveLength(1);
     expect(asked).toEqual(["ia", "ia"]);

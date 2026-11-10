@@ -27,7 +27,7 @@ export interface CodexOptions {
 export function codexOverrides(o: Pick<CodexOptions, "mode" | "mcpUrl" | "mcpTools">, userMcp: string[] = userCodexMcpNames()): string[] {
   // Mode réglages : pas de shell du tout. Mode plugin : le shell reste, mais chaque commande demande l'accord.
   // Nos outils passent sans question côté Codex : le noyau tient lui-même l'accord (réglages) ou l'outil est sans risque.
-  const c = codexMcpOverrides({ mcpUrl: o.mcpUrl, tools: o.mcpTools, userMcp, alsoOff: o.mode === "reglages" ? ["shell_tool", "unified_exec"] : [] });
+  const c = codexMcpOverrides({ mcpUrl: o.mcpUrl, tools: o.mcpTools, userMcp, alsoOff: o.mode === "settings" ? ["shell_tool", "unified_exec"] : [] });
   c.push("-c", 'web_search="disabled"',
     "-c", "skills.include_instructions=false", "-c", "tools.update_plan.enabled=false",
     "-c", "tools.experimental_request_user_input.enabled=false", "-c", "features.multi_agent_v2=false", "-c", "project_doc_max_bytes=32768",

@@ -32,7 +32,7 @@ describe("réglages des raccourcis", () => {
 
   it("un réglage par action dans Système, valeur par défaut, conflit refusé, vide = désactivé", async () => {
     // Le plugin parle au processus principal d'Electron : on le remplace par un faux, qui garde les messages « display ».
-    const sent: { type: string; settings?: { raccourcis?: Record<string, string> } }[] = [];
+    const sent: { type: string; settings?: { shortcuts?: Record<string, string> } }[] = [];
     const parent = Object.assign(new EventEmitter(), { postMessage: (m: unknown) => { sent.push(m as (typeof sent)[number]); } });
     proc.parentPort = parent;
     const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, electron] });
@@ -41,11 +41,11 @@ describe("réglages des raccourcis", () => {
     expect(byKey("raccourci_ecrire")).toMatchObject({ section: "systeme", type: "text", value: "Ctrl+Alt+T" });
     expect((await k.settings.change("raccourci_ecrire", "Ctrl+Alt+F", "ui")).ok).toBe(false);
     expect((await k.settings.change("raccourci_ecrire", "Ctrl+Shift+T", "ui")).ok).toBe(true);
-    expect(sent.filter((m) => m.type === "display").at(-1)?.settings?.raccourcis?.ecrire).toBe("Ctrl+Shift+T");
-    expect(byKey("raccourci_parler")).toMatchObject({ section: "systeme", type: "text", value: SHORTCUT_DEFAULTS.parler, group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } });
+    expect(sent.filter((m) => m.type === "display").at(-1)?.settings?.shortcuts?.write).toBe("Ctrl+Shift+T");
+    expect(byKey("raccourci_parler")).toMatchObject({ section: "systeme", type: "text", value: SHORTCUT_DEFAULTS.talk, group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } });
     expect((await k.settings.change("raccourci_parler", "ctrl+shift+p", "ui")).ok).toBe(true);
     expect(byKey("raccourci_parler")?.value).toBe("Ctrl+Shift+P");
-    expect(sent.filter((m) => m.type === "display").at(-1)?.settings?.raccourcis?.parler).toBe("Ctrl+Shift+P");
+    expect(sent.filter((m) => m.type === "display").at(-1)?.settings?.shortcuts?.talk).toBe("Ctrl+Shift+P");
     await k.settings.change("langue_interface", "en", "ui");
     const clash = await k.settings.change("raccourci_dicter", "Ctrl+Shift+P", "ui");
     expect(clash).toMatchObject({ ok: false });

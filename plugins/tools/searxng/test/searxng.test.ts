@@ -53,11 +53,11 @@ describe("searxng", () => {
     const b = await ctx.borrow<SearchService>("veille.recherche");
     expect(b).toBeDefined();
     expect(b!.service.cloud).toBe(false);
-    const hits = await b!.service.search("floppy", { depuis: new Date(Date.now() - 3 * 86_400_000) });
+    const hits = await b!.service.search("floppy", { since: new Date(Date.now() - 3 * 86_400_000) });
     b!.release();
     expect(hits).toEqual([
-      { titre: "Floppy sort", url: "https://www.exemple.fr/floppy", resume: "Une nouvelle version.", source: "exemple.fr", date: new Date("2026-11-05T10:00:00").toISOString() },
-      { titre: "Autre", url: "https://blog.test/a", source: "blog.test" },
+      { title: "Floppy sort", url: "https://www.exemple.fr/floppy", summary: "Une nouvelle version.", source: "exemple.fr", date: new Date("2026-11-05T10:00:00").toISOString() },
+      { title: "Autre", url: "https://blog.test/a", source: "blog.test" },
     ]);
     const u = new URL(srv.urls[0]!, "http://x");
     expect(u.pathname).toBe("/search");

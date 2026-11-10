@@ -15,7 +15,7 @@ export interface Availability {
 // ------------------------------------------------------------------ documents Markdown (« artefacts »)
 export interface DocRef {
   id: string;
-  titre: string;
+  title: string;
   /** ISO 8601. */
   date: string;
   source: string;
@@ -25,14 +25,14 @@ export interface DocRef {
 /** Les documents Markdown de Floppy (veille, résumés) : les ranger, les lister, les montrer sur un corps. */
 export interface DocumentsService {
   /** Enregistre un document Markdown (fichier dans <home>/documents). */
-  save(doc: { titre: string; markdown: string; source: string; tags?: string[] }): Promise<DocRef>;
+  save(doc: { title: string; markdown: string; source: string; tags?: string[] }): Promise<DocRef>;
   /**
-   * Montre un document. `cible` : un corps précis, sinon le corps d'origine s'il sait afficher, sinon le premier corps
+   * Montre un document. `target` : un corps précis, sinon le corps d'origine s'il sait afficher, sinon le premier corps
    * qui sait afficher. Un corps texte reçoit le Markdown ; un corps voix seule, rien (l'appelant dit un résumé).
    * Rend l'id du corps qui l'affiche, ou undefined.
    */
-  show(id: string, cible?: string): Promise<string | undefined>;
-  list(filtre?: { tag?: string; max?: number }): Promise<DocRef[]>;
+  show(id: string, target?: string): Promise<string | undefined>;
+  list(filter?: { tag?: string; max?: number }): Promise<DocRef[]>;
   get(id: string): Promise<(DocRef & { markdown: string }) | undefined>;
   /** Supprime un document (son fichier). Faux : il n'existait pas. */
   remove?(id: string): Promise<boolean>;
@@ -40,22 +40,22 @@ export interface DocumentsService {
 
 // ------------------------------------------------------------------ tâches (veille, résumés…)
 /** Pourquoi une tâche tourne. */
-export type TaskReason = "horloge" | "voix" | "manuel";
+export type TaskReason = "clock" | "voice" | "manual";
 
 export interface TaskRunInput {
   signal: AbortSignal;
-  raison: TaskReason;
+  reason: TaskReason;
   /** Fin du dernier passage réussi (absent : jamais). */
-  dernierPassage?: Date;
+  lastRun?: Date;
 }
 
 export interface TaskResult {
   /** Une ou deux phrases, dites ou montrées à l'utilisateur (« Ta veille est prête : 14 articles. »). */
-  resume: string;
+  summary: string;
   /** Document produit : le noyau le montre (service documents). */
   document?: DocRef;
-  /** important : dit à voix haute ; normal : notification ; silence : rien (défaut : normal). */
-  annonce?: "important" | "normal" | "silence";
+  /** important : dit à voix haute ; normal : notification ; silent : rien (défaut : normal). */
+  announce?: "important" | "normal" | "silent";
 }
 
 /**

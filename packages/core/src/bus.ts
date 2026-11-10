@@ -13,7 +13,7 @@ export interface CoreEvents {
    */
   "initiative": { source: string; text: string; importance: "important" | "normal"; key?: string };
   /** Une tâche a fini avec succès (après l'annonce). Pour les plugins qui envoient ou rangent les résultats. */
-  "task.done": { key: string; label: import("./i18n.ts").Text; raison: string; result: import("./services.ts").TaskResult };
+  "task.done": { key: string; label: import("./i18n.ts").Text; reason: string; result: import("./services.ts").TaskResult };
   /** Changement d'état d'une entrée de la config. */
   "plugin.state": { id: string; plugin: string; state: PluginState; error?: string; missing?: string[] };
   /** Un service a un nouveau fournisseur (ou n'en a plus : provider = undefined). */

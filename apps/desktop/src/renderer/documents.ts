@@ -38,7 +38,7 @@ function deleteButton(d: DocEntry): HTMLButtonElement {
   b.type = "button";
   b.className = "del" + (armed ? " armed" : "");
   b.title = armed ? t("delSureTip") : t("delTip");
-  b.setAttribute("aria-label", `${armed ? t("delSure") : t("del")} : ${d.titre}`);
+  b.setAttribute("aria-label", `${armed ? t("delSure") : t("del")} : ${d.title}`);
   const icon = window.lucideIcon?.("trash-2");
   if (icon) b.append(icon);
   if (armed) { const s = document.createElement("span"); s.textContent = t("delSure"); b.append(s); }
@@ -94,7 +94,7 @@ function renderList() {
     b.type = "button";
     b.className = "item";
     if (d.id === current) b.setAttribute("aria-current", "true");
-    const a = document.createElement("span"); a.className = "t"; a.textContent = d.titre;
+    const a = document.createElement("span"); a.className = "t"; a.textContent = d.title;
     const c = document.createElement("span"); c.className = "d"; c.textContent = dateText(d.date);
     b.append(a, c);
     b.addEventListener("click", () => { if (d.id !== current) window.floppyDocs.select(d.id); });
@@ -117,9 +117,9 @@ let shown: DocsShow | null = null; // dernier document reçu (pour le réaffiche
 function showDoc(p: DocsShow): void {
   shown = p;
   current = String(p.id ?? "");
-  $("titre").textContent = String(p.titre ?? "");
+  $("title").textContent = String(p.title ?? "");
   $("date").textContent = dateText(liste.find((d) => d.id === current)?.date);
-  document.title = `Floppy — ${p.titre || t("title")}`;
+  document.title = `Floppy — ${p.title || t("title")}`;
   const html = String(p.html ?? "");
   if (current && html) $("doc").innerHTML = html;
   else { const e = document.createElement("p"); e.className = "empty"; e.textContent = t("empty"); $("doc").replaceChildren(e); }
@@ -128,7 +128,7 @@ function showDoc(p: DocsShow): void {
 
 window.floppyDocs.onShow((p) => {
   if (p.lang === "fr" || p.lang === "en") lang = p.lang;
-  if (Array.isArray(p.liste)) liste = p.liste;
+  if (Array.isArray(p.entries)) liste = p.entries;
   applyTexts();
   disarm();
   showDoc(p);

@@ -94,7 +94,7 @@ export const CAPABILITIES = ["voice", "text", "voice_note", "display", "emotion"
 export type Capability = (typeof CAPABILITIES)[number];
 
 /** Une ligne de la liste des documents (date ISO). */
-export interface DocumentEntry { id: string; titre: string; date: string; tags: string[] }
+export interface DocumentEntry { id: string; title: string; date: string; tags: string[] }
 
 export interface BodyToolDecl {
   name: string;
@@ -145,10 +145,10 @@ export type KernelToBody =
   | { type: "card"; title: string; lines: string[] }
   /** Fenêtre de résultats : messages A2UI (surfaceUpdate, beginRendering). Un même id remplace la fenêtre. */
   | { type: "panel"; id: string; title: string; a2ui: unknown[] }
-  /** Document Markdown à afficher. liste : les documents récents (barre de gauche). */
-  | { type: "document"; id: string; titre: string; markdown: string; liste?: DocumentEntry[] }
+  /** Document Markdown à afficher. entries : les documents récents (barre de gauche). */
+  | { type: "document"; id: string; title: string; markdown: string; entries?: DocumentEntry[] }
   /** Nouvelle liste des documents (après une suppression) ; le document affiché ne change pas. */
-  | { type: "documents"; liste: DocumentEntry[] }
+  | { type: "documents"; entries: DocumentEntry[] }
   | { type: "notify"; text: string; important: boolean }
   | { type: "error"; text: string };
 

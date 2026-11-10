@@ -1,6 +1,6 @@
 // Plugin `coder` : l'assistant IA de la fenêtre des réglages, avec le CLI de l'utilisateur (Claude Code ou Codex).
 // - Son abonnement, jamais une clé API. On ne lit ni ne copie les identifiants du CLI.
-// - Mode `reglages` : aucun outil intégré, seulement les outils de réglages du serveur MCP Floppy (accès restreint).
+// - Mode `settings` : aucun outil intégré, seulement les outils de réglages du serveur MCP Floppy (accès restreint).
 // - Mode `plugin` : écrire un plugin dans <home>/plugins ; chaque écriture est validée par l'utilisateur,
 //   et tout chemin hors de ce dossier est refusé, quelle que soit la réponse.
 import { z } from "zod";
@@ -165,7 +165,7 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
         const copied = copyKit(pluginsDir);
         if (copied.length) ctx.log("info", `kit de développement copié : ${copied.join(", ")}`);
       } else {
-        cwd = ctx.workspace("reglages");
+        cwd = ctx.workspace("reglages"); // nom du dossier de travail dans <home> : renommé avec les noms de fichiers
       }
       const s = { id, agent, mode, pending: new Map() } as Session;
       // Mode réglages : outils des éléments en plus (chaque ajout / modification / suppression demande un clic).
@@ -184,7 +184,7 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
         lang: lang(),
         spawn: ctx.spawn,
       };
-      const useWeb = agent === "claude" && mode === "reglages" && web();
+      const useWeb = agent === "claude" && mode === "settings" && web();
       const system = systemPrompt(mode, ctx.assistant.name, pluginsDir, useWeb, lang());
       sessions.set(id, s);
       ctx.audit.write({ kind: "coder.session_start", session: id, agent, mode });

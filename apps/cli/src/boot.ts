@@ -2,8 +2,8 @@
 import { copyFileSync, existsSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, applyPendingMove, pendingMoveFrom, defaultConfigPath, tr, T, type HostChannel, type Logger, type PluginDef } from "@floppy/core";
-import { onboardingFor, type Onboarding } from "@floppy/setup";
+import { Kernel, FileAudit, consoleLogger, installSafetyNet, reapOrphans, loadConfigFile, watchConfig, startControl, floppyHome, runHomeMigrations, applyPendingMove, pendingMoveFrom, defaultConfigPath, tr, T, type HostChannel, type Logger, type MigrationStep, type PluginDef } from "@floppy/core";
+import { HOME_MIGRATIONS, onboardingFor, type Onboarding } from "@floppy/setup";
 import { loadCatalog } from "./catalog.ts";
 import { createUserPlugins, settingKey, type ReloadItem, type UserPluginsOptions } from "./user-plugins.ts";
 import { createPluginStore, type StoreOptions } from "./plugins/store.ts";
@@ -29,6 +29,8 @@ export interface BootOptions {
   safetyNet?: boolean;
   /** Arrête les programmes restés d'une session précédente (défaut : oui). */
   reapOrphans?: boolean;
+  /** Étapes de migration du répertoire de travail (défaut : HOME_MIGRATIONS de @floppy/setup ; les tests en donnent d'autres). */
+  migrations?: readonly MigrationStep[];
   /** Canal vers l'hôte (app de bureau), donné aux plugins par ctx.host. */
   host?: HostChannel;
 }
@@ -65,6 +67,9 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
   const move = applyPendingMove((m) => console.log(`[home] ${m}`));
   if (move.error) console.error(`[home] le répertoire de travail n'a pas changé : ${move.error}`);
   const home = floppyHome();
+  // Fichiers de l'utilisateur écrits par une version précédente (noms changés) : convertis AVANT que quoi que ce soit les lise.
+  // Une étape qui échoue ne bloque rien : elle est signalée plus bas et retentée au prochain démarrage.
+  const migrations = runHomeMigrations(home, opts.migrations ?? HOME_MIGRATIONS, { log: (level, msg) => (level === "warn" ? console.warn : console.log)(`[migration] ${msg}`) });
   // La config vit dans le répertoire de travail. Une ancienne config à la racine du dépôt y est copiée une fois.
   const configPath = resolve(opts.configPath ?? defaultConfigPath(home, [join(APP_ROOT, "floppy.yml")], (m) => console.log(`[home] ${m}`)));
   // Premier lancement : floppy.yml (propre à ce PC, hors git) est créé depuis floppy.example.yml.
@@ -123,6 +128,14 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
       source: "home", importance: "normal", key: "home-move",
       text: tr(T(`Le répertoire de travail n'a pas pu changer : ${why}. Floppy reste dans l'ancien dossier et réessaiera au prochain démarrage.`,
         `The working folder could not change: ${why}. Floppy stays in the old folder and will try again at the next start.`), kernel.uiLang),
+    }), 5000).unref();
+  }
+  const failedMigrations = migrations.filter((r) => r.error).map((r) => r.step);
+  if (failedMigrations.length) {
+    setTimeout(() => kernel.bus.emit("initiative", {
+      source: "migration", importance: "normal", key: "home-migration",
+      text: tr(T(`Une mise à niveau de tes données a échoué (${failedMigrations.join(", ")}). Elle sera retentée au prochain démarrage ; le détail est dans le journal.`,
+        `An upgrade of your data failed (${failedMigrations.join(", ")}). It will be retried at the next start; see the log for details.`), kernel.uiLang),
     }), 5000).unref();
   }
   const onboarding = onboardingFor(kernel);

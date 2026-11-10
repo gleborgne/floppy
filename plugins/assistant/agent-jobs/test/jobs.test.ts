@@ -30,7 +30,7 @@ async function start(opts: { approve?: boolean; maxConcurrent?: number; home?: s
   } });
   const docs = definePlugin({ manifest: { id: "test-docs", version: "0", licence: "MIT", provides: ["documents"] }, apply(ctx) {
     ctx.provide("documents", {
-      async save(doc) { documents.push(doc.markdown); return { id: "doc", titre: doc.titre, date: "date", source: doc.source, tags: [] }; },
+      async save(doc) { documents.push(doc.markdown); return { id: "doc", title: doc.title, date: "date", source: doc.source, tags: [] }; },
       async show() { return undefined; }, async list() { return []; }, async get() { return undefined; },
     });
   } });

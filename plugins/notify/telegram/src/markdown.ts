@@ -164,8 +164,8 @@ function splitBlock(block: string, max: number): string[] {
 }
 
 /** Titre en gras puis texte, découpés en messages ≤ max caractères, aux limites des blocs. */
-export function telegramMessages(titre: string, markdown: string, max = MAX_MESSAGE): string[] {
-  const all = [...(titre.trim() ? [`<b>${esc(titre.trim())}</b>`] : []), ...toTelegramBlocks(markdown)];
+export function telegramMessages(title: string, markdown: string, max = MAX_MESSAGE): string[] {
+  const all = [...(title.trim() ? [`<b>${esc(title.trim())}</b>`] : []), ...toTelegramBlocks(markdown)];
   const pieces = all.flatMap((b) => (b.length > max ? splitBlock(b, max) : [b]));
   const messages: string[] = [];
   let cur = "";

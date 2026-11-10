@@ -4,7 +4,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Kernel, definePlugin, manifestError, tr, type PluginDef, type TaskService, type Context } from "../src/index.ts";
+import { Kernel, MemoryAudit, definePlugin, manifestError, tr, type PluginDef, type TaskService, type Context } from "../src/index.ts";
 
 const quiet = () => {};
 let k: Kernel | undefined;
@@ -24,10 +24,10 @@ function digest(j: string[], opts: { gate?: Promise<void>; fail?: boolean } = {}
       ctx.effect(() => { j.push("stop"); });
       const svc: TaskService = {
         async run(id, input) {
-          j.push(`run ${id} ${input.raison} ${input.dernierPassage ? "avec" : "sans"}`);
+          j.push(`run ${id} ${input.reason} ${input.lastRun ? "avec" : "sans"}`);
           await opts.gate;
           if (opts.fail) throw new Error("source en panne");
-          return { resume: "Ta veille est prête.", document: { id: "d1", titre: "Veille", date: "", source: "digest", tags: [] } };
+          return { summary: "Ta veille est prête.", document: { id: "d1", title: "Veille", date: "", source: "digest", tags: [] } };
         },
       };
       ctx.provide("task", svc);
@@ -73,17 +73,17 @@ describe("registre des tâches", () => {
     expect(state(k, "veille")).toBe("loaded"); // endormi : personne ne s'en sert
     expect(j).toEqual([]);
 
-    const out = await k.tasks.run("veille/quotidienne", "horloge");
+    const out = await k.tasks.run("veille/quotidienne", "clock");
     await k.idle();
     expect(out.ok).toBe(true);
-    expect(j).toEqual(["start", "run quotidienne horloge sans", "stop"]);
+    expect(j).toEqual(["start", "run quotidienne clock sans", "stop"]);
     expect(state(k, "veille")).toBe("loaded");
     expect(initiatives).toMatchObject([{ source: "veille/quotidienne", text: "Ta veille est prête.", importance: "normal" }]);
     expect(shown).toEqual(["d1"]);
 
     // Le 2e passage reçoit la date du 1er.
-    await k.tasks.run("veille/quotidienne", "voix");
-    expect(j).toContain("run quotidienne voix avec");
+    await k.tasks.run("veille/quotidienne", "voice");
+    expect(j).toContain("run quotidienne voice avec");
     expect(k.tasks.list()[0]!.lastRun).toBeTruthy();
   });
 
@@ -91,7 +91,7 @@ describe("registre des tâches", () => {
     const home = mkdtempSync(join(tmpdir(), "tasks-"));
     k = new Kernel({ logger: quiet, home, plugins: [digest([])] });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    await k.tasks.run("veille/quotidienne", "manuel");
+    await k.tasks.run("veille/quotidienne", "manual");
     const saved = JSON.parse(readFileSync(join(home, "tasks.json"), "utf8"));
     expect(saved["veille/quotidienne"].lastRun).toBeTruthy();
     await k.stopAll();
@@ -101,15 +101,36 @@ describe("registre des tâches", () => {
     expect(k.tasks.list()[0]!.lastRun).toBe(saved["veille/quotidienne"].lastRun);
   });
 
+  it("annonce : important → dit, silent → rien ; l'événement task.done et l'audit portent `reason`", async () => {
+    let announce: "important" | "silent" | undefined = "important";
+    const plugin = definePlugin({
+      manifest: { id: "digest", version: "0", licence: "MIT", provides: ["task"], tasks: [{ id: "quotidienne", label: "Veille du jour", schedule: { at: "07:30" } }] },
+      apply(ctx) { ctx.provide("task", { run: async () => ({ summary: "Fait.", ...(announce ? { announce } : {}) }) } satisfies TaskService); },
+    });
+    const audit = new MemoryAudit();
+    k = new Kernel({ logger: quiet, audit, plugins: [plugin] });
+    const initiatives: { importance: string }[] = [];
+    const done: { reason: string; result: { summary: string } }[] = [];
+    k.bus.on("initiative", (p) => { initiatives.push(p); });
+    k.bus.on("task.done", (p) => { done.push(p); });
+    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
+    await k.tasks.run("veille/quotidienne", "voice");
+    announce = "silent";
+    await k.tasks.run("veille/quotidienne", "clock");
+    expect(initiatives.map((i) => i.importance)).toEqual(["important"]);
+    expect(done.map((d) => [d.reason, d.result.summary])).toEqual([["voice", "Fait."], ["clock", "Fait."]]);
+    expect(audit.records.filter((r) => r.kind === "task").map((r) => r.reason)).toEqual(["voice", "clock"]);
+  });
+
   it("refuse un 2e passage pendant le premier", async () => {
     let open!: () => void;
     const gate = new Promise<void>((r) => { open = r; });
     k = new Kernel({ logger: quiet, plugins: [digest([], { gate })] });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    const first = k.tasks.run("veille/quotidienne", "horloge");
+    const first = k.tasks.run("veille/quotidienne", "clock");
     await new Promise((r) => setTimeout(r, 20));
     expect(k.tasks.list()[0]!.running).toBe(true);
-    const second = await k.tasks.run("veille/quotidienne", "voix");
+    const second = await k.tasks.run("veille/quotidienne", "voice");
     expect(second.ok).toBe(false);
     expect(tr(second.text)).toMatch(/déjà en cours/);
     expect(tr(second.text, "en")).toMatch(/already running/);
@@ -122,7 +143,7 @@ describe("registre des tâches", () => {
     k = new Kernel({ logger: quiet, plugins: [digest([], { fail: true })] });
     k.bus.on("initiative", (p) => { initiatives.push(p); });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    const out = await k.tasks.run("veille/quotidienne", "horloge");
+    const out = await k.tasks.run("veille/quotidienne", "clock");
     expect(out.ok).toBe(false);
     expect(tr(out.text)).toMatch(/source en panne/);
     expect(tr(out.text, "en")).toMatch(/failed: .*source en panne/);
@@ -149,7 +170,7 @@ describe("registre des tâches", () => {
     expect(r.text).toMatch(/lancée/);
     await new Promise((res) => setTimeout(res, 50));
     await k.idle();
-    expect(j).toContain("run quotidienne voix sans");
+    expect(j).toContain("run quotidienne voice sans");
   });
 });
 
@@ -210,7 +231,7 @@ describe("tâche qui ignore l'arrêt", () => {
     k = new Kernel({ logger: quiet, plugins: [digest(j, { gate: new Promise(() => {}) })] });
     k.tasks.abortGraceMs = 20;
     await k.applyConfig({ plugins: [{ id: "digest", plugin: "digest" }] });
-    const run = k.tasks.run("digest/quotidienne", "manuel");
+    const run = k.tasks.run("digest/quotidienne", "manual");
     await new Promise((r) => setTimeout(r, 20));
     expect(k.tasks.cancel("digest/quotidienne")).toBe(true);
     const out = await run;

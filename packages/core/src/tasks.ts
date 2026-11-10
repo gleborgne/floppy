@@ -47,7 +47,7 @@ export interface TaskHost {
   /** Démarre l'entrée si besoin et la garde en marche jusqu'à release(). undefined : impossible. */
   acquire(entry: string): Promise<{ service: TaskService; release(): void } | undefined>;
   /** Annonce le résultat (initiative, document). */
-  announce(info: TaskInfo, result: TaskResult, raison: TaskReason): void;
+  announce(info: TaskInfo, result: TaskResult, reason: TaskReason): void;
   audit: Audit;
   log(level: "info" | "warn" | "error", source: string, msg: string): void;
 }
@@ -95,7 +95,7 @@ export class TaskRegistry {
   }
 
   /** Lance une tâche et attend sa fin. Jamais deux passages en même temps. */
-  async run(key: string, raison: TaskReason): Promise<TaskOutcome> {
+  async run(key: string, reason: TaskReason): Promise<TaskOutcome> {
     const info = this.list().find((t) => t.key === key);
     if (!info) return { ok: false, text: T(`Tâche inconnue : ${key}.`, `Unknown task: ${key}.`) };
     if (this.running.has(key)) return { ok: false, text: alreadyRunning(info.label) };
@@ -112,10 +112,10 @@ export class TaskRegistry {
       if (!held) throw new TextError(T("le plugin ne démarre pas", "the plugin does not start"));
       const prev = this.saved[key]?.lastRun;
       // Une tâche qui ignore le signal d'arrêt ne reste pas « en cours » : on cesse de l'attendre peu après l'arrêt.
-      const result = await untilAborted(held.service.run(def.id, { signal: ctrl.signal, raison, ...(prev ? { dernierPassage: new Date(prev) } : {}) }), ctrl.signal, this.abortGraceMs);
+      const result = await untilAborted(held.service.run(def.id, { signal: ctrl.signal, reason, ...(prev ? { lastRun: new Date(prev) } : {}) }), ctrl.signal, this.abortGraceMs);
       if (ctrl.signal.aborted) throw ctrl.signal.reason instanceof Error ? ctrl.signal.reason : new TextError(T("arrêtée", "stopped"));
-      out = { ok: true, text: result.resume, result };
-      this.saved[key] = { lastRun: started.toISOString(), last: { at: new Date().toISOString(), ok: true, text: result.resume } };
+      out = { ok: true, text: result.summary, result };
+      this.saved[key] = { lastRun: started.toISOString(), last: { at: new Date().toISOString(), ok: true, text: result.summary } };
     } catch (e) {
       const why = tr(errorText(e), "fr");
       const whyEn = tr(errorText(e), "en");
@@ -128,9 +128,9 @@ export class TaskRegistry {
       this.running.delete(key);
     }
     writeJson(this.file, this.saved);
-    this.host.audit.write({ kind: "task", source: info.entry, name: key, raison, ok: out.ok, text: tr(out.text, "fr").slice(0, 300) });
-    this.host.log("info", key, `tâche finie (${raison}) : ${out.ok ? "ok" : "échec"}`);
-    if (out.ok && out.result) this.host.announce(this.list().find((t) => t.key === key) ?? info, out.result, raison);
+    this.host.audit.write({ kind: "task", source: info.entry, name: key, reason, ok: out.ok, text: tr(out.text, "fr").slice(0, 300) });
+    this.host.log("info", key, `tâche finie (${reason}) : ${out.ok ? "ok" : "échec"}`);
+    if (out.ok && out.result) this.host.announce(this.list().find((t) => t.key === key) ?? info, out.result, reason);
     this.changed();
     return out;
   }
@@ -185,7 +185,7 @@ export function taskTools(reg: TaskRegistry): ToolDef[] {
         const t = reg.find(String(a.tache ?? ""));
         if (!t) return { status: "failed", text: T(`Je ne connais pas cette tâche. Tâches : ${names}.`, `I don't know this task. Tasks: ${names}.`) };
         if (t.running) return { status: "done", text: alreadyRunning(t.label) };
-        void reg.run(t.key, "voix");
+        void reg.run(t.key, "voice");
         return { status: "done", text: T(`« ${tr(t.label, "fr")} » est lancée. Le résultat arrivera tout seul.`, `"${tr(t.label, "en")}" is running. The result will come by itself.`) };
       },
     },

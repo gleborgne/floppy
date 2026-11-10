@@ -5,7 +5,7 @@ import type { CoderMode } from "@floppy/contracts";
 export function systemPrompt(mode: CoderMode, name: string, pluginsDir: string, web = false, lang = "fr"): string {
   const reply = lang === "en" ? "Réponds en anglais (English)" : "Réponds en français";
   const dateFr = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  if (mode === "reglages") {
+  if (mode === "settings") {
     return `Tu es l'aide de ${name}, dans la fenêtre des réglages. Nous sommes le ${dateFr}.
 Tu aides l'utilisateur à régler ${name}. ${reply}, de façon courte et claire.
 ${web ? "Tu as la recherche web (WebSearch, WebFetch), mais pas de shell ni de fichiers. Et les outils de ${name} :" : "Tu n'as aucun outil intégré : pas de shell, pas de fichiers, pas de web. Tu n'as que les outils de ${name} :"}

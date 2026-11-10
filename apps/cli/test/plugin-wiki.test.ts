@@ -20,7 +20,7 @@ async function kernel(): Promise<Kernel> {
   const docs = definePlugin({
     manifest: { id: "docs-test", version: "0.1.0", licence: "MIT", provides: ["documents"] },
     apply(ctx) {
-      ctx.provide("documents", { save: async () => ({ id: "1", titre: "", date: "", source: "", tags: [] }), show: async () => undefined, list: async () => [], get: async () => undefined });
+      ctx.provide("documents", { save: async () => ({ id: "1", title: "", date: "", source: "", tags: [] }), show: async () => undefined, list: async () => [], get: async () => undefined });
       ctx.tools.register([{ name: "docs_lire", description: "lire", inputSchema: { type: "object", properties: {} }, level: "read", handler: async () => ({ status: "done", text: "" }) }]);
     },
   });
@@ -122,7 +122,7 @@ describe("wiki des plugins", () => {
       apply(ctx) {
         ctx.offer("notify", {
           items: () => [{ id: "perso", label: "Canal · perso" }],
-          start(f) { f.provide("notify", { label: "Canal · perso", send: async (m) => { sent.push(`${m.titre}: ${m.markdown}`); } }); },
+          start(f) { f.provide("notify", { label: "Canal · perso", send: async (m) => { sent.push(`${m.title}: ${m.markdown}`); } }); },
         });
       },
     });
@@ -140,7 +140,7 @@ const plugin: UserPlugin = {
         if (!canaux.length) return { status: "failed", text: { fr: "Aucun canal d'envoi.", en: "No sending channel." } };
         const b = await ctx.borrowItem("notify", canaux[0].value);
         if (!b) return { status: "failed", text: { fr: "Canal indisponible.", en: "Channel unavailable." } };
-        try { await b.service.send({ titre: "Rappel", markdown: "Boire un verre d'eau." }); }
+        try { await b.service.send({ title: "Rappel", markdown: "Boire un verre d'eau." }); }
         finally { b.release(); }
         return { status: "done", text: { fr: "Envoyé sur " + canaux[0].label, en: "Sent" } };
       } }]);

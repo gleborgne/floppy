@@ -41,8 +41,8 @@ describe("fenêtre Bienvenue", () => {
   });
 
   it("niveau choisi au départ : le conseil", () => {
-    const plan = { recommended: "voix", levels: [{ id: "texte", possible: true }, { id: "voix", possible: true }] };
-    expect(defaultLevel(plan)).toBe("voix");
+    const plan = { recommended: "voice", levels: [{ id: "text", possible: true }, { id: "voice", possible: true }] };
+    expect(defaultLevel(plan)).toBe("voice");
     expect(tr({ fr: "a", en: "b" }, "en")).toBe("b");
   });
 });

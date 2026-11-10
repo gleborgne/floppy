@@ -20,16 +20,16 @@ const api: FloppyHostApi = {
   approvalClosed: () => { ipcRenderer.send("approval-closed"); },
   openSettings: () => { ipcRenderer.send("open-settings"); },
   // Déplacer l'avatar (outil vocal) : renvoie { ok, text: { fr, en } }.
-  place: (a) => ipcRenderer.invoke("avatar:place", { coin: String(a?.coin ?? ""), ecran: a?.ecran, cible: String(a?.cible ?? "") }),
+  place: (a) => ipcRenderer.invoke("avatar:place", { corner: String(a?.corner ?? ""), screen: a?.screen, target: String(a?.target ?? "") }),
   // Dictée : effacer `del` caractères puis taper `ins` dans la fenêtre active (mots venus du noyau).
   dictationLevel: (v) => { ipcRenderer.send("dictation:level", Number(v) || 0); },
   dictation: (d) => { ipcRenderer.send("dictation", { del: Number(d?.del) || 0, ins: String(d?.ins ?? "") }); },
   // Fenêtre de résultats (A2UI) demandée par le noyau.
   openPanel: (p) => { ipcRenderer.send("panel:open", { id: String(p?.id ?? ""), title: String(p?.title ?? ""), a2ui: Array.isArray(p?.a2ui) ? p.a2ui : [] }); },
   // Document Markdown demandé par le noyau (rendu et affiché par l'app).
-  openDocument: (d) => { ipcRenderer.send("documents:open", { id: String(d?.id ?? ""), titre: String(d?.titre ?? ""), markdown: String(d?.markdown ?? ""), liste: Array.isArray(d?.liste) ? d.liste : [] }); },
+  openDocument: (d) => { ipcRenderer.send("documents:open", { id: String(d?.id ?? ""), title: String(d?.title ?? ""), markdown: String(d?.markdown ?? ""), entries: Array.isArray(d?.entries) ? d.entries : [] }); },
   // Nouvelle liste des documents (après une suppression) : la fenêtre Documents garde le document affiché.
-  updateDocuments: (liste) => { ipcRenderer.send("documents:list", Array.isArray(liste) ? liste : []); },
+  updateDocuments: (entries) => { ipcRenderer.send("documents:list", Array.isArray(entries) ? entries : []); },
   setInteractive: (on) => { ipcRenderer.send("interactive", Boolean(on)); },
   // Déplacement de la fenêtre à la main : "start", "move", "end" (la position vient de la souris, côté app).
   drag: (phase) => { ipcRenderer.send("drag", ["start", "move", "end"].includes(phase) ? phase : "end"); },

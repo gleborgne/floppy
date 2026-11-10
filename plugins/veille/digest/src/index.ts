@@ -320,7 +320,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
         async run(taskId, input) {
           if (taskId !== "quotidienne") throw new TextError(T(`tâche inconnue : ${taskId}`, `unknown task: ${taskId}`));
           const interets = actifs();
-          if (!interets.length) return { resume: say(T("La veille n'a aucun centre d'intérêt : ajoutes-en un dans Réglages, rubrique Veille.", "The news watch has no interest: add one in Settings, News watch section.")), annonce: "normal" };
+          if (!interets.length) return { summary: say(T("La veille n'a aucun centre d'intérêt : ajoutes-en un dans Réglages, rubrique Veille.", "The news watch has no interest: add one in Settings, News watch section.")), announce: "normal" };
           const tri = await ctx.borrow<CompletionService>("veille.tri");
           if (!tri) throw new TextError(T("aucun cerveau choisi pour le tri (Réglages, rubrique Veille)", "no brain chosen for sorting (Settings, News watch section)"));
           const rech = interets.some((i) => i.requetes.length) ? await ctx.borrow<SearchService>("veille.recherche") : undefined;
@@ -329,20 +329,20 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
             const r = await runPipeline({
               interets, prefs: (i) => prefs.merged(i), dejaVu: (u) => db.seen(u),
               completion: tri.service, ...(rech ? { search: rech.service } : {}), fetch: opts.fetch ?? ctx.fetch,
-              now: date, ...(input.dernierPassage ? { dernierPassage: input.dernierPassage } : {}),
+              now: date, ...(input.lastRun ? { dernierPassage: input.lastRun } : {}),
               cfg: pcfg, signal: input.signal, log: (level, m) => ctx.log(level, m), lang: lang(),
             });
             db.markSeen(r.vus, date);
             if (!r.stats.gardes) {
               const down = r.stats.erreurs.length && !r.stats.collectes;
-              return { resume: say(T(
+              return { summary: say(T(
                 `Rien de nouveau d'intéressant dans ta veille aujourd'hui.${down ? ` Les sources n'ont pas répondu : ${r.stats.erreurs.join(" ; ")}.` : ""}`,
                 `Nothing new and interesting in your news watch today.${down ? ` The sources did not answer: ${r.stats.erreurs.join("; ")}.` : ""}`,
-              )), annonce: "normal" };
+              )), announce: "normal" };
             }
             const doc = digestMarkdown(r, date, "", lang());
             const docs = ctx.maybe("documents");
-            const ref = docs ? await docs.save({ titre: doc.titre, markdown: doc.markdown, source: "veille", tags: ["veille"] }) : undefined;
+            const ref = docs ? await docs.save({ title: doc.titre, markdown: doc.markdown, source: "veille", tags: ["veille"] }) : undefined;
             db.setDigest(doc.articles.map((a) => ({ ...a, doc: ref?.id ?? "" })));
             const sujets = r.sections.length;
             const n = r.stats.gardes;
@@ -351,7 +351,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
               `Your news watch is ready: ${n} article${n > 1 ? "s" : ""} on ${sujets} topic${sujets > 1 ? "s" : ""}.`,
             ));
             const sep = lang() === "en" ? "; " : " ; ";
-            return ref ? { resume, document: ref, annonce: "normal" } : { resume: `${resume} ${doc.articles.slice(0, 3).map((a) => a.titre).join(sep)}.`, annonce: "normal" };
+            return ref ? { summary: resume, document: ref, announce: "normal" } : { summary: `${resume} ${doc.articles.slice(0, 3).map((a) => a.titre).join(sep)}.`, announce: "normal" };
           } finally {
             tri.release();
             rech?.release();

@@ -10,9 +10,9 @@ const ROLES: Role[] = ["vad", "stt", "tts", "llm", "program"];
 /** Slot réglé pour chaque rôle de modèle. */
 export const ROLE_SLOT: Record<Exclude<Role, "program">, string> = { vad: "listen.vad", stt: "listen.stt", tts: "voice.tts", llm: "brain.main" };
 
-export type LevelId = "texte" | "voix" | "hybride" | "local" | "local-max";
+export type LevelId = "text" | "voice" | "hybrid" | "local" | "local-max";
 /** Du plus simple au plus complet. */
-export const LEVELS: LevelId[] = ["texte", "voix", "hybride", "local", "local-max"];
+export const LEVELS: LevelId[] = ["text", "voice", "hybrid", "local", "local-max"];
 
 /** En dessous, un cerveau local est trop faible pour bien utiliser les outils : le cloud est conseillé s'il est là. */
 export const MIN_LOCAL_BRAIN = 6e9;
@@ -85,17 +85,17 @@ export interface Plan {
 }
 
 const LEVEL_TEXT: Record<LevelId, { label: Text; description: Text }> = {
-  texte: {
+  text: {
     label: T("Texte", "Text"),
     description: T("Tu parles, Floppy répond par écrit. Le cerveau est dans le cloud. Le plus léger.",
       "You speak, Floppy replies in writing. The brain is in the cloud. The lightest."),
   },
-  voix: {
+  voice: {
     label: T("Voix légère", "Light voice"),
     description: T("Floppy répond à voix haute, avec une voix qui tourne sur le processeur. Le cerveau est dans le cloud.",
       "Floppy replies out loud, with a voice that runs on the processor. The brain is in the cloud."),
   },
-  hybride: {
+  hybrid: {
     label: T("Voix expressive", "Expressive voice"),
     description: T("Une voix plus vivante, sur la puce graphique. Le cerveau est dans le cloud.",
       "A livelier voice, on the graphics chip. The brain is in the cloud."),
@@ -257,7 +257,7 @@ function use(c: Candidate, m: MachineInfo, left: Left): void {
 }
 
 function buildLevel(id: LevelId, m: MachineInfo, cands: Candidate[], clouds: string[]): Level {
-  const voice: Level["voice"] = id === "texte" ? "none" : id === "voix" || id === "local" ? "cpu" : "gpu";
+  const voice: Level["voice"] = id === "text" ? "none" : id === "voice" || id === "local" ? "cpu" : "gpu";
   const brain: Level["brain"] = id === "local" || id === "local-max" ? "local" : "cloud";
   const left: Left = { gpu: m.modelBytes, cpu: m.cpuBytes };
   const picks: Candidate[] = [];
@@ -311,7 +311,7 @@ export function planLevels(m: MachineInfo, providers: ProviderSnapshot[], clouds
   const levels = LEVELS.map((id) => buildLevel(id, m, cands, usable));
   const ok = levels.filter((l) => l.possible);
   const good = (l: Level) => l.brain === "cloud" || !usable.length || (l.picks.find((p) => p.role === "llm")?.needs.memory ?? 0) >= MIN_LOCAL_BRAIN;
-  const recommended = [...ok].reverse().find(good)?.id ?? ok.at(-1)?.id ?? "texte";
+  const recommended = [...ok].reverse().find(good)?.id ?? ok.at(-1)?.id ?? "text";
   return {
     machine: m, summary: machineSummary(m), levels, recommended, cloudBrains: clouds, agents,
     ...(usable[0] ? { brain: usable[0] } : {}), candidates: cands,

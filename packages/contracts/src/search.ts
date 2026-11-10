@@ -2,9 +2,9 @@
 
 /** Un résultat de recherche. */
 export interface SearchHit {
-  titre: string;
+  title: string;
   url: string;
-  resume?: string;
+  summary?: string;
   /** Site ou flux d'origine (ex. « lemonde.fr »). */
   source?: string;
   /** Date de publication, si connue (ISO 8601). */
@@ -19,7 +19,7 @@ export interface SearchService {
   label?: string;
   /** Les requêtes partent dans le cloud. */
   cloud?: boolean;
-  search(q: string, opts?: { max?: number; /** Seulement après cette date (au mieux). */ depuis?: Date; signal?: AbortSignal }): Promise<SearchHit[]>;
+  search(q: string, opts?: { max?: number; /** Seulement après cette date (au mieux). */ since?: Date; signal?: AbortSignal }): Promise<SearchHit[]>;
 }
 
 declare module "@floppy/core" {

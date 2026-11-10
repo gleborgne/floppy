@@ -303,15 +303,15 @@ export class Kernel {
         let done = false;
         return { service, release: () => { if (done) return; done = true; this.hold(entry, -1); void this.enqueue(() => this.reconcile()).catch(() => {}); } };
       }),
-      announce: (info, result, raison) => {
-        if (result.annonce !== "silence") {
-          this.bus.emit("initiative", { source: info.key, text: result.resume, importance: result.annonce ?? "normal", key: `task:${info.key}:${Date.now()}` });
+      announce: (info, result, reason) => {
+        if (result.announce !== "silent") {
+          this.bus.emit("initiative", { source: info.key, text: result.summary, importance: result.announce ?? "normal", key: `task:${info.key}:${Date.now()}` });
         }
         if (result.document) {
           const docs = this.service<DocumentsService>("documents");
           docs?.show(result.document.id).catch((e) => this.log("warn", info.key, `document non montré : ${e instanceof Error ? e.message : String(e)}`));
         }
-        this.bus.emit("task.done", { key: info.key, label: info.label, raison, result });
+        this.bus.emit("task.done", { key: info.key, label: info.label, reason, result });
       },
       audit: this.audit,
       log: (level, source, msg) => this.log(level, source, msg),

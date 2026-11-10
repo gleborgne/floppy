@@ -17,7 +17,7 @@ export const DOC_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,150}$/;
 /** Liste des documents venue de la page de l'avatar : nettoyée avant d'aller dans la fenêtre. */
 export const cleanDocList = (l: unknown) => (Array.isArray(l) ? l : []).slice(0, 60)
   .filter((d: Msg) => d && DOC_ID.test(String(d.id)))
-  .map((d: Msg) => ({ id: String(d.id), titre: String(d.titre ?? "").slice(0, 200), date: String(d.date ?? ""), tags: Array.isArray(d.tags) ? d.tags.map(String).slice(0, 10) : [] }));
+  .map((d: Msg) => ({ id: String(d.id), title: String(d.title ?? "").slice(0, 200), date: String(d.date ?? ""), tags: Array.isArray(d.tags) ? d.tags.map(String).slice(0, 10) : [] }));
 
 export interface AppWindowsDeps {
   texts: Texts;
@@ -94,8 +94,8 @@ export function createAppWindows(deps: AppWindowsDeps): AppWindows {
   // ------------------------------------------------------------------ fenêtre « Documents » (Markdown)
   // Le Markdown est rendu ici (Node), jamais dans la fenêtre : elle ne reçoit que du HTML nettoyé (voir markdown.mjs).
   function openDocuments(m: Msg | undefined): void {
-    const liste = cleanDocList(m?.liste);
-    const payload = { id: String(m?.id ?? ""), titre: String(m?.titre ?? "").slice(0, 200), html: renderMarkdown(m?.markdown), liste, lang: lang() };
+    const entries = cleanDocList(m?.entries);
+    const payload = { id: String(m?.id ?? ""), title: String(m?.title ?? "").slice(0, 200), html: renderMarkdown(m?.markdown), entries, lang: lang() };
     if (docsWin && !docsWin.isDestroyed()) {
       docsWin.webContents.send("documents:show", payload);
       bringToFront(docsWin);

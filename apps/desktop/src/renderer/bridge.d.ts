@@ -11,12 +11,12 @@ interface FloppyHostApi {
   approvalClosed(): void;
   openSettings(): void;
   /** Déplacer l'avatar (outil vocal) : renvoie { ok, text: { fr, en } }. */
-  place(a: { coin?: string; ecran?: unknown; cible?: string }): Promise<{ ok: boolean; text: { fr: string; en: string } }>;
+  place(a: { corner?: string; screen?: unknown; target?: string }): Promise<{ ok: boolean; text: { fr: string; en: string } }>;
   dictationLevel(v: number): void;
   dictation(d: { del?: number; ins?: string }): void;
   openPanel(p: { id?: string; title?: string; a2ui?: unknown[] }): void;
-  openDocument(d: { id?: string; titre?: string; markdown?: string; liste?: unknown[] }): void;
-  updateDocuments(liste: unknown[]): void;
+  openDocument(d: { id?: string; title?: string; markdown?: string; entries?: unknown[] }): void;
+  updateDocuments(entries: unknown[]): void;
   setInteractive(on: boolean): void;
   drag(phase: "start" | "move" | "end"): void;
 }
@@ -48,7 +48,7 @@ interface FloppyCoderApi {
 
 interface FloppyDocsApi {
   onShow(cb: (data: DocsShow) => void): Unsubscribe;
-  onList(cb: (liste: DocEntry[]) => void): Unsubscribe;
+  onList(cb: (entries: DocEntry[]) => void): Unsubscribe;
   onLang(cb: (lang: string) => void): Unsubscribe;
   select(id: string): void;
   remove(id: string, current?: string): void;

@@ -150,12 +150,12 @@ function fakeCompletion(seen: CompletionRequest[]): PluginDef<any> {
   });
 }
 
-function fakeDocs(saved: { titre: string; markdown: string }[]): PluginDef<any> {
+function fakeDocs(saved: { title: string; markdown: string }[]): PluginDef<any> {
   return definePlugin({
     manifest: { id: "fake-docs", version: "0", licence: "MIT", provides: ["documents"] },
     apply(ctx) {
       ctx.provide("documents", {
-        save: async (d): Promise<DocRef> => { saved.push(d); return { id: `doc${saved.length}`, titre: d.titre, date: "", source: d.source, tags: d.tags ?? [] }; },
+        save: async (d): Promise<DocRef> => { saved.push(d); return { id: `doc${saved.length}`, title: d.title, date: "", source: d.source, tags: d.tags ?? [] }; },
         show: async () => "avatar",
         list: async () => [],
         get: async () => undefined,
@@ -187,7 +187,7 @@ describe("plugin veille (avec le noyau)", () => {
     ]);
     const fetchFake = (async () => new Response(feed, { status: 200 })) as unknown as typeof fetch;
     const reqs: CompletionRequest[] = [];
-    const saved: { titre: string; markdown: string }[] = [];
+    const saved: { title: string; markdown: string }[] = [];
     const initiatives: { text: string }[] = [];
     k = new Kernel({ logger: () => {}, plugins: [fakeCompletion(reqs), fakeDocs(saved), createVeillePlugin({ fetch: fetchFake })] });
     k.bus.on("initiative", (p) => { initiatives.push(p); });
@@ -200,7 +200,7 @@ describe("plugin veille (avec le noyau)", () => {
     });
     expect(k.tasks.list().map((t) => t.key)).toEqual(["veille/quotidienne"]);
 
-    const r1 = await k.tasks.run("veille/quotidienne", "manuel");
+    const r1 = await k.tasks.run("veille/quotidienne", "manual");
     expect(r1.ok).toBe(true);
     expect(r1.text).toBe("Ta veille est prête : 2 articles sur 1 sujet.");
     expect(saved[0]!.markdown).toContain("**1. A garder : Gemma 5**");
@@ -239,7 +239,7 @@ describe("plugin veille (avec le noyau)", () => {
       { t: "A garder : Qwen 4", l: "https://blog.ai/5", d: new Date().toUTCString() },
     ]);
     reqs.length = 0;
-    const r2 = await k.tasks.run("veille/quotidienne", "manuel");
+    const r2 = await k.tasks.run("veille/quotidienne", "manual");
     expect(r2.text).toBe("Ta veille est prête : 1 article sur 1 sujet.");
     const tri = reqs.find((q) => q.schema)!;
     expect(tri.prompt).toContain("Qwen 4");
@@ -248,23 +248,23 @@ describe("plugin veille (avec le noyau)", () => {
     expect(tri.system).toContain("[pas aimé] A garder : Gemma 5");
 
     // Troisième passage sans rien de nouveau.
-    const r3 = await k.tasks.run("veille/quotidienne", "manuel");
+    const r3 = await k.tasks.run("veille/quotidienne", "manual");
     expect(r3.text).toMatch(/Rien de nouveau/);
 
     // Assistant en anglais : annonce, avis et outils en anglais.
     await k.settings.change("langue_assistant", "en", "ui");
     await k.idle();
-    expect((await k.tasks.run("veille/quotidienne", "manuel")).text).toMatch(/^Nothing new/);
+    expect((await k.tasks.run("veille/quotidienne", "manual")).text).toMatch(/^Nothing new/);
     expect((await k.tools.call("veille_avis", { sujet: "bitcoin", avis: "jamais" })).text).toMatch(/^Got it: never again “bitcoin”/);
   });
 
   it("sans centre d'intérêt : le dit ; sans cerveau du tri : échec clair ; ajout à la voix", async () => {
     k = new Kernel({ logger: () => {}, plugins: [createVeillePlugin()] });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "veille" }], approvals: { write: "always" } });
-    expect((await k.tasks.run("veille/quotidienne", "manuel")).text).toMatch(/aucun centre d'intérêt/);
+    expect((await k.tasks.run("veille/quotidienne", "manual")).text).toMatch(/aucun centre d'intérêt/);
     const add = await k.tools.call("veille_modifier_interet", { action: "ajouter", nom: "Bretagne", requetes: ["festival Bretagne"] });
     expect(add.status).toBe("done");
-    const r = await k.tasks.run("veille/quotidienne", "manuel");
+    const r = await k.tasks.run("veille/quotidienne", "manual");
     expect(r.ok).toBe(false);
     expect(tr(r.text, "fr")).toMatch(/aucun cerveau choisi pour le tri/);
     expect(tr(r.text, "en")).toMatch(/no brain chosen for sorting/);
@@ -329,7 +329,7 @@ describe("réglages de la veille", () => {
     const item = prov.items[0]!;
     expect(item.children?.map((c) => [c.label, c.enabled])).toEqual([["a.com/rss", true], ["b.com/rss", true]]);
     expect((await k.items.run({ op: "child", provider: "veille-interets", id: "ia", child: "f:https://b.com/rss", on: false }, "ui")).ok).toBe(true);
-    await k.tasks.run("veille/quotidienne", "manuel");
+    await k.tasks.run("veille/quotidienne", "manual");
     expect(asked).toEqual(["https://a.com/rss"]);
 
     const r = await k.items.run({ op: "test", provider: "veille-interets", kind: "interet", values: { nom: "T", flux: ["https://a.com/rss", "https://casse.invalid/rss"] } }, "ui");

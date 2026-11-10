@@ -16,10 +16,10 @@ describe("lecture et écriture d'une planification", () => {
     expect(ok("à 8 h")).toEqual({ at: "08:00" });
     expect(ok("8h")).toEqual({ at: "08:00" }); // à la voix, « à 8 h » arrive souvent sans le « à » : une heure
     expect(ok("7h30")).toEqual({ at: "07:30" });
-    expect(ok("07:30 lun-ven")).toEqual({ at: "07:30", jours: [1, 2, 3, 4, 5] });
-    expect(ok("à 8h du lundi au vendredi")).toEqual({ at: "08:00", jours: [1, 2, 3, 4, 5] });
-    expect(ok("09:00 lundi, jeudi")).toEqual({ at: "09:00", jours: [1, 4] });
-    expect(ok("09:00 week-end")).toEqual({ at: "09:00", jours: [6, 7] });
+    expect(ok("07:30 lun-ven")).toEqual({ at: "07:30", days: [1, 2, 3, 4, 5] });
+    expect(ok("à 8h du lundi au vendredi")).toEqual({ at: "08:00", days: [1, 2, 3, 4, 5] });
+    expect(ok("09:00 lundi, jeudi")).toEqual({ at: "09:00", days: [1, 4] });
+    expect(ok("09:00 week-end")).toEqual({ at: "09:00", days: [6, 7] });
     expect(ok("09:00 tous les jours")).toEqual({ at: "09:00" });
     expect(ok("toutes les 3h")).toEqual({ every: "3h" });
     expect(ok("toutes les 3 heures")).toEqual({ every: "3h" });
@@ -34,11 +34,11 @@ describe("lecture et écriture d'une planification", () => {
     expect(ok("at 8am")).toEqual({ at: "08:00" });
     expect(ok("7:30 pm")).toEqual({ at: "19:30" });
     expect(ok("12am")).toEqual({ at: "00:00" });
-    expect(ok("7:30 mon-fri")).toEqual({ at: "07:30", jours: [1, 2, 3, 4, 5] });
-    expect(ok("8am monday to friday")).toEqual({ at: "08:00", jours: [1, 2, 3, 4, 5] });
-    expect(ok("09:00 monday and thursday")).toEqual({ at: "09:00", jours: [1, 4] });
-    expect(ok("09:00 weekends")).toEqual({ at: "09:00", jours: [6, 7] });
-    expect(ok("09:00 weekdays")).toEqual({ at: "09:00", jours: [1, 2, 3, 4, 5] });
+    expect(ok("7:30 mon-fri")).toEqual({ at: "07:30", days: [1, 2, 3, 4, 5] });
+    expect(ok("8am monday to friday")).toEqual({ at: "08:00", days: [1, 2, 3, 4, 5] });
+    expect(ok("09:00 monday and thursday")).toEqual({ at: "09:00", days: [1, 4] });
+    expect(ok("09:00 weekends")).toEqual({ at: "09:00", days: [6, 7] });
+    expect(ok("09:00 weekdays")).toEqual({ at: "09:00", days: [1, 2, 3, 4, 5] });
     expect(ok("09:00 every day")).toEqual({ at: "09:00" });
     expect(ok("every 3 hours")).toEqual({ every: "3h" });
     expect(ok("every 30 minutes")).toEqual({ every: "30m" });
@@ -46,7 +46,7 @@ describe("lecture et écriture d'une planification", () => {
     for (const bad of ["tomorrow", "13pm", "8am blabla"]) expect(parseSchedule(bad).ok).toBe(false);
     const p = parseSchedule("tomorrow");
     expect(!p.ok && p.error).toMatchObject({ en: expect.stringMatching(/^I don't understand "tomorrow"/) });
-    expect(scheduleText({ at: "07:30", jours: [1, 2, 3, 4, 5] })).toEqual({ fr: "07:30 lun-ven", en: "07:30 Mon-Fri" });
+    expect(scheduleText({ at: "07:30", days: [1, 2, 3, 4, 5] })).toEqual({ fr: "07:30 lun-ven", en: "07:30 Mon-Fri" });
     expect(scheduleText(null)).toEqual({ fr: "jamais", en: "never" });
   });
 
@@ -56,8 +56,8 @@ describe("lecture et écriture d'une planification", () => {
 
   it("écrit comme on le dit, et relit ce qu'il écrit", () => {
     expect(formatSchedule({ at: "07:30" })).toBe("07:30");
-    expect(formatSchedule({ at: "07:30", jours: [1, 2, 3, 4, 5] })).toBe("07:30 lun-ven");
-    expect(formatSchedule({ at: "07:30", jours: [1, 4] })).toBe("07:30 lun,jeu");
+    expect(formatSchedule({ at: "07:30", days: [1, 2, 3, 4, 5] })).toBe("07:30 lun-ven");
+    expect(formatSchedule({ at: "07:30", days: [1, 4] })).toBe("07:30 lun,jeu");
     expect(formatSchedule({ every: "3h" })).toBe("toutes les 3h");
     expect(formatSchedule({ every: "30m" })).toBe("toutes les 30 min");
     expect(formatSchedule(null)).toBe("jamais");
@@ -76,7 +76,7 @@ describe("dernière et prochaine heure prévue", () => {
   });
 
   it("respecte les jours (lundi à vendredi : le samedi renvoie vendredi)", () => {
-    const sem = { at: "07:30", jours: [1, 2, 3, 4, 5] };
+    const sem = { at: "07:30", days: [1, 2, 3, 4, 5] };
     expect(lastOccurrence(sem, L(11, 7, 12, 0))).toEqual(L(11, 6, 7, 30)); // samedi
     expect(lastOccurrence(sem, L(11, 8, 12, 0))).toEqual(L(11, 6, 7, 30)); // dimanche
     expect(lastOccurrence(sem, L(11, 9, 6, 0))).toEqual(L(11, 6, 7, 30)); // lundi avant l'heure
@@ -85,7 +85,7 @@ describe("dernière et prochaine heure prévue", () => {
 
   it("pas d'heure pour une période, ni pour une liste de jours vide", () => {
     expect(lastOccurrence({ every: "3h" }, L(11, 6))).toBeUndefined();
-    expect(lastOccurrence({ at: "07:30", jours: [] }, L(11, 6))).toBeUndefined();
+    expect(lastOccurrence({ at: "07:30", days: [] }, L(11, 6))).toBeUndefined();
   });
 });
 
@@ -105,7 +105,7 @@ describe("isDue", () => {
     expect(isDue(at, L(11, 4, 7, 31), L(11, 6, 10, 0))).toBe(true);
   });
   it("jours : pas de passage prévu le week-end, rien à rattraper", () => {
-    const sem = { at: "07:30", jours: [1, 2, 3, 4, 5] };
+    const sem = { at: "07:30", days: [1, 2, 3, 4, 5] };
     expect(isDue(sem, L(11, 6, 7, 31), L(11, 8, 12, 0))).toBe(false); // dimanche : vendredi a eu lieu
     expect(isDue(sem, L(11, 5, 7, 31), L(11, 8, 12, 0))).toBe(true); // vendredi manqué
   });
@@ -138,7 +138,7 @@ function digest(runs: Date[], opts: { fail?: boolean } = {}): PluginDef<any> {
         async run() {
           runs.push(new Date());
           if (opts.fail) throw new Error("source en panne");
-          return { resume: "Ta veille est prête." };
+          return { summary: "Ta veille est prête." };
         },
       };
       ctx.provide("task", svc);

@@ -122,7 +122,7 @@ export function createBubble(deps: BubbleDeps) {
     hasCards: (): boolean => $("cards").children.length > 0,
     /** Ni phrase de l'utilisateur, ni réponse, ni carte. */
     isEmpty: (): boolean => !$("you").textContent && !$("reply").textContent && !$("cards").children.length,
-    /** Réglage « bulle » (message display) : sans bulle, seules les cartes restent visibles. */
+    /** Réglage « bubble » (message display) : sans bulle, seules les cartes restent visibles. */
     setEnabled(on: boolean): void {
       bubbleOn = on;
       document.body.classList.toggle("nobubble", !bubbleOn);

@@ -10,4 +10,4 @@ export interface Msg { type?: string; [key: string]: any }
 export type Say = string | Bilingual;
 /** Résolution de la réponse du noyau à une demande (la forme dépend de la demande). */
 export type Reply = (r: any) => void;
-export interface Display { avatar_visible: boolean; masquer_apres: number; bulle: boolean; toujours_devant: boolean; avatar: string; avatarUrl: string; raccourcis?: Record<string, string>; demarrage_windows?: boolean; [key: string]: unknown }
+export interface Display { avatar_visible: boolean; hide_after: number; bubble: boolean; always_on_top: boolean; avatar: string; avatarUrl: string; shortcuts?: Record<string, string>; autostart?: boolean; [key: string]: unknown }

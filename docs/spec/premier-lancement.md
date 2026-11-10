@@ -163,11 +163,13 @@ Le plan est calculé à partir des déclarations des plugins : aucun modèle n'e
 
 | Niveau | Écoute | Voix | Cerveau |
 |---|---|---|---|
-| `texte` | VAD + transcription (processeur) | aucune (réponses écrites) | cloud |
-| `voix` | idem | meilleure voix processeur | cloud |
-| `hybride` | idem | meilleure voix sur la puce graphique | cloud |
+| `text` | VAD + transcription (processeur) | aucune (réponses écrites) | cloud |
+| `voice` | idem | meilleure voix processeur | cloud |
+| `hybrid` | idem | meilleure voix sur la puce graphique | cloud |
 | `local` | idem | meilleure voix processeur | meilleur modèle local qui tient |
 | `local-max` | idem | meilleure voix sur la puce graphique | meilleur modèle local qui tient à côté |
+
+Les identifiants de niveau (`LevelId`) sont en anglais. Un `onboarding.json` écrit avec les anciens (`texte`, `voix`, `hybride`) est converti une fois par la migration du dossier (étape `onboarding-level`, voir [noyau](noyau.md)).
 
 - Un niveau est **possible** si chaque rôle a une entrée qui tient (mémoire des modèles pour « gpu », RAM − 6 Go
   pour « cpu »), avec un moteur accepté, un programme présent ou téléchargeable, et la place sur le disque (programmes

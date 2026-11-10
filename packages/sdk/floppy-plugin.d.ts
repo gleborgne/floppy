@@ -70,7 +70,7 @@ export interface ToolResult {
 
 /** Un outil que l'assistant peut appeler. */
 export interface ToolDef {
-  /** snake_case, en français ou anglais simple (ex. "lancer_minuteur"). */
+  /** snake_case, en anglais (ex. "start_timer"). */
   name: string;
   /** Dit au modèle quand l'utiliser (lu par le modèle seulement : une langue suffit). */
   description: string;
@@ -138,7 +138,7 @@ export type HookOutput<K extends keyof HookTypes> = HookTypes[K] extends { outpu
 
 /** Message envoyé sur un canal (Telegram, mail…) : le canal met le Markdown en forme. */
 export interface NotifyMessage {
-  titre: string;
+  title: string;
   markdown: string;
 }
 
@@ -165,9 +165,9 @@ export interface CompletionService {
 }
 
 export interface SearchHit {
-  titre: string;
+  title: string;
   url: string;
-  resume?: string;
+  summary?: string;
   source?: string;
   /** ISO 8601. */
   date?: string;
@@ -177,12 +177,12 @@ export interface SearchHit {
 export interface SearchService {
   label?: string;
   cloud?: boolean;
-  search(q: string, opts?: { max?: number; depuis?: Date; signal?: AbortSignal }): Promise<SearchHit[]>;
+  search(q: string, opts?: { max?: number; since?: Date; signal?: AbortSignal }): Promise<SearchHit[]>;
 }
 
 export interface DocRef {
   id: string;
-  titre: string;
+  title: string;
   /** ISO 8601. */
   date: string;
   source: string;
@@ -191,10 +191,10 @@ export interface DocRef {
 
 /** Documents Markdown montrés dans une fenêtre de Floppy. */
 export interface DocumentsService {
-  save(doc: { titre: string; markdown: string; source: string; tags?: string[] }): Promise<DocRef>;
+  save(doc: { title: string; markdown: string; source: string; tags?: string[] }): Promise<DocRef>;
   /** Montre un document ; rend l'id du corps qui l'affiche, ou undefined. */
-  show(id: string, cible?: string): Promise<string | undefined>;
-  list(filtre?: { tag?: string; max?: number }): Promise<DocRef[]>;
+  show(id: string, target?: string): Promise<string | undefined>;
+  list(filter?: { tag?: string; max?: number }): Promise<DocRef[]>;
   get(id: string): Promise<(DocRef & { markdown: string }) | undefined>;
 }
 

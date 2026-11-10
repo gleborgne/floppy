@@ -28,12 +28,12 @@ type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 interface RawResult { title?: unknown; url?: unknown; content?: unknown; publishedDate?: unknown; engine?: unknown; parsed_url?: unknown }
 
 /** `time_range` de SearXNG : la plus petite durée qui couvre « depuis ». */
-export function timeRange(depuis: Date, now = new Date()): "day" | "week" | "month" | "year" | undefined {
-  const jours = (now.getTime() - depuis.getTime()) / 86_400_000;
-  if (jours <= 1) return "day";
-  if (jours <= 7) return "week";
-  if (jours <= 31) return "month";
-  if (jours <= 366) return "year";
+export function timeRange(since: Date, now = new Date()): "day" | "week" | "month" | "year" | undefined {
+  const days = (now.getTime() - since.getTime()) / 86_400_000;
+  if (days <= 1) return "day";
+  if (days <= 7) return "week";
+  if (days <= 31) return "month";
+  if (days <= 366) return "year";
   return undefined;
 }
 
@@ -45,9 +45,9 @@ function toHit(r: RawResult): SearchHit | undefined {
   const url = typeof r.url === "string" ? r.url : "";
   if (!/^https?:\/\//i.test(url)) return undefined;
   const parsed = Array.isArray(r.parsed_url) ? String(r.parsed_url[1] ?? "") : "";
-  const hit: SearchHit = { titre: String(r.title ?? url).trim().slice(0, 200) || url, url };
-  const resume = typeof r.content === "string" ? r.content.trim().slice(0, 400) : "";
-  if (resume) hit.resume = resume;
+  const hit: SearchHit = { title: String(r.title ?? url).trim().slice(0, 200) || url, url };
+  const summary = typeof r.content === "string" ? r.content.trim().slice(0, 400) : "";
+  if (summary) hit.summary = summary;
   const source = hostOf(url) ?? (parsed || (typeof r.engine === "string" ? r.engine : undefined));
   if (source) hit.source = source;
   if (typeof r.publishedDate === "string" && !Number.isNaN(Date.parse(r.publishedDate))) hit.date = new Date(r.publishedDate).toISOString();
@@ -56,7 +56,7 @@ function toHit(r: RawResult): SearchHit | undefined {
 
 /** Interroge SearXNG. Les erreurs ont un message clair, en français et en anglais (TextError). */
 export async function searxngSearch(
-  cfg: Config, q: string, opts: { max?: number; depuis?: Date; signal?: AbortSignal } = {}, fetchImpl: FetchLike,
+  cfg: Config, q: string, opts: { max?: number; since?: Date; signal?: AbortSignal } = {}, fetchImpl: FetchLike,
 ): Promise<SearchHit[]> {
   const base = cfg.url.trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(base)) throw new TextError(T("L'adresse de SearXNG doit commencer par http:// ou https://.", "The SearXNG address must start with http:// or https://."));
@@ -65,7 +65,7 @@ export async function searxngSearch(
   u.searchParams.set("format", "json");
   u.searchParams.set("language", cfg.langue);
   if (cfg.categories.length) u.searchParams.set("categories", cfg.categories.join(","));
-  const range = opts.depuis ? timeRange(opts.depuis) : undefined;
+  const range = opts.since ? timeRange(opts.since) : undefined;
   if (range) u.searchParams.set("time_range", range);
   const signals = [AbortSignal.timeout(cfg.timeoutMs), ...(opts.signal ? [opts.signal] : [])];
   let r: Response;
@@ -151,7 +151,7 @@ export function createSearxngPlugin(fetchImpl?: FetchLike) {
           }
           ctx.audit.write({ kind: "searxng", ms: Date.now() - t0, results: hits.length });
           if (!hits.length) return { status: "done", text: "Aucun résultat." };
-          const list = hits.map((x, i) => `${i + 1}. ${x.titre} — ${x.source ?? "?"} — ${x.url}${x.resume ? ` — ${x.resume}` : ""}`).join("\n");
+          const list = hits.map((x, i) => `${i + 1}. ${x.title} — ${x.source ?? "?"} — ${x.url}${x.summary ? ` — ${x.summary}` : ""}`).join("\n");
           return { status: "done", text: `Résultats :\n${list}` };
         },
       }]);

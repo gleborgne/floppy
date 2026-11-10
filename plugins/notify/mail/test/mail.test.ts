@@ -68,7 +68,7 @@ function setup(fail?: { code?: string; message?: string }) {
       send = async () => {
         notify = ctx.offers("notify");
         const b = await ctx.borrowItem<NotifyService>("notify", notify[0]!.value);
-        try { await b!.service.send({ titre: "Veille", markdown: "Du **texte** [ici](https://a.fr)" }); } finally { b?.release(); }
+        try { await b!.service.send({ title: "Veille", markdown: "Du **texte** [ici](https://a.fr)" }); } finally { b?.release(); }
       };
     },
   });

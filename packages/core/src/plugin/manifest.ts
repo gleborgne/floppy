@@ -48,8 +48,8 @@ export interface SlotDef {
   step?: number;
 }
 
-/** Quand une tâche tourne : « at » (HH:MM, heure locale, jours 1 = lundi … 7 = dimanche) ou « every » (« 30m », « 3h »). */
-export type TaskSchedule = { at: string; jours?: number[] } | { every: string };
+/** Quand une tâche tourne : « at » (HH:MM, heure locale, days 1 = lundi … 7 = dimanche) ou « every » (« 30m », « 3h »). */
+export type TaskSchedule = { at: string; days?: number[] } | { every: string };
 
 /**
  * Une tâche que le plugin sait faire (ex. « Veille du jour »). Lue sans démarrer le plugin : le noyau la liste,
@@ -139,7 +139,7 @@ const TaskSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/, "minuscules, chiffres et tirets"),
   label: text, description: text.optional(),
   schedule: z.union([
-    z.object({ at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "heure HH:MM"), jours: z.array(z.number().int().min(1).max(7)).optional() }).strict(),
+    z.object({ at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "heure HH:MM"), days: z.array(z.number().int().min(1).max(7)).optional() }).strict(),
     z.object({ every: z.string().regex(/^\d+(m|h)$/, "durée « 30m » ou « 3h »") }).strict(),
   ]).optional(),
   timeout_s: z.number().int().positive().optional(),

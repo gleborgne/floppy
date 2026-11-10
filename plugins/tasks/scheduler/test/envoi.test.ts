@@ -31,13 +31,13 @@ function digest(): PluginDef<any> {
   return definePlugin({
     manifest: { id: "digest", version: "0", licence: "MIT", provides: ["task"], tasks: [{ id: "quotidienne", label: "Veille du jour" }] },
     apply(ctx) {
-      ctx.provide("task", { run: async () => ({ resume: "Ta veille est prête.", document: { id: "d1", titre: "Veille du 6 novembre", date: "", source: "veille", tags: ["veille"] } }) });
+      ctx.provide("task", { run: async () => ({ summary: "Ta veille est prête.", document: { id: "d1", title: "Veille du 6 novembre", date: "", source: "veille", tags: ["veille"] } }) });
     },
   });
 }
 
 function docs(): PluginDef<any> {
-  const ref: DocRef = { id: "d1", titre: "Veille du 6 novembre", date: "", source: "veille", tags: ["veille"] };
+  const ref: DocRef = { id: "d1", title: "Veille du 6 novembre", date: "", source: "veille", tags: ["veille"] };
   return definePlugin({
     manifest: { id: "docs", version: "0", licence: "MIT", provides: ["documents"] },
     apply(ctx) {
@@ -73,16 +73,16 @@ describe("envoi des résultats", () => {
     expect(info.presets?.map((p) => p.value)).toEqual(["Mon canal", "Gmail perso", "Mon canal, Gmail perso", "nulle part"]);
 
     // Rien de choisi : rien ne part.
-    await k!.tasks.run("veille/quotidienne", "manuel");
+    await k!.tasks.run("veille/quotidienne", "manual");
     await wait();
     expect(sent).toEqual([]);
 
     expect((await k!.settings.change(key, "sur mon canal et gmail", "ui")).ok).toBe(true);
     expect(k!.settings.list().find((s) => s.key === key)!.value).toBe("Mon canal, Gmail perso");
-    await k!.tasks.run("veille/quotidienne", "manuel");
+    await k!.tasks.run("veille/quotidienne", "manual");
     await wait();
     expect(sent.map((s) => s.channel)).toEqual(["canal", "gmail"]);
-    expect(sent[0]!.msg).toEqual({ titre: "Veille du 6 novembre", markdown: "# Veille\n\n**1. Un article**" });
+    expect(sent[0]!.msg).toEqual({ title: "Veille du 6 novembre", markdown: "# Veille\n\n**1. Un article**" });
     // Le canal est rendu après l'envoi : plus rien ne tourne.
     expect(k!.status().some((s) => s.fork && s.state === "active")).toBe(false);
   });
@@ -95,7 +95,7 @@ describe("envoi des résultats", () => {
     expect(bad.ok).toBe(false);
     expect(bad.text).toMatch(/Je ne connais pas « whatsapp »/);
     await k!.settings.change(key, "Gmail perso", "ui");
-    await k!.tasks.run("veille/quotidienne", "manuel");
+    await k!.tasks.run("veille/quotidienne", "manual");
     await wait();
     expect(initiatives.at(-1)?.text).toBe("L'envoi de « Veille du jour » sur Gmail perso a échoué : serveur mail injoignable.");
   });
@@ -122,7 +122,7 @@ describe("envoi des résultats", () => {
     expect((await k!.settings.change(key, "nowhere", "ui")).ok).toBe(true);
     expect(k!.settings.list().find((s) => s.key === key)!.value).toBe("nulle part");
     await k!.settings.change(key, "Gmail perso", "ui");
-    await k!.tasks.run("veille/quotidienne", "manuel");
+    await k!.tasks.run("veille/quotidienne", "manual");
     await wait();
     expect(initiatives.at(-1)?.text).toMatch(/^Sending ".*" to Gmail perso failed: /);
     const r = await k!.tools.call("envoyer", { canal: "on my canal", quoi: "latest" });
