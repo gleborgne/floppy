@@ -38,10 +38,21 @@ const REPLY: Rule[] = [
   [/\b(c est fait|voila|c est bon|termine|done|there you go|all set)\b/, "happy", 0.7],
 ];
 
+// Mot directement nié (« pas génial », « pas très génial », « n'est plus super », « isn't great », « not so great ») :
+// la règle ne compte pas, on passe aux suivantes. On n'en tire jamais l'émotion contraire.
+// Le texte est déjà normalisé (sans accents ni apostrophes : « isn't » devient « isn t »).
+const ADVERB = String.raw`(?: (?:tres|vraiment|trop|si|aussi|du tout|very|really|so|too|that|at all))?`;
+const NEGATED = new RegExp(String.raw`(?:\b(?:pas|jamais|aucune?|not|never|no)|(?:isn|wasn|aren|weren|don|doesn|didn|can|couldn|won|wouldn|shouldn|hasn|haven|ain) t)` + ADVERB + "$");
+// « plus » ne nie qu'avec « ne » devant (« n'est plus super ») : « encore plus génial » reste positif.
+const NE_PLUS = new RegExp(String.raw`\b(?:ne|n)\b(?:\s+\S+){0,2}\s+plus` + ADVERB + "$");
+const negated = (before: string): boolean => { const b = before.trimEnd(); return NEGATED.test(b) || NE_PLUS.test(b); };
+
 export function guessEmotion(text: string, who: "user" | "reply"): Guess | undefined {
   const t = norm(text);
   if (!t.trim()) return undefined;
-  for (const [re, emotion, intensity] of who === "user" ? USER : REPLY) if (re.test(t)) return { emotion, intensity };
+  for (const [re, emotion, intensity] of who === "user" ? USER : REPLY) {
+    for (const m of t.matchAll(new RegExp(re.source, "g"))) if (!negated(t.slice(0, m.index))) return { emotion, intensity };
+  }
   // Beaucoup d'enthousiasme (« !!! ») sans mot-clé.
   if (who === "reply" && /!\s*$/.test(text.trim()) && (text.match(/!/g)?.length ?? 0) >= 2) return { emotion: "excited", intensity: 0.6 };
   return undefined;

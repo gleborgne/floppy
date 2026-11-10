@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseEmotionTag } from "@floppy/protocol";
-import { EmotionTagFilter, type FilterOut } from "../src/emotion-filter.ts";
+import { EmotionTagFilter, emotionTagPrompt, filterEvents, PROMPT_EMOTIONS_EN, type FilterOut } from "../src/emotion-tags.ts";
 
 /** Passe les morceaux dans le filtre et rend ce qui en sort, morceaux de texte collés. */
 function run(chunks: string[]): FilterOut[] {
@@ -49,5 +49,49 @@ describe("étiquettes d'émotion", () => {
     expect(f.push("[content] Je cherche.")).toEqual([{ emotion: "happy" }, { text: "Je cherche." }]);
     expect(f.newSegment()).toEqual([]);
     expect(f.push(" [fier] Trouvé !")).toEqual([{ emotion: "proud" }, { text: "Trouvé !" }]);
+  });
+});
+
+describe("événements du cerveau", () => {
+  it("filterEvents : l'émotion à sa place, le texte sans étiquette", () => {
+    const f = new EmotionTagFilter();
+    expect(filterEvents(f.push("[joie+] Youpi [surpris] oh"))).toEqual([
+      { type: "emotion", emotion: "joy", intensity: 1.25 }, { type: "text", delta: "Youpi " },
+      { type: "emotion", emotion: "surprised" }, { type: "text", delta: "oh" },
+    ]);
+  });
+});
+
+describe("consigne d'étiquettes", () => {
+  it("existe en français et en anglais, avec les noms que le filtre comprend", () => {
+    expect(emotionTagPrompt("fr")).toContain("ton émotion entre crochets");
+    expect(emotionTagPrompt(undefined)).toContain("ton émotion entre crochets");
+    expect(emotionTagPrompt("en")).toContain("emotion in square brackets");
+    for (const e of PROMPT_EMOTIONS_EN) expect(parseEmotionTag(e)?.emotion).toBeDefined();
+  });
+});
+
+describe("liens markdown en tête de segment", () => {
+  it("garde le libellé d'un lien en tête", () => {
+    expect(run(["[Guide](https://x.y) est ici. "])).toEqual([{ text: "[Guide](https://x.y) est ici. " }]);
+  });
+  it("lien coupé entre deux morceaux", () => {
+    expect(run(["[Guide]", "(https://x.y) ok"])).toEqual([{ text: "[Guide](https://x.y) ok" }]);
+  });
+  it("lien en tête après newSegment()", () => {
+    const f = new EmotionTagFilter();
+    f.push("Voici. ");
+    f.newSegment();
+    expect([...f.push("[Guide](u) là"), ...f.end()]).toEqual([{ text: "[Guide](u) là" }]);
+  });
+  it("vraie émotion suivie d'un lien", () => {
+    expect(run(["[content] [Guide](u)"])).toEqual([{ emotion: "happy" }, { text: "[Guide](u)" }]);
+  });
+  it("un mot inconnu en tête reste retiré, même seul à la fin", () => {
+    expect(run(["[blabla] Bonjour"])).toEqual([{ text: "Bonjour" }]);
+    expect(run(["[blabla]"])).toEqual([]);
+    const f = new EmotionTagFilter();
+    expect(f.push("[blabla]")).toEqual([]);
+    expect(f.newSegment()).toEqual([]);
   });
 });

@@ -25,6 +25,7 @@ let claimText = "C'est fait, j'ai ouvert les réglages.";
 let server: Server, k: Kernel;
 let brain: BrainService | undefined;
 let delegated = 0;
+let delegateEmotion = false;
 const agentInputs: string[] = [];
 const requests: BrainRunInput[] = [];
 const resets: string[] = [];
@@ -34,7 +35,7 @@ const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MI
 const bigModel: BrainService = {
   name: "gros", label: "Gros Modèle", aliases: ["gros"],
   reset(session) { resets.push(session); },
-  async *run(input) { delegated++; agentInputs.push(input.text); requests.push(input); yield { type: "text", delta: "Réponse du grand modèle." } as BrainEvent; yield { type: "done", text: "" } as BrainEvent; },
+  async *run(input) { delegated++; agentInputs.push(input.text); requests.push(input); if (delegateEmotion) yield { type: "emotion", emotion: "proud", intensity: 1.25 } as BrainEvent; yield { type: "text", delta: "Réponse du grand modèle." } as BrainEvent; yield { type: "done", text: "" } as BrainEvent; },
 };
 // Offert comme délégué (slot brain.delegate) et comme modèle-agent (slot brain.main), comme Claude Code.
 const fakeDelegate = definePlugin({
@@ -131,6 +132,36 @@ describe("relance après fausse action", () => {
   });
 });
 
+describe("délégation : émotion du délégué", () => {
+  it("l'émotion du délégué suit le visage (réglage actif) ; coupé, elle est ignorée ; son texte reste sans étiquette", async () => {
+    const run = async () => {
+      calls = 2; // le modèle local délègue tout de suite
+      const evs: BrainEvent[] = [];
+      for await (const ev of brain!.run({ text: "écris-moi un autre script", session: "deleg-emotion", mode: "text" })) evs.push(ev);
+      return evs;
+    };
+    delegateEmotion = true;
+    try {
+      const off = await run();
+      expect(off.some((e) => e.type === "emotion")).toBe(false);
+      const port = (server.address() as AddressInfo).port;
+      await k.applyConfig({ slots: { "brain.main": "llm/gemma", "brain.delegate": "fd/gros" }, plugins: [
+        { id: "llm", plugin: "llm-llamacpp", config: { port, models: { gemma: { label: "Gemma", model: gguf } } } },
+        { id: "fd", plugin: "fakedelegate" },
+        { id: "brain", plugin: "brain-aisdk", config: { emotions: true } },
+        { id: "probe", plugin: "probe" },
+      ] });
+      await k.idle();
+      const on = await run();
+      expect(on.filter((e) => e.type === "emotion")).toEqual([{ type: "emotion", emotion: "proud", intensity: 1.25 }]);
+      expect(on.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("")).toContain("Réponse du grand modèle.");
+    } finally {
+      delegateEmotion = false;
+      calls = 0;
+    }
+  });
+});
+
 describe("modèle-agent (llm.agent)", () => {
   it("un agent choisi comme cerveau principal reçoit le tour entier ; le LLM local est libéré", async () => {
     const before = delegated;
@@ -152,6 +183,19 @@ describe("modèle-agent (llm.agent)", () => {
     for await (const _ of brain!.run({ text: "Et maintenant ?", session: "agent", mode: "text" })) { /* vide */ }
     expect(agentInputs.at(-1)).toBe("Et maintenant ?");
     expect((await k.settings.change("slot.brain.main", "llm/gemma", "cli")).ok).toBe(true);
+  });
+  it("relaie l'émotion d'un agent cerveau principal, sans toucher à son texte déjà filtré", async () => {
+    delegateEmotion = true;
+    try {
+      expect((await k.settings.change("slot.brain.main", "fd/gros", "cli")).ok).toBe(true);
+      const evs: BrainEvent[] = [];
+      for await (const ev of brain!.run({ text: "Bonjour", session: "emotion-agent", mode: "text" })) evs.push(ev);
+      expect(evs.filter((e) => e.type === "emotion")).toEqual([{ type: "emotion", emotion: "proud", intensity: 1.25 }]);
+      expect(evs.filter((e) => e.type === "text").map((e) => (e as { delta: string }).delta).join("")).toBe("Réponse du grand modèle.");
+    } finally {
+      delegateEmotion = false;
+      await k.settings.change("slot.brain.main", "llm/gemma", "cli");
+    }
   });
   it("n'envoie pas l'historique en double à un agent persistant ; fournit un secours et relaie reset", async () => {
     bigModel.keepsHistory = true;

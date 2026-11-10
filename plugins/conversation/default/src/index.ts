@@ -18,6 +18,7 @@ import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, SentenceSplitter,
 import { SpeechQueue } from "./speech.ts";
 import { LiveConversation } from "./live.ts";
 import { MoodTracker } from "./mood.ts";
+import { EmotionSettler } from "./settle.ts";
 import { guessEmotion, ReplyFeeler } from "./feel.ts";
 import { Dictation } from "./dictation.ts";
 import { withIdleTimeout } from "./idle.ts";
@@ -25,7 +26,7 @@ import { Config, PHRASES, ECHO_TAIL_MS, type Body, type Turn } from "./model.ts"
 import { createInitiatives } from "./initiatives.ts";
 import { voiceHandler } from "./voice-events.ts";
 import { sentenceGesture } from "./gesture.ts";
-import { optionalContext, prepareMemoryContext, memoryContextMessage, type ContextOperation } from "@floppy/contracts";
+import { optionalContext, prepareMemoryContext, memoryContextMessage, emotionInfo, expressivenessFactor, type ContextOperation } from "@floppy/contracts";
 
 export { PHRASES };
 
@@ -99,6 +100,15 @@ export default definePlugin<Config>({
         { value: "playful", label: T("Joueur", "Playful"), aliases: ["joueur", "joueuse", "playful"] }],
       get: () => profile, set: v => { profile = v as SpeechDelivery["profile"]; for (const b of bodies.values()) b.live?.updateTone(); },
     }]);
+    // Expérimental (non essayé sur un vrai compte) : s'applique à la prochaine session Live, pas à celle qui est ouverte.
+    let liveEmotionTool = ctx.settings.saved<boolean>("emotion_live") ?? cfg.live_emotion_tool;
+    ctx.settings.declare([{
+      key: "emotion_live", section: "voix", type: "boolean", risk: "free",
+      label: T("Émotion annoncée par le modèle Live (expérimental)", "Emotion reported by the Live model (experimental)"),
+      description: T("En mode Live, le modèle dit son émotion par un outil silencieux pour le visage et les gestes, au lieu de la deviner dans ses mots. Seulement pour un moteur Live qui appelle des outils. S'applique à la prochaine session Live.",
+        "In Live mode, the model reports its emotion through a silent tool for the face and gestures, instead of guessing it from its words. Only for a Live engine that calls tools. Applies from the next Live session."),
+      get: () => liveEmotionTool, set: (v) => { liveEmotionTool = Boolean(v); },
+    }]);
     ctx.settings.declare([{ key: "ton", section: "voix", label: { fr: "Ton", en: "Tone" }, description: { fr: "La manière de parler, commune à tous les modes.", en: "Speaking style shared by all conversation modes." }, type: "text", maxLength: 300, risk: "free", get: () => tone, set: (v) => { tone = String(v); for (const b of bodies.values()) b.live?.updateTone(); } }]);
     const wake = wakeword?.words?.() ?? [...ctx.assistant.wake_words];
     let freeListen = ctx.settings.saved<number>("ecoute_libre") ?? cfg.free_listen_s;
@@ -127,14 +137,15 @@ export default definePlugin<Config>({
       if (m) hub.broadcast({ type: "mood", ...m }, "emotion");
     };
     ctx.interval(() => { mood.tick(); sendMood(); }, 20_000);
-    const setEmotion = (emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }) => {
+    const setEmotion = (emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }, opts: { mood?: boolean } = {}) => {
       clearTimeout(neutralTimer);
       for (const body of hub.sessions()) {
         if (!body.capabilities.includes("emotion")) continue;
-        hub.send(body.id, { type: "emotion", emotion: emotion as Emotion, ...(ms ? { ms } : {}), ...(intensity === undefined && profile === "playful" ? {} : { intensity: (intensity ?? 1) * (profile === "discreet" ? 0.45 : profile === "natural" ? 0.8 : 1) }),
+        hub.send(body.id, { type: "emotion", emotion: emotion as Emotion, ...(ms ? { ms } : {}), ...(intensity === undefined && profile === "playful" ? {} : { intensity: (intensity ?? 1) * expressivenessFactor(profile) }),
           ...(timing?.body === body.id && body.capabilities.includes("speech_timing") ? { nextAudio: timing.id } : {}) });
       }
-      mood.feel(emotion as Emotion, intensity ?? 1);
+      // Un simple apaisement de l'émotion d'une étiquette ne pousse pas l'humeur une fois de plus.
+      if (opts.mood !== false) mood.feel(emotion as Emotion, intensity ?? 1);
       sendMood();
     };
     const cue = (c: Cue) => hub.broadcast({ type: "cue", cue: c }, "emotion");
@@ -164,9 +175,7 @@ export default definePlugin<Config>({
     const speakOut = (b: Body, id: string, text: string, emotion?: string, intensity?: number) => {
       const now = Date.now();
       b.spoken = [...(b.spoken ?? []).filter((x) => now - x.at < 120_000), { text, at: now }].slice(-30);
-      const intent = emotion && ["sorry", "sad", "cry", "scared"].includes(emotion) ? "reassure"
-        : emotion && ["mischief", "wink", "laugh", "joy", "excited"].includes(emotion) ? "playful"
-        : emotion && ["thinking", "focused", "curious"].includes(emotion) ? "explain" : "neutral";
+      const intent = emotionInfo(emotion)?.intent ?? "neutral";
       b.output!.speak(id, text, { intent, profile, language: lang, tone,
         ...(emotion ? { emotion } : {}), ...(intensity === undefined ? {} : { intensity }) });
     };
@@ -261,18 +270,20 @@ export default definePlugin<Config>({
         let full = "";
         // Émotion arrivée au milieu de la réponse : elle attend que sa phrase soit dite (voix seulement).
         let nextCue: { emotion: Emotion; intensity?: number } | undefined;
-        let speakingEmotion: string | undefined;
-        let speakingIntensity: number | undefined;
+        const settler = new EmotionSettler();
         const say = (s: string, paragraph = false) => {
           if (mode !== "voice" || !b.stream || t.abort.signal.aborted) return;
           const id = `t${t.n}-${++seq}`;
-          if (nextCue) { t.cues.set(id, nextCue); speakingEmotion = nextCue.emotion; speakingIntensity = nextCue.intensity; nextCue = undefined; }
+          // L'émotion de l'étiquette s'apaise sur les phrases suivantes (voir settle.ts) : voix, geste et visage la suivent.
+          const settled = settler.next(nextCue);
+          if (settled.cue) t.cues.set(id, { emotion: settled.cue.emotion as Emotion, ...(settled.cue.intensity === undefined ? {} : { intensity: settled.cue.intensity }), ...(settled.settling ? { settling: true } : {}) });
+          nextCue = undefined;
           if (paragraph) (t.pauses ??= new Set()).add(id);
-          (t.gestures ??= new Map()).set(id, { intent: sentenceGesture(s, speakingEmotion, text),
-            intensity: profile === "discreet" ? 0.45 : profile === "natural" ? 0.8 : 1 });
+          (t.gestures ??= new Map()).set(id, { intent: sentenceGesture(s, settled.emotion, text),
+            intensity: expressivenessFactor(profile) });
           t.pending.add(id);
           mark("first_sentence");
-          speakOut(b, id, s, speakingEmotion, speakingIntensity);
+          speakOut(b, id, s, settled.emotion, settled.intensity);
         };
         mark("brain_start");
         // Contexte d'une annonce récente (moins de 2 minutes) : « c'est quoi ce job ? » garde son sens.
@@ -514,6 +525,9 @@ export default definePlugin<Config>({
         onState: (state) => { setState(b, b.muted ? "sleep" : state); b.stream?.setSpeaking(!b.muted && state === "speaking"); if (!b.muted && state === "listening") b.awakeUntil = Date.now() + freeListen * 1000; },
         onPlaying: (on) => { b.playing = on; if (!on) { b.feeler?.reset(); neutralSoon(); } },
         onIdle: drain,
+        emotionTool: () => liveEmotionTool,
+        // Le modèle Live a dit son émotion par l'outil : même chemin que la devinette (setEmotion, calé sur l'audio).
+        onModelEmotion: (e, timing) => setEmotion(e.emotion, undefined, e.intensity, timing),
         // Le modèle Live ne donne pas d'émotion : on la devine dans les mots (les vôtres, puis les siens).
         onHeard: (text) => {
           mood.touch();

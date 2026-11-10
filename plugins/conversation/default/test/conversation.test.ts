@@ -332,6 +332,72 @@ it("transmet les intentions et le profil du tour jusqu'au fournisseur TTS", asyn
   } finally { await k.stopAll(); }
 });
 
+// ------------------------------------------------------------------ l'émotion d'une étiquette s'apaise sur les phrases suivantes
+describe("émotion qui s'apaise sur les phrases suivantes", () => {
+  const settleBrain = definePlugin({
+    manifest: { id: "settle-brain", version: "0", licence: "MIT", provides: ["brain"] },
+    apply(ctx) {
+      ctx.provide("brain", { name: "apaise", reset: () => {}, async *run(input: { text: string }) {
+        yield { type: "emotion", emotion: "joy" } as const;
+        yield { type: "text", delta: "Première phrase de la réponse. Deuxième phrase de la réponse. " } as const;
+        if (input.text === "retag") yield { type: "emotion", emotion: "sorry", intensity: 0.8 } as const;
+        yield { type: "text", delta: "Troisième phrase de la réponse. Quatrième phrase de la réponse. Cinquième phrase de la réponse." } as const;
+        yield { type: "done", text: "" } as const;
+      } } as BrainService);
+    },
+  });
+  async function play(text: string) {
+    const deliveries: { text: string; delivery?: { emotion?: string; intensity?: number; intent?: string } }[] = [];
+    const tts = definePlugin({ manifest: { id: "settle-tts", version: "0", licence: "MIT", provides: ["tts"] }, apply(c) {
+      c.offer("tts", { items: () => [{ id: "test", label: "Test" }], start(f) { f.provide("tts", {
+        name: "test", async *speak(t, opts) { deliveries.push({ text: t, delivery: opts.delivery }); yield { rate: 24000, pcm: new Int16Array([1]) }; },
+      }); } });
+    } });
+    const k = new Kernel({ home: mkdtempSync(join(tmpdir(), "settle-")), logger: () => {}, plugins: [bodyHub, conversation, settleBrain, fakeVoice, tts] });
+    await k.applyConfig({ slots: { "voice.tts": "tts/test" }, plugins: [{ id: "body", plugin: "body-hub" },
+      { id: "voice", plugin: "fake-voice" }, { id: "tts", plugin: "settle-tts" }, { id: "brain", plugin: "settle-brain" }, { id: "conv", plugin: "conversation", config: { neutral_after_ms: 60_000 } }] });
+    const body = new FakeBody("settle", ["voice", "emotion"]);
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(body.transport, { id: body.id }); body.hello();
+    await vi.waitFor(() => expect(streams.has(body.id)).toBe(true));
+    await new Promise<void>((r) => setImmediate(r));
+    body.send({ type: "text", text });
+    await vi.waitFor(() => expect(deliveries).toHaveLength(5));
+    await vi.waitFor(() => expect(body.of("reply.done")).toHaveLength(1));
+    await vi.waitFor(() => expect(body.audio).toBe(5));
+    const all = body.of("emotion");
+    const faces = all.slice(all.findIndex((e) => e.emotion === "thinking") + 1).map((e) => ({ emotion: e.emotion, intensity: e.intensity }));
+    return { k, deliveries, faces, moods: body.of("mood").filter((m) => m.valence > 0.2).length };
+  }
+
+  it("voix, geste et visage : 1 → 0.6 → 0.36 → neutre, puis plus rien", async () => {
+    const r = await play("apaise");
+    try {
+      expect(r.deliveries.map((d) => d.delivery?.emotion)).toEqual(["joy", "joy", "joy", undefined, undefined]);
+      expect(r.deliveries.map((d) => d.delivery?.intensity)).toEqual([undefined, expect.closeTo(0.6), expect.closeTo(0.36), undefined, undefined]);
+      expect(r.deliveries.map((d) => d.delivery?.intent)).toEqual(["playful", "playful", "playful", "neutral", "neutral"]);
+      // Une expression par phrase tant que l'émotion dure, puis un seul retour au neutre (la 5e phrase ne change rien).
+      expect(r.faces.slice(0, 4)).toEqual([
+        { emotion: "joy", intensity: undefined }, { emotion: "joy", intensity: expect.closeTo(0.6) },
+        { emotion: "joy", intensity: expect.closeTo(0.36) }, { emotion: "neutral", intensity: undefined },
+      ]);
+      expect(r.faces).toHaveLength(4);
+    } finally { await r.k.stopAll(); }
+  });
+  it("l'humeur ne bouge qu'une fois : l'apaisement ne la pousse pas", async () => {
+    const r = await play("apaise");
+    // Une seule poussée (la balise), pas une par phrase.
+    try { expect(r.moods).toBe(1); } finally { await r.k.stopAll(); }
+  });
+  it("une nouvelle étiquette au milieu repart à pleine force", async () => {
+    const r = await play("retag");
+    try {
+      expect(r.deliveries.map((d) => d.delivery?.emotion)).toEqual(["joy", "joy", "sorry", "sorry", undefined]);
+      expect(r.deliveries.map((d) => d.delivery?.intensity)).toEqual([undefined, expect.closeTo(0.6), 0.8, expect.closeTo(0.48), undefined]);
+      expect(r.deliveries.map((d) => d.delivery?.intent)).toEqual(["playful", "playful", "reassure", "reassure", "neutral"]);
+    } finally { await r.k.stopAll(); }
+  });
+});
+
 const urlTool: BodyToolDecl = { name: "ouvrir_url", description: "Ouvre une URL", inputSchema: { type: "object", properties: { url: { type: "string" } } }, level: "write" };
 
 describe("textes", () => {
@@ -478,6 +544,14 @@ describe("conversation (2 corps)", () => {
     chat.send({ type: "text", text: "raconte" });
     await vi.waitFor(() => expect(chat.of("reply.done")).toHaveLength(1));
     expect(avatar.of("emotion").find(e => e.emotion === "mischief")?.intensity).toBeCloseTo(1.25 * 0.45);
+  });
+
+  it("l'émotion Live annoncée par le modèle est un réglage expérimental, désactivé par défaut", async () => {
+    const s = () => k.settings.list().find((x) => x.key === "emotion_live")!;
+    expect(s()).toMatchObject({ type: "boolean", section: "voix", risk: "free", value: false });
+    expect(JSON.stringify(s().label)).toContain("xperiment"); // « expérimental » / « experimental »
+    expect((await k.settings.change("emotion_live", true, "ui")).ok).toBe(true);
+    expect(s().value).toBe(true);
   });
 
   it("une émotion au milieu de la réponse attend que sa phrase soit dite", async () => {

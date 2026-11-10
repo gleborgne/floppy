@@ -119,7 +119,7 @@ describe("fournisseurs Live : contrat WebSocket", () => {
       session.pushAudio(new Float32Array([0.5]));
       expect(ws.sent[1].realtimeInput.audio.mimeType).toBe("audio/pcm;rate=16000");
       ws.receive({ toolCall: { functionCalls: [{ id: "call", name: "agenda", args: {} }] } });
-      expect(events.at(-1)).toEqual({ type: "tool_call", id: "call", name: "agenda", args: {} });
+      expect(events.at(-1)).toEqual({ type: "tool_call", id: "call", name: "agenda", args: {}, generation: 0 });
       session.toolResult!("call", "agenda", { text: "rien", status: "done" });
       expect(ws.sent.at(-1).toolResponse.functionResponses[0].id).toBe("call");
       ws.receive({ serverContent: { outputTranscription: { text: "Bonjour." }, modelTurn: { parts: [{ inlineData: { mimeType: "audio/pcm;rate=24000", data: "AQA=" } }] } } });

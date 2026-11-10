@@ -12,14 +12,13 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { definePlugin } from "@floppy/core";
 import type { BrainEvent, BrainRunInput, BrainService, LlmService } from "@floppy/contracts";
 import { buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases, type PromptLang } from "./prompt.ts";
-import { EmotionTagFilter, type FilterOut } from "./emotion-filter.ts";
-import { optionalContext, prepareMemoryContext, memoryContextMessage, type ContextOperation } from "@floppy/contracts";
+import { EmotionTagFilter, optionalContext, prepareMemoryContext, memoryContextMessage, type ContextOperation, type FilterOut } from "@floppy/contracts";
 
 export {
   buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases,
   READ_PHRASES, READ_PHRASES_EN, WAIT_PHRASE, WAIT_PHRASE_EN, WAIT_PHRASES, WAIT_PHRASES_EN,
 } from "./prompt.ts";
-export { EmotionTagFilter } from "./emotion-filter.ts";
+export { EmotionTagFilter } from "@floppy/contracts";
 
 const Config = z.object({
   maxSteps: z.number().int().default(8),
@@ -330,6 +329,9 @@ export default definePlugin<Config>({
                       if (o.text) delegated += o.text;
                       say(o); // lu en direct (règle du noyau)
                     }
+                  } else if (ev.type === "emotion") {
+                    // Le délégué étiquette lui-même sa réponse (son texte est déjà sans étiquette) : l'émotion suit le visage.
+                    if (cfg.emotions) out.push(ev);
                   } else if (ev.type === "tool") out.push({ type: "tool", name: ev.name, args: ev.args });
                 }
                 for (const rest of dfilter.end()) { if (rest.text) delegated += rest.text; say(rest); }

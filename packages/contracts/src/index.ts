@@ -7,6 +7,8 @@ export * from "./memory-context.ts";
 export type * from "./vocabulary.ts";
 export type * from "./agents.ts";
 export type * from "./voice.ts";
+export { EMOTION_SHEET, emotionInfo, expressivenessFactor, type EmotionInfo, type GestureRole } from "./emotion-sheet.ts";
+export { EmotionTagFilter, filterEvents, emotionTagPrompt, PROMPT_EMOTIONS_EN, type FilterOut } from "./emotion-tags.ts";
 export { speechInstructions, speechStyle, liveDeliveryInstructions } from "./speech-delivery.ts";
 export type * from "./coder.ts";
 export type * from "./mcp.ts";

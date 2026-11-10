@@ -20,6 +20,8 @@ export const Config = z.object({
   error_reply: z.string().optional(),
   /** Silence du cerveau (aucun texte, outil ou émotion) au-delà duquel le tour échoue et Floppy le dit. */
   turn_idle_s: z.number().positive().default(300),
+  /** Expérimental : en Live, le modèle dit son émotion par un outil (moteurs à appels de fonctions). Désactivé par défaut. */
+  live_emotion_tool: z.boolean().default(false),
 });
 
 /** Phrases dites par défaut, par langue de l'assistant. */
@@ -41,7 +43,7 @@ export interface Turn {
   t0: number;
   marks: Record<string, number>;
   /** Émotions placées au milieu de la réponse : montrées quand leur phrase commence à être dite (id de phrase). */
-  cues: Map<string, { emotion: Emotion; intensity?: number }>;
+  cues: Map<string, { emotion: Emotion; intensity?: number; /** Simple apaisement de l'émotion précédente : ne pousse pas l'humeur. */ settling?: boolean }>;
   gestures?: Map<string, { intent: SpeechGesture; intensity: number }>;
   /** Phrases qui ouvrent un paragraphe : un silence est joué juste avant elles (id de phrase). */
   pauses?: Set<string>;

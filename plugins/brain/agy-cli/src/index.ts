@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, offerAgent, scopedAgentRun, createModelCatalog, discoverAgyModels } from "@floppy/agent-cli";
+import { agentEnv, offerAgent, scopedAgentRun, createModelCatalog, discoverAgyModels, ReplyTags, withEmotionTags } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `agy` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -30,6 +30,8 @@ const Config = z.object({
   ]),
   cwd: z.string().optional(),
   timeout_s: z.number().default(120),
+  /** Étiquettes d'émotion en tête de réponse (« [content] … ») : visage et voix, retirées du texte. Comme aisdk. */
+  emotions: z.boolean().default(true),
 });
 type Config = z.infer<typeof Config>;
 
@@ -98,7 +100,7 @@ export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: s
   const schemaRead = (p: unknown) => String(p ?? "").toLowerCase().startsWith(schemas.toLowerCase());
   // Le prompt suit les outils visibles : réécrit avant chaque lancement d'un processus.
   const spawnProc = (): Proc => {
-    prepare(home, cwd, mcp, settings, agentPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language));
+    prepare(home, cwd, mcp, settings, withEmotionTags(agentPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language), cfg.emotions, ctx.assistant.language));
     const p = ctx.spawn(exe, [...cfg.exeArgs,
       "--input-format", "stream-json", "--output-format", "stream-json", "--model", pick().id, "--agent", "floppy",
       "--settings", settings, "--disable-slash-commands",
@@ -145,6 +147,7 @@ export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: s
       const info: Record<string, unknown> = {};
       const seen = new Set<string>();
       let full = "", lastStep = -1;
+      const tags = new ReplyTags(cfg.emotions);
       try {
         for (;;) {
           const ev = await proc.q.next();
@@ -152,10 +155,12 @@ export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: s
           if (ev.event === "step_update") {
             const s = ev.step_update ?? {};
             if (s.text_delta && s.step_type === "agent_response") {
-              if (full && lastStep !== s.step_index) { full += " "; yield { type: "text", delta: " " } satisfies BrainEvent; }
+              if (full && lastStep !== s.step_index) {
+                yield* tags.newSegment(); // nouvelle étape : l'étiquette de tête peut revenir
+                full += " "; yield { type: "text", delta: " " } satisfies BrainEvent;
+              }
               lastStep = s.step_index;
-              full += s.text_delta;
-              yield { type: "text", delta: String(s.text_delta) };
+              for (const out of tags.push(String(s.text_delta))) { if (out.type === "text") full += out.delta; yield out; }
             } else if (s.tool_name && !seen.has(String(s.step_index))) {
               seen.add(String(s.step_index));
               const par = s.tool_info?.parameters ?? {};
@@ -175,6 +180,7 @@ export function makeAgyBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe: s
         kill();
         if (!spare && ctx.alive) spare = spawnProc();
       }
+      for (const out of tags.end()) { if (out.type === "text") full += out.delta; yield out; }
       yield { type: "done", text: full.trim(), info };
     },
     stop: async () => { clearTimeout(refresh); spare = undefined; await Promise.all([...live].map((x) => killTree(x.p))); },
@@ -225,7 +231,7 @@ export default definePlugin<Config>({
       id: "antigravity", label: "Antigravity", program: "agy", aliases: ["antigravity", "agy"],
       args: (prompt, model) => [...(model ? ["--model", model] : []), "-i", prompt],
     }, { exe: () => exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
-      makeAgyBrain(f, { ...cfg, cwd }, scope, exe!, () => input.model ? { id: input.model, label: input.model } : pickDelegate(), join(cwd, "profile"))) });
+      makeAgyBrain(f, { ...cfg, cwd, emotions: false }, scope, exe!, () => input.model ? { id: input.model, label: input.model } : pickDelegate(), join(cwd, "profile"))) });
     const brains = new Set<{ renew(): void }>();
     const name = T("Antigravity", "Antigravity");
     ctx.items.declare({

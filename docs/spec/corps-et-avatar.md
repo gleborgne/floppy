@@ -264,6 +264,8 @@ L'émotion est **pilotée par le noyau** et rendue par chaque corps à sa façon
 
 ```mermaid
 flowchart LR
+**Émotion dite par le modèle (expérimental, désactivé par défaut).** Un modèle Live qui parle ne peut pas écrire `[content]`. Pour un moteur à appels de fonctions (Gemini), la conversation ajoute aux outils de la session un outil propre au Live, `exprimer_emotion` (`emotion` parmi les douze noms stables, `intensite` : `legere`, `normale`, `forte`). Il n'est jamais dans le registre d'outils du noyau (les cerveaux du mode séparé ne le voient pas) ; `LiveConversation` y répond tout de suite, sans accord ni trace d'outil, et l'émotion est montrée comme celle des mots-clés : calée sur le prochain bloc audio accepté de la même génération, avec le même `timing`. Un appel d'une génération écartée, ou après une coupure, ne change pas le visage ; une émotion inconnue est ignorée. Tant que le modèle a annoncé une émotion pour une réponse, la devinette par mots-clés n'est pas appliquée à son visage (les gestes suivent l'émotion annoncée) ; une réponse sans appel garde le comportement d'avant. `LiveService.open` reçoit `silentTools` : Gemini déclare ces outils `NON_BLOCKING` et répond avec `scheduling: "SILENT"`, pour que l'appel ne suspende pas la parole et ne soit pas dit. Réglage `emotion_live` (voix, désactivé par défaut ; appliqué à la prochaine session Live). **Jamais essayé sur un vrai compte** : seules des réponses simulées sont testées. GPT Live (délégation) n'est pas concerné.
+
   B["Cerveau<br/>« [joie] Bonne nouvelle… »"] -- "étiquette retirée du texte" --> E["événement emotion"]
   CV["conversation<br/>réfléchit · outil refusé · erreur · accord · veille"] --> E
   E --> HUB["body-hub<br/>à tous les corps « emotion »"]
@@ -271,7 +273,7 @@ flowchart LR
   HUB --> RE["Reachy : gestes<br/>(nod, happy, look…)"]
 ```
 
-- **Le cerveau** commence sa réponse par une étiquette : `[content] C'est fait.` Le noyau la retire du texte (jamais lue à voix haute) et en fait un événement. Mesuré : aucune baisse de justesse sur le banc des 40 demandes.
+- **Le cerveau** commence sa réponse par une étiquette : `[content] C'est fait.` Le noyau la retire du texte (jamais lue à voix haute) et en fait un événement. Mesuré : aucune baisse de justesse sur le banc des 40 demandes. Tous les cerveaux texte le font : AI SDK, Claude Code, Codex et Antigravity (même filtre, voir [Le cerveau](cerveau.md)).
 - **Au milieu de la réponse**, il peut en remettre une quand son émotion change : `[content] C'est fait. [malicieux] Et j'ai rangé.` En voix, l'émotion attend que **sa phrase commence à être dite** (pas avant). Au milieu, seule une vraie émotion est retirée : `[1]` reste dans le texte.
 - **Intensité** : `[joie+]` forte (1.25), `[content-]` légère (0.45), aussi « très … », « un peu … » (`parseEmotionTag`). Sans intensité : 1. Une émotion légère donne un petit sourire ; sur Reachy, un geste plus discret.
 - **La conversation** ajoute les émotions de situation : `thinking` pendant la réflexion, `sorry` si un outil est refusé, `confused` s'il échoue, `curious` quand un accord est demandé, `focused` pendant une délégation, `sleepy` en veille, retour à `neutral` après quelques secondes.
@@ -284,6 +286,7 @@ flowchart LR
 
 ![Les 28 émotions de l'avatar](img/avatar-emotions.png)
 
+- **L'émotion s'apaise** (voix, mode séparé) : la phrase qui porte l'étiquette garde son intensité, chaque phrase suivante sans nouvelle étiquette prend celle d'avant × 0,6 (`settle.ts`) ; sous 0,3 l'émotion tombe (voix neutre, geste sans émotion) jusqu'à la prochaine étiquette. Avec une intensité de 1 : 1 → 0,6 → 0,36 → aucune. Le visage suit : une expression par phrase avec l'intensité apaisée, puis un `neutral` à la première phrase sans émotion. Ces expressions d'apaisement ne poussent pas l'humeur (seule l'étiquette le fait). Le mode Live ne change pas.
 ### Reachy Mini
 
 Le plugin `body-reachy` (implémenté, `plugins/body/reachy`) branche un Reachy Mini comme corps. Il est ajouté depuis

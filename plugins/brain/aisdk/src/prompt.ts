@@ -5,8 +5,7 @@
 // Ajouts du noyau : nom, langue, date et forme (voix / texte) venant de la config ; émotion ; mémoire.
 // Langue : le prompt existe en français (défaut, inchangé) et en anglais (même structure, mêmes règles),
 // choisi par la langue de l'assistant (ctx.assistant.language). Les noms d'outils restent ceux du registre.
-import { PROMPT_EMOTIONS_FR } from "@floppy/protocol";
-import type { MemorySnapshot, TurnMode } from "@floppy/contracts";
+import { emotionTagPrompt, type MemorySnapshot, type TurnMode } from "@floppy/contracts";
 
 /** Langue du prompt et des phrases dites : « en » pour l'anglais, sinon français. */
 export type PromptLang = "fr" | "en";
@@ -14,8 +13,7 @@ export function promptLang(lang: string | undefined): PromptLang {
   return lang === "en" ? "en" : "fr";
 }
 
-/** Étiquettes d'émotion données au cerveau en anglais : les noms stables du protocole (emotionFromWord les lit). */
-export const PROMPT_EMOTIONS_EN = ["happy", "joy", "laugh", "love", "proud", "sad", "sorry", "surprised", "confused", "mischief", "curious", "annoyed"];
+export { PROMPT_EMOTIONS_EN } from "@floppy/contracts";
 
 export const WAIT_PHRASE = "Je regarde ça, une seconde.";
 
@@ -149,8 +147,7 @@ ${paths}`;
 
 Ton : ${ton}. Le ton change seulement tes mots, jamais ce que tu fais (outils, accords).`;
   if (p.emotions) {
-    s += `\n\nCommence ta réponse par ton émotion entre crochets, parmi : ${PROMPT_EMOTIONS_FR.map((e) => `[${e}]`).join(" ")}. Exemple : « [content] C'est fait. »`;
-    s += `\nSi ton émotion change en cours de réponse, remets une étiquette à cet endroit : « [content] C'est fait. [malicieux] Et j'ai même rangé ton bureau. » Ajoute + pour une émotion forte ([joie+]) et - pour une émotion légère ([content-]). Pas plus d'une étiquette par phrase.`;
+    s += `\n\n${emotionTagPrompt("fr")}`;
   }
   const user = p.memory?.user.trim();
   const mem = p.memory?.memory.trim();
@@ -215,8 +212,7 @@ ${paths}`;
 
 Tone: ${ton}. The tone only changes your words, never what you do (tools, approvals).`;
   if (p.emotions) {
-    s += `\n\nStart your answer with your emotion in square brackets, among: ${PROMPT_EMOTIONS_EN.map((e) => `[${e}]`).join(" ")}. Example: "[happy] Done."`;
-    s += `\nIf your emotion changes during the answer, put a tag again at that point: "[happy] Done. [mischief] And I even tidied up your desk." Add + for a strong emotion ([joy+]) and - for a light one ([happy-]). No more than one tag per sentence.`;
+    s += `\n\n${emotionTagPrompt("en")}`;
   }
   const user = p.memory?.user.trim();
   const mem = p.memory?.memory.trim();

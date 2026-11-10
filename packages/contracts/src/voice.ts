@@ -125,7 +125,7 @@ export type LiveEvent =
   | { type: "output_transcript"; text: string; final: boolean; /** Même époque que les blocs audio, si connue du fournisseur. */ generation?: number }
   | { type: "interrupted"; generation: number }
   | { type: "generation_done" }
-  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown> }
+  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown>; /** Même époque que les blocs audio, si connue du fournisseur. */ generation?: number }
   | { type: "tool_cancelled"; ids: string[] }
   | { type: "delegation"; id: string; offsetMs: number }
   | { type: "error"; message: string; fatal?: boolean }
@@ -145,7 +145,14 @@ export interface LiveService {
   name: string;
   availability?(): Availability;
   capabilities: { tools: "function" | "delegation" };
-  open(opts: { body: string; instructions: string; tools: ToolInfo[]; signal: AbortSignal; on: (event: LiveEvent) => void }): Promise<LiveSession>;
+  open(opts: {
+    body: string; instructions: string; tools: ToolInfo[]; signal: AbortSignal; on: (event: LiveEvent) => void;
+    /**
+     * Noms d'outils qui sont de simples signaux (ex. l'émotion) : le fournisseur n'attend pas leur résultat pour parler
+     * et n'en fait pas dire un mot. Les fournisseurs qui ne savent pas le faire peuvent l'ignorer.
+     */
+    silentTools?: string[];
+  }): Promise<LiveSession>;
 }
 
 declare module "@floppy/core" {

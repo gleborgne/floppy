@@ -1,26 +1,7 @@
 import type { SpeechDelivery } from "./voice.ts";
+import { emotionInfo, expressivenessFactor } from "./emotion-sheet.ts";
 
-// Couleurs de jeu, pas des événements sonores : « laugh » ne déclenche pas un rire enregistré.
-const COLORS: Record<string, [string, string]> = {
-  happy: ["satisfait et souriant", "pleased and smiling"],
-  joy: ["joyeux et lumineux", "joyful and bright"],
-  excited: ["enthousiaste", "excited"],
-  proud: ["fier et satisfait", "proud and satisfied"],
-  surprised: ["surpris", "surprised"], shocked: ["étonné", "astonished"],
-  relieved: ["soulagé", "relieved"],
-  curious: ["curieux", "curious"],
-  confused: ["perplexe et hésitant", "puzzled and hesitant"],
-  skeptical: ["dubitatif", "skeptical"],
-  mischief: ["malicieux et complice", "mischievous and friendly"],
-  wink: ["complice", "playful"], laugh: ["amusé", "amused"],
-  love: ["tendre et chaleureux", "affectionate and warm"], shy: ["timide", "shy"],
-  thinking: ["réfléchi", "thoughtful"], focused: ["concentré et précis", "focused and clear"],
-  determined: ["déterminé", "determined"],
-  angry: ["ferme mais posé", "firm but composed"], annoyed: ["ferme mais patient", "firm but patient"],
-  sad: ["doux et empathique", "gentle and empathetic"], sorry: ["doux et empathique", "gentle and empathetic"],
-  cry: ["doux et empathique", "gentle and empathetic"], scared: ["calme et rassurant", "calm and reassuring"],
-  sleepy: ["doux et détendu", "soft and relaxed"], tired: ["posé", "calm"], bored: ["sobre", "understated"],
-};
+
 
 /** Description courte pour les adaptateurs à balises ou à consignes. Aucune syntaxe fournisseur. */
 export function speechStyle(d: SpeechDelivery, language: "fr" | "en" = d.language): string {
@@ -28,8 +9,8 @@ export function speechStyle(d: SpeechDelivery, language: "fr" | "en" = d.languag
   if (d.intent === "reassure") return fr ? "doux et rassurant" : "soft tone";
   const intensity = Number.isFinite(d.intensity) ? Math.max(0, Math.min(1.5, d.intensity!)) : 1;
   if (intensity === 0) return "";
-  const level = intensity * (d.profile === "discreet" ? 0.45 : d.profile === "natural" ? 0.8 : 1);
-  const color = d.emotion && Object.hasOwn(COLORS, d.emotion) ? COLORS[d.emotion] : undefined;
+  const level = intensity * expressivenessFactor(d.profile);
+  const color = emotionInfo(d.emotion)?.voice;
   if (color) return `${level < 0.5 ? (fr ? "légèrement " : "slightly ") : level > 1.1 ? (fr ? "très " : "very ") : ""}${color[fr ? 0 : 1]}`;
   if (d.intent === "playful") return level < 0.5 ? (fr ? "légèrement amusé" : "slightly amused")
     : d.profile === "playful" ? (fr ? "chaleureux et joueur" : "warm and playful") : (fr ? "chaleureux et amical" : "warm and friendly");

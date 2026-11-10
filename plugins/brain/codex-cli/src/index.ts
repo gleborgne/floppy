@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@floppy/core";
 import type { BrainEvent, BrainService, McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun, createModelCatalog, discoverCodexModels, CliConversation } from "@floppy/agent-cli";
+import { agentEnv, codexMcpOverrides, userCodexMcpNames, offerAgent, scopedAgentRun, createModelCatalog, discoverCodexModels, CliConversation, ReplyTags, withEmotionTags } from "@floppy/agent-cli";
 const Config = z.object({
   /** Programme `codex` (défaut : cherché dans le PATH). */
   exe: z.string().optional(),
@@ -31,6 +31,8 @@ const Config = z.object({
   effort: z.string().optional(),
   cwd: z.string().optional(),
   timeout_s: z.number().default(120),
+  /** Étiquettes d'émotion en tête de réponse (« [content] … ») : visage et voix, retirées du texte. Comme aisdk. */
+  emotions: z.boolean().default(true),
   /** Lire ~/.codex/config.toml pour couper les serveurs MCP de l'utilisateur (tests : false). */
   userMcp: z.boolean().default(true),
 });
@@ -161,13 +163,14 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
       input.signal?.addEventListener("abort", interrupt, { once: true });
       const timer = setTimeout(() => { info.error = "délai dépassé"; interrupt(); listener({ method: "floppy/exit", params: { why: "délai dépassé" } }); }, cfg.timeout_s * 1000);
       let full = "", lastItem: string | undefined;
+      const tags = new ReplyTags(cfg.emotions);
       try {
         await boot();
         let thread = threads.get(input.session);
         if (!thread) {
           const r = await request("thread/start", {
             model: pick().id, cwd, approvalPolicy: "never", sandbox: "read-only", ephemeral: true, approvalsReviewer: "user",
-            baseInstructions: agentPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language),
+            baseInstructions: withEmotionTags(agentPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language), cfg.emotions, ctx.assistant.language),
           });
           thread = { id: String(r.thread.id), conversation: new CliConversation() };
           threads.set(input.session, thread);
@@ -185,11 +188,12 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
           if (n.method === "floppy/exit") { info.error ??= pr.why; break; }
           if (pr.threadId && pr.threadId !== threadId) continue;
           if (n.method === "item/agentMessage/delta") {
-            if (full && lastItem !== pr.itemId) { full += " "; yield { type: "text", delta: " " } satisfies BrainEvent; }
+            if (full && lastItem !== pr.itemId) {
+              yield* tags.newSegment(); // nouveau message : l'étiquette de tête peut revenir
+              full += " "; yield { type: "text", delta: " " } satisfies BrainEvent;
+            }
             lastItem = pr.itemId;
-            const d = String(pr.delta ?? "");
-            full += d;
-            yield { type: "text", delta: d };
+            for (const out of tags.push(String(pr.delta ?? ""))) { if (out.type === "text") full += out.delta; yield out; }
           } else if (n.method === "item/started" && pr.item?.type === "mcpToolCall") {
             yield { type: "tool", name: String(pr.item.tool), args: pr.item.arguments };
           } else if (n.method === "item/started" && ["commandExecution", "fileChange", "webSearch"].includes(pr.item?.type)) {
@@ -212,6 +216,7 @@ export function makeCodexBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, exe:
         listeners.delete(listener);
         input.signal?.removeEventListener("abort", interrupt);
       }
+      for (const out of tags.end()) { if (out.type === "text") full += out.delta; yield out; }
       yield { type: "done", text: full.trim(), info };
     },
     stop: async () => {
@@ -266,7 +271,7 @@ export default definePlugin<Config>({
       id: "codex", label: "Codex", program: "codex", aliases: ["codex"],
       args: (prompt, model) => [...(model ? ["-m", model] : []), prompt],
     }, { exe: () => exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
-      makeCodexBrain(f, { ...cfg, cwd }, scope, exe!, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
+      makeCodexBrain(f, { ...cfg, cwd, emotions: false }, scope, exe!, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
     const brains = new Set<{ renew(): void }>();
     const name = T("Codex", "Codex");
     ctx.items.declare({

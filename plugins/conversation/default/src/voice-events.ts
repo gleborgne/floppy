@@ -18,7 +18,7 @@ export interface VoiceDeps {
   freeListen(): number;
   bodies: Map<string, Body>;
   setState(b: Body, state: BodyState): void;
-  setEmotion(emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }): void;
+  setEmotion(emotion: Emotion | string, ms?: number, intensity?: number, timing?: { body: string; id: string }, opts?: { mood?: boolean }): void;
   cue(c: Cue): void;
   maybeFinish(b: Body, t: Turn): void;
   mayEcho(b: Body): boolean;
@@ -164,7 +164,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
               if (!b.playing || b.state !== "speaking") { setState(b, "speaking"); b.stream?.setSpeaking(true); }
               b.playing = true;
               if (t.pauses?.delete(ev.id)) hub.sendAudio(b.id, silenceLike(ev.data, PARAGRAPH_PAUSE_MS));
-              if (c) { t.cues.delete(ev.id); setEmotion(c.emotion, undefined, c.intensity, { body: b.id, id: ev.id }); }
+              if (c) { t.cues.delete(ev.id); setEmotion(c.emotion, undefined, c.intensity, { body: b.id, id: ev.id }, c.settling ? { mood: false } : undefined); }
               const gesture = t.gestures?.get(ev.id);
               if (gesture) {
                 t.gestures!.delete(ev.id);

@@ -13,7 +13,7 @@ import { agentPrompt, definePlugin, findExe, killTree, type Context } from "@flo
 import type { BrainEvent, BrainService, CompletionService } from "@floppy/contracts";
 import type { McpEndpoint } from "@floppy/contracts";
 
-import { agentEnv, parseModelJson, offerAgent, scopedAgentRun, createModelCatalog, discoverClaudeModels, CliConversation } from "@floppy/agent-cli";
+import { agentEnv, parseModelJson, offerAgent, scopedAgentRun, createModelCatalog, discoverClaudeModels, CliConversation, ReplyTags, withEmotionTags } from "@floppy/agent-cli";
 const Config = z.object({
   exe: z.string().default(() => process.env.CLAUDE_EXE ?? findExe("claude") ?? "claude"),
   /** Arguments ajoutés avant les autres (pour les tests : un script devant un faux CLI). */
@@ -26,6 +26,8 @@ const Config = z.object({
   as: z.array(z.enum(["delegate", "brain"])).default(["delegate"]),
   cwd: z.string().optional(),
   timeout_s: z.number().default(120),
+  /** Étiquettes d'émotion en tête de réponse (« [content] … ») : visage et voix, retirées du texte. Comme aisdk. */
+  emotions: z.boolean().default(true),
   /**
    * Modèles proposés : chacun est un élément qu'on choisit comme cerveau principal, délégué ou pour les appels
    * ponctuels (tri, résumé). `id` = nom du modèle pour le CLI (alias « opus », « sonnet », « haiku » ou nom complet).
@@ -154,7 +156,7 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
     "--setting-sources", "project",                  // pas de réglages utilisateur (hooks, plugins…)
     "--disable-slash-commands",
     "--no-session-persistence",
-    "--system-prompt", cliPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language),
+    "--system-prompt", withEmotionTags(cliPrompt(ctx.assistant.name, ctx.tools.list(), ctx.assistant.language), cfg.emotions, ctx.assistant.language),
   ];
   let spare: Proc | undefined;
   const live = new Set<Proc>();
@@ -223,6 +225,7 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
       const clearTimer = ctx.effect(() => { clearTimeout(timer); });
       const text = proc.conversation.prepare(input, ctx.assistant.language);
       let lastWasText = false, sawText = false, full = "";
+      const tags = new ReplyTags(cfg.emotions);
       let completed = false;
       const info: Record<string, unknown> = {};
       try {
@@ -244,10 +247,11 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
               if (sawText && !lastWasText) yield { type: "text", delta: " " } satisfies BrainEvent;
               lastWasText = true;
             } else if (e?.type === "content_block_delta" && e.delta?.type === "text_delta" && e.delta.text) {
-              sawText = true; lastWasText = true; full += e.delta.text;
-              yield { type: "text", delta: e.delta.text };
+              sawText = true; lastWasText = true;
+              for (const out of tags.push(e.delta.text)) { if (out.type === "text") full += out.delta; yield out; }
             } else if (e?.type === "content_block_start" && e.content_block?.type === "tool_use") {
               lastWasText = false;
+              yield* tags.newSegment(); // après un outil, l'étiquette de tête peut revenir
             }
           } else if (ev.type === "assistant") {
             for (const c of ev.message?.content ?? []) if (c.type === "tool_use") { tools++; yield { type: "tool", name: String(c.name).replace(/^mcp__floppy__/, ""), args: c.input }; }
@@ -266,6 +270,7 @@ function makeBrain(ctx: Context, cfg: Config, mcp: McpEndpoint, pick: Pick = () 
         if (timedOut) info.timeout = true;
         ctx.audit.write({ kind: "brain.cli", cli: "claude", model: pick().id, ms: Date.now() - t0, chars: full.length, tools, aborted: !!input.signal?.aborted, ...info });
       }
+      for (const out of tags.end()) { if (out.type === "text") full += out.delta; yield out; }
       yield { type: "done", text: full.trim(), info };
     },
     stop: async () => {
@@ -323,7 +328,7 @@ export default definePlugin<Config>({
       id: "claude", label: "Claude Code", program: "claude", aliases: ["claude", "claude code"],
       args: (prompt, model) => [...(model ? ["--model", model] : []), prompt],
     }, { exe: () => cfg.exe, enabled: () => store.isEnabled(itemId), run: (f) => scopedAgentRun(f, mcp, (scope, cwd, input) =>
-      makeBrain(f, { ...cfg, cwd }, scope, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
+      makeBrain(f, { ...cfg, cwd, emotions: false }, scope, () => input.model ? { id: input.model, label: input.model } : pickDelegate())) });
     const brains = new Set<{ renew(): void }>();
     const options = catalog.options;
     const fields = [

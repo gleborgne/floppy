@@ -2,19 +2,11 @@
 // - Chaque émotion montrée la pousse un peu (une bonne nouvelle rend joyeux, des échecs rendent penaud).
 // - Elle revient doucement vers le caractère de base (plutôt content, assez en forme).
 // - Seul longtemps, Floppy perd de l'énergie : il s'ennuie, puis il a sommeil.
-import type { Emotion, Mood } from "@floppy/protocol";
+import { EMOTIONS, type Emotion, type Mood } from "@floppy/protocol";
+import { EMOTION_SHEET, emotionInfo } from "@floppy/contracts";
 
-/** Effet d'une émotion sur l'humeur : [valence visée, énergie visée]. */
-export const AFFECT: Record<Emotion, [number, number]> = {
-  neutral: [0, 0.5],
-  happy: [0.6, 0.6], joy: [0.85, 0.8], laugh: [0.9, 0.9], love: [0.9, 0.6], excited: [0.75, 1], proud: [0.7, 0.75],
-  relieved: [0.45, 0.4], determined: [0.3, 0.85], mischief: [0.5, 0.75], wink: [0.5, 0.65], curious: [0.25, 0.7],
-  surprised: [0.1, 0.85], shocked: [-0.2, 0.95], thinking: [0, 0.55], focused: [0.05, 0.65], shy: [0.3, 0.4],
-  confused: [-0.25, 0.5], skeptical: [-0.2, 0.5], sorry: [-0.45, 0.35], sad: [-0.7, 0.25], cry: [-0.85, 0.35],
-  annoyed: [-0.45, 0.6], angry: [-0.7, 0.85], scared: [-0.55, 0.9], bored: [-0.15, 0.15], tired: [-0.1, 0.12], sleepy: [0, 0.05],
-};
-/** Émotions de situation (la conversation les met elle-même) : elles ne changent pas l'humeur. */
-const NO_EFFECT = new Set<Emotion>(["neutral", "thinking", "focused", "sleepy"]);
+/** Effet d'une émotion sur l'humeur : [valence visée, énergie visée]. Lu dans la fiche des émotions (`@floppy/contracts`). */
+export const AFFECT = Object.fromEntries(EMOTIONS.map((e) => [e, EMOTION_SHEET[e].affect])) as Record<Emotion, [number, number]>;
 
 export interface MoodOptions {
   /** Caractère de base, vers lequel l'humeur revient. */
@@ -45,7 +37,8 @@ export class MoodTracker {
   /** Une émotion vient d'être montrée. intensity : 1 normale. */
   feel(emotion: Emotion, intensity = 1): void {
     this.tick();
-    if (NO_EFFECT.has(emotion)) return;
+    const info = emotionInfo(emotion);
+    if (info && !info.moves) return; // émotion de situation : l'humeur ne bouge pas
     const [v, e] = AFFECT[emotion] ?? [0, 0.5];
     const w = clamp(0.22 * intensity, 0.05, 0.4);
     this.valence = clamp(this.valence + (v - this.valence) * w, -1, 1);

@@ -3,8 +3,9 @@ import { Kernel, definePlugin, AudioHistory, type Context } from "@floppy/core";
 import type { BodyHub, LiveService, LiveSession, LiveEvent, BrainRunInput, MemoryService, VocabularyService } from "@floppy/contracts";
 import type { KernelToBody } from "@floppy/protocol";
 import { LiveConversation, liveInstructions } from "../src/live.ts";
+import { EMOTION_TOOL } from "../src/emotion-tool.ts";
 
-async function fixture(kind: "function" | "delegation" = "function", timed = false, optional?: { memory: MemoryService; vocabulary?: VocabularyService }, managesMemory = false) {
+async function fixture(kind: "function" | "delegation" = "function", timed = false, optional?: { memory: MemoryService; vocabulary?: VocabularyService }, managesMemory = false, emotionTool = false) {
   let ctx!: Context;
   let events!: (e: LiveEvent) => void;
   const sent: KernelToBody[] = [], audio: Uint8Array[] = [], replay: number[] = [];
@@ -24,12 +25,13 @@ async function fixture(kind: "function" | "delegation" = "function", timed = fal
   const history = new AudioHistory(); history.push(new Float32Array([10, 11, 12, 13, 14]));
   const run = vi.fn(async function* (_input: BrainRunInput) { yield { type: "text" as const, delta: "Résultat confirmé." }; });
   const input = vi.fn();
+  const modelEmotion = vi.fn((_e: { emotion: string; intensity?: number }, _timing: { body: string; id: string }): void => {});
   const reply = vi.fn((_text: string, _timing: { body: string; id: string }): string | undefined => undefined);
   let profile: "playful" | "discreet" = "playful";
   const states: string[] = [];
   const live = new LiveConversation({ ctx, body: "avatar", service, brain: { name: "fake", managesMemory, reset: () => {}, run }, history,
-    tone: () => "sobre", profile: () => profile, freeListen: () => 1, onInput: input, onReply: reply, onState: (s) => states.push(s), onPlaying: () => {} });
-  return { k, service, session, live, audio, sent, history, run, input, reply, order, replay, states, bind, unbind, setProfile: (p: typeof profile) => { profile = p; live.updateTone(); }, emit: (e: LiveEvent) => events(e) };
+    tone: () => "sobre", profile: () => profile, freeListen: () => 1, onInput: input, onReply: reply, emotionTool: () => emotionTool, onModelEmotion: modelEmotion, onState: (s) => states.push(s), onPlaying: () => {} });
+  return { ctx, modelEmotion, k, service, session, live, audio, sent, history, run, input, reply, order, replay, states, bind, unbind, setProfile: (p: typeof profile) => { profile = p; live.updateTone(); }, emit: (e: LiveEvent) => events(e) };
 }
 
 describe("conversation Live", () => {
@@ -444,6 +446,121 @@ describe("conversation Live", () => {
       f.emit({ type: "delegation", id: "task-1", offsetMs: 250 });
       await vi.waitFor(() => expect(f.session.append).toHaveBeenCalledWith("say", "Résultat confirmé.", "task-1"));
       expect(f.run).toHaveBeenCalledWith(expect.objectContaining({ text: "Ouvre le site.", origin: "avatar", mode: "voice" }));
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+});
+
+describe("Live : émotion dite par le modèle (outil)", () => {
+  type F = Awaited<ReturnType<typeof fixture>>;
+  const openedWith = (f: F) => (f.service.open as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0] as { tools: { name: string; inputSchema: { properties: { emotion: { enum: string[] } } } }[]; silentTools?: string[]; instructions: string };
+  const call = (f: F, args: Record<string, unknown>, generation?: number, id = "e1") =>
+    f.emit({ type: "tool_call", id, name: EMOTION_TOOL, args, ...(generation === undefined ? {} : { generation }) });
+  const audio = (f: F, generation = 0) => f.emit({ type: "audio", generation, rate: 24000, pcm: new Int16Array(2400) });
+
+  it("l'outil n'est ouvert que pour un moteur à fonctions, réglage actif, et jamais dans le registre du noyau", async () => {
+    const on = await fixture("function", true, undefined, false, true);
+    const off = await fixture("function", true);
+    const delegation = await fixture("delegation", true, undefined, false, true);
+    try {
+      for (const f of [on, off, delegation]) await f.live.start(0, 5);
+      const o = openedWith(on);
+      expect(o.tools.map((t) => t.name)).toContain(EMOTION_TOOL);
+      expect(o.tools.find((t) => t.name === EMOTION_TOOL)!.inputSchema.properties.emotion.enum).toHaveLength(12);
+      expect(o.silentTools).toEqual([EMOTION_TOOL]);
+      expect(openedWith(off).tools.map((t) => t.name)).not.toContain(EMOTION_TOOL);
+      expect(openedWith(off).silentTools).toBeUndefined();
+      expect(delegation.service.open).toHaveBeenCalledOnce();
+      for (const call of (delegation.service.open as ReturnType<typeof vi.fn>).mock.calls) {
+        expect((call[0] as { tools: { name: string }[] }).tools.map((t) => t.name)).not.toContain(EMOTION_TOOL);
+        expect((call[0] as { silentTools?: string[] }).silentTools).toBeUndefined();
+      }
+      expect(on.ctx.tools.list().map((t) => t.name)).not.toContain(EMOTION_TOOL);
+    } finally { for (const f of [on, off, delegation]) { await f.live.stop("test"); await f.k.stopAll(); } }
+  });
+  it("les consignes parlent de l'outil seulement s'il est actif, en français et en anglais", () => {
+    const base = { name: "Floppy", tone: "sobre", recent: [] };
+    expect(liveInstructions({ ...base, language: "fr", emotionTool: true })).toContain(`appelle discrètement l'outil ${EMOTION_TOOL}`);
+    expect(liveInstructions({ ...base, language: "en", emotionTool: true })).toContain(`call the ${EMOTION_TOOL} tool silently`);
+    expect(liveInstructions({ ...base, language: "fr" })).not.toContain(EMOTION_TOOL);
+    expect(liveInstructions({ ...base, language: "en" })).not.toContain(EMOTION_TOOL);
+    expect(liveInstructions({ ...base, language: "fr" })).toContain("N'énonce pas de balises d'émotion");
+  });
+  it("un appel répond tout de suite, sans accord ni outil du noyau, et l'émotion attend le prochain bloc audio calé sur le son", async () => {
+    const f = await fixture("function", true, undefined, false, true);
+    const run = vi.spyOn(f.ctx.tools, "call");
+    try {
+      await f.live.start(0, 5);
+      call(f, { emotion: "joy", intensite: "forte" }, 0);
+      expect(f.session.toolResult).toHaveBeenCalledWith("e1", EMOTION_TOOL, { status: "done", text: "ok" });
+      expect(run).not.toHaveBeenCalled();
+      expect(f.modelEmotion).not.toHaveBeenCalled(); // pas de bloc audio encore : rien ne bouge
+      audio(f, 0);
+      expect(f.modelEmotion).toHaveBeenCalledWith(expect.objectContaining({ emotion: "joy", intensity: 1.25 }), { body: "avatar", id: expect.any(String) });
+      expect(f.audio).toHaveLength(1); // le son n'est jamais retardé
+      audio(f, 0);
+      expect(f.modelEmotion).toHaveBeenCalledOnce(); // une fois par appel
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("intensité : légère, normale (rien), forte", async () => {
+    const f = await fixture("function", true, undefined, false, true);
+    try {
+      await f.live.start(0, 5);
+      const seen: (number | undefined)[] = [];
+      let generation = 0;
+      for (const level of ["legere", "normale", undefined, "forte"] as const) {
+        call(f, { emotion: "happy", ...(level ? { intensite: level } : {}) }, generation, `i${generation}`);
+        audio(f, generation);
+        seen.push(f.modelEmotion.mock.calls.at(-1)![0].intensity);
+        f.emit({ type: "generation_done" });
+        generation++;
+      }
+      expect(seen).toEqual([0.45, undefined, undefined, 1.25]);
+      expect(f.modelEmotion).toHaveBeenCalledTimes(4);
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("une émotion inconnue est ignorée, mais l'appel reste répondu", async () => {
+    const f = await fixture("function", true, undefined, false, true);
+    try {
+      await f.live.start(0, 5);
+      call(f, { emotion: "fureur-cosmique" }, 0);
+      expect(f.session.toolResult).toHaveBeenCalledOnce();
+      audio(f, 0);
+      expect(f.modelEmotion).not.toHaveBeenCalled();
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("un appel d'une ancienne génération ou après une interruption ne change pas le visage", async () => {
+    const f = await fixture("function", true, undefined, false, true);
+    try {
+      await f.live.start(0, 5);
+      audio(f, 3);
+      call(f, { emotion: "sad" }, 2, "old");
+      audio(f, 3);
+      expect(f.modelEmotion).not.toHaveBeenCalled();
+      call(f, { emotion: "sad" }, 3, "cut");
+      f.emit({ type: "interrupted", generation: 4 }); // l'interruption efface l'émotion annoncée avant elle
+      audio(f, 4);
+      expect(f.modelEmotion).not.toHaveBeenCalled();
+      call(f, { emotion: "sad" }, 3, "late"); // en retard, de l'époque coupée
+      audio(f, 4);
+      expect(f.modelEmotion).not.toHaveBeenCalled();
+      expect(f.session.toolResult).toHaveBeenCalledTimes(3); // chacun a été répondu
+    } finally { await f.live.stop("test"); await f.k.stopAll(); }
+  });
+  it("l'émotion du modèle remplace la devinette par mots-clés pour cette réponse (gestes inclus), pas pour la suivante", async () => {
+    const f = await fixture("function", true, undefined, false, true);
+    try {
+      await f.live.start(0, 5);
+      call(f, { emotion: "curious" }, 0);
+      f.emit({ type: "output_transcript", generation: 0, text: "Bravo, c'est fait.", final: false });
+      audio(f, 0);
+      expect(f.reply).not.toHaveBeenCalled(); // pas de devinette
+      expect(f.modelEmotion).toHaveBeenCalledOnce();
+      expect(f.sent).toContainEqual({ type: "speech.gesture", intent: "question", intensity: 1, nextAudio: expect.any(String) }); // le geste suit « curious »
+      f.emit({ type: "generation_done" });
+      f.emit({ type: "output_transcript", generation: 1, text: "Parce que la lumière traverse.", final: false });
+      audio(f, 1);
+      expect(f.reply).toHaveBeenCalledOnce(); // réponse sans appel : comportement d'avant
+      expect(f.modelEmotion).toHaveBeenCalledOnce();
     } finally { await f.live.stop("test"); await f.k.stopAll(); }
   });
 });
