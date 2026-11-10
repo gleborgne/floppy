@@ -51,6 +51,7 @@
 - **Pas d'exécution de code** écrit par le modèle sans accord. `python`, `pip`, `powershell` ne sont jamais « sûrs » par défaut.
 - Les **secrets** (clés API, jetons des serveurs MCP) vont dans le Gestionnaire d'identification Windows (ou DPAPI), jamais en clair dans la config. Chaque serveur MCP reçoit seulement ses propres secrets.
 - Le coffre est **cloisonné par plugin** (`scopedSecrets`, `packages/core/src/secrets.ts`) : un plugin ne lit, n'écrit et ne supprime que les noms qui commencent par `<id du manifeste>/` (exemples : `m365/…`, `llm-openai/…`). Un autre nom, ou un `..`, lève une erreur.
+- **Presse-papiers** : l'outil `read_clipboard` (niveau `read`, offert par l'app de bureau, absent en ligne de commande) demande un accord à chaque lecture tant que le réglage `clipboard.automatic` (« Lire le presse-papiers sans demander ») est désactivé, car le presse-papiers peut contenir un secret. Le noyau envoie `clipboard.read` (`reqId`) à l'app, qui répond `clipboard.read.result` (`text` borné à 20 000 caractères, `length` réelle). Le texte rendu au modèle est borné à 8000 caractères et présenté comme une donnée, jamais une consigne. Le contenu n'est jamais écrit dans les logs ni dans le journal d'audit.
 - **Journal d'audit** en ajout seul : chaque outil appelé, ses paramètres, l'accord, le résultat.
 - **Résultat d'outil** : `done`, `unverified` ou `failed`. L'assistant n'annonce jamais un succès non vérifié comme sûr.
 - **Limite de dépenses** pour les fournisseurs cloud.

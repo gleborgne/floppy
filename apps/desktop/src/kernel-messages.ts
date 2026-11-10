@@ -111,6 +111,16 @@ export function createKernelMessages(deps: KernelMessagesDeps): KernelMessages {
         },
       );
     }
+    else if (m?.type === "clipboard.read") {
+      // Lecture du texte du presse-papiers pour l'outil `read_clipboard` : le contenu n'est jamais journalisé ici.
+      // Borné à 20 000 caractères (le plugin garde moins) ; `length` dit la taille réelle.
+      // `readText` rend une promesse dans cette version d'Electron : on attend sans présumer.
+      void (async () => {
+        let text = "";
+        try { text = String(await clipboard.readText()); } catch { /* presse-papiers illisible : traité comme vide */ }
+        kernel()?.postMessage({ type: "clipboard.read.result", reqId: m.reqId, ok: true, text: text.slice(0, 20_000), length: text.length });
+      })();
+    }
     else if (m?.type === "settings") { deps.windows().setLang(m.lang); lastSettings = { list: m.list, sections: m.sections ?? [], plugins: m.plugins, slots: m.slots ?? [], lang: texts.lang() }; settingsWin()?.webContents.send("settings:update", lastSettings); }
     else if (m?.type === "items") { deps.windows().setLang(m.lang); lastItems = { providers: m.providers, lang: texts.lang() }; sendItems(); }
     else if (m?.type === "items.result") {

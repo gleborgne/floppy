@@ -46,17 +46,18 @@ function desktop(argv: string[] = []) {
   const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
   const screen = { getPrimaryDisplay: () => ({ workArea }), getDisplayMatching: () => ({ workArea }) };
   const shell = { openExternal: vi.fn(async () => {}) };
+  const clipboard = { readText: vi.fn(() => ''), writeText: vi.fn() };
   Object.assign(app, { isReady: () => true });
   const shortcut = { unregisterAll() {}, register: vi.fn(() => true), unregister: vi.fn() };
   const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(),setInterval:vi.fn(()=>1),clearInterval:vi.fn(), utilityProcess:{fork}, console, BrowserWindow, MessageChannelMain, screen,
     // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
-    ...texts, ...trayIcon, ...placement, ...chatLog, ...markdown, ...ui, createDesktopContributions, structuredClone, URL, shell, safeWindow:vi.fn(() => chatWindow), bringToFront: vi.fn() };
+    ...texts, ...trayIcon, ...placement, ...chatLog, ...markdown, ...ui, createDesktopContributions, structuredClone, URL, shell, clipboard, safeWindow:vi.fn(() => chatWindow), bringToFront: vi.fn() };
   const popup = vi.fn();
   const menu = { buildFromTemplate: vi.fn(() => ({ popup })) };
   context.Menu = menu;
   context.globalShortcut = shortcut;
   runInNewContext(source+';globalThis.api={contributions,openAvatarMenu:()=>avatar.openAvatarMenu(),applyDisplay:(s)=>avatar.applyDisplay(s),startKernel:()=>kernelProcess.start(),restartDelay,setLang:(l)=>windows.setLang(l),chat,applyShortcuts:(s)=>voice.applyShortcuts(s),cleanDocList,problems:()=>tray.problems,createWindow:()=>avatar.createWindow(),pending:()=>kernelProcess.pending};',context);
-  return { api:context.api,menu,popup,events,get child(){ return forked.at(-1)!; },forked,app,chatWindow,avatarWindow,avatarBounds,shell,workArea,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
+  return { api:context.api,menu,popup,events,get child(){ return forked.at(-1)!; },forked,app,clipboard,chatWindow,avatarWindow,avatarBounds,shell,workArea,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
 
 it("garde une seule entrée Réglages au boot, sans corps et après panne", () => {
@@ -71,6 +72,16 @@ it("garde une seule entrée Réglages au boot, sans corps et après panne", () =
   d.child.emit('message', { type: 'plugin.state', id: 'bodyel', state: 'error' });
   expect(settings()).toHaveLength(1); expect(d.api.contributions.menu('avatar')).toHaveLength(1);
   d.child.emit('exit', 1); expect(settings()).toHaveLength(1);
+});
+
+it("`clipboard.read` du noyau : le texte du presse-papiers revient borné avec sa vraie longueur, vide si illisible", async () => {
+  const d = desktop(); d.api.startKernel();
+  d.clipboard.readText.mockResolvedValue('x'.repeat(25_000));
+  d.child.emit('message', { type: 'clipboard.read', reqId: 'r1' });
+  await vi.waitFor(() => expect(d.child.postMessage).toHaveBeenCalledWith({ type: 'clipboard.read.result', reqId: 'r1', ok: true, text: 'x'.repeat(20_000), length: 25_000 }));
+  d.clipboard.readText.mockRejectedValue(new Error('indisponible'));
+  d.child.emit('message', { type: 'clipboard.read', reqId: 'r2' });
+  await vi.waitFor(() => expect(d.child.postMessage).toHaveBeenLastCalledWith({ type: 'clipboard.read.result', reqId: 'r2', ok: true, text: '', length: 0 }));
 });
 
 it("le menu de l'avatar propose d'ouvrir la conversation, puis les contributions actives", () => {
