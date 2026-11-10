@@ -38,15 +38,9 @@ Un plugin canal **offre** `notify` élément par élément (une destination = un
 
 Les jetons et mots de passe vont dans le coffre de Windows, jamais dans un fichier.
 
-## Suite prévue : discuter avec Floppy sur Telegram
+## Discuter avec Floppy sur Telegram
 
-L'utilisateur veut, à terme, parler à Floppy sur Telegram. Ce sera un **corps** (`plugins/body/telegram`, capacités `text`, `voice_note`, `document`), pas un canal `notify` : un canal envoie seulement, un corps reçoit aussi. Points à respecter dès la conception :
-
-- **Liste blanche** : seuls les numéros d'utilisateur Telegram autorisés (réglés à la main, jamais à la voix) peuvent parler à Floppy. Tout autre message est ignoré et noté dans le journal. Discussions privées seulement (pas de groupes, `/setjoingroups` sur Disable).
-- **Accords** : une demande d'accord (écriture, envoi) arrive sur Telegram avec des boutons Oui / Non (`approval`), liés au corps d'origine.
-- **Un seul bot ou deux ?** Le même jeton peut servir au canal (notify) et au corps. Mais un seul programme peut lire les messages d'un bot (`getUpdates`) : le corps prendra la lecture, et l'action « Trouver l'id » du canal devra passer par lui. Plus simple et plus sûr : un bot pour la conversation, un autre pour le canal de veille.
-- Le jeton devient plus sensible (il permet de lire la conversation) : même coffre, même `/revoke` en cas de fuite.
-- `show()` des documents enverra déjà le Markdown aux corps `text` : un document demandé depuis Telegram y arrivera directement.
+C'est fait par un **corps** à part, `body-telegram` (un canal envoie seulement, un corps reçoit aussi) : voir [Parler à Floppy sur Telegram](telegram.md). Prends un bot pour la conversation et un autre pour ce canal : un seul programme peut lire les messages d'un bot.
 
 ## Sécurité
 

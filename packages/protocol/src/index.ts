@@ -145,10 +145,11 @@ export type KernelToBody =
   | { type: "interrupt" }
   /** Voix baissée (on: true) ou remise à son volume (on: false) : coupure de parole possible, en attente du texte reconnu. */
   | { type: "duck"; on: boolean }
-  | { type: "approval.request"; id: string; tool: string; summary: string; level: string; ttl_s: number }
+  /** origin : corps d'origine du tour qui demande (un corps distant, comme Telegram, ne montre que les siennes). */
+  | { type: "approval.request"; id: string; tool: string; summary: string; level: string; ttl_s: number; origin?: string }
   | { type: "approval.closed"; id: string; ok: boolean }
   /** Choix dans une liste : une seule option à rendre (choice.response) avant ttl_s secondes. Corps qui ont `choice`. */
-  | { type: "choice.request"; id: string; title: string; options: ChoiceOption[]; ttl_s: number }
+  | { type: "choice.request"; id: string; title: string; options: ChoiceOption[]; ttl_s: number; origin?: string }
   /** Choix fermé (réponse, délai, annulation) : le corps retire la liste. picked : l'option retenue, absente sinon. */
   | { type: "choice.closed"; id: string; picked?: string }
   | { type: "tool.call"; callId: string; name: string; args: Record<string, unknown> }

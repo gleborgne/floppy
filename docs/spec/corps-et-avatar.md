@@ -81,7 +81,7 @@ Mêmes messages sur les 2 transports : `MessagePort` (avatar, dans l'app) et Web
 | noyau → corps | binaire | voix : 4 octets (taux) + PCM int16 |
 | noyau → corps | `interrupt` | vider la file audio |
 | noyau → corps | `duck` (`on`) | suspendre la lecture du bureau (on) ou la reprendre (off), sans perdre les mots ; `interrupt` vide la file et retire la suspension |
-| noyau → corps | `approval.request`, `approval.closed` | carte d'accord |
+| noyau → corps | `approval.request`, `approval.closed` | carte d'accord ; `origin` : corps d'origine du tour (un corps distant, comme Telegram, ne montre que les siennes) |
 | noyau → corps | `choice.request`, `choice.closed` | liste d'options à choisir (titre, options, `ttl_s`) ; fermeture (`picked` si choisi) |
 | noyau → corps | `tool.call`, `card`, `notify`, `error` | outil corps, carte, notification |
 

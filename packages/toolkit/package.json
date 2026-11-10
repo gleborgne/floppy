@@ -5,11 +5,16 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./telegram": "./src/telegram.ts"
   },
   "dependencies": {
     "@floppy/contracts": "0.1.0",
     "@floppy/core": "0.1.0",
-    "@floppy/protocol": "0.1.0"
+    "@floppy/protocol": "0.1.0",
+    "markdown-it": "14.3.3"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "14.2.0"
   }
 }

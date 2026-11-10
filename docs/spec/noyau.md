@@ -123,7 +123,7 @@ flowchart LR
   p_agent_copilot --> s_agent
   p_body_hub["body-hub"]
   p_body_hub --> s_body
-  p_body_ws["body-ws<br/>body-reachy"]
+  p_body_ws["body-ws<br/>body-reachy<br/>body-telegram"]
   s_body --> p_body_ws
   p_body_electron["body-electron"]
   p_body_electron --> s_avatars
@@ -211,7 +211,7 @@ Sans service (outils seuls) : `browser`, `calc`, `inbox`.
 | `agent` | `AgentService` (`packages/contracts/src/agents.ts`) | — | `brain-claude-cli`, `brain-codex-cli`, `brain-agy-cli`, `agent-opencode`, `agent-pi`, `agent-omp`, `agent-hermes`, `agent-copilot`, `agent-cursor`, `agent-aider` | `agent-sessions` (facultatif), `agent-jobs` (facultatif) |
 | `agentTracking` | `AgentTrackingService` (`packages/contracts/src/agents.ts`) | Le fournisseur conserve les observations ; une lecture ne commande jamais un agent | `orca` | `display-agent-tracking` (facultatif) |
 | `avatars` | `AvatarRegistry` (`packages/contracts/src/body.ts`) | Les avatars de l'app de bureau | `body-electron` | `avatar-tv` (facultatif), `avatar-pixel` (facultatif), `avatar-swarm` (facultatif), `avatar-gyre` (facultatif), `avatar-droplet` (facultatif), `avatar-neon-scope` (facultatif), `avatar-iris` (facultatif), `avatar-pixelcat` (facultatif) |
-| `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
+| `body` | `BodyHub` (`packages/contracts/src/body.ts`) | Le hub des corps (fenêtre, page web, robot) | `body-hub` | `body-ws`, `body-electron`, `body-reachy`, `body-telegram`, `conversation`, `websearch` (facultatif), `documents` (facultatif) |
 | `brain` | `BrainService` (`packages/contracts/src/brain.ts`) | Un cerveau qui mène un tour | `brain-aisdk`, `brain-claude-cli` | `conversation` (facultatif) |
 | `brief` | `BriefSource` (`packages/contracts/src/brief.ts`) | Une source du point (ex. « Microsoft 365 · agenda ») | `m365`, `agent-jobs`, `scheduler`, `watch` | `brief` (facultatif) |
 | `coder` | `CoderService` (`packages/contracts/src/coder.ts`) | L'assistant IA de la fenêtre des réglages | `coder` | — |

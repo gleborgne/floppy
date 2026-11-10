@@ -34,6 +34,7 @@ Guides pas à pas pour les utilisateurs : [docs/guide](../guide/README.md).
 | [Documents Markdown (implémenté)](documents.md) | Floppy répond par un document dans une fenêtre ; fichiers .md ; sécurité du rendu |
 | [Boîte aux lettres (implémenté)](boite-aux-lettres.md) | Les applications locales déposent des annonces ; accord par app ; voix ou info ; « ouvre-la » lance leur lien |
 | [Notifications (implémenté)](notifications.md) | Contrat `notify`, canaux Telegram et mail, « Envoyer à » par tâche, outil `send_document` |
+| [Parler à Floppy sur Telegram (implémenté)](telegram.md) | Corps Telegram : discussion privée avec un bot, liste blanche, accords et choix par boutons, annonces importantes |
 | [Point du matin (implémenté)](point-du-matin.md) | Contrat `brief` : chaque plugin apporte sa rubrique (agenda, mails, rappels, agents, veille, outil en lecture), un modèle écrit « par où commencer » |
 | [Veille (implémenté)](veille.md) | Centres d'intérêt, flux RSS et recherches, pré-tri en code, tri par un modèle, digest quotidien, avis à la voix |
 | [Télécharger des modèles (implémenté)](telechargements.md) | Bibliothèque de modèles dans les réglages : modèles choisis, recherche Hugging Face, `ctx.downloads`, barre d'avancement |

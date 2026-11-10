@@ -64,6 +64,17 @@ describe("corps branchés (fournisseur bodies)", () => {
     expect(p.items[0]).toMatchObject({ id: "tel", enabled: true, status: "ok", tags: [{ fr: "voix", en: "voice" }, { fr: "accord", en: "approval" }] });
   });
 
+  it("une demande d'accord dit de quel corps elle vient (un corps distant ne montre que les siennes)", async () => {
+    const b = fakeBody();
+    hub.attach(b.transport, { id: "tel" });
+    b.say(hello("tel", "Téléphone"));
+    const p = k.approvals.check({ tool: "x", args: {}, level: "write", summary: "test", origin: "tel" });
+    await new Promise((r2) => setTimeout(r2, 20));
+    expect(b.sent.find((m) => m.type === "approval.request")).toMatchObject({ origin: "tel", summary: "test" });
+    k.approvals.respond(k.approvals.pending()[0]!.id, false, "test");
+    await p;
+  });
+
   it("un corps désactivé est ignoré : pas de messages, pas d'audio, pas d'accord, rien envoyé", async () => {
     const b = fakeBody();
     hub.attach(b.transport, { id: "tel" });

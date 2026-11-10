@@ -11,10 +11,7 @@
   "dependencies": {
     "@floppy/contracts": "0.1.0",
     "@floppy/core": "0.1.0",
-    "markdown-it": "14.3.3",
+    "@floppy/toolkit": "0.1.0",
     "zod": "4.6.7"
-  },
-  "devDependencies": {
-    "@types/markdown-it": "14.2.0"
   }
 }

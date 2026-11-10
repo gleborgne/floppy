@@ -84,8 +84,8 @@ export default definePlugin<Config>({
     const canApprove = (s: Session) => isOn(s) && s.capabilities.includes("approval") && (!cfg.approvalsFrom.length || cfg.approvalsFrom.includes(s.id));
 
     const canChoose = (s: Session) => isOn(s) && s.capabilities.includes("choice") && (!cfg.approvalsFrom.length || cfg.approvalsFrom.includes(s.id));
-    const choiceMsg = (r: { id: string; title: string; options: { id: string; label: string; detail?: string }[] }, ttl_s: number): KernelToBody =>
-      ({ type: "choice.request", id: r.id, title: r.title, options: r.options, ttl_s });
+    const choiceMsg = (r: { id: string; title: string; options: { id: string; label: string; detail?: string }[]; origin?: string }, ttl_s: number): KernelToBody =>
+      ({ type: "choice.request", id: r.id, title: r.title, options: r.options, ttl_s, ...(r.origin ? { origin: r.origin } : {}) });
     /** Carte lisible pour un corps sans `choice` : l'utilisateur répond par texte ou à la voix (numéro ou nom). */
     const choiceCard = (r: { title: string; options: { label: string; detail?: string }[] }): KernelToBody =>
       ({ type: "card", title: r.title, lines: r.options.map((o, i) => `${i + 1}. ${o.label}${o.detail ? ` — ${o.detail}` : ""}`) });
@@ -127,7 +127,7 @@ export default definePlugin<Config>({
     };
 
     ctx.on("approval.request", (r) => {
-      const msg: KernelToBody = { type: "approval.request", id: r.id, tool: r.tool, summary: r.summary, level: r.level, ttl_s: r.ttl_s };
+      const msg: KernelToBody = { type: "approval.request", id: r.id, tool: r.tool, summary: r.summary, level: r.level, ttl_s: r.ttl_s, ...(r.origin ? { origin: r.origin } : {}) };
       for (const s of sessions.values()) if (canApprove(s)) s.transport.send(msg);
     });
     ctx.on("approval.closed", (c) => {
@@ -165,7 +165,7 @@ export default definePlugin<Config>({
             transport.send({ type: "welcome", protocol: PROTOCOL_VERSION, assistant: { name: ctx.assistant.name, language: ctx.assistant.language } });
             // Demandes d'accord déjà en cours (corps branché pendant une attente).
             if (canApprove(session)) for (const r of ctx.approvals.pending()) {
-              transport.send({ type: "approval.request", id: r.id, tool: r.tool, summary: r.summary, level: r.level, ttl_s: Math.max(1, Math.round((r.expiresAt - Date.now()) / 1000)) });
+              transport.send({ type: "approval.request", id: r.id, tool: r.tool, summary: r.summary, level: r.level, ttl_s: Math.max(1, Math.round((r.expiresAt - Date.now()) / 1000)), ...(r.origin ? { origin: r.origin } : {}) });
             }
             // Choix dans une liste déjà en cours.
             if (canChoose(session)) for (const r of ctx.choices.pending()) session.transport.send(choiceMsg(r, Math.max(1, Math.round((r.expiresAt - Date.now()) / 1000))));

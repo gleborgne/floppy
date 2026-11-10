@@ -5,9 +5,9 @@
 import { z } from "zod";
 import { definePlugin, errorText, itemSecret, T, TextError, tr, type FieldDef, type ItemInfo, type ItemKind, type OpResult, type Text } from "@floppy/core";
 import type { NotifyMessage } from "@floppy/contracts";
-import { telegramMessages } from "./markdown.ts";
+import { callTelegram, telegramMessages, type FetchLike } from "@floppy/toolkit/telegram";
 
-export { toTelegramHtml, toTelegramBlocks, telegramMessages } from "./markdown.ts";
+export { toTelegramHtml, toTelegramBlocks, telegramMessages } from "@floppy/toolkit/telegram";
 
 const Config = z.object({
   timeout_s: z.number().default(15),
@@ -61,45 +61,6 @@ function cleanChat(raw: unknown): string {
 
 function clean(v: Record<string, unknown>): Values {
   return { label: String(v.label ?? "").trim(), chat: cleanChat(v.chat) };
-}
-
-type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
-
-interface TgReply { ok?: boolean; description?: string; error_code?: number; result?: unknown }
-
-/**
- * Appelle l'API Telegram. Rend la réponse décodée ; sinon lève une erreur claire (TextError, français et anglais ;
- * le jeton n'apparaît jamais dans le texte).
- */
-async function callTelegram(f: FetchLike, token: string, method: string, body: unknown, signal: AbortSignal): Promise<TgReply> {
-  let r: Response;
-  try {
-    r = await f(`https://api.telegram.org/bot${token}/${method}`, {
-      method: "POST", signal, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-    });
-  } catch (e) {
-    if (signal.aborted && (e as Error)?.name !== "TimeoutError") throw new TextError(T("Envoi Telegram annulé.", "Telegram sending cancelled."));
-    throw new TextError(T("Telegram injoignable : vérifie la connexion internet.", "Telegram unreachable: check the internet connection."));
-  }
-  let data: TgReply = {};
-  try { data = (await r.json()) as TgReply; } catch { /* pas du JSON */ }
-  if (r.ok && data.ok !== false) return data;
-  const status = r.status;
-  const why = String(data.description ?? "").toLowerCase();
-  if (status === 401) throw new TextError(T("Telegram : jeton refusé. Vérifie le jeton du bot.", "Telegram: token refused. Check the bot token."));
-  if (status === 400 && why.includes("chat not found")) {
-    throw new TextError(T(
-      "Telegram : canal introuvable. Ajoute le bot comme administrateur du canal et vérifie le nom ou l'identifiant.",
-      "Telegram: channel not found. Add the bot as an administrator of the channel and check the name or id.",
-    ));
-  }
-  if (status === 403) throw new TextError(T("Telegram : le bot n'a pas le droit d'écrire ici.", "Telegram: the bot is not allowed to write here."));
-  if (status === 429) throw new TextError(T("Telegram : trop d'envois d'un coup, réessaie dans un moment.", "Telegram: too many messages at once, try again in a moment."));
-  if (status === 400) {
-    const d = data.description ? String(data.description).replace(/bot\d+:[\w-]+/g, "bot…") : undefined;
-    throw new TextError(T(`Telegram a refusé le message : ${d ?? "demande invalide"}`, `Telegram refused the message: ${d ?? "invalid request"}`));
-  }
-  throw new TextError(T(`Telegram répond avec une erreur ${status}.`, `Telegram answers with error ${status}.`));
 }
 
 /** Envoie le message découpé en morceaux de 4000 caractères au plus. */
