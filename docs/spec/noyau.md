@@ -193,7 +193,7 @@ flowchart LR
 
 Lecture : plugin → service = il le fournit. Service → plugin : trait plein = `inject` (obligatoire), pointillé = `optional`, trait double = un slot (le choix d'un élément, nommé sur la flèche). « type » : un contrat cite le type d'un autre service. Les plugins aux mêmes liens partagent un nœud.
 
-Sans service (outils seuls) : `browser`, `inbox`, `m365`.
+Sans service (outils seuls) : `browser`, `calc`, `inbox`, `m365`.
 
 | Service | Contrat | Ce qu'il fait | Fournisseurs | Utilisé par |
 |---|---|---|---|---|

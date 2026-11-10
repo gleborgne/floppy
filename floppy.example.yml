@@ -144,6 +144,7 @@ plugins:
   - { id: coder, plugin: coder }
   # --- Apps (Settings → Connectors)
   - { id: browser, plugin: browser }
+  - { id: calc, plugin: calc }
   - { id: websearch, plugin: websearch, config: { engine: claude, claudeModel: haiku } }
   - { id: m365, plugin: m365 }
   - { id: orca, plugin: orca, config: { pollSeconds: 15, notifications: important } }
