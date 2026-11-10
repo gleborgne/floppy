@@ -96,6 +96,8 @@ export class Face {
     this.attention = "idle";
     this.level = 0;
     this.levelSmooth = 0;
+    this.mouthSeen = false;   // setMouth déjà appelé par l'hôte ?
+    this.wide = 0;
     this.speechAccent = 0;
     this.speechSway = 0;
     this.speechAccents = [];
@@ -157,6 +159,11 @@ export class Face {
     else this.speechGestures.play(intent, intensity, at * 1000);
   }
   setLevel(v) { this.level = v; }
+  /** Forme de la bouche d'après le son (open 0..1, wide 0 = arrondie, 1 = étirée). Sans appel, la bouche reste celle d'avant. */
+  setMouth(open, wide) {
+    this.mouthSeen = true;
+    this.wide = clamp(Number(wide) || 0, 0, 1);
+  }
   /** Humeur de fond (valence -1..1, énergie 0..1). */
   setMood(valence, energy) {
     this.mood = { valence: clamp(Number(valence) || 0, -1, 1), energy: clamp(Number.isFinite(energy) ? energy : 0.6, 0, 1) };
@@ -247,7 +254,13 @@ export class Face {
       t.mouthOpen = Math.min(1, this.levelSmooth * (1.5 + t.mouthOpen * 0.5));
       // La bouche s'élargit un peu avec la voix, et change de forme d'une syllabe à l'autre.
       const time = (now - this.t0) / 1000;
-      t.mouthW += this.levelSmooth * (8 + Math.sin(time * 13.7) * 4);
+      if (this.mouthSeen && !this.reducedMotion) {
+        // Forme réelle du son : étirée (« i », « s ») ou arrondie (« o ») autour de la bouche de l'émotion, sans la remplacer.
+        // Pas de largeur qui joue pendant les pauses (levelSmooth), et le coin ne bouge que d'un souffle : une bouche triste reste triste.
+        const g = clamp(this.levelSmooth * 4, 0, 1);
+        t.mouthW += this.levelSmooth * 8 + (this.wide - 0.35) * 14 * g;
+        t.mouth += (this.wide - 0.35) * 0.18 * g;
+      } else t.mouthW += this.levelSmooth * (8 + Math.sin(time * 13.7) * 4);
       const accent = this.reducedMotion ? 0 : this.speechAccent;
       t.eyeH += accent * 9;
       t.tilt += (this.reducedMotion ? 0 : this.speechSway) * 5.4;

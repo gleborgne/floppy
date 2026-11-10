@@ -15,6 +15,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/desktop/tsconfig.renderer.json --noEmit && tsc -p apps/desktop/tsconfig.preload.json --noEmit",
     "licences": "node scripts/licences.mjs",
+    "vendor:avatars": "node scripts/vendor-avatar-life.mjs",
     "docs:services": "node apps/cli/src/services-doc.ts",
     "check": "npm run typecheck && npm test && npm run licences",
     "start": "npm start -w @floppy/desktop",

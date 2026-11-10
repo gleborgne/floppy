@@ -1,6 +1,6 @@
 // Les avatars WebGL récents (essaim, gyre, goutte, oscillo, iris, pixelcat) sont des plugins d'avatar comme les autres : avatar.json + renderer/index.js.
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import avatarEssaim from "@floppy/plugin-avatar-essaim";
 import avatarGyre from "@floppy/plugin-avatar-gyre";
@@ -18,7 +18,9 @@ describe("avatars WebGL récents", () => {
       const a = readAvatarDir(root);
       expect(a.id).toBe(id);
       expect(a.emotions.length).toBeGreaterThan(5);
-      const src = readFileSync(new URL(a.url), "utf8");
+      // L'interface peut venir en partie du « vivant » commun (renderer/life.js, copie de scripts/avatar/life.js).
+      const life = new URL("life.js", a.url);
+      const src = readFileSync(new URL(a.url), "utf8") + (existsSync(life) ? readFileSync(life, "utf8") : "");
       for (const fn of ["setState", "setEmotion", "setLevel", "setMood", "lookAt", "setHearing", "cue", "destroy"]) expect(src).toContain(`${fn}(`);
       expect(src).toContain("webgl2");
     });

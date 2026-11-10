@@ -11,6 +11,8 @@ export function create(container, { reducedMotion = false, motion } = {}) {
     // intensité (1 sans valeur), puis durée en ms (le protocole les envoie avec l'émotion).
     setEmotion: (name, intensity, ms) => face.setEmotion(name, ms, intensity),
     setLevel: (v) => face.setLevel(reducedMotion ? v * 0.5 : v),
+    // Forme de la bouche d'après le son ; en mouvement réduit, seule l'ouverture bouge (setLevel).
+    setMouth: (open, wide) => { if (!reducedMotion) face.setMouth(open, wide); },
     // Facultatif dans l'interface d'avatar (voir apps/desktop/src/renderer/app.js).
     setMood: (valence, energy) => face.setMood(valence, energy),
     lookAt: (x, y) => face.lookAt(x, y),

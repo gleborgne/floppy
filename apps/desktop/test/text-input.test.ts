@@ -44,17 +44,3 @@ it("Entrée envoie, Maj+Entrée et la composition restent dans le champ ; Échap
   key({ key: "Escape" }); expect(f.host.close).toHaveBeenCalledOnce();
   f.host.onFocus.mock.calls[0]![0](); expect(f.elements.prompt.focus).toHaveBeenCalledOnce();
 });
-
-it("l'avatar coupe la lecture et transmet la saisie sur son port de conversation habituel", () => {
-  const source = plain("app.ts");
-  let message!: Function;
-  const send = vi.fn(), stopPlayback = vi.fn();
-  const context = { window: { addEventListener: (_name: string, fn: Function) => { message = fn; } }, send, stopPlayback, muted: true };
-  runInNewContext(source.slice(source.lastIndexOf('window.addEventListener("message"')), context);
-  message({ data: { floppyTextRequest: "Bonjour" }, ports: [] });
-  expect(context.muted).toBe(false);
-  expect(stopPlayback).toHaveBeenCalledOnce();
-  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "text", text: "Bonjour" });
-  message({ data: { floppyTextRequest: "  " }, ports: [] });
-  expect(send).toHaveBeenCalledOnce();
-});

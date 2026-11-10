@@ -49,6 +49,8 @@ interface AvatarInstance {
   setEmotion(name: string, intensity?: number, ms?: number): void;
   setLevel(level: number): void;
   setMood?(valence: number, energy: number): void;
+  /** Forme de la bouche d'après le son, en plus de setLevel : open 0..1, wide 0 (arrondie « o ») .. 1 (étirée « i », « s »). */
+  setMouth?(open: number, wide: number): void;
   lookAt?(x: number, y: number): void;
   setHearing?(level: number): void;
   cue?(name: string): void;

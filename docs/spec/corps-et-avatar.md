@@ -95,6 +95,7 @@ Le réglage `expressivite` (Voix) propose **discret**, **naturel** et **joueur**
 Il module l'intensité des émotions envoyées aux corps (facteurs 0,45 / 0,8 / 1) et le jeu des voix compatibles.
 Il ne modifie pas la fréquence des gestes autonomes. Les consignes vocales des modèles Live reçoivent aussi
 ce profil, à l'ouverture et à chaud quand le ton ou l'expressivité change.
+Tous les moteurs ne jouent pas les émotions : les réglages (Voix) indiquent, sur chaque voix, si elle les joue (ElevenLabs : seulement les modèles v3 et v4).
 
 En mode séparé, la file de parole reçoit une intention par phrase, déduite de l'émotion du cerveau : expliquer,
 rassurer, plaisanter ou neutre. L'intention persiste jusqu'à la prochaine émotion ; la même émotion pilote
@@ -179,6 +180,16 @@ figées avec le son ; les nouveaux blocs reçus pendant la pause ne relancent pa
 confirmation restent bornées par les délais de la conversation. En Live à appels de fonctions (Gemini),
 la détection locale coupe immédiatement la lecture et rejette l'ancienne génération, sans attendre le réseau.
 
+La bouche suit le son et non le seul volume : `mouth-shape.ts` (page de l'avatar, sans minuterie ni DOM) lit le
+spectre de l'analyseur (`getFloatFrequencyData`, en dB, repassé en puissance) et en tire `open` (le niveau habituel,
+simplement lissé) et `wide` (0 = arrondie « o/ou », 1 = étirée « i/é/s »), la part d'énergie des 1,8-7 kHz contre
+100 Hz-1 kHz, nulle sous le seuil de silence. Lissage exponentiel indépendant de la cadence (montée 20 ms, descente
+55 ms) : pas de retard visible. `app-playback.ts` appelle `setLevel` comme avant pour tous les avatars et, en plus,
+`setMouth(open, wide)` si l'avatar l'a ; pause, coupure, fin de lecture et interruption remettent la forme à zéro.
+La TV module la largeur (et à peine le coin) autour de la bouche de l'émotion, par ses ressorts, seulement pendant
+une voix audible : une bouche triste reste triste. Mouvement réduit, hôte ancien ou galerie sans `setMouth` :
+comportement inchangé (ouverture seule).
+
 Pendant la parole, la TV souligne les attaques de volume par un bref relèvement des yeux, une inclinaison
 alternée de la tête et un léger déplacement du regard. Au moins 420 ms séparent deux accents ; ils retombent
 seuls, sans battement périodique sur un son constant. Le regard propre à l'émotion reste visible. La bouche
@@ -253,6 +264,8 @@ l'audio, et livre le texte avant le son lorsqu'ils sont dans le même paquet. GP
 les sous-titres ni les gestes ; celles d'un fournisseur ancien sans époque sont ignorées après une coupure
 jusqu'au prochain audio accepté. Les corps sans `speech_timing` gardent les émotions immédiates.
 
+**Émotion dite par le modèle (expérimental, désactivé par défaut).** Un modèle Live qui parle ne peut pas écrire `[content]`. Pour un moteur à appels de fonctions (Gemini), la conversation ajoute aux outils de la session un outil propre au Live, `exprimer_emotion` (`emotion` parmi les douze noms stables, `intensite` : `legere`, `normale`, `forte`). Il n'est jamais dans le registre d'outils du noyau (les cerveaux du mode séparé ne le voient pas) ; `LiveConversation` y répond tout de suite, sans accord ni trace d'outil, et l'émotion est montrée comme celle des mots-clés : calée sur le prochain bloc audio accepté de la même génération, avec le même `timing`. Un appel d'une génération écartée, ou après une coupure, ne change pas le visage ; une émotion inconnue est ignorée. Tant que le modèle a annoncé une émotion pour une réponse, la devinette par mots-clés n'est pas appliquée à son visage (les gestes suivent l'émotion annoncée) ; une réponse sans appel garde le comportement d'avant. `LiveService.open` reçoit `silentTools` : Gemini déclare ces outils `NON_BLOCKING` et répond avec `scheduling: "SILENT"`, pour que l'appel ne suspende pas la parole et ne soit pas dit. Réglage `emotion_live` (voix, désactivé par défaut ; appliqué à la prochaine session Live). **Jamais essayé sur un vrai compte** : seules des réponses simulées sont testées. GPT Live (délégation) n'est pas concerné.
+
 Validation : réponses réseau simulées pour les fournisseurs cloud, tests du vrai lecteur avec horloge audio,
 tests des signaux communs et des uniformes des sept autres dessins, et comparaison de la TV autonome/partagée.
 Le rendu et le jeu réels des voix cloud restent à auditionner avec un compte configuré.
@@ -264,8 +277,6 @@ L'émotion est **pilotée par le noyau** et rendue par chaque corps à sa façon
 
 ```mermaid
 flowchart LR
-**Émotion dite par le modèle (expérimental, désactivé par défaut).** Un modèle Live qui parle ne peut pas écrire `[content]`. Pour un moteur à appels de fonctions (Gemini), la conversation ajoute aux outils de la session un outil propre au Live, `exprimer_emotion` (`emotion` parmi les douze noms stables, `intensite` : `legere`, `normale`, `forte`). Il n'est jamais dans le registre d'outils du noyau (les cerveaux du mode séparé ne le voient pas) ; `LiveConversation` y répond tout de suite, sans accord ni trace d'outil, et l'émotion est montrée comme celle des mots-clés : calée sur le prochain bloc audio accepté de la même génération, avec le même `timing`. Un appel d'une génération écartée, ou après une coupure, ne change pas le visage ; une émotion inconnue est ignorée. Tant que le modèle a annoncé une émotion pour une réponse, la devinette par mots-clés n'est pas appliquée à son visage (les gestes suivent l'émotion annoncée) ; une réponse sans appel garde le comportement d'avant. `LiveService.open` reçoit `silentTools` : Gemini déclare ces outils `NON_BLOCKING` et répond avec `scheduling: "SILENT"`, pour que l'appel ne suspende pas la parole et ne soit pas dit. Réglage `emotion_live` (voix, désactivé par défaut ; appliqué à la prochaine session Live). **Jamais essayé sur un vrai compte** : seules des réponses simulées sont testées. GPT Live (délégation) n'est pas concerné.
-
   B["Cerveau<br/>« [joie] Bonne nouvelle… »"] -- "étiquette retirée du texte" --> E["événement emotion"]
   CV["conversation<br/>réfléchit · outil refusé · erreur · accord · veille"] --> E
   E --> HUB["body-hub<br/>à tous les corps « emotion »"]
@@ -275,6 +286,7 @@ flowchart LR
 
 - **Le cerveau** commence sa réponse par une étiquette : `[content] C'est fait.` Le noyau la retire du texte (jamais lue à voix haute) et en fait un événement. Mesuré : aucune baisse de justesse sur le banc des 40 demandes. Tous les cerveaux texte le font : AI SDK, Claude Code, Codex et Antigravity (même filtre, voir [Le cerveau](cerveau.md)).
 - **Au milieu de la réponse**, il peut en remettre une quand son émotion change : `[content] C'est fait. [malicieux] Et j'ai rangé.` En voix, l'émotion attend que **sa phrase commence à être dite** (pas avant). Au milieu, seule une vraie émotion est retirée : `[1]` reste dans le texte.
+- **L'émotion s'apaise** (voix, mode séparé) : la phrase qui porte l'étiquette garde son intensité, chaque phrase suivante sans nouvelle étiquette prend celle d'avant × 0,6 (`settle.ts`) ; sous 0,3 l'émotion tombe (voix neutre, geste sans émotion) jusqu'à la prochaine étiquette. Avec une intensité de 1 : 1 → 0,6 → 0,36 → aucune. Le visage suit : une expression par phrase avec l'intensité apaisée, puis un `neutral` à la première phrase sans émotion. Ces expressions d'apaisement ne poussent pas l'humeur (seule l'étiquette le fait). Le mode Live ne change pas.
 - **Intensité** : `[joie+]` forte (1.25), `[content-]` légère (0.45), aussi « très … », « un peu … » (`parseEmotionTag`). Sans intensité : 1. Une émotion légère donne un petit sourire ; sur Reachy, un geste plus discret.
 - **La conversation** ajoute les émotions de situation : `thinking` pendant la réflexion, `sorry` si un outil est refusé, `confused` s'il échoue, `curious` quand un accord est demandé, `focused` pendant une délégation, `sleepy` en veille, retour à `neutral` après quelques secondes.
 - **Réaction immédiate** à ce qu'on lui dit (`feel.ts`, mots-clés, sans LLM) : « merci » → content, « haha » → rire, « bravo » → fier, « t'es nul » → triste… Elle dure ~1 s, puis le visage réfléchit ; l'étiquette du cerveau a le dernier mot.
@@ -286,7 +298,6 @@ flowchart LR
 
 ![Les 28 émotions de l'avatar](img/avatar-emotions.png)
 
-- **L'émotion s'apaise** (voix, mode séparé) : la phrase qui porte l'étiquette garde son intensité, chaque phrase suivante sans nouvelle étiquette prend celle d'avant × 0,6 (`settle.ts`) ; sous 0,3 l'émotion tombe (voix neutre, geste sans émotion) jusqu'à la prochaine étiquette. Avec une intensité de 1 : 1 → 0,6 → 0,36 → aucune. Le visage suit : une expression par phrase avec l'intensité apaisée, puis un `neutral` à la première phrase sans émotion. Ces expressions d'apaisement ne poussent pas l'humeur (seule l'étiquette le fait). Le mode Live ne change pas.
 ### Reachy Mini
 
 Le plugin `body-reachy` (implémenté, `plugins/body/reachy`) branche un Reachy Mini comme corps. Il est ajouté depuis
@@ -334,7 +345,7 @@ flowchart TB
 - **Vivant** : chaque paramètre suit sa cible comme un **ressort** un peu souple (il dépasse un peu, puis revient). Une émotion vive commence par un petit **tassement**, puis un saut ; une émotion lourde affaisse le visage. Il **respire** (plus lentement s'il est fatigué), cligne parfois **deux fois**, cligne souvent quand son expression change. En parlant, la tête accompagne la voix et la bouche change de forme.
 - **Il vous regarde** : les yeux suivent la souris, même hors de sa fenêtre (`main.ts` envoie la position). Il **entend** : en écoute, les yeux et le halo réagissent au volume du micro.
 - **On peut le toucher** : un clic sur la tête (sans bouger) le fait rire, rougir, faire un clin d'œil… À force, il s'agace, puis se fâche. On le déplace toujours en le faisant glisser (déplacement fait à la main, la tête n'est plus une zone « drag »).
-- **Petites manies au repos** (`app.ts`, toutes les 15 à 40 s) : un coup d'œil ailleurs, un air malicieux, il chantonne, il bâille s'il est fatigué, il s'ennuie après 3 minutes seul. Une réaction locale est brève ; l'émotion du noyau revient ensuite.
+- **Petites manies au repos** (`app-life.ts`, toutes les 15 à 40 s) : un coup d'œil ailleurs, un air malicieux, il chantonne, il bâille s'il est fatigué, il s'ennuie après 3 minutes seul. Une réaction locale est brève ; l'émotion du noyau revient ensuite. Le choix (`quirks.ts`, pur) suit l'humeur : humeur nettement négative ou émotion négative du noyau (`sorry`, `sad`, `confused`, `annoyed`, `angry`, `scared`, `cry`) depuis moins d'une minute → ni malice, ni clin d'œil, ni chantonnement (regard ailleurs, soupir discret ou rien) ; bonne humeur → les manies joueuses sont plus fréquentes.
 - Mouvement réduit (réglage du système) : pas de ressort, pas de respiration ni de rebond.
 - **L'état** s'ajoute à l'émotion : l'écoute agrandit les yeux et éclaire le halo ; la réflexion fait lever les yeux avec « … » ; la parole fait **bouger la bouche avec le niveau réel de la voix** ; la veille ferme les yeux.
 
@@ -360,7 +371,8 @@ Famille `plugins/avatar/<id>/` (comme `plugins/brain/`, `plugins/voice/`…) :
 |---|---|
 | `avatar.json` | id, nom (fr/en), description (fr/en), émotions dessinées |
 | `src/index.ts` | le plugin du noyau : `export default defineAvatar(import.meta.url)` (de `@floppy/contracts`, `packages/contracts/src/avatars.ts`) |
-| `renderer/index.js` | le dessin : `export function create(container, { reducedMotion })` → `{ setState, setEmotion(name, intensity, ms), setLevel, destroy }`, et en option `setMood(valence, energy)`, `lookAt(x, y)` (-1..1), `setHearing(niveau)`, `cue(nom)` (`nod`, `perk`, `startle`, `wake`, `poke`), `resize` |
+| `renderer/index.js` | le dessin : `export function create(container, { reducedMotion })` → `{ setState, setEmotion(name, intensity, ms), setLevel, destroy }`, et en option `setMood(valence, energy)`, `setMouth(open, wide)` (0..1, forme de la bouche d'après le son, en plus de `setLevel` ; `wide` 0 = arrondie, 1 = étirée), `lookAt(x, y)` (-1..1), `setHearing(niveau)`, `cue(nom)` (`nod`, `perk`, `startle`, `wake`, `poke`), `resize` |
+| `renderer/life.js` | (goutte, iris, oscillo, pixelcat) le « vivant » commun : `makeLife`, `approach`, `moodTint` ; importé par `index.js` (`./life.js`), comme `tv` importe `./face.js` |
 
 ```mermaid
 flowchart LR
@@ -370,6 +382,7 @@ flowchart LR
   S -- "display { avatar, avatarUrl }" --> A["page de l'avatar<br/>import(avatarUrl)"]
 ```
 
+- `life.js` a une seule source, `scripts/avatar/life.js`, copiée octet pour octet dans le dossier `renderer/` de chaque avatar qui l'utilise (`npm run vendor:avatars`) : un plugin ne dépend pas d'un autre et son dessin doit marcher seul. `apps/desktop/test/avatar-life.test.ts` échoue si une copie diffère de la source, et `avatar-life-golden.test.ts` rejoue une séquence sur chaque dessin réel et compare les uniformes envoyés au GPU à un enregistrement.
 - Un avatar s'installe comme un plugin (une entrée dans `floppy.yml`) ; il s'inscrit auprès du service `avatars` de
   `body-electron` (facultatif : sans l'app, en mode `--headless`, il ne bloque rien).
 - La page de l'avatar charge seulement un module local (`file://`) envoyé par le noyau.
