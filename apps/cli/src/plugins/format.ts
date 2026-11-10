@@ -3,7 +3,7 @@
 // Le manifeste du code (index.ts) doit lui correspondre : c'est vérifié dans le processus isolé, au chargement.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { manifestError, T, TextError, type Manifest, type Permissions, type Text } from "@floppy/core";
+import { manifestProblem, T, TextError, type Manifest, type Permissions, type Text } from "@floppy/core";
 
 /** Version de l'API des plugins (forme de ctx). Un plugin déclare celle qu'il vise dans `api`. */
 export const PLUGIN_API = 1;
@@ -36,8 +36,10 @@ export function packageProblems(x: unknown): Text[] {
   if (!x || typeof x !== "object" || Array.isArray(x)) return [T("floppy-plugin.json doit contenir un objet", "floppy-plugin.json must contain an object")];
   const p = x as Record<string, unknown>;
   const out: Text[] = [];
-  const bad = manifestError(p);
-  if (bad) out.push(T(`manifeste invalide : ${bad}`, `invalid manifest: ${bad}`));
+  // Le fichier JSON porte aussi des champs de paquet (api, homepage) qui ne sont pas ceux du manifeste.
+  const { api: _api, homepage: _homepage, ...manifest } = p;
+  const bad = manifestProblem(manifest);
+  if (bad) out.push(T(`manifeste invalide : ${bad.fr}`, `invalid manifest: ${bad.en}`));
   if (p.api !== PLUGIN_API) {
     out.push(T(`api : ${String(p.api)} n'est pas pris en charge (attendu : ${PLUGIN_API})`, `api: ${String(p.api)} is not supported (expected: ${PLUGIN_API})`));
   }

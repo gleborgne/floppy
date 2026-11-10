@@ -16,7 +16,7 @@
 - Le niveau d'un outil MCP vient de la config ; à défaut, de ses annotations (`readOnlyHint`, `destructiveHint`). **Outil inconnu = traité comme une écriture.** Un serveur **distant** n'est pas cru sur parole : son « lecture seule » compte seulement avec `trust_annotations: true` (case « Croire ses outils « lecture seule » » du connecteur). Un serveur local (la commande de l'utilisateur) est cru. « Destructif » compte toujours (il ne fait que durcir).
 - Les événements qui disent une décision du noyau (`approval.request`, `approval.closed`, `plugin.state`, `service.changed`, `task.done`, `floppy.restart`) ne s'émettent pas par `ctx.emit` : un plugin ne peut pas montrer une fausse demande d'accord.
 - `bench-api` (qui répond aux accords tout seul pour le banc) n'est dans le catalogue qu'avec `FLOPPY_DEV=1`.
-- Réseau : `ctx.fetch` donne un délai par défaut (30 s) et écrit au journal, une fois par hôte, une requête vers un hôte absent de `permissions.net` (avertissement ; le refus viendra quand tous les plugins passeront par lui).
+- Réseau : `ctx.fetch` donne un délai par défaut (30 s, réponse entière comprise) et **refuse** un hôte absent de `permissions.net` (la boucle locale est toujours permise, `"*"` permet tout hôte : adresse choisie par l'utilisateur). Le refus est une erreur bilingue au nom du plugin, notée au journal et à l'audit une fois par hôte.
 - Règle par niveau d'outil :
 
 | Niveau | Règle par défaut |
@@ -73,7 +73,8 @@ flowchart LR
 
 | Garde-fou | Règle |
 |---|---|
-| Manifeste | Validé par un schéma zod (`manifestError`). Invalide : l'entrée démarre en **erreur visible**. Un champ inconnu dans `permissions` est refusé. |
+| Manifeste | Validé par un schéma zod (`manifestError`). Invalide : l'entrée démarre en **erreur visible**. Un champ inconnu, à n'importe quel niveau du manifeste (dont `permissions`), est refusé. |
+| `permissions.net` | **Imposé** par `ctx.fetch`, que tous les appels HTTP des plugins du dépôt utilisent (`boundaries.test.ts` refuse le `fetch` global dans `plugins/*/*/src`). Règle : boucle locale toujours permise ; hôte exact, `*.domaine` ou `*`. Hôtes fixes : `tts-elevenlabs`, `tts-gemini`, `notify-telegram`, `m365`, `llm-llamacpp` et `tts-audiocpp` (Hugging Face, GitHub). `*` : `llm-openai`, `brain-aisdk`, `mcp`, `body-reachy`, `searxng`, `veille`, `notify-mail`. **Trous restants** (non vérifiés par `ctx.fetch`) : WebSockets (`live-openai`, `live-gemini`, Hermes), SMTP de `notify-mail`, bibliothèque Picovoice, redirections HTTP vers un autre hôte, programmes lancés par `ctx.spawn` (CLI d'agents). Les plugins tiers isolés avaient déjà ce refus (`sandbox.ts` : `fetch` fait par le noyau, redirections revérifiées), sans l'exception de la boucle locale (plus strict). |
 | `permissions.exec` | `ctx.spawn` lance seulement un programme listé (nom sans dossier ni extension, ou `"*"`). Listes actuelles : `coder` et `websearch` (claude, codex), `brain-claude-cli` (claude), `llm-llamacpp` (llama-server), `tts-audiocpp` (audiocpp_server), `tts-system` (powershell, say, espeak-ng), `orca` (orca, cmd pour son script `.cmd`), `browser` (`*` : le navigateur par défaut, ou celui choisi dans la config), `inbox` (rundll32, open, xdg-open), `sessions` (wt, cmd, osascript, x-terminal-emulator), `tools` (`*` : les commandes de l'utilisateur). |
 | Réglages à la voix | `change` et `undo` suivent les mêmes règles de risque : `cli` refusé à la voix, `ask` = accord (toujours demandé). Annuler un réglage `ask` redemande l'accord. |
 | Identité d'un corps | Donnée par le **transport** : `attach(transport, { id, name, managed })`. Le `hello` du client ne choisit ni l'id ni `managed` (sans id de confiance : id aléatoire). |

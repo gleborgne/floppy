@@ -65,6 +65,8 @@ describe("format floppy-plugin.json", () => {
     for (const k of ["fs.read", "fs.write", "exec"]) expect(packageProblems({ ...PKG, permissions: { [k]: ["x"] } }).length).toBe(1);
     expect(packageProblems({ ...PKG, permissions: { approvals: "respond" } }).length).toBe(1);
     expect(packageProblems({ ...PKG, homepage: "http://x" }).length).toBe(1);
+    expect(packageProblems({ ...PKG, homepage: "https://x.example" })).toEqual([]); // api et homepage sont des champs du paquet, pas des fautes
+    expect(packageProblems({ ...PKG, permisions: { net: ["a.com"] } }).map((t) => tr(t, "en"))).toEqual(["invalid manifest: permisions : unknown field (did you mean \"permissions\"?)"]);
   });
 
   it("le manifeste du code doit correspondre au fichier JSON", () => {

@@ -66,8 +66,10 @@ export interface TaskService {
   run(taskId: string, input: TaskRunInput): Promise<TaskResult>;
 }
 
+/** Nom d'un service connu (une clé de `Services`). Un plugin qui a son propre service l'ajoute par augmentation de module. */
+export type ServiceName = keyof Services & string;
+
 export interface Services {
-  [name: string]: unknown;
   documents: DocumentsService;
   task: TaskService;
 }

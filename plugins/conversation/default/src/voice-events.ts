@@ -1,7 +1,7 @@
 // Événements du flux voix d'un corps : parole détectée, phrase reconnue (mot d'activation, écho de Floppy,
 // accord, voie rapide, Live), coupure de parole, audio de la voix à jouer, fin d'une phrase dite.
 import { T, errorText, type Context, type Text } from "@floppy/core";
-import type { BodyHub, ConversationCommand, ConversationCommandInput, LiveService, TurnMode, VoiceEvent } from "@floppy/contracts";
+import type { BodyHub, LiveService, TurnMode, VoiceEvent } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, stripWakeWord, matchQuickSetting, isBackchannel, hasWakeWord } from "./text.ts";
 import { isEcho } from "./echo.ts";
@@ -116,7 +116,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
               const quick = matchQuickSetting(ev.text, wake, ctx.settings.list(), lang);
               if (quick) { void quickSetting(b, quick, "text", ev.text); break; }
               void (async () => {
-                const command = await ctx.runHook<ConversationCommandInput, ConversationCommand | undefined>("conversation.command", { text: stripWakeWord(ev.text, wake), origin: b.id }, async () => undefined);
+                const command = await ctx.runHook("conversation.command", { text: stripWakeWord(ev.text, wake), origin: b.id }, async () => undefined);
                 if (!ctx.alive || b.muted) return;
                 if (command && ctx.tools.list().some(tool => tool.name === command.name)) { await runTurn(b, ev.text, "text", performance.now()); return; }
                 await b.live!.start(ev.start_sample, ev.end_sample, ev.text);

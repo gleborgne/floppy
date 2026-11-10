@@ -74,6 +74,9 @@ const p: UserPlugin = { ${manifest()},
         const out = ["offers:" + ctx.offers("notify").length, "maybe:" + String(ctx.maybe("documents"))];
         try { ctx.get("documents"); out.push("get ok"); } catch (e) { out.push("get: " + (e as Error).message); }
         try { await ctx.borrowItem("notify", "a/b"); out.push("borrow ok"); } catch (e) { out.push("borrow: " + (e as Error).message); }
+        // Ni service, ni hook à soi : le pont ne laisse passer que ce que le SDK liste (aucun nom ne traverse).
+        try { ctx.provide("documents", {} as never); out.push("provide ok"); } catch (e) { out.push("provide: " + (e as Error).message); }
+        try { ctx.hook("perso.hook" as never, (async () => undefined) as never); out.push("hook ok"); } catch (e) { out.push("hook: " + (e as Error).message); }
         return { status: "done", text: out.join(" | ") };
       } }]);
   } };
@@ -83,6 +86,8 @@ export default p;`);
     expect(text).toContain("offers:0 | maybe:undefined");
     expect(text).toContain("get: un plugin tiers n'a pas accès aux services");
     expect(text).toContain("borrow: un plugin tiers n'a pas accès aux services");
+    expect(text).toContain("provide: un plugin tiers n'a pas accès aux services");
+    expect(text).toContain("hook: un plugin tiers n'a pas de hooks");
   }, 30_000);
 
   it("refuse les modules de Node, même par contournement", async () => {

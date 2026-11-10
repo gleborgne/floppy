@@ -39,7 +39,7 @@ async function start(extra: { options?: Partial<OrcaOptions>; home?: string; con
   await k.applyConfig({ plugins: [{ id: "orca", plugin: "orca", config: { pollSeconds: 600, ...extra.config } }, { id: "probe", plugin: "probe" }] });
   await tracking.refresh();
   return { k, state, home, calls, tracking, announcements, advance(ms = 10) { now += ms; },
-    async presented(key: string, origin = "voice", stage: InitiativePresented["stage"] = "scheduled") { await ctx.runHook<InitiativePresented, void>("initiative.presented", { origin, session: origin, source: "orca", key, stage }, async () => {}); },
+    async presented(key: string, origin = "voice", stage: InitiativePresented["stage"] = "scheduled") { await ctx.runHook("initiative.presented", { origin, session: origin, source: "orca", key, stage }, async () => {}); },
   };
 }
 const raw = (result: { raw?: unknown }) => result.raw as Record<string, any>;

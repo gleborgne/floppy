@@ -84,13 +84,13 @@ export function servicesMap(manifests: Manifest[], contracts: ContractInfo[]): s
   for (const s of services) {
     const c = contracts.find((x) => x.service === s);
     const users = [
-      ...manifests.filter((m) => m.inject?.includes(s)).map((m) => `\`${m.id}\``),
-      ...manifests.filter((m) => m.optional?.includes(s)).map((m) => `\`${m.id}\` (facultatif)`),
+      ...manifests.filter((m) => (m.inject as readonly string[] | undefined)?.includes(s)).map((m) => `\`${m.id}\``),
+      ...manifests.filter((m) => (m.optional as readonly string[] | undefined)?.includes(s)).map((m) => `\`${m.id}\` (facultatif)`),
       ...manifests.flatMap((m) => (m.slots ?? []).filter((x) => x.service === s).map((x) => `\`${m.id}\` (slot \`${x.id}\`)`)),
       ...(s === "task" || s === "documents" ? ["noyau"] : []),
     ];
     const contract = c ? `\`${c.type}\` (\`${c.file}\`)${c.uses.length ? ` ; cite ${c.uses.map((u) => `\`${u}\``).join(", ")}` : ""}` : "— (pas de contrat)";
-    lines.push(`| \`${s}\` | ${contract} | ${c?.summary || "—"} | ${who((m) => !!m.provides?.includes(s))} | ${users.join(", ") || "—"} |`);
+    lines.push(`| \`${s}\` | ${contract} | ${c?.summary || "—"} | ${who((m) => !!(m.provides as readonly string[] | undefined)?.includes(s))} | ${users.join(", ") || "—"} |`);
   }
   return lines.join("\n");
 }

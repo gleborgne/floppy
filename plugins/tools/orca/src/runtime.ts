@@ -1,6 +1,5 @@
 // Collection des faits, références de conversation et diagnostics : aucune dépendance au démarrage du plugin.
 import { T, type Context, type ToolCallMeta, type ToolOutput } from "@floppy/core";
-import type { InitiativePresented, InitiativeDelivery } from "@floppy/contracts";
 import { activityAgentId, activityObservation, createActivityStore, type ActivityAgentRecord, type ActivityDelivery, type ActivityEvent } from "./activity.ts";
 import { createAgentReferences, type AgentReference, type ReferenceFailure } from "./references.ts";
 import { createOrcaDiagnostics } from "./diagnostics.ts";
@@ -251,7 +250,7 @@ export function createOrcaRuntime({ ctx, cli, run, now, onChanges }: OrcaRuntime
       return references.resolve(referenceOrigin(meta), live, { target: nom, cardinality: many ? "many" : "one" });
     } finally { correlation = undefined; }
   }
-  ctx.hook<InitiativePresented, void>("initiative.presented", async (event, next) => {
+  ctx.hook("initiative.presented", async (event, next) => {
     if (event.source === "orca" && event.key) {
       expireMaps();
       const announced = announcements.get(event.key);
@@ -269,7 +268,7 @@ export function createOrcaRuntime({ ctx, cli, run, now, onChanges }: OrcaRuntime
     }
     return next(event);
   });
-  ctx.hook<InitiativeDelivery, void>("initiative.delivery", async (event, next) => {
+  ctx.hook("initiative.delivery", async (event, next) => {
     if (event.source === "orca") {
       const known = event.key && announcements.has(event.key);
       diagnostics.record(`announcement.${event.stage}`, { eventId: known ? event.key : undefined, queueLength: event.queueLength, reason: event.stage === "dropped" ? "conversation_queue_capacity" : undefined });

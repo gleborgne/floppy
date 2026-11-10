@@ -110,7 +110,6 @@ export async function sendTelegram(f: FetchLike, token: string, chat: string, ms
 }
 
 export function createTelegramPlugin(fetchImpl?: FetchLike) {
-  const doFetch: FetchLike = (url, init) => (fetchImpl ?? fetch)(url, init);
   return definePlugin<Config>({
     manifest: {
       id: "notify-telegram",
@@ -137,6 +136,8 @@ export function createTelegramPlugin(fetchImpl?: FetchLike) {
         .map(([id, v]) => ({ ...clean(v as unknown as Record<string, unknown>), id }));
       const changed = () => ctx.items.changed();
       const signal = () => AbortSignal.timeout(cfg.timeout_s * 1000);
+      // Tests : faux réseau. Sinon ctx.fetch, avec la même borne que `signal` (timeout_s, 15 s par défaut) pour chaque requête.
+      const doFetch: FetchLike = fetchImpl ?? ((url, init) => ctx.fetch(url, { ...init, timeoutMs: cfg.timeout_s * 1000 }));
       /** Langue de l'assistant : le message de test envoyé dans le canal. */
       const lang = () => ctx.assistant.language;
 

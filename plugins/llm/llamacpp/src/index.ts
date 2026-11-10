@@ -68,9 +68,14 @@ const Config = z.object({
 });
 type Config = z.infer<typeof Config>;
 
-async function modelId(base: string): Promise<string | undefined> {
+type Http = (url: string | URL, init?: RequestInit & { timeoutMs?: number }) => Promise<Response>;
+/** Un appel ponctuel (tri, résumé) à un modèle local : borne de la réponse entière. */
+const COMPLETE_TIMEOUT_MS = 300_000;
+
+/** Modèle servi par un llama-server déjà lancé (3 s : serveur local, réponse minuscule). */
+async function modelId(http: Http, base: string): Promise<string | undefined> {
   try {
-    const r = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(3000) });
+    const r = await http(`${base}/v1/models`, { timeoutMs: 3000 });
     const j = (await r.json()) as { data?: { id: string }[] };
     return j.data?.[0]?.id;
   } catch {
@@ -314,7 +319,7 @@ const samePath = (a: string, b: string): boolean => {
 };
 
 /** `known` : modèles choisis ; `search` : recherche en ligne (Hugging Face). Remplaçables pour les tests. */
-export function makePlugin(known: LibraryEntry[] = KNOWN_MODELS, search: (q: string) => Promise<LibraryEntry[]> = (q) => searchHf(q)) {
+export function makePlugin(known: LibraryEntry[] = KNOWN_MODELS, search: (q: string, http: Http) => Promise<LibraryEntry[]> = (q, http) => searchHf(q, http)) {
 return definePlugin<Config>({
   manifest: {
     id: "llm-llamacpp",
@@ -359,7 +364,7 @@ return definePlugin<Config>({
         srv.starting = (async () => {
           if (await httpHealthy(base)) {
             // Un llama-server lancé hors de Floppy : réutilisé tel quel s'il a ce modèle, jamais arrêté par nous.
-            const other = await modelId(base);
+            const other = await modelId(ctx.fetch, base);
             if (!cfg.reuse || other !== e.id) throw new TextError(T(`le port ${cfg.port} est pris par un autre llama-server (modèle ${other ?? "?"}) : arrête-le d'abord`, `port ${cfg.port} is taken by another llama-server (model ${other ?? "?"}): stop it first`));
             ctx.log("info", `llama-server déjà lancé sur ${cfg.port} : réutilisé (modèle ${other})`);
           } else {
@@ -430,7 +435,7 @@ return definePlugin<Config>({
         const e = brainModel();
         if (!e) throw new TextError(T("le cerveau principal n'est pas un modèle local : active un modèle local comme cerveau, ou choisis un autre cerveau pour ce rôle", "the main brain isn't a local model: activate a local model as the brain, or choose another brain for this role"));
         await acquire(f, e);
-        f.provide("completion", { label: e.label, cloud: false, complete: (req) => localComplete(`${base}/v1`, e.id, req) } satisfies CompletionService);
+        f.provide("completion", { label: e.label, cloud: false, complete: (req) => localComplete(f.fetch, `${base}/v1`, e.id, req) } satisfies CompletionService);
       },
     });
 
@@ -587,7 +592,7 @@ return definePlugin<Config>({
       label: T("Modèles GGUF", "GGUF models"),
       searchHint: T("Chercher sur Hugging Face (ex. gemma, qwen, mistral)", "Search Hugging Face (e.g. gemma, qwen, mistral)"),
       entries: () => known,
-      search,
+      search: (q) => search(q, ctx.fetch),
       has: (e) => mine(e).length > 0,
       itemOf: (e) => mine(e)[0]?.id,
       missing: () => (exePath() ? undefined
@@ -651,8 +656,9 @@ return definePlugin<Config>({
 
 export default makePlugin();
 
-/** Un appel ponctuel à llama-server (sans réflexion : tri, résumé). Avec un schéma, la réponse JSON est lue et vérifiée. */
-export async function localComplete(baseURL: string, model: string, req: { system: string; prompt: string; schema?: Record<string, unknown>; signal?: AbortSignal }): Promise<{ text: string; json?: unknown }> {
+/** Un appel ponctuel à llama-server (sans réflexion : tri, résumé). Avec un schéma, la réponse JSON est lue et vérifiée.
+ *  `http` est le `ctx.fetch` du fork qui sert l'appel. Borne : 5 min (avant : aucune), pour un modèle lent sur processeur. */
+export async function localComplete(http: Http, baseURL: string, model: string, req: { system: string; prompt: string; schema?: Record<string, unknown>; signal?: AbortSignal }): Promise<{ text: string; json?: unknown }> {
   const once = async (): Promise<{ text: string; json?: unknown }> => {
     const body: Record<string, unknown> = {
       model, temperature: 0.2,
@@ -661,7 +667,7 @@ export async function localComplete(baseURL: string, model: string, req: { syste
       chat_template_kwargs: { enable_thinking: false }, thinking_budget_tokens: 0,
       ...(req.schema ? { response_format: { type: "json_schema", json_schema: { name: "reponse", schema: req.schema } } } : {}),
     };
-    const r = await fetch(`${baseURL}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...(req.signal ? { signal: req.signal } : {}) });
+    const r = await http(`${baseURL}/chat/completions`, { timeoutMs: COMPLETE_TIMEOUT_MS, method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...(req.signal ? { signal: req.signal } : {}) });
     if (!r.ok) throw new Error(`le modèle local a répondu ${r.status} : ${(await r.text()).slice(0, 200)}`);
     const data = (await r.json()) as { choices?: { message?: { content?: string } }[] };
     const text = String(data.choices?.[0]?.message?.content ?? "").trim();

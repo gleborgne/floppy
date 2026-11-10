@@ -45,13 +45,16 @@ export function parseFeed(xml: string, feedUrl: string): FeedItem[] {
   throw new TextError(T("ce n'est pas un flux RSS ou Atom", "not an RSS or Atom feed"));
 }
 
-/** Télécharge et lit un flux, avec délai max. */
-export async function fetchFeed(url: string, opts: { fetch?: typeof fetch; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<FeedItem[]> {
-  const f = opts.fetch ?? fetch;
+/** Le `fetch` des flux : `ctx.fetch` du plugin (ou un faux, dans les tests). */
+export type FeedFetch = (url: string, init?: RequestInit & { timeoutMs?: number }) => Promise<Response>;
+
+/** Télécharge et lit un flux, avec délai max (15 s par défaut, lecture du corps comprise : `timeoutMs` est donné à ctx.fetch). */
+export async function fetchFeed(url: string, opts: { fetch: FeedFetch; timeoutMs?: number; signal?: AbortSignal }): Promise<FeedItem[]> {
+  const f = opts.fetch;
   const signals = [AbortSignal.timeout(opts.timeoutMs ?? 15_000), ...(opts.signal ? [opts.signal] : [])];
   let r: Response;
   try {
-    r = await f(url, { headers: { "user-agent": "Floppy-veille/0.1", accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" }, signal: AbortSignal.any(signals) });
+    r = await f(url, { timeoutMs: opts.timeoutMs ?? 15_000, headers: { "user-agent": "Floppy-veille/0.1", accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" }, signal: AbortSignal.any(signals) });
   } catch (e) {
     throw new TextError(netError(e, opts.timeoutMs ?? 15_000));
   }

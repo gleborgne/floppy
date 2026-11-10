@@ -11,7 +11,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { Kernel, MemoryAudit } from "@floppy/core";
 import type { McpEndpoint } from "@floppy/contracts";
 import tools from "../src/index.ts";
-import { parseAzToken, azTokenProvider } from "../src/azcli.ts";
+import { parseAzToken, azTokenProvider, bearerFetch } from "../src/azcli.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const calls = join(mkdtempSync(join(tmpdir(), "mcp-conn-")), "calls.jsonl");
@@ -157,6 +157,19 @@ describe("jeton azcli", () => {
     // Le jeton suivant expire dans 2 minutes : jugé trop proche, donc refait à chaque appel.
     n = 1;
     expect(await azTokenProvider("https://x", async () => JSON.stringify({ accessToken: "a", expires_on: exp[1] }))()).toBe("a");
+  });
+});
+
+describe("requêtes d'un serveur distant", () => {
+  it("bearerFetch ajoute le jeton puis passe par le fetch donné (celui du contexte)", async () => {
+    const seen: { url: string; auth: string | null; timeoutMs?: number }[] = [];
+    const http = (async (url: string | URL, init?: RequestInit & { timeoutMs?: number }) => {
+      seen.push({ url: String(url), auth: new Headers(init?.headers).get("authorization"), ...(init?.timeoutMs ? { timeoutMs: init.timeoutMs } : {}) });
+      return new Response("ok");
+    }) as typeof fetch;
+    const r = await bearerFetch(async () => "tok", http)("https://mcp.contoso.com/x", { method: "POST", timeoutMs: 5 } as RequestInit);
+    expect(await r.text()).toBe("ok");
+    expect(seen).toEqual([{ url: "https://mcp.contoso.com/x", auth: "Bearer tok", timeoutMs: 5 }]);
   });
 });
 

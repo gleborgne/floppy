@@ -11,7 +11,7 @@
 // - Interruption : si l'utilisateur parle pendant la voix, tout s'arrête (cerveau, synthèse, lecture).
 import { definePlugin, type Text, AudioHistory, T, tr, errorText } from "@floppy/core";
 import { randomUUID } from "node:crypto";
-import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, TurnMode, ConversationCommand, ConversationCommandInput, SpeechDelivery } from "@floppy/contracts";
+import type { BrainService, LiveService, TtsService, WakewordService, BrainEvent, TurnMode, SpeechDelivery } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, SentenceSplitter, matchQuickSetting } from "./text.ts";
 
@@ -255,7 +255,7 @@ export default definePlugin<Config>({
       await prev;
       try {
         if (b.turn !== t) return; // annulé pendant l'attente
-        const command = await ctx.runHook<ConversationCommandInput, ConversationCommand | undefined>("conversation.command", { text: stripWakeWord(text, wake), origin: b.id }, async () => undefined);
+        const command = await ctx.runHook("conversation.command", { text: stripWakeWord(text, wake), origin: b.id }, async () => undefined);
         const availableCommand = command && ctx.tools.list().some(tool => tool.name === command.name) ? command : undefined;
         if (!brain && !availableCommand) throw new Error("Aucun cerveau actif pour répondre en cascade ou en texte.");
         if (Date.now() - b.lastTurnAt > cfg.idle_reset_s * 1000) brain?.reset(b.id);

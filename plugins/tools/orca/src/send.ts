@@ -1,6 +1,6 @@
 // Une consigne vise un agent précis, figé avant l'accord puis revérifié avant l'envoi.
 import { randomUUID } from "node:crypto";
-import { T, TextError, type Context, type ToolCallMeta, type ToolCallInput, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
+import { T, TextError, type Context, type ToolCallMeta, type ToolDef, type ToolOutput } from "@floppy/core";
 import type { Hit, OrcaCli, OrcaRunner } from "./index.ts";
 import { isWorker } from "./speech.ts";
 import { deliveryAudit, deliveryMeta, exactTerminal, incarnation, instruction, permissionMenu, receiptOf, recipientLabel, turnEndEvidence, type DeliveryCallbacks, type DeliveryFact } from "./send-support.ts";
@@ -27,7 +27,7 @@ export function sendTool({ ctx, cli, run, direct, target, onDelivery, diagnostic
   const prepared = new WeakMap<Record<string, unknown>, Prepared>();
   const missing = (label?: string) => new TextError(T(`${label ? `${label} : cet` : "Cet"} agent n'a plus de terminal identifiable dans Orca. Aucun message envoyé.`, `${label ? `${label}: this` : "This"} agent no longer has an identifiable terminal in Orca. No message sent.`));
 
-  ctx.hook<ToolCallInput, ToolResult>("tool.before", async (input, next) => {
+  ctx.hook("tool.before", async (input, next) => {
     if (input.name !== "orca_envoyer" || input.tool.source !== ctx.id) return next(input);
     const message = instruction(input.args.message);
     if (!direct()) throw new TextError(T("Envoi impossible : règle le chemin vers le programme Orca, sans script intermédiaire.", "Cannot send: set the path to the Orca program, without an intermediate script."));

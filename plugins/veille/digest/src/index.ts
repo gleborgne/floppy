@@ -287,7 +287,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           }
           const results = await Promise.all(v.flux.map(async (u) => {
             try {
-              const items = await fetchFeed(u, { ...(opts.fetch ? { fetch: opts.fetch } : {}), timeoutMs: 10_000 });
+              const items = await fetchFeed(u, { fetch: opts.fetch ?? ctx.fetch, timeoutMs: 10_000 });
               const d = items[0]?.date ? new Date(items[0].date) : undefined;
               const src = items[0]?.source ?? "";
               const detail = T(`${items.length} articles · ${src}${d ? ` · dernier le ${d.toLocaleDateString("fr-FR")}` : ""}`, `${items.length} articles · ${src}${d ? ` · latest on ${d.toLocaleDateString("en-GB")}` : ""}`);
@@ -328,7 +328,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
             const date = now();
             const r = await runPipeline({
               interets, prefs: (i) => prefs.merged(i), dejaVu: (u) => db.seen(u),
-              completion: tri.service, ...(rech ? { search: rech.service } : {}), ...(opts.fetch ? { fetch: opts.fetch } : {}),
+              completion: tri.service, ...(rech ? { search: rech.service } : {}), fetch: opts.fetch ?? ctx.fetch,
               now: date, ...(input.dernierPassage ? { dernierPassage: input.dernierPassage } : {}),
               cfg: pcfg, signal: input.signal, log: (level, m) => ctx.log(level, m), lang: lang(),
             });

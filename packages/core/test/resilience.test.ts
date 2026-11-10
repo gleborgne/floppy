@@ -128,7 +128,7 @@ describe("pannes attribuées", () => {
       manifest: { id: "p", version: "0", licence: "MIT" },
       apply(ctx) {
         ctx.hook("refuse", async () => { throw new Error("interdit"); });
-        ctx.hook<number, number>("apres", async (n, next) => { await next(n + 1); throw new Error("raté après coup"); });
+        ctx.hook("apres", async (n, next) => { await next(n + 1); throw new Error("raté après coup"); });
       },
     });
     const { k, logs } = kernel([p]);
@@ -136,7 +136,7 @@ describe("pannes attribuées", () => {
     let ran = false;
     await expect(k.hooks.run("refuse", 1, async () => { ran = true; return 0; })).rejects.toThrow(/interdit/);
     expect(ran).toBe(false);
-    expect(await k.hooks.run<number, number>("apres", 1, async (n) => n * 10)).toBe(20);
+    expect(await k.hooks.run("apres", 1, async (n) => n * 10)).toBe(20);
     expect(logs.some((l) => l.includes("middleware apres : erreur après la suite"))).toBe(true);
     await k.stopAll();
   });

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { Kernel, definePlugin, AudioHistory, Pcm16Decoder, readSse } from "../src/index.ts";
 
 describe("choix des fournisseurs de service", () => {
-  const choice = { service: "testVoice", section: "voix", label: "Bouche", none: "Locale" };
+  const choice = { service: "testVoice" as const, section: "voix", label: "Bouche", none: "Locale" };
   const provider = (id: string) => definePlugin({
     manifest: { id, version: "0", licence: "MIT", provides: ["testVoice"], permissions: { cloud: true }, serviceSelection: choice },
     apply(ctx) { ctx.provide("testVoice", { name: id }); },

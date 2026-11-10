@@ -2,7 +2,7 @@
 // Ne connaît ni l'horloge (le Planificateur la lance) ni les corps (le noyau montre le document).
 import { T, TextError, errorText, tr } from "@floppy/core";
 import type { CompletionService, SearchService } from "@floppy/contracts";
-import { fetchFeed, hostOf, clean } from "./feeds.ts";
+import { fetchFeed, hostOf, clean, type FeedFetch } from "./feeds.ts";
 import { pretri, normUrl, type Article } from "./pretri.ts";
 import type { Prefs } from "./prefs.ts";
 import type { DigestArticle } from "./store.ts";
@@ -35,7 +35,7 @@ export interface PipelineDeps {
   dejaVu(url: string): boolean;
   completion: CompletionService;
   search?: SearchService;
-  fetch?: typeof fetch;
+  fetch: FeedFetch;
   now: Date;
   dernierPassage?: Date;
   cfg: PipelineConfig;
@@ -68,7 +68,7 @@ export async function runPipeline(d: PipelineDeps): Promise<PipelineResult> {
   await Promise.all(d.interets.flatMap((it) => [
     ...it.flux.map(async (url) => {
       try {
-        const items = await fetchFeed(url, { ...(d.fetch ? { fetch: d.fetch } : {}), ...(d.signal ? { signal: d.signal } : {}) });
+        const items = await fetchFeed(url, { fetch: d.fetch, ...(d.signal ? { signal: d.signal } : {}) });
         for (const x of items.slice(0, 50)) all.push({ ...x, interet: it.id });
       } catch (e) { erreurs.push(tr(T(`flux ${hostOf(url)} : ${msg(e)}`, `feed ${hostOf(url)}: ${msg(e)}`), lang)); }
     }),

@@ -19,7 +19,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { Bus, type PluginState } from "../bus.ts";
 import { Hooks } from "./hooks.ts";
 import { EffectScope } from "./effects.ts";
-import { manifestError, type Manifest, type PluginDef, type SlotDef } from "./manifest.ts";
+import { manifestProblem, type ManifestProblem, type Manifest, type PluginDef, type SlotDef } from "./manifest.ts";
 import type { LogLevel, OfferDef } from "./context.ts";
 import type { SettingOption } from "../settings.ts";
 import { ApprovalManager } from "../approval.ts";
@@ -197,7 +197,7 @@ export class Kernel {
   private stopped = false;
   private readonly catalog = new Map<string, PluginDef<any>>();
   /** Plugins dont le manifeste est invalide : id → raison. Leurs entrées démarrent en erreur visible. */
-  private readonly invalid = new Map<string, string>();
+  private readonly invalid = new Map<string, ManifestProblem>();
   private entries = new Map<string, Entry>();
   private selection: Record<string, string> = {};
   private readonly selectable = new Map<string, NonNullable<PluginDef["manifest"]["serviceSelection"]>>();
@@ -339,12 +339,12 @@ export class Kernel {
 
   /** Vérifie le manifeste. Invalide : noté (l'entrée sera en erreur), jamais enregistré. */
   private checkManifest(def: PluginDef<any>): boolean {
-    const bad = manifestError(def?.manifest);
+    const bad = manifestProblem(def?.manifest);
     const id = String((def?.manifest as { id?: unknown } | undefined)?.id);
     if (!bad) { this.invalid.delete(id); return true; }
     this.invalid.set(id, bad);
     this.catalog.delete(id);
-    this.log("error", id, `manifeste invalide : ${bad}`);
+    this.log("error", id, `manifeste invalide : ${bad.fr}`);
     return false;
   }
 
@@ -610,7 +610,7 @@ export class Kernel {
     const e: Entry = { cfg, state: "loaded", provided: new Map(), bound: new Map(), used: new Set(), slotBound: new Map(), offers: new Map(), retries: 0 };
     if (cfg.disabled) { e.state = "disabled"; return e; }
     const bad = this.invalid.get(cfg.plugin);
-    if (bad) return this.setError(e, T(`manifeste invalide : ${bad}`, `invalid manifest: ${bad}`));
+    if (bad) return this.setError(e, T(`manifeste invalide : ${bad.fr}`, `invalid manifest: ${bad.en}`));
     const def = this.catalog.get(cfg.plugin);
     if (!def) {
       // Un paquet de plugin qui ne se charge pas est peut-être celui-ci : on le dit (on ne connaît pas son id).
@@ -686,7 +686,7 @@ export class Kernel {
    */
   private candidateOf(name: string): string | undefined {
     const ok = (e?: Entry): boolean => {
-      if (!e?.def || !(e.def.manifest.provides ?? []).includes(name)) return false;
+      if (!e?.def || !((e.def.manifest.provides ?? []) as readonly string[]).includes(name)) return false;
       if (e.state === "active") return e.provided.has(name);
       return !!e.def.manifest.lazy && (e.state === "loaded" || e.state === "waiting");
     };

@@ -135,7 +135,7 @@ export function dynamicCatalogue(ctx: Context, seeds: KnownVoiceModel[]): () => 
     if (pending) return pending;
     pending = (async (): Promise<OpResult> => {
       try {
-        const next = await fetchCatalogue(ctx.fetch as typeof fetch, AbortSignal.any([stopped.signal, AbortSignal.timeout(45_000)]));
+        const next = await fetchCatalogue(((url: string, init?: RequestInit) => ctx.fetch(url, { ...init, timeoutMs: 45_000 })) as typeof fetch, AbortSignal.any([stopped.signal, AbortSignal.timeout(45_000)]));
         stopped.signal.throwIfAborted();
         // Garder les anciennes révisions : ni une voix ni un téléchargement en cours ne change de fichier.
         const merged = new Map(records.map(r => [entry(r)?.id, r]));

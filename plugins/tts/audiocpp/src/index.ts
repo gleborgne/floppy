@@ -463,8 +463,9 @@ return definePlugin<Config>({
           try {
             let r: Response;
             try {
-              r = await fetch(`${base}/v1/audio/speech`, {
-                method: "POST", signal, headers: { "content-type": "application/json" }, body: JSON.stringify(speechRequest(e, text, ctx.assistant.language, opts.delivery)),
+              // 120 s pour toute la synthèse, flux compris (même borne que `signal`) : ctx.fetch du fork, sinon 30 s couperaient une longue phrase.
+              r = await f.fetch(`${base}/v1/audio/speech`, {
+                method: "POST", signal, timeoutMs: 120_000, headers: { "content-type": "application/json" }, body: JSON.stringify(speechRequest(e, text, ctx.assistant.language, opts.delivery)),
               });
             } catch (err) {
               if (signal.aborted) throw err;
@@ -653,8 +654,9 @@ return definePlugin<Config>({
       if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "essai.wav"); writeFileSync(ref, wav); }
       const text = str(values.essai) || TRIAL[ctx.uiLang() === "en" ? "en" : "fr"];
       const streaming = loaded.mode === "streaming";
-      const r = await fetch(`${base}/v1/audio/speech`, {
-        method: "POST", signal: AbortSignal.timeout(120_000), headers: { "content-type": "application/json" },
+      // Essai : 120 s pour toute la réponse (flux compris), par ctx.fetch.
+      const r = await ctx.fetch(`${base}/v1/audio/speech`, {
+        method: "POST", timeoutMs: 120_000, headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: MODEL_ID, input: text, voice_ref: slash(ref), language: loaded.langue || ctx.assistant.language,
           ...trialReference(v),

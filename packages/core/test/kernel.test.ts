@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
-import { Kernel, definePlugin, type PluginDef, type KernelConfigInput } from "../src/index.ts";
+import { Kernel, definePlugin, type PluginDef, type KernelConfigInput, type ServiceName } from "../src/index.ts";
 
 const quiet = () => {};
 
 /** Plugin factice : fournit et attend des services, note ses démarrages et arrêts. */
-function fake(id: string, opts: { provides?: string[]; inject?: string[]; optional?: string[]; fail?: boolean } = {}, journal: string[] = []): PluginDef<any> {
+function fake(id: string, opts: { provides?: ServiceName[]; inject?: ServiceName[]; optional?: ServiceName[]; fail?: boolean } = {}, journal: string[] = []): PluginDef<any> {
   return definePlugin({
     manifest: { id, version: "0", licence: "MIT", provides: opts.provides ?? [], inject: opts.inject ?? [], optional: opts.optional ?? [] },
     config: z.object({ v: z.number().default(0) }),
@@ -152,13 +152,13 @@ describe("Kernel", () => {
   it("les hooks s'enchaînent dans l'ordre et disparaissent avec le plugin", async () => {
     const mk = (id: string, tag: string) => definePlugin({
       manifest: { id, version: "0", licence: "MIT" },
-      apply(ctx) { ctx.hook<string[], string[]>("t", async (x, next) => next([...x, tag])); },
+      apply(ctx) { ctx.hook("t", async (x, next) => next([...x, tag])); },
     });
     const k = new Kernel({ logger: quiet, plugins: [mk("p1", "1"), mk("p2", "2")] });
     await k.applyConfig(cfg([{ id: "p1", plugin: "p1" }, { id: "p2", plugin: "p2" }]));
-    expect(await k.hooks.run<string[], string[]>("t", [], async (x) => x)).toEqual(["1", "2"]);
+    expect(await k.hooks.run("t", [], async (x) => x)).toEqual(["1", "2"]);
     await k.applyConfig(cfg([{ id: "p2", plugin: "p2" }]));
-    expect(await k.hooks.run<string[], string[]>("t", [], async (x) => x)).toEqual(["2"]);
+    expect(await k.hooks.run("t", [], async (x) => x)).toEqual(["2"]);
   });
   it("replacePlugin : relance les entrées du plugin avec le nouveau code, et leurs dépendants", async () => {
     const j: string[] = [];

@@ -78,11 +78,11 @@ describe("annonces Orca sans jargon (données réelles)", () => {
     await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
     const port = (srv.address() as { port: number }).port;
     const f = facts(w("master-differendum", "Differendum"), a({ lastAssistantMessage: "Differendum 1.0.19 is published." }), "termines");
-    expect(await llmSentence({ baseURL: `http://127.0.0.1:${port}/v1`, model: "m" }, f)).toBe("Sur Differendum, la version 1.0.19 est publiée.");
+    expect(await llmSentence({ baseURL: `http://127.0.0.1:${port}/v1`, model: "m" }, f, fetch)).toBe("Sur Differendum, la version 1.0.19 est publiée.");
     expect(body).toContain("Differendum 1.0.19 is published");
     srv.close();
-    expect(await llmSentence(undefined, f)).toBeUndefined();
-    expect(await llmSentence({ baseURL: "http://127.0.0.1:1/v1", model: "m" }, f, 500)).toBeUndefined();
+    expect(await llmSentence(undefined, f, fetch)).toBeUndefined();
+    expect(await llmSentence({ baseURL: "http://127.0.0.1:1/v1", model: "m" }, f, fetch, 500)).toBeUndefined();
   });
 });
 

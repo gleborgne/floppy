@@ -123,11 +123,11 @@ export default definePlugin<Config>({
             const system = req.schema ? `${req.system}\nRéponds seulement avec un JSON valide qui suit ce schéma : ${JSON.stringify(req.schema)}` : req.system;
             const body: Record<string, unknown> = { model: m.model, messages: [{ role: "system", content: system }, { role: "user", content: req.prompt }] };
             if (req.schema) body.response_format = { type: "json_schema", json_schema: { name: "reponse", schema: req.schema, strict: false } };
-            const signals = [AbortSignal.timeout(cfg.timeout_s * 1000 * 6), ...(req.signal ? [req.signal] : [])];
             let r: Response;
             try {
-              r = await fetch(`${m.baseURL}/chat/completions`, {
-                method: "POST", signal: AbortSignal.any(signals),
+              // Même borne qu'avant (6 × timeout_s, réponse entière), portée par ctx.fetch du fork.
+              r = await f.fetch(`${m.baseURL}/chat/completions`, {
+                method: "POST", timeoutMs: cfg.timeout_s * 1000 * 6, ...(req.signal ? { signal: req.signal } : {}),
                 headers: { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) },
                 body: JSON.stringify(body),
               });
@@ -224,9 +224,10 @@ export default definePlugin<Config>({
         const typed = values.apiKey;
         const key = secret.typedOr(id, typed);
         const headers: Record<string, string> = { "content-type": "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) };
-        const signal = () => AbortSignal.timeout(cfg.timeout_s * 1000);
+        // Test : timeout_s pour chaque appel (réponse entière), par ctx.fetch.
+        const timeoutMs = cfg.timeout_s * 1000;
         try {
-          const r = await fetch(`${v.baseURL}/models`, { headers, signal: signal() });
+          const r = await ctx.fetch(`${v.baseURL}/models`, { headers, timeoutMs });
           if (r.ok) {
             let ids: string[] = [];
             try { ids = ((await r.json()) as { data?: { id?: string }[] }).data?.map((d) => String(d.id)) ?? []; } catch { /* pas du JSON */ }
@@ -235,8 +236,8 @@ export default definePlugin<Config>({
           }
           if (r.status === 401 || r.status === 403) return { ok: false, text: T(`L'API refuse la clé (erreur ${r.status}).`, `The API rejects the key (error ${r.status}).`) };
           // Certaines API n'ont pas /models : un tout petit message à la place.
-          const c = await fetch(`${v.baseURL}/chat/completions`, {
-            method: "POST", headers, signal: signal(),
+          const c = await ctx.fetch(`${v.baseURL}/chat/completions`, {
+            method: "POST", headers, timeoutMs,
             body: JSON.stringify({ model: v.model, max_tokens: 1, messages: [{ role: "user", content: "ok" }] }),
           });
           if (c.ok) return { ok: true, text: T("Ça marche : le modèle a répondu.", "It works: the model answered.") };

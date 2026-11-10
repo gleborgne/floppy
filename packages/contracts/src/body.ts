@@ -81,4 +81,10 @@ declare module "@floppy/core" {
     body: BodyHub;
     avatars: AvatarRegistry;
   }
+  interface HookTypes {
+    /** Rendu à qui suit la programmation vocale ou l'affichage d'une initiative (le lance la conversation). */
+    "initiative.presented": { input: InitiativePresented; output: void };
+    /** Suivi de la file des initiatives (le lance la conversation). */
+    "initiative.delivery": { input: InitiativeDelivery; output: void };
+  }
 }

@@ -63,7 +63,8 @@ export default definePlugin<Config>({
     provides: ["mcp"],
     runtime: "in-process",
     // Lance les serveurs MCP définis par l'utilisateur : ses commandes, son accord (il les a configurées).
-    permissions: { exec: ["*"], cloud: true },
+    // net "*" : l'adresse d'un serveur MCP distant est choisie par l'utilisateur.
+    permissions: { exec: ["*"], net: ["*"], cloud: true },
   },
   config: Config,
   async apply(ctx, cfg) {

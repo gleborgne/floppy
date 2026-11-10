@@ -31,6 +31,9 @@ export function parseAzToken(json: string): { token: string; expiresAt: number }
   return { token: o.accessToken, expiresAt };
 }
 
+/** Un `fetch` du plugin (`ctx.fetch` : délai, permissions.net). */
+export type HttpFetch = (url: string | URL, init?: RequestInit) => Promise<Response>;
+
 /** Renvoie une fonction qui donne un jeton valide (en le renouvelant au besoin). */
 export function azTokenProvider(resource: string, run: (r: string) => Promise<string>): () => Promise<string> {
   let cache: { token: string; expiresAt: number } | undefined;
@@ -42,11 +45,11 @@ export function azTokenProvider(resource: string, run: (r: string) => Promise<st
   };
 }
 
-/** `fetch` qui ajoute `Authorization: Bearer <jeton>` à chaque requête. */
-export function bearerFetch(getToken: () => Promise<string>): (url: string | URL, init?: RequestInit) => Promise<Response> {
+/** `fetch` qui ajoute `Authorization: Bearer <jeton>` à chaque requête, puis passe par `http` (le `ctx.fetch` du plugin). */
+export function bearerFetch(getToken: () => Promise<string>, http: HttpFetch): HttpFetch {
   return async (url, init) => {
     const headers = new Headers(init?.headers);
     headers.set("Authorization", `Bearer ${await getToken()}`);
-    return fetch(url, { ...init, headers });
+    return http(url, { ...init, headers });
   };
 }

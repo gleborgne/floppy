@@ -1,7 +1,7 @@
 // Les corrections sont des faits contextualisés, jamais des substitutions dans la transcription.
 import { z } from "zod";
 import { createHash, randomUUID } from "node:crypto";
-import { definePlugin, T, TextError, tr, type ToolCallInput, type ToolOutput, type ToolResult } from "@floppy/core";
+import { definePlugin, T, TextError, tr, type ToolOutput } from "@floppy/core";
 import { MEMORY_OPERATION_TIMEOUT_MS, type MemoryCorrection, type MemoryCorrectionScope, type MemoryOptions, type VocabularyService } from "@floppy/contracts";
 
 const Config = z.object({ automatic: z.boolean().default(true), traceText: z.boolean().default(false) });
@@ -183,7 +183,7 @@ export default definePlugin<z.infer<typeof Config>>({
     };
     ctx.provide("vocabulary", service);
     ctx.effect(() => turns.clear());
-    ctx.hook<ToolCallInput, ToolResult>("tool.before", async (input, next) => {
+    ctx.hook("tool.before", async (input, next) => {
       if (input.tool.source !== ctx.id || !["corriger_vocabulaire", "oublier_correction"].includes(input.name)) return next(input);
       const started = performance.now();
       const trace = correlation(input.meta);

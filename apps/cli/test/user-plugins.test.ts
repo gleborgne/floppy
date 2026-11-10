@@ -99,12 +99,45 @@ describe("plugins utilisateur", () => {
     expect((await kernel.tools.call("hello_mon_plugin", {})).text).toBe("version deux");
   });
 
+  it("un plugin personnel a ses propres noms de service, de hook et d'événement (augmentation de module du SDK)", async () => {
+    const code = `import type { PluginContext } from "../floppy-plugin.d.ts";
+declare module "../floppy-plugin.d.ts" {
+  interface Services { "perso.compteur": { suivant(): number } }
+  interface HookTypes { "perso.avant": { input: { n: number }; output: string } }
+  interface BusEvents { "perso.tic": { fois: number } }
+}
+export default {
+  manifest: { id: "perso", version: "1.0.0", licence: "MIT", provides: ["perso.compteur"] },
+  apply(ctx: PluginContext) {
+    let n = 0;
+    const tics: number[] = [];
+    ctx.provide("perso.compteur", { suivant: () => ++n });
+    ctx.hook("perso.avant", async (input, next) => next({ n: input.n + 1 }));
+    ctx.on("perso.tic", (p) => { tics.push(p.fois); });
+    ctx.tools.register([{ name: "essai_perso", description: "d", inputSchema: { type: "object", properties: {} }, level: "read",
+      handler: async () => {
+        const r = await ctx.runHook("perso.avant", { n: 1 }, async (i) => "n=" + i.n);
+        ctx.emit("perso.tic", { fois: 2 });
+        return { status: "done", text: r + " tics=" + tics.join(",") + " svc=" + (await Promise.resolve(n)) };
+      } }]);
+  },
+};
+`;
+    const { kernel, up } = setup({ perso: code });
+    await kernel.applyConfig({ plugins: [] });
+    expect(await up.reload()).toEqual([{ id: "perso", status: "ajouté" }]);
+    expect((await kernel.settings.change("plugin_perso", true, "ui")).ok).toBe(true);
+    expect(kernel.status().find((e) => e.id === "u-perso")?.state).toBe("active");
+    expect((await kernel.tools.call("essai_perso", {})).text).toBe("n=2 tics=2 svc=0");
+  });
+
   it("un plugin cassé signale son erreur sans gêner les autres", async () => {
     const { kernel, up } = setup({
       "bon": src("bon", "ok"),
       "syntaxe": "export default { manifest: ;;; ",
       "mauvais-id": src("autre-nom", "x"),
       "interne": src("interne", "x"),
+      "faute": src("faute", "x", `, optionnal: ["memory"]`),
       "sans-apply": `export default { manifest: { id: "sans-apply", version: "1", licence: "MIT" } };\n`,
     });
     await kernel.applyConfig({ plugins: [] });
@@ -115,6 +148,7 @@ describe("plugins utilisateur", () => {
     expect(by["mauvais-id"]?.error).toContain("nom du dossier");
     expect(by["interne"]?.error).toContain("livré avec l'app");
     expect(by["sans-apply"]?.error).toContain("apply");
+    expect(by["faute"]).toMatchObject({ status: "erreur", error: expect.stringContaining("optionnal : champ inconnu (voulais-tu « optional » ?)") });
     expect((await kernel.settings.change("plugin_syntaxe", true, "ui")).ok).toBe(false); // activation impossible
     expect((await kernel.settings.change("plugin_bon", true, "ui")).ok).toBe(true);
     expect(kernel.status().find((e) => e.id === "u-bon")?.state).toBe("active");

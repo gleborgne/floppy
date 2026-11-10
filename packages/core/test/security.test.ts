@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Kernel, MemorySecrets, Bus, definePlugin, scopedSecrets, type Context, type ItemInfo, type PluginDef } from "../src/index.ts";
+import { Kernel, MemorySecrets, Bus, definePlugin, scopedSecrets, TextError, tr, type Context, type ItemInfo, type PluginDef } from "../src/index.ts";
 
 const quiet = () => {};
 
@@ -269,20 +269,32 @@ describe("lot sécurité : événements du noyau et réseau", () => {
     await k.stopAll();
   });
 
-  it("ctx.fetch : délai par défaut, hôte hors permissions.net signalé une fois", async () => {
+  /** Un plugin « p » avec ces permissions, son ctx, le journal et l'audit du noyau. */
+  async function netPlugin(net: string[] | undefined) {
+    let ctx!: Context;
+    const p = definePlugin({ manifest: { id: "p", version: "0", licence: "MIT", ...(net ? { permissions: { net } } : {}) }, apply(c) { ctx = c; } });
+    const logs: string[] = [];
+    const k = new Kernel({ logger: (r) => logs.push(r.msg), plugins: [p] });
+    await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
+    return { ctx, logs, k, audit: k.audit as unknown as { records: { kind: string; plugin?: string; host?: string }[] } };
+  }
+  /** Ce qui sort sur un faux hôte (.invalid : le nom ne se résout jamais) n'est PAS un refus du noyau, mais une panne réseau. */
+  const passed = async (c: Context, url: string) => {
+    const err = await c.fetch(url, { timeoutMs: 2000 }).then(() => undefined, (e: unknown) => e);
+    expect(err).toBeDefined();
+    expect(err).not.toBeInstanceOf(TextError);
+  };
+
+  it("ctx.fetch : la boucle locale est permise sans rien déclarer, le délai s'applique", async () => {
     const { createServer } = await import("node:http");
     const srv = createServer((req, res) => { if (req.url === "/lent") return; res.end("ok"); });
     await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
     const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
-    let ctx!: Context;
-    const p = definePlugin({ manifest: { id: "p", version: "0", licence: "MIT", permissions: { net: ["example.org"] } }, apply(c) { ctx = c; } });
-    const logs: string[] = [];
-    const k = new Kernel({ logger: (r) => logs.push(r.msg), plugins: [p] });
-    await k.applyConfig({ plugins: [{ id: "p", plugin: "p" }] });
+    const { ctx, logs, k } = await netPlugin(["example.org"]);
     try {
       expect(await (await ctx.fetch(`${base}/a`)).text()).toBe("ok");
-      await ctx.fetch(`${base}/b`);
-      expect(logs.filter((l) => l.includes("127.0.0.1 n'est pas dans permissions.net"))).toHaveLength(1);
+      await passed(ctx, "http://localhost:1/"); // pas de serveur : une panne réseau, pas un refus
+      expect(logs.filter((l) => l.includes("refusé"))).toHaveLength(0);
       await expect(ctx.fetch(`${base}/lent`, { timeoutMs: 50 })).rejects.toThrow();
     } finally {
       await k.stopAll();
@@ -290,4 +302,39 @@ describe("lot sécurité : événements du noyau et réseau", () => {
       await new Promise<void>((r) => srv.close(() => r()));
     }
   });
+
+  it("ctx.fetch : un hôte absent de permissions.net est refusé (TextError bilingue au nom du plugin), noté une fois", async () => {
+    const { ctx, logs, k, audit } = await netPlugin(["example.org"]);
+    try {
+      for (const url of ["https://api.contoso.invalid/v1", "https://api.contoso.invalid/v2"]) {
+        const err = await ctx.fetch(url).then(() => undefined, (e: unknown) => e);
+        expect(err).toBeInstanceOf(TextError);
+        const t = (err as TextError).text;
+        expect(tr(t, "fr")).toBe("p : l'accès à api.contoso.invalid n'est pas permis (permissions.net du manifeste)");
+        expect(tr(t, "en")).toBe("p: access to api.contoso.invalid is not allowed (manifest permissions.net)");
+      }
+      expect(logs.filter((l) => l.includes("api.contoso.invalid refusé"))).toHaveLength(1);
+      expect(audit.records.filter((r) => r.kind === "plugin.net.refused")).toEqual([expect.objectContaining({ plugin: "p", host: "api.contoso.invalid" })]);
+      // Sans permissions.net du tout : refusé aussi (sauf boucle locale).
+      const none = await netPlugin(undefined);
+      await expect(none.ctx.fetch("https://api.contoso.invalid/")).rejects.toBeInstanceOf(TextError);
+      await none.k.stopAll();
+    } finally { await k.stopAll(); }
+  });
+
+  it("ctx.fetch : hôte exact, « *.domaine » et « * » passent ; « ::1 » est de la boucle locale", async () => {
+    const exact = await netPlugin(["api.contoso.invalid"]);
+    const suffix = await netPlugin(["*.contoso.invalid"]);
+    const star = await netPlugin(["*"]);
+    const none = await netPlugin([]);
+    try {
+      await passed(exact.ctx, "https://api.contoso.invalid/");
+      await expect(exact.ctx.fetch("https://other.contoso.invalid/")).rejects.toBeInstanceOf(TextError);
+      await passed(suffix.ctx, "https://eu.api.contoso.invalid/");
+      await expect(suffix.ctx.fetch("https://evilcontoso.invalid/")).rejects.toBeInstanceOf(TextError);
+      await passed(star.ctx, "https://anything.invalid/");
+      await passed(none.ctx, "http://[::1]:1/");
+    } finally { for (const x of [exact, suffix, star, none]) await x.k.stopAll(); }
+  });
+
 });

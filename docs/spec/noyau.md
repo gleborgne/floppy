@@ -256,24 +256,24 @@ definePlugin({
 | `serviceSelection` | sélecteur d'une **entrée** fournisseur (`service.<nom>`), gardé pour les détecteurs de mot d'activation. Pour choisir un élément (modèle, voix, moteur Live), utiliser `slots` |
 | `inject` | services obligatoires : sans eux, le plugin attend (état `waiting`). Un fournisseur `lazy` est démarré pour eux |
 | `optional` | services facultatifs. Lus avec `ctx.maybe` : lien faible (jamais un plugin `lazy`, le plugin redémarre quand ils arrivent ou changent). Lus avec `ctx.use` : besoin réel, le fournisseur est démarré |
-| `permissions` | ce que le plugin veut toucher. `exec` est **imposé** par `ctx.spawn` ; `approvals: "respond"` est imposé par `ctx.approvals` ; le reste (`fs.*`, `net`, `cloud`) est déclaratif (voir [Sécurité](securite.md#garde-fous-du-code)) |
+| `permissions` | ce que le plugin veut toucher. `exec` est **imposé** par `ctx.spawn` ; `approvals: "respond"` est imposé par `ctx.approvals` ; `net` est **imposé** par `ctx.fetch` (hôte absent = refusé) ; le reste (`fs.*`, `cloud`) est déclaratif (voir [Sécurité](securite.md#garde-fous-du-code)) |
 | `sections` | rubriques de la fenêtre des réglages que le plugin apporte (voir [elements.md](elements.md#les-rubriques-déclarées-par-les-plugins)) |
 | `addable` | le plugin est une « application » que l'utilisateur ajoute ou retire (voir [elements.md](elements.md)) |
 
-Le manifeste est validé par un schéma zod au chargement. Invalide : l'entrée démarre en **erreur visible** (`manifeste invalide : …`).
+Le manifeste est validé par un schéma zod au chargement (`ManifestSchema`, `packages/core/src/plugin/manifest.ts`). Le schéma décrit **tous** les champs de `Manifest`, y compris `sections` (`SectionDef`), `addable` (dont les champs de formulaire `FieldDef` et le `Logo`), `slots`, `tasks`, `permissions` et `serviceSelection`, et **refuse tout champ inconnu, à tous les niveaux** : `optionnal` ou `injects` ne sont plus ignorés en silence. Invalide : l'entrée démarre en **erreur visible**, qui nomme le champ et propose le plus proche (`manifeste invalide : optionnal : champ inconnu (voulais-tu « optional » ?)`, dans les deux langues). Le schéma valide la **forme** ; les contrôles de fond (clés de formulaire, rubriques fusionnées) restent dans leurs registres. Le type `Manifest` et le schéma ne peuvent pas dériver : `ManifestSchemaMatchesInterface` (même fichier) échoue à `npm run typecheck` si l'un a un champ, ou un type de champ, que l'autre n'a pas ; `apps/cli/test/example-config.test.ts` vérifie que chaque plugin livré passe le schéma. `runtime` (`in-process` / `out-of-process`) est une étiquette : aucun code du noyau ne s'en sert pour décider.
 
 Le `ctx` est la seule porte vers le noyau :
 
 | Méthode | Rôle |
 |---|---|
-| `provide`, `get`, `maybe` | fournir un service, lire un service déclaré (refus sinon) |
+| `provide`, `get`, `maybe` | fournir un service, lire un service déclaré (refus sinon). Le nom est vérifié par le compilateur (voir « Noms vérifiés ») : `ctx.get("ttts")` ne compile pas |
 | `use(service)` | pendant `apply` : demander un service déclaré ; le démarre s'il est en veille (`lazy`). Ne pas l'appeler = ne pas en avoir besoin |
 | `slot(id)` | pendant `apply` : service de l'élément choisi pour un slot du manifeste ; son fork démarre à la demande. `undefined` : « aucun », ou élément indisponible |
 | `offer(service, { items, max?, start })` | offrir un service élément par élément. `start(f, item)` tourne dans un **fork** (son propre `ctx`, ses effets) et doit appeler `f.provide` |
 | `effect`, `spawn`, `interval`, `timeout` | tout ce qui est ouvert est fermé au déchargement, dans l'ordre inverse |
-| `on`, `emit` | bus d'événements (désabonnement automatique) ; les événements du noyau (accords, état, services, tâches, relance) sont refusés à `emit` |
-| `fetch` | `fetch` avec un délai (30 s par défaut) ; un hôte hors `permissions.net` est signalé au journal |
-| `hook`, `runHook` | middlewares en cascade avec `next()` |
+| `on`, `emit` | bus d'événements, nom et charge utile typés par `CoreEvents` (désabonnement automatique) ; les événements du noyau (accords, état, services, tâches, relance) sont refusés à `emit` |
+| `fetch` | `fetch` avec un délai (30 s par défaut, `timeoutMs` le change ; il couvre la **réponse entière**, corps compris : pour un flux ou une synthèse longue, donner une borne plus grande). L'hôte est vérifié : la boucle locale (`localhost`, `127.0.0.1`, `::1`) est toujours permise ; sinon l'hôte doit figurer dans `permissions.net` (nom exact, `*.domaine` pour le domaine et ses sous-domaines, ou `*` quand l'utilisateur choisit l'adresse, comme `exec: ["*"]`). Un autre hôte est **refusé** : `TextError` bilingue qui nomme le plugin et l'hôte, une ligne au journal et un enregistrement d'audit `plugin.net.refused` (une fois par hôte). Une redirection vers un autre hôte n'est pas revérifiée |
+| `hook`, `runHook` | middlewares en cascade avec `next()`. Le nom est une clé de `HookTypes` : l'entrée et la sortie en sont déduites (aucun type à donner à l'appel) |
 | `tools.register / list / call` | registre d'outils du noyau ; `register` rend une fonction pour retirer ces outils plus tôt (un corps qui se débranche) ; tout est retiré au déchargement |
 | `settings.declare / saved` | réglages modifiables à la voix ou par la CLI (voir [Réglages à la voix](reglages.md)) |
 | `items.declare / store / status…` | éléments de la fenêtre des réglages (voir [elements.md](elements.md)) |
@@ -285,6 +285,27 @@ Le `ctx` est la seule porte vers le noyau :
 | `exec` | commande courte (`permissions.exec`), délai de 30 s par défaut, arrêtée avec le plugin ; rend `{ stdout, stderr, code }` |
 | `workspace(nom)` | espace de travail du plugin dans le répertoire de travail (voir plus bas) |
 | `fail(raison)` | panne : le plugin s'arrête et passe en erreur visible (une seule erreur, même pendant `apply`) |
+
+## Noms vérifiés
+
+Un nom de service, de hook ou d'événement mal écrit ne compile pas : `Services`, `HookTypes` et `CoreEvents` n'ont **aucune signature d'index**, et tout ce qui nomme un service est typé par `ServiceName` (`keyof Services`) : `provides`, `inject`, `optional`, `slots[].service`, `serviceSelection.service`, `ctx.provide/use/get/maybe/offer/offers/borrowItem/restartOffers`. À l'exécution rien ne change.
+
+| Registre | Rôle | Qui le déclare |
+|---|---|---|
+| `Services` | nom -> contrat du service | `task`, `documents` : le noyau (`services.ts`). Les autres : `packages/contracts/src/<domaine>.ts` |
+| `HookTypes` | nom -> `{ input, output }` d'un hook | `tool.before` : le noyau (`plugin/hooks.ts`). `conversation.command` : `contracts/src/brain.ts`. `initiative.presented` et `initiative.delivery` : `contracts/src/body.ts` |
+| `CoreEvents` | nom -> charge utile d'un événement | le noyau (`bus.ts`) |
+
+Chaque registre est une interface qu'on complète par augmentation de module, depuis le fichier qui possède le contrat :
+
+```ts
+declare module "@floppy/core" {
+  interface Services { moncontrat: MonService }
+  interface HookTypes { "mon.hook": { input: MonEntree; output: MaSortie } }
+}
+```
+
+Le propriétaire d'un hook (celui qui lance `ctx.runHook`) le déclare ; ceux qui y ajoutent un middleware (`ctx.hook`) n'ont rien à répéter : deux plugins ne peuvent plus se contredire sur les types d'un hook. Un plugin personnel déclare ses propres noms dans les interfaces du SDK (voir [Plugins tiers](plugins-tiers.md#noms-à-soi)). Les tests du noyau déclarent les leurs dans `packages/core/test/names.fixture.ts` ; `packages/core/test/typed-names.test.ts` vérifie, par `@ts-expect-error`, qu'un nom mal écrit ne compile pas et que les types sont déduits.
 
 ## Cycle de vie
 
@@ -471,7 +492,7 @@ Un seul dossier pour tout ce que Floppy garde : la config `floppy.yml`, les rég
 
 Ce qui reste de la revue d'architecture, par ordre d'intérêt :
 
-1. **Réseau** : faire passer tous les appels par `ctx.fetch`, puis refuser (et non plus signaler) un hôte hors `permissions.net`.
+1. **Réseau** : fait pour les appels HTTP des plugins du dépôt. Tous passent par `ctx.fetch`, qui refuse un hôte hors `permissions.net` ; `boundaries.test.ts` refuse le `fetch` global dans `plugins/*/*/src` (aucune exception). Plugins à adresse choisie par l'utilisateur : `net: ["*"]` (`llm-openai`, `brain-aisdk`, `mcp`, `body-reachy`, `searxng`, `veille`, `notify-mail`). Reste hors de `ctx.fetch` (non vérifié) : les WebSockets (`connectJsonSocket` pour `live-openai` / `live-gemini`, le client WebSocket de `agent-cli/hermes`), le SMTP de `nodemailer` (`notify-mail`), la clé Picovoice de `wakeword-porcupine` (bibliothèque), les téléchargements (`downloads.ts`, qui vérifient eux-mêmes `permissions.net` sans exception pour la boucle locale), le `fetch` de santé de `startLocalServer` (boucle locale seulement), le worker du plugin Orca (processus de l'app Orca, pas du noyau), et les CLI d'agents lancées par `ctx.spawn` (leur réseau est le leur). À faire : router ces transports, et revérifier l'hôte à chaque redirection.
 2. **Code produit hors du noyau.** Premier lancement, lecture de la machine, bibliothèques de modèles et de programmes vivent dans `packages/core` ; cible : un paquet à part, ou des plugins.
 3. **Fichiers encore gros.** Premier découpage fait le 7 novembre 2026 (voir ci-dessous). Prochaines coupes : les forks et les slots de `kernel.ts` (environ 1 080 lignes), le cycle du noyau et la barre des tâches de `apps/desktop/src/main.ts` (environ 880), le catalogue, la bibliothèque et l'éditeur de `renderer/settings*.ts` (environ 1 660), un tour de `plugins/conversation/default/src/index.ts` (environ 570).
 4. **Doublons restants** : la normalisation de texte (une dizaine de petites fonctions proches mais pas identiques : accents, casse, ponctuation).

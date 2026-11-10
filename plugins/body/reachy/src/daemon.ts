@@ -22,18 +22,23 @@ export function normUrl(u: string): string {
   return s.replace(/\/+$/, "");
 }
 
+/** Le `ctx.fetch` du plugin (l'adresse du robot est choisie par l'utilisateur : permissions.net vaut "*"). */
+export type DaemonFetch = (url: string, init?: RequestInit & { timeoutMs?: number }) => Promise<Response>;
+
 export class DaemonClient {
   readonly base: string;
   private readonly timeoutMs: number;
-  constructor(url: string, timeoutMs = 2500) {
+  private readonly http: DaemonFetch;
+  constructor(url: string, http: DaemonFetch, timeoutMs = 2500) {
     this.base = normUrl(url);
+    this.http = http;
     this.timeoutMs = timeoutMs;
   }
 
   private async call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
-    const r = await fetch(`${this.base}/api${path}`, {
+    const r = await this.http(`${this.base}/api${path}`, {
       method,
-      signal: AbortSignal.timeout(this.timeoutMs),
+      timeoutMs: this.timeoutMs, // réponses minuscules : la borne par défaut du daemon (2,5 s) reste celle d'avant
       ...(body !== undefined ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
     });
     if (!r.ok) throw new TextError(T(`le daemon répond ${r.status} sur ${path}`, `the daemon answers ${r.status} on ${path}`));

@@ -32,7 +32,7 @@ sequenceDiagram
 
 Un plugin distribué est un dossier avec `floppy-plugin.json` et `index.ts` (`apps/cli/src/plugins/format.ts`).
 
-- `floppy-plugin.json` : `id`, `version`, `licence`, `api` (aujourd'hui `1`), `description`, `permissions`, `homepage`, `sections`. Il est lu **sans exécuter de code**.
+- `floppy-plugin.json` : `id`, `version`, `licence`, `api` (aujourd'hui `1`), `description`, `permissions`, `homepage`, `sections`. Il est lu **sans exécuter de code**. Ses champs de manifeste passent le même schéma que ceux d'un plugin livré : un champ inconnu ou mal écrit (`permisions`, `optionnal`) est refusé, avec le champ proche proposé (`api` et `homepage` sont des champs du paquet, pas du manifeste).
 - Permissions permises : `net` (hôtes) et `cloud`. `fs.read`, `fs.write`, `exec` et `approvals` sont refusés : le processus isolé n'a ni fichiers, ni programmes, ni accords.
 - Le manifeste du code doit avoir les mêmes `id`, `version` et `permissions`. `provides`, `inject`, `slots`, `tasks`, `addable`, `lazy` et `runtime` sont refusés. C'est vérifié au chargement, dans le processus isolé (`manifestMismatch`).
 - Les types sont dans le SDK, `packages/sdk/floppy-plugin.d.ts`, source unique. Le kit des plugins personnels (`coder`) le copie aussi.
@@ -129,6 +129,16 @@ Les commentaires sont retirés avant la recherche des motifs (les chaînes reste
 - Valeurs gardées : le processus reçoit au démarrage les réglages gardés de son préfixe (`ctx.settings.savedEntries`).
 - Arrêt : message `stop` (nettoyage des effets), puis déconnexion, puis `kill`. Un processus qui meurt seul met le plugin en erreur visible.
 - Node : celui qui fait tourner le noyau. Dans l'app de bureau, c'est `node` du PATH, ou `FLOPPY_NODE`.
+
+## Noms à soi
+
+Dans le noyau, un nom de service, de hook ou d'événement mal écrit ne compile pas (voir [Noyau](noyau.md#noms-vérifiés)). Cela ne ferme pas la porte aux autres :
+
+- **Plugin personnel** (`<home>/plugins/<id>/index.ts`, importé dans le noyau) : il déclare ses noms en augmentant les interfaces du SDK, dans son propre `index.ts` (`declare module "../floppy-plugin.d.ts" { interface Services {…} interface HookTypes {…} interface BusEvents {…} }`). Le compilateur du plugin connaît alors ses noms et refuse les fautes de frappe. Le manifeste (`provides`, `inject`, `optional`) reste libre : le noyau ne connaît pas encore ces noms et ne les vérifie pas à la compilation. `ctx.provide`, `ctx.hook` et `ctx.runHook` sont dans le SDK, pour les plugins personnels seulement. `declare module` est effacé par Node (type stripping) et laissé passer par les contrôles (`check.ts` ne lit que les imports). Vérifié par `apps/cli/test/plugin-sdk.test.ts` (compilation réelle d'un plugin et de ses fautes de frappe) et `apps/cli/test/user-plugins.test.ts` (le plugin tourne : service, hook et événement à lui).
+- **Plugin tiers** (isolé) : aucun nom à lui. Il n'a ni service (`provides`, `inject`, `optional` refusés), ni hook (`ctx.hook`, `ctx.runHook` lèvent une erreur), et le pont ne laisse passer que `initiative` (émis) et `plugin.state` / `service.changed` (écoutés) : les noms traversent la frontière comme des chaînes, vérifiées une à une par le noyau. Le noyau reste donc seul maître de ce qu'un plugin non fiable peut toucher.
+- **Plugin du dépôt** : il déclare son contrat par augmentation de `@floppy/core`, dans `packages/contracts/src/<domaine>.ts`.
+
+Pas d'échappatoire ouverte (signature d'index) : le prix d'un nom libre serait de perdre la détection des fautes de frappe, sans rien gagner, puisque l'augmentation couvre tous les cas permis.
 
 ## Mode debug
 

@@ -172,18 +172,21 @@ export function llmPrompt(f: Facts): string {
 
 export interface LlmLike { baseURL: string; model: string }
 
-/** Demande la phrase au LLM local. Undefined si indisponible, trop lent ou réponse bizarre. */
-export async function llmSentence(llm: LlmLike | undefined, f: Facts, timeoutMs = 4000, fetchImpl: typeof fetch = fetch): Promise<string | undefined> {
+/** Le `fetch` du plugin (`ctx.fetch`) : `timeoutMs` borne la réponse entière. */
+export type SpeechFetch = (url: string, init?: RequestInit & { timeoutMs?: number }) => Promise<Response>;
+
+/** Demande la phrase au LLM local. Undefined si indisponible, trop lent (4 s par défaut) ou réponse bizarre. */
+export async function llmSentence(llm: LlmLike | undefined, f: Facts, http: SpeechFetch, timeoutMs = 4000): Promise<string | undefined> {
   if (!llm) return undefined;
   try {
-    const r = await fetchImpl(`${llm.baseURL.replace(/\/$/, "")}/chat/completions`, {
+    const r = await http(`${llm.baseURL.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: llm.model, temperature: 0.3, max_tokens: 80, stream: false,
         messages: [{ role: "user", content: llmPrompt(f) }],
       }),
-      signal: AbortSignal.timeout(timeoutMs),
+      timeoutMs,
     });
     if (!r.ok) return undefined;
     const j = await r.json() as { choices?: { message?: { content?: string } }[] };

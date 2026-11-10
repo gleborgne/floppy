@@ -6,7 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { errorText, imageLogo, itemSecret, T, TextError, tr, type Context, type ItemSecret, type Level, type Rule, type Text, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
 import { resolveLevel, type LevelSetting } from "./levels.ts";
-import { azTokenProvider, bearerFetch, runAz } from "./azcli.ts";
+import { azTokenProvider, bearerFetch, runAz, type HttpFetch } from "./azcli.ts";
 
 /** Ce qu'un connecteur est, une fois les valeurs de la config et de l'utilisateur fusionnées. */
 export interface Spec {
@@ -132,12 +132,20 @@ function commandTool(spec: Spec, id: string, exec: Context["exec"] | undefined):
   return { tool, run };
 }
 
-function makeTransport(spec: Spec, secret: string | undefined, onStderr: (s: string) => void, exec: Context["exec"] | undefined): Transport {
+/**
+ * Borne d'une requête HTTP vers un serveur MCP distant, flux compris : la connexion garde un flux ouvert (notifications)
+ * et une réponse d'outil peut venir en flux. 1 h, bien au-delà du délai d'un outil ; le SDK rouvre seul un flux coupé.
+ */
+export const MCP_HTTP_TIMEOUT_MS = 3_600_000;
+
+function makeTransport(spec: Spec, secret: string | undefined, onStderr: (s: string) => void, exec: Context["exec"] | undefined, http: Context["fetch"] | undefined): Transport {
   if (spec.url) {
     const az = (r: string) => (exec ? runAz(r, exec) : Promise.reject(new TextError(T("az indisponible (plugin arrêté)", "az unavailable (plugin stopped)"))));
-    const fetch = spec.auth?.type === "azcli" ? bearerFetch(azTokenProvider(spec.auth.resource, az)) : undefined;
+    // Sans `http` (essai hors contexte) : le SDK utilise son propre fetch.
+    const viaCtx: HttpFetch | undefined = http ? (url, init) => http(url, { ...init, timeoutMs: MCP_HTTP_TIMEOUT_MS }) : undefined;
+    const fetchOpt = spec.auth?.type === "azcli" && viaCtx ? bearerFetch(azTokenProvider(spec.auth.resource, az), viaCtx) : viaCtx;
     const headers = { ...spec.headers, ...(spec.auth?.type === "token" && secret ? { Authorization: `Bearer ${secret}` } : {}) };
-    return new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers }, ...(fetch ? { fetch } : {}) });
+    return new StreamableHTTPClientTransport(new URL(spec.url), { requestInit: { headers }, ...(fetchOpt ? { fetch: fetchOpt } : {}) });
   }
   const t = new StdioClientTransport({
     command: spec.command!,
@@ -156,7 +164,7 @@ export const CONNECT_TIMEOUT_MS = 30_000;
 /** Ouvre un connecteur (sans rien enregistrer dans le registre d'outils). */
 export async function open(
   id: string, spec: Spec, secret: string | undefined,
-  hooks: { onStderr?: (s: string) => void; onClose?: () => void; timeoutMs?: number; exec?: Context["exec"] } = {},
+  hooks: { onStderr?: (s: string) => void; onClose?: () => void; timeoutMs?: number; exec?: Context["exec"]; fetch?: Context["fetch"] } = {},
 ): Promise<Opened> {
   if (spec.kind === "command") {
     if (!spec.command) throw new TextError(T("commande manquante", "missing command"));
@@ -166,7 +174,7 @@ export async function open(
   if (spec.auth?.type === "token" && !secret) throw new TextError(T("jeton manquant", "missing token"));
   const c = new Client({ name: "floppy", version: "0.1.0" });
   let closing = false;
-  const transport = makeTransport(spec, secret, hooks.onStderr ?? (() => {}), hooks.exec);
+  const transport = makeTransport(spec, secret, hooks.onStderr ?? (() => {}), hooks.exec, hooks.fetch);
   c.onclose = () => { if (!closing) hooks.onClose?.(); };
   const ms = hooks.timeoutMs ?? CONNECT_TIMEOUT_MS;
   let timer: NodeJS.Timeout | undefined;
@@ -291,7 +299,7 @@ Note : ${note}` : t.description,
       const spec = get.spec();
       let o: Opened | undefined;
       o = await open(id, spec, secretFor(ctx, id, spec), {
-        exec: ctx.exec,
+        exec: ctx.exec, fetch: ctx.fetch,
         onStderr: (s) => { stderrTail = (stderrTail + s).slice(-2000); },
         onClose: () => {
           if (!o || opened !== o) return;

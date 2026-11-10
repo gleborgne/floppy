@@ -12,6 +12,23 @@ In the manifest:
 
 The kernel refuses a service that is not declared.
 
+## Your own names
+
+A service, hook or event name that is not in the SDK types does not compile (a typo is caught). To define your own,
+augment the interfaces from your `index.ts` (personal plugins only; a third-party plugin has no services or hooks):
+
+```ts
+import type { PluginContext } from "../floppy-plugin.d.ts";
+declare module "../floppy-plugin.d.ts" {
+  interface Services { "my-plugin.counter": { next(): number } }
+  interface HookTypes { "my-plugin.before": { input: { n: number }; output: string } }
+  interface BusEvents { "my-plugin.tick": { times: number } }
+}
+// manifest.provides: ["my-plugin.counter"]; then ctx.provide("my-plugin.counter", …) in apply.
+```
+
+Prefix names with your plugin id so they never clash with another plugin's.
+
 ## Two ways to get it
 
 1. **A single provider** (`documents`): `ctx.maybe("documents")` (undefined if missing) or `ctx.get("documents")` (with `inject`).

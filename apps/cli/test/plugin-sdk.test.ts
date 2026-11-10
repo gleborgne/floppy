@@ -1,6 +1,8 @@
 // Le gabarit et les exemples du SDK passent les contrôles d'installation et démarrent dans le processus isolé.
 import { describe, it, expect, afterEach } from "vitest";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkPlugin } from "../src/plugins/check.ts";
@@ -34,6 +36,46 @@ describe("SDK des plugins", () => {
     expect(() => newPlugin("mon-essai", parent)).toThrow();
     expect(() => newPlugin("Mauvais Id", parent)).toThrow();
   }, 30_000);
+
+  it("un plugin personnel déclare ses propres noms (augmentation de module) ; une faute de frappe ne compile pas", () => {
+    const root = temp();
+    const plugins = join(root, "plugins");
+    mkdirSync(join(plugins, "perso"), { recursive: true });
+    cpSync(join(SDK_DIR, "floppy-plugin.d.ts"), join(plugins, "floppy-plugin.d.ts"));
+    writeFileSync(join(root, "tsconfig.json"), JSON.stringify({
+      compilerOptions: { target: "ES2024", lib: ["ES2024", "DOM"], module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, allowImportingTsExtensions: true, skipLibCheck: true, types: [] },
+      include: ["plugins/**/*.ts"],
+    }));
+    const header = `import type { PluginContext } from "../floppy-plugin.d.ts";
+declare module "../floppy-plugin.d.ts" {
+  interface Services { "perso.compteur": { suivant(): number } }
+  interface HookTypes { "perso.avant": { input: { n: number }; output: string } }
+  interface BusEvents { "perso.tic": { fois: number } }
+}
+`;
+    const tsc = join(fileURLToPath(new URL("../../../node_modules/typescript/bin/tsc", import.meta.url)));
+    const compile = (body: string) => {
+      writeFileSync(join(plugins, "perso", "index.ts"), header + `export default { manifest: { id: "perso", version: "1", licence: "MIT", provides: ["perso.compteur"] }, apply(ctx: PluginContext) {
+${body}
+} };
+`);
+      const r = spawnSync(process.execPath, [tsc, "-p", join(root, "tsconfig.json")], { encoding: "utf8" });
+      return r.stdout + r.stderr;
+    };
+    expect(compile(`
+      ctx.provide("perso.compteur", { suivant: () => 1 });
+      ctx.hook("perso.avant", async (input, next) => next({ n: input.n + 1 }));
+      ctx.on("perso.tic", (p) => { const n: number = p.fois; void n; });
+      ctx.emit("perso.tic", { fois: 1 });
+      void ctx.runHook("perso.avant", { n: 1 }, async (i) => String(i.n)).then((s: string) => s);
+      ctx.get("perso.compteur").suivant();`)).toBe("");
+    const bad = compile(`
+      ctx.get("perso.compteurr");
+      ctx.hook("perso.avnt", async (input, next) => next(input));
+      ctx.on("perso.tc", () => {});
+      ctx.emit("initiativ", {});`);
+    expect(bad.match(/error TS/g)).toHaveLength(4);
+  }, 120_000);
 
   it("un exemple modifié avec un module Node est bloqué", () => {
     const dir = join(temp(), "minuteur");

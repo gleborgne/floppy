@@ -3,6 +3,7 @@ import { z, type ZodType } from "zod";
 import type { Context } from "./context.ts";
 import type { FieldDef } from "../catalog.ts";
 import type { Text } from "../i18n.ts";
+import type { ServiceName } from "../services.ts";
 import type { SectionDef } from "../sections.ts";
 import type { Logo } from "../logo.ts";
 
@@ -26,7 +27,7 @@ export interface SlotDef {
   /** Unique (ex. "brain.main", "voice.tts"). Sert aussi de rôle pour la fenêtre. */
   id: string;
   /** Service offert par les éléments (ex. "llm", "tts", "live"). */
-  service: string;
+  service: ServiceName;
   /** Rubrique de la fenêtre des réglages. */
   section: string;
   label: Text;
@@ -77,9 +78,9 @@ export interface Manifest {
   description?: Text;
   licence: string;
   /** Services fournis (ctx.provide). */
-  provides?: string[];
+  provides?: ServiceName[];
   /** Sélecteur de fournisseur géré par l'hôte (aucun accès au noyau depuis un plugin). */
-  serviceSelection?: { service: string; section: string; label: Text; none: Text; role?: string };
+  serviceSelection?: { service: ServiceName; section: string; label: Text; none: Text; role?: string };
   /** Choix d'éléments dont ce plugin a besoin (voir SlotDef, ctx.slot). */
   slots?: SlotDef[];
   /** Tâches que ce plugin sait faire (voir TaskDef). Demande `task` dans provides. */
@@ -95,9 +96,9 @@ export interface Manifest {
    */
   startTimeout_s?: number;
   /** Services obligatoires : sans eux, le plugin attend (état « waiting »). */
-  inject?: string[];
+  inject?: ServiceName[];
   /** Services facultatifs : le plugin démarre sans eux, et redémarre quand ils arrivent ou changent. */
-  optional?: string[];
+  optional?: ServiceName[];
   /** `in-process` : plugins du noyau. Les « mains » (MCP, CLI) tournent toujours hors processus. */
   runtime?: "in-process" | "out-of-process";
   permissions?: Permissions;
@@ -130,38 +131,84 @@ const PermissionsSchema = z.object({
   approvals: z.literal("respond").optional(),
 }).strict();
 
-/** Forme attendue d'un manifeste (le reste — sections, addable — est vérifié par ses propres registres). */
+const SlotSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9.-]*$/, "minuscules, chiffres, points et tirets"),
+  service: z.string().min(1), section: z.string().min(1), label: text, description: text.optional(), none: text.optional(),
+  defaultFirst: z.boolean().optional(),
+  display: z.enum(["mode", "tabs"]).optional(),
+  step: z.number().int().min(1).max(20).optional(),
+}).strict();
+
+const TaskSchema = z.object({
+  id: z.string().regex(/^[a-z][a-z0-9-]*$/, "minuscules, chiffres et tirets"),
+  label: text, description: text.optional(),
+  schedule: z.union([
+    z.object({ at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "heure HH:MM"), jours: z.array(z.number().int().min(1).max(7)).optional() }).strict(),
+    z.object({ every: z.string().regex(/^\d+(m|h)$/, "durée « 30m » ou « 3h »") }).strict(),
+  ]).optional(),
+  timeout_s: z.number().int().positive().optional(),
+  configure: z.string().min(1).optional(),
+}).strict();
+
+const ServiceSelectionSchema = z.object({ service: z.string().min(1), section: z.string().min(1), label: text, none: text, role: z.string().optional() }).strict();
+
+// Rubriques de la fenêtre des réglages (SectionDef). La forme seulement : la fusion des doublons est faite par SectionRegistry.
+const SectionSchema = z.object({
+  id: z.string().min(1), label: text, description: text.optional(),
+  order: z.number().optional(), icon: z.string().optional(), parent: z.string().optional(), merge: z.boolean().optional(), view: z.string().optional(),
+}).strict();
+
+// Champs d'un formulaire (FieldDef) : forme complète ; les contrôles de fond (clés uniques, types connus de la fenêtre)
+// restent dans le catalogue (catalog.ts) et la fenêtre des réglages.
+const FieldSchema = z.object({
+  key: z.string().min(1),
+  label: text,
+  type: z.enum(["text", "number", "boolean", "select", "secret", "path", "list", "textarea", "keyvalue", "audio"]),
+  options: z.array(z.object({ value: z.string(), label: text }).strict()).optional(),
+  placeholder: text.optional(), hint: text.optional(),
+  required: z.boolean().optional(),
+  default: z.unknown().optional(),
+  advanced: z.boolean().optional(),
+  showIf: z.object({ key: z.string(), values: z.array(z.unknown()) }).strict().optional(),
+  filters: z.array(z.object({ name: z.string(), extensions: z.array(z.string()) }).strict()).optional(),
+  directory: z.boolean().optional(),
+  min: z.number().optional(), max: z.number().optional(),
+  prompts: z.array(text).optional(),
+  textKey: z.string().optional(),
+  seconds: z.object({ min: z.number(), max: z.number() }).strict().optional(),
+}).strict();
+
+const LogoSchema = z.union([z.string(), z.object({ program: z.string() }).strict(), z.object({ handler: z.string() }).strict()]);
+
+const AddableSchema = z.object({
+  section: z.string().min(1), label: text, description: text.optional(),
+  fields: z.array(FieldSchema).optional(),
+  cloud: z.boolean().optional(), single: z.boolean().optional(),
+  aliases: z.array(z.string()).optional(), program: z.string().optional(), logo: LogoSchema.optional(),
+}).strict();
+
+/**
+ * Forme attendue d'un manifeste : tous les champs de `Manifest`, et AUCUN autre (un champ inconnu ou mal écrit est refusé
+ * à tous les niveaux). Les contrôles de fond (ex. clés de formulaire, rubriques) restent dans leurs registres.
+ */
 const ManifestSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/, "minuscules, chiffres et tirets, commence par une lettre"),
   version: z.string().min(1),
   licence: z.string().min(1),
   description: text.optional(),
   provides: strs.optional(),
-  serviceSelection: z.object({ service: z.string().min(1), section: z.string().min(1), label: text, none: text, role: z.string().optional() }).optional(),
-  slots: z.array(z.object({
-    id: z.string().regex(/^[a-z][a-z0-9.-]*$/, "minuscules, chiffres, points et tirets"),
-    service: z.string().min(1), section: z.string().min(1), label: text, description: text.optional(), none: text.optional(),
-    defaultFirst: z.boolean().optional(),
-    display: z.enum(["mode", "tabs"]).optional(),
-    step: z.number().int().min(1).max(20).optional(),
-  }).strict()).optional(),
-  tasks: z.array(z.object({
-    id: z.string().regex(/^[a-z][a-z0-9-]*$/, "minuscules, chiffres et tirets"),
-    label: text, description: text.optional(),
-    schedule: z.union([
-      z.object({ at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "heure HH:MM"), jours: z.array(z.number().int().min(1).max(7)).optional() }).strict(),
-      z.object({ every: z.string().regex(/^\d+(m|h)$/, "durée « 30m » ou « 3h »") }).strict(),
-    ]).optional(),
-    timeout_s: z.number().int().positive().optional(),
-    configure: z.string().min(1).optional(),
-  }).strict()).optional(),
+  serviceSelection: ServiceSelectionSchema.optional(),
+  slots: z.array(SlotSchema).optional(),
+  tasks: z.array(TaskSchema).optional(),
   lazy: z.boolean().optional(),
   startTimeout_s: z.number().positive().max(3600).optional(),
   inject: strs.optional(),
   optional: strs.optional(),
   runtime: z.enum(["in-process", "out-of-process"]).optional(),
   permissions: PermissionsSchema.optional(),
-}).passthrough().superRefine((m, ctx) => {
+  sections: z.array(SectionSchema).optional(),
+  addable: AddableSchema.optional(),
+}).strict().superRefine((m, ctx) => {
   if (m.serviceSelection && !m.provides?.includes(m.serviceSelection.service)) {
     ctx.addIssue({ code: "custom", path: ["serviceSelection"], message: "le service choisi doit figurer dans provides" });
   }
@@ -172,11 +219,103 @@ const ManifestSchema = z.object({
   if (new Set(ids).size !== ids.length) ctx.addIssue({ code: "custom", path: ["tasks"], message: "deux tâches ont le même id" });
 });
 
-/** Texte d'erreur si le manifeste est invalide, sinon undefined. */
-export function manifestError(m: unknown): string | undefined {
+// --- Le type `Manifest` et le schéma ne doivent pas dériver : ces types échouent à `npm run typecheck` si l'un a un champ
+// (ou un niveau de champ : slots, tâches, permissions, rubriques, formulaire…) que l'autre n'a pas.
+type Eq<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Same<Schema extends z.ZodType, Iface> = Eq<keyof z.input<Schema>, keyof Iface> extends true ? Eq<z.input<Schema>, Iface> : false;
+type Ok<T extends true> = T;
+// Le schéma laisse libres les noms de services (un plugin peut avoir le sien) : le type les nomme, on compare en les élargissant.
+type Loose<T> = T extends ServiceName ? string : T extends readonly (infer E)[] ? Loose<E>[] : T extends object ? { [K in keyof T]: Loose<T[K]> } : T;
+export type ManifestSchemaMatchesInterface = [
+  Ok<Same<typeof ManifestSchema, Loose<Manifest>>>,
+  Ok<Same<typeof PermissionsSchema, Permissions>>,
+  Ok<Same<typeof SlotSchema, Loose<SlotDef>>>,
+  Ok<Same<typeof TaskSchema, TaskDef>>,
+  Ok<Same<typeof ServiceSelectionSchema, Loose<NonNullable<Manifest["serviceSelection"]>>>>,
+  Ok<Same<typeof SectionSchema, SectionDef>>,
+  Ok<Same<typeof FieldSchema, FieldDef>>,
+  Ok<Same<typeof AddableSchema, NonNullable<Manifest["addable"]>>>,
+];
+
+/** Un problème de manifeste, dans les deux langues. */
+export interface ManifestProblem { fr: string; en: string }
+
+function distance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length]!;
+}
+
+/** Champs connus de l'objet à `path` (descend dans les tableaux, les optionnels et les unions). */
+function knownKeys(schema: unknown, path: readonly PropertyKey[]): string[] {
+  let cur: unknown[] = [schema];
+  const expand = (list: unknown[]): unknown[] => list.flatMap((s) => {
+    const def = (s as { _zod?: { def?: { type?: string; innerType?: unknown; options?: unknown[] } } })._zod?.def;
+    if (def?.type === "optional" || def?.type === "nullable") return expand([def.innerType]);
+    if (def?.type === "union") return expand(def.options ?? []);
+    return [s];
+  });
+  for (const seg of path) {
+    cur = expand(cur).flatMap((s) => {
+      const def = (s as { _zod?: { def?: { type?: string; element?: unknown; shape?: Record<string, unknown> } } })._zod?.def;
+      if (def?.type === "array") return [def.element];
+      if (def?.type === "object" && def.shape && typeof seg === "string" && seg in def.shape) return [def.shape[seg]];
+      return [];
+    });
+  }
+  return expand(cur).flatMap((s) => Object.keys((s as { _zod?: { def?: { shape?: Record<string, unknown> } } })._zod?.def?.shape ?? {}));
+}
+
+/** Le champ connu le plus proche d'un champ inconnu (faute de frappe, pluriel, casse), ou undefined. */
+function closest(key: string, known: string[]): string | undefined {
+  const k = key.toLowerCase();
+  let best: string | undefined;
+  let bestD = Math.max(2, Math.floor(key.length / 4)) + 1;
+  for (const c of known) {
+    const d = c.toLowerCase() === k ? 0 : distance(k, c.toLowerCase());
+    if (d < bestD) { best = c; bestD = d; }
+  }
+  return best;
+}
+
+function problems(issues: readonly z.core.$ZodIssue[], path: readonly PropertyKey[] = []): { path: string; fr: string; en: string }[] {
+  return issues.flatMap((i) => {
+    const at = [...path, ...i.path];
+    if (i.code === "unrecognized_keys") {
+      const known = knownKeys(ManifestSchema, at);
+      return i.keys.map((key) => {
+        const near = closest(key, known);
+        return {
+          path: [...at, key].join("."),
+          fr: near ? `champ inconnu (voulais-tu « ${near} » ?)` : "champ inconnu",
+          en: near ? `unknown field (did you mean "${near}"?)` : "unknown field",
+        };
+      });
+    }
+    // Union (ex. `schedule`, `logo`) : on montre la branche qui a le moins de problèmes (la plus proche de ce qui était écrit).
+    if (i.code === "invalid_union" && i.errors.length) {
+      const branches = i.errors.map((e) => problems(e, at));
+      return branches.reduce((a, b) => (b.length < a.length ? b : a));
+    }
+    return [{ path: at.join(".") || "(racine)", fr: i.message, en: i.message }];
+  });
+}
+
+/** Problèmes du manifeste dans les deux langues (le texte des règles de fond est celui du schéma), ou undefined si valide. */
+export function manifestProblem(m: unknown): ManifestProblem | undefined {
   const r = ManifestSchema.safeParse(m);
   if (r.success) return undefined;
-  return r.error.issues.map((i) => `${i.path.join(".") || "(racine)"} : ${i.message}`).join(" ; ");
+  const list = problems(r.error.issues);
+  return { fr: list.map((p) => `${p.path} : ${p.fr}`).join(" ; "), en: list.map((p) => `${p.path} : ${p.en}`).join(" ; ") };
+}
+
+/** Texte d'erreur (en français) si le manifeste est invalide, sinon undefined. */
+export function manifestError(m: unknown): string | undefined {
+  return manifestProblem(m)?.fr;
 }
 
 /** Nom d'un programme sans dossier ni extension : « C:\x\Llama-Server.exe » → « llama-server ». */

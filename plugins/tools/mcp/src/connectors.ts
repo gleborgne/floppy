@@ -457,7 +457,7 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
       const tid = id ?? "essai";
       let timer: NodeJS.Timeout | undefined;
       const limit = TEST_LIMIT.ms;
-      const opening = open(tid, spec, secret);
+      const opening = open(tid, spec, secret, { fetch: ctx.fetch });
       try {
         const o = await Promise.race([
           opening,

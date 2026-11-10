@@ -33,7 +33,8 @@ export interface TokenStore {
 
 export interface DeviceCode { userCode: string; url: string; expiresIn: number; poll: () => Promise<{ ok: boolean; text: Text; who?: string }> }
 
-type Fetch = typeof fetch;
+/** Le `fetch` du plugin (`ctx.fetch`) ou un faux (tests). Appels d'authentification : délai par défaut de ctx.fetch (30 s) ; appels Graph : 20 s ci-dessous. */
+type Fetch = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 export class GraphAuth {
   private access?: { token: string; until: number; scopes?: Set<string> };
@@ -41,7 +42,7 @@ export class GraphAuth {
   private readonly fetchImpl: Fetch;
   who?: string;
 
-  constructor(store: TokenStore, fetchImpl: Fetch = fetch) {
+  constructor(store: TokenStore, fetchImpl: Fetch) {
     this.store = store;
     this.fetchImpl = fetchImpl;
   }

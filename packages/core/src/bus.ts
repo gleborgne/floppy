@@ -20,7 +20,6 @@ export interface CoreEvents {
   "service.changed": { name: string; provider?: string };
   /** Le noyau doit repartir de zéro (nouveau répertoire de travail) : l'hôte le relance. Émis par le noyau seulement. */
   "floppy.restart": { reason: import("./i18n.ts").Text };
-  [event: string]: unknown;
 }
 
 export type PluginState = "loaded" | "waiting" | "starting" | "active" | "stopping" | "error" | "disabled";

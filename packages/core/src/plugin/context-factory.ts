@@ -18,6 +18,12 @@ import { killTree } from "../util/process.ts";
 import { KERNEL_EVENTS, offerItems } from "./lifecycle-util.ts";
 
 
+/** Boucle locale (`localhost`, `127.0.0.1`, `::1`) : toujours permise à ctx.fetch, sans le déclarer. */
+export function isLoopback(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return h === "localhost" || h === "127.0.0.1" || h === "::1";
+}
+
 /** Canal de l'hôte pour un plugin : ses écouteurs tournent à son nom et sont retirés à son arrêt. */
 export function hostFor(k: KernelInternals, id: string, scope: EffectScope, as: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R): HostChannel {
   const host = k.host!;
@@ -56,7 +62,7 @@ export function approvalsFor(k: KernelInternals, manifest: PluginDef["manifest"]
 
 export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pending: Map<string, unknown>): Context {
   const def = e.def!;
-  const allowed = new Set(e.fork ? [] : [...(def.manifest.inject ?? []), ...(def.manifest.optional ?? [])]);
+  const allowed = new Set<string>(e.fork ? [] : [...(def.manifest.inject ?? []), ...(def.manifest.optional ?? [])]);
   const kernel = k;
   let noteOff = false;
   let logoOff = false;
@@ -292,9 +298,17 @@ export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pe
       const { timeoutMs, ...rest } = init;
       let host = "";
       try { host = new URL(String(url)).hostname; } catch { /* adresse invalide : fetch le dira */ }
-      if (host && !hostAllowed(def.manifest.permissions?.net, host) && !warned.has(`net:${host}`)) {
-        warned.add(`net:${host}`);
-        k.log("warn", e.cfg.id, `réseau : ${host} n'est pas dans permissions.net (avertissement : la requête part quand même)`);
+      // Règle : la boucle locale est toujours permise (les serveurs locaux sont lancés par le plugin lui-même) ; sinon
+      // l'hôte doit être dans permissions.net (exact, « *.domaine » ou « * » pour un plugin dont l'utilisateur choisit l'adresse).
+      if (host && !isLoopback(host) && !hostAllowed(def.manifest.permissions?.net, host)) {
+        if (!warned.has(`net:${host}`)) {
+          warned.add(`net:${host}`);
+          k.log("warn", e.cfg.id, `réseau : ${host} refusé (absent de permissions.net)`);
+          k.audit.write({ kind: "plugin.net.refused", plugin: e.cfg.id, host });
+        }
+        return Promise.reject(new TextError(T(
+          `${e.cfg.id} : l'accès à ${host} n'est pas permis (permissions.net du manifeste)`,
+          `${e.cfg.id}: access to ${host} is not allowed (manifest permissions.net)`)));
       }
       const limit = AbortSignal.timeout(timeoutMs ?? 30_000);
       return fetch(url, { ...rest, signal: rest.signal ? AbortSignal.any([rest.signal, limit]) : limit });

@@ -51,7 +51,7 @@ export function pickGroups<G extends { name: string }>(groups: G[]): G[] {
 }
 
 /** Cherche des modèles GGUF publics. Les dépôts protégés (accord à signer) ou sans empreinte sont ignorés. */
-export async function searchHf(query: string, fetchFn: typeof fetch = fetch): Promise<LibraryEntry[]> {
+export async function searchHf(query: string, fetchFn: (url: string, init?: RequestInit) => Promise<Response>): Promise<LibraryEntry[]> {
   const get = async <R>(url: string): Promise<R> => {
     const r = await fetchFn(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
     if (!r.ok) throw new Error(`Hugging Face a répondu ${r.status}`);

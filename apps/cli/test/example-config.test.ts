@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { loadConfigFile } from "@floppy/core";
+import { loadConfigFile, manifestError } from "@floppy/core";
 import { loadCatalog, DEV_PACKAGES, PACKAGES } from "../src/catalog.ts";
 
 // Le banc (bench/bench.yml) se lance avec FLOPPY_DEV=1 : ses plugins de développement comptent ici.
@@ -14,6 +14,10 @@ describe("catalogue", () => {
   it("chaque paquet se charge et exporte un plugin", () => {
     expect(failed).toEqual([]);
     expect(catalog).toHaveLength(PACKAGES.length + DEV_PACKAGES.length);
+  });
+
+  it("le manifeste de chaque plugin livré est valide (aucun champ inconnu)", () => {
+    for (const p of catalog) expect(manifestError(p.manifest), p.manifest.id).toBeUndefined();
   });
 
   it("la production ne contient pas les plugins de développement (bench-api répond aux accords tout seul)", async () => {

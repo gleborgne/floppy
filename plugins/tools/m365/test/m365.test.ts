@@ -251,6 +251,10 @@ describe("Microsoft 365 (Graph)", () => {
     expect(when({ dateTime: "2026-11-05T14:00:00.0000000", timeZone: "UTC" })).toMatch(/novembre à \d\d:\d\d/);
   });
 
+  it("permissions.net : la connexion par code et Graph, rien d'autre (ctx.fetch refuse le reste)", () => {
+    expect(createM365Plugin().manifest.permissions?.net).toEqual(["login.microsoftonline.com", "graph.microsoft.com"]);
+  });
+
   it("logo : celui de Microsoft, livré avec le plugin", () => {
     expect(String(createM365Plugin().manifest.addable?.logo)).toMatch(/^data:image\/svg\+xml;base64,/);
   });

@@ -88,6 +88,7 @@ function pushValues(): void {
 
 const NO_SERVICE = "un plugin tiers n'a pas accès aux services de Floppy (plugin personnel seulement)";
 const noService = (): never => { throw new Error(NO_SERVICE); };
+const NO_HOOK = "un plugin tiers n'a pas de hooks (plugin personnel seulement)";
 
 function makeContext(init: Msg): PluginContext {
   return {
@@ -146,6 +147,9 @@ function makeContext(init: Msg): PluginContext {
     maybe: () => undefined,
     offers: () => [],
     borrowItem: () => Promise.reject(new Error(NO_SERVICE)),
+    provide: noService,
+    hook: () => { throw new Error(NO_HOOK); },
+    runHook: () => Promise.reject(new Error(NO_HOOK)),
   };
 }
 

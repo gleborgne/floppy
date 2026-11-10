@@ -139,7 +139,8 @@ export function m365Tools(g: GraphAuth, cfg: Config): ToolDef[] {
   ];
 }
 
-export function createM365Plugin(fetchImpl: typeof fetch = fetch) {
+/** `fetchImpl` : faux réseau des tests ; sinon le `ctx.fetch` du plugin. */
+export function createM365Plugin(fetchImpl?: (url: string | URL, init?: RequestInit) => Promise<Response>) {
   return definePlugin<Config>({
     manifest: {
       id: "m365",
@@ -149,6 +150,8 @@ export function createM365Plugin(fetchImpl: typeof fetch = fetch) {
         { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Microsoft 365 (mails, agenda, personnes, fichiers, Teams) par Microsoft Graph : lecture, ajout dans l'agenda, envoi de messages Teams.",
+      // Connexion par code d'appareil (login.microsoftonline.com) puis Microsoft Graph.
+      permissions: { net: ["login.microsoftonline.com", "graph.microsoft.com"] },
       addable: {
         section: "connecteurs",
         single: true,
@@ -168,7 +171,7 @@ export function createM365Plugin(fetchImpl: typeof fetch = fetch) {
         set: (v) => ctx.secrets.set(name, v),
         clear: () => ctx.secrets.delete(name),
       };
-      const g = new GraphAuth(store, fetchImpl);
+      const g = new GraphAuth(store, fetchImpl ?? ctx.fetch);
       ctx.tools.register(m365Tools(g, cfg));
 
       let pending: AbortController | undefined;

@@ -154,7 +154,7 @@ export class ToolRegistry {
     let result: ToolResult;
     try {
       meta.signal?.throwIfAborted();
-      result = await this.hooks.run<ToolCallInput, ToolResult>("tool.before", { name, args, meta, tool: info }, async (input) => {
+      result = await this.hooks.run("tool.before", { name, args, meta, tool: info }, async (input): Promise<ToolResult> => {
         meta.signal?.throwIfAborted();
         const run = async (): Promise<ToolResult> => { const out = await def.handler(input.args, meta); return { ...out, text: tr(out.text, this.lang()) }; };
         if (def.selfApproved) return run();

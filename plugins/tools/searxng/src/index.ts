@@ -23,7 +23,7 @@ export const Config = z.object({
 });
 type Config = z.infer<typeof Config>;
 
-type FetchLike = typeof fetch;
+type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 interface RawResult { title?: unknown; url?: unknown; content?: unknown; publishedDate?: unknown; engine?: unknown; parsed_url?: unknown }
 
@@ -56,7 +56,7 @@ function toHit(r: RawResult): SearchHit | undefined {
 
 /** Interroge SearXNG. Les erreurs ont un message clair, en français et en anglais (TextError). */
 export async function searxngSearch(
-  cfg: Config, q: string, opts: { max?: number; depuis?: Date; signal?: AbortSignal } = {}, fetchImpl: FetchLike = fetch,
+  cfg: Config, q: string, opts: { max?: number; depuis?: Date; signal?: AbortSignal } = {}, fetchImpl: FetchLike,
 ): Promise<SearchHit[]> {
   const base = cfg.url.trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(base)) throw new TextError(T("L'adresse de SearXNG doit commencer par http:// ou https://.", "The SearXNG address must start with http:// or https://."));
@@ -89,7 +89,8 @@ export async function searxngSearch(
   return hits.slice(0, Math.min(opts.max ?? cfg.max, cfg.max));
 }
 
-export function createSearxngPlugin(fetchImpl: FetchLike = fetch) {
+/** `fetchImpl` : faux réseau des tests ; sinon le `ctx.fetch` du plugin. */
+export function createSearxngPlugin(fetchImpl?: FetchLike) {
   return definePlugin<Config>({
     manifest: {
       id: "searxng",
@@ -124,8 +125,11 @@ export function createSearxngPlugin(fetchImpl: FetchLike = fetch) {
     apply(ctx, cfg) {
       const service: SearchService = {
         label: "SearXNG", cloud: false,
-        search: (q, opts) => searxngSearch(cfg, q, opts, fetchImpl),
+        search: (q, opts) => searxngSearch(cfg, q, opts, http),
       };
+      // Borne = réglage timeoutMs (10 s par défaut), pour la réponse entière : ctx.fetch ne doit pas la raccourcir à 30 s.
+      // ctx du plugin (pas du fork) : l'outil du cerveau cherche aussi sans passer par le slot.
+      const http: FetchLike = fetchImpl ?? ((u, i) => ctx.fetch(u, { ...i, timeoutMs: cfg.timeoutMs }));
       ctx.offer("search", {
         items: () => [{ id: "searxng", label: "SearXNG" }],
         start(f) { f.provide("search", service); },

@@ -1,3 +1,5 @@
+import type { ToolCallInput, ToolResult } from "../tools.ts";
+
 // Hooks en cascade : des middlewares avec next(), appelés dans l'ordre d'enregistrement.
 // Exemple : `tool.before` (règles → accord → journal) avant chaque appel d'outil.
 // Un middleware qui plante AVANT next() arrête la chaîne : l'erreur remonte (un contrôle qui refuse en levant une
@@ -5,6 +7,24 @@
 
 export type Next<I, O> = (input: I) => Promise<O>;
 export type Middleware<I, O> = (input: I, next: Next<I, O>) => Promise<O>;
+
+/**
+ * Registre des hooks : nom -> { input, output }. Le propriétaire du hook (celui qui le lance) le déclare, au même endroit
+ * que ses types, par augmentation de module (comme `Services`) :
+ *   declare module "@floppy/core" { interface HookTypes { "mon.hook": { input: MonEntree; output: MaSortie } } }
+ * Le noyau n'a que le sien (`tool.before`) ; les autres vivent dans @floppy/contracts, par domaine.
+ */
+export interface HookTypes {
+  /** Avant chaque appel d'outil (règles -> accord -> journal) ; la fin de chaîne exécute l'outil. */
+  "tool.before": { input: ToolCallInput; output: ToolResult };
+}
+
+/** Nom d'un hook connu. */
+export type HookName = keyof HookTypes & string;
+/** Ce que reçoit la chaîne du hook `K`. */
+export type HookInput<K extends HookName> = HookTypes[K] extends { input: infer I } ? I : never;
+/** Ce que rend la chaîne du hook `K`. */
+export type HookOutput<K extends HookName> = HookTypes[K] extends { output: infer O } ? O : never;
 
 interface Link { mw: Middleware<any, any>; owner?: string }
 
@@ -15,7 +35,7 @@ export class Hooks {
     console.error(`[hooks] ${name}${owner ? ` (${owner})` : ""} :`, err);
 
   /** Ajoute un middleware. Retourne une fonction pour le retirer. */
-  add<I, O>(name: string, mw: Middleware<I, O>, owner?: string): () => void {
+  add<K extends HookName>(name: K, mw: Middleware<HookInput<K>, HookOutput<K>>, owner?: string): () => void {
     const link: Link = { mw, ...(owner ? { owner } : {}) };
     const list = this.chains.get(name) ?? [];
     list.push(link);
@@ -26,12 +46,14 @@ export class Hooks {
     };
   }
 
-  count(name: string): number {
+  count(name: HookName): number {
     return this.chains.get(name)?.length ?? 0;
   }
 
   /** Lance la chaîne. `final` est appelé si chaque middleware appelle next(). */
-  run<I, O>(name: string, input: I, final: Next<I, O>): Promise<O> {
+  run<K extends HookName>(name: K, input: HookInput<K>, final: Next<HookInput<K>, HookOutput<K>>): Promise<HookOutput<K>> {
+    type I = HookInput<K>;
+    type O = HookOutput<K>;
     const list = [...(this.chains.get(name) ?? [])];
     const step = (i: number, value: I): Promise<O> => {
       const link = list[i];

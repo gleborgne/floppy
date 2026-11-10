@@ -102,7 +102,8 @@ export default definePlugin<Config>({
     ],
     description: "Corps Reachy Mini : émotions et gestes de la tête et des antennes, via le daemon HTTP du robot ou du simulateur.",
     inject: ["body"],
-    permissions: { net: ["reachy-mini.local", "localhost"] },
+    // "*" : l'adresse du robot est choisie par l'utilisateur (nom .local, IP du réseau, simulateur).
+    permissions: { net: ["*"] },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -125,7 +126,7 @@ export default definePlugin<Config>({
       for (const [id, v] of want) {
         if (links.has(id)) continue;
         const link = new RobotLink(id, v, {
-          hub, log: (l, t) => ctx.log(l, t), changed: () => ctx.items.changed(),
+          hub, fetch: ctx.fetch, log: (l, t) => ctx.log(l, t), changed: () => ctx.items.changed(),
           retryMs: cfg.retry_s * 1000, pace: cfg.pace,
         });
         links.set(id, { link, sig: JSON.stringify(v) });
@@ -170,7 +171,7 @@ export default definePlugin<Config>({
 
     const probe = async (url: string): Promise<{ ok: true; st: DaemonStatus } | { ok: false; why: Text }> => {
       try {
-        const st = await new DaemonClient(url, 3000).status();
+        const st = await new DaemonClient(url, ctx.fetch, 3000).status();
         if (st.state && st.state !== "running") return { ok: false, why: T(`le daemon répond mais n'est pas prêt (${st.state})`, `the daemon answers but is not ready (${st.state})`) };
         return { ok: true, st };
       } catch (e) {

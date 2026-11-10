@@ -124,6 +124,15 @@ export interface BusEvents {
   "service.changed": { name: string; provider?: string };
 }
 
+/**
+ * Hooks : des chaînes de middlewares (`next()`), lancées par un plugin et complétées par d'autres. Nom -> { input, output }.
+ * Vide au départ : un plugin personnel qui lance ou écoute un hook à lui le déclare (voir « Tes propres noms » plus bas).
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface HookTypes {}
+export type HookInput<K extends keyof HookTypes> = HookTypes[K] extends { input: infer I } ? I : never;
+export type HookOutput<K extends keyof HookTypes> = HookTypes[K] extends { output: infer O } ? O : never;
+
 // ------------------------------------------------------------------ services de Floppy (plugin personnel seulement)
 // Contrats copiés du code (packages/core/src/services.ts, packages/contracts/src) ; packages/sdk/test/types.test.ts vérifie qu'ils suivent.
 
@@ -189,7 +198,23 @@ export interface DocumentsService {
   get(id: string): Promise<(DocRef & { markdown: string }) | undefined>;
 }
 
-/** Services qu'un plugin personnel peut utiliser (à déclarer dans `inject` ou `optional`). */
+/**
+ * Services qu'un plugin personnel peut utiliser (à déclarer dans `inject` ou `optional`), ou fournir.
+ *
+ * Tes propres noms (plugin personnel seulement). Un nom de service, de hook ou d'événement qui n'est pas dans ces listes
+ * ne compile pas (une faute de frappe est attrapée). Pour le tien, augmente l'interface depuis ton `index.ts` :
+ *
+ *   import type { UserPlugin } from "../floppy-plugin.d.ts";
+ *   declare module "../floppy-plugin.d.ts" {
+ *     interface Services { "mon-plugin.compteur": { suivant(): number } }
+ *     interface HookTypes { "mon-plugin.avant": { input: { n: number }; output: string } }
+ *     interface BusEvents { "mon-plugin.tic": { fois: number } }
+ *   }
+ *
+ * Puis `provides: ["mon-plugin.compteur"]` dans le manifeste, `ctx.provide("mon-plugin.compteur", …)` dans `apply`.
+ * Préfixe le nom par l'id de ton plugin : un nom pris par un autre plugin se mélange avec le sien. Un plugin tiers
+ * (isolé) n'a ni services, ni hooks, ni événements à lui : le pont vers Floppy ne laisse passer que ce qui est listé ici.
+ */
 export interface Services {
   notify: NotifyService;
   completion: CompletionService;
@@ -231,6 +256,12 @@ export interface PluginContext {
   get<K extends keyof Services>(name: K): Services[K];
   /** Plugin personnel seulement. Service déclaré dans `manifest.optional` : undefined s'il manque. */
   maybe<K extends keyof Services>(name: K): Services[K] | undefined;
+  /** Plugin personnel seulement. Fournit un service déclaré dans `manifest.provides` ; seulement pendant `apply`. */
+  provide<K extends keyof Services>(name: K, impl: Services[K]): void;
+  /** Plugin personnel seulement. Ajoute un middleware au hook `name` (voir HookTypes). */
+  hook<K extends keyof HookTypes & string>(name: K, mw: (input: HookInput<K>, next: (input: HookInput<K>) => Promise<HookOutput<K>>) => Promise<HookOutput<K>>): void;
+  /** Plugin personnel seulement. Lance la chaîne d'un hook ; `final` est appelé si chaque middleware appelle `next()`. */
+  runHook<K extends keyof HookTypes & string>(name: K, input: HookInput<K>, final: (input: HookInput<K>) => Promise<HookOutput<K>>): Promise<HookOutput<K>>;
   /**
    * Plugin personnel seulement. Éléments offerts pour un service déclaré dans inject/optional
    * (ex. chaque canal « notify », chaque modèle « completion »). `value` se passe à borrowItem.

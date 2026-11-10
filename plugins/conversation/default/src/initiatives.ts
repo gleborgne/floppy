@@ -28,11 +28,11 @@ export function createInitiatives(d: InitiativeDeps) {
   const pending = new Map<string, Initiative>();
   const delivery = (item: Initiative, stage: InitiativeDelivery["stage"]) => {
     const event: InitiativeDelivery = { source: item.source, key: item.key, stage, queueLength: queue.length };
-    void ctx.runHook<InitiativeDelivery, void>("initiative.delivery", event, async () => {}).catch(() => {});
+    void ctx.runHook("initiative.delivery", event, async () => {}).catch(() => {});
   };
   const presented = (b: Body, item: Initiative, stage: InitiativePresented["stage"]) => {
     const event: InitiativePresented = { origin: b.id, session: b.id, source: item.source, key: item.key, stage };
-    void ctx.runHook<InitiativePresented, void>("initiative.presented", event, async () => {}).catch(() => {
+    void ctx.runHook("initiative.presented", event, async () => {}).catch(() => {
       ctx.audit.write({ kind: "initiative", stage: "presentation_hook_failed", source: item.source, origin: b.id });
     });
   };

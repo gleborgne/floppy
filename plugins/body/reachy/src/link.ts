@@ -3,7 +3,7 @@
 import { T, TextError, tr, type Text } from "@floppy/core";
 import type { BodyHub } from "@floppy/contracts";
 import type { BodyToKernel, BodyToolDecl, BodyTransport, Capability, KernelToBody } from "@floppy/protocol";
-import { DaemonClient, type DaemonStatus } from "./daemon.ts";
+import { DaemonClient, type DaemonFetch, type DaemonStatus } from "./daemon.ts";
 import { DIRECTIONS, EMOTION_GESTURE, GESTURES, STATE_GESTURE, toGoto } from "./gestures.ts";
 
 export interface RobotValues {
@@ -18,6 +18,8 @@ export type LinkState = "connecting" | "up" | "down";
 
 export interface LinkDeps {
   hub: BodyHub;
+  /** `ctx.fetch` du plugin : tous les appels au daemon passent par lui. */
+  fetch: DaemonFetch;
   log: (level: "debug" | "info" | "warn" | "error", text: string) => void;
   changed: () => void;
   retryMs: number;
@@ -78,7 +80,7 @@ export class RobotLink {
     this.id = id;
     this.values = values;
     this.deps = deps;
-    this.client = new DaemonClient(values.url);
+    this.client = new DaemonClient(values.url, deps.fetch);
   }
 
   start(): void {

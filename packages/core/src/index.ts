@@ -2,7 +2,7 @@
 export const VERSION = "0.1.0";
 
 export { Kernel, consoleLogger, type Logger, type EntryStatus, type SlotStatus, type KernelOptions } from "./plugin/kernel.ts";
-export { definePlugin, manifestError, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
+export { definePlugin, manifestError, manifestProblem, type ManifestProblem, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
 export type { Context, Borrowed, ExecOptions, ExecResult, HostChannel, HostMessage, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
 export { DownloadManager, hostAllowed, type ContextDownloads, type DownloadFile, type DownloadRequest, type DownloadState, type DownloadPhase, type DownloadManagerOptions } from "./downloads.ts";
 export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
@@ -15,7 +15,7 @@ export { cleanLogo, glyphLogo, imageLogo, svgLogo, LOGO_MAX, type Logo } from ".
 export { SectionRegistry, type SectionDef, type SectionInfo } from "./sections.ts";
 export { ToolRegistry, REFUSED_TEXT, NEVER_TEXT, type ToolDef, type ToolInfo, type ToolOutput, type ToolResult, type ToolStatus, type ToolCallMeta, type ToolCallInput, type JsonSchema } from "./tools.ts";
 export { EffectScope, type Disposer } from "./plugin/effects.ts";
-export { Hooks, type Middleware, type Next } from "./plugin/hooks.ts";
+export { Hooks, type Middleware, type Next, type HookTypes, type HookName, type HookInput, type HookOutput } from "./plugin/hooks.ts";
 export { Bus, type CoreEvents, type PluginState } from "./bus.ts";
 export { ApprovalManager, strictest, type ApprovalInput, type ApprovalRequest, type Decision, type DecisionReason } from "./approval.ts";
 export { FileAudit, MemoryAudit, type Audit, type AuditRecord } from "./audit.ts";
@@ -29,7 +29,7 @@ export { installSafetyNet, type SafetyKind, type SafetyNetOptions } from "./util
 export { writeFileAtomic, writeJsonAtomic, readJsonFile, corruptFiles, onCorruptFile, type CorruptReport } from "./util/files.ts";
 export { startControl, controlCall, type ControlInfo, type ControlHandlers } from "./control.ts";
 export { floppyHome, defaultHome, chooseHome, applyPendingMove, pendingMoveFrom, defaultConfigPath, hasFloppyData, type MoveResult } from "./util/home.ts";
-export type { Services } from "./services.ts";
+export type { Services, ServiceName } from "./services.ts";
 export { providerConfig, itemSecret, type ItemSecret } from "./provider-config.ts";
 export { modelLibrary, formatBytes, entrySize, type LibraryEntry, type LibraryOptions } from "./model-library.ts";
 export { programLibrary, pickBuild, findProgram, type ProgramBuild, type ProgramOptions, type ProgramLibrary, type ProgramChange, restartsModels, failoverText, programRuns } from "./program-library.ts";

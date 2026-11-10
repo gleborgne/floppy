@@ -1,9 +1,9 @@
 // Le contexte donné à apply(ctx, config). C'est la seule porte d'un plugin vers le noyau.
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import type { CoreEvents } from "../bus.ts";
-import type { Middleware } from "./hooks.ts";
+import type { HookInput, HookName, HookOutput, Middleware } from "./hooks.ts";
 import type { Disposer } from "./effects.ts";
-import type { Services } from "../services.ts";
+import type { ServiceName, Services } from "../services.ts";
 import type { ApprovalInput, ApprovalRequest, Decision } from "../approval.ts";
 import type { Audit } from "../audit.ts";
 import type { AssistantSettings } from "../config/schema.ts";
@@ -184,7 +184,7 @@ export interface Context {
    * Relance les éléments offerts (ctx.offer) qui tournent ou sont en panne : ils repartent avec le nouveau programme ou
    * les nouveaux réglages. `service` : seulement ceux de ce service. Depuis un fork : ceux de son plugin.
    */
-  restartOffers(service?: string): Promise<void>;
+  restartOffers(service?: ServiceName): Promise<void>;
   readonly approvals: ContextApprovals;
   readonly audit: Audit;
   /**
@@ -227,9 +227,9 @@ export interface Context {
    * Tous les éléments offerts pour un service (déclaré dans inject/optional), tous plugins : ex. les canaux « notify ».
    * value = "<entrée>/<élément>" (à passer à borrowItem).
    */
-  offers(service: string): { value: string; label: Text; cloud?: boolean; entry: string }[];
+  offers(service: ServiceName): { value: string; label: Text; cloud?: boolean; entry: string }[];
   /** Comme borrow, mais pour un élément précis (value de offers) au lieu du choix d'un slot. */
-  borrowItem<T = unknown>(service: string, value: string): Promise<Borrowed<T> | undefined>;
+  borrowItem<T = unknown>(service: ServiceName, value: string): Promise<Borrowed<T> | undefined>;
   /** Offre `service` élément par élément (voir OfferDef). Le service doit être dans `provides`. */
   offer<K extends keyof Services & string>(service: K, def: OfferDef<Services[K]>): void;
   /** Service déclaré dans inject (toujours là) ou optional (peut être undefined). */
@@ -246,13 +246,16 @@ export interface Context {
   emit<K extends keyof CoreEvents & string>(event: K, payload: CoreEvents[K]): void;
   /**
    * fetch avec un délai par défaut (30 s, `timeoutMs` le change ; il couvre la réponse entière, corps compris : pour un
-   * flux long, donner un délai plus grand) et l'hôte vérifié contre permissions.net : un hôte
-   * absent est signalé au journal (avertissement, pas encore refusé). Refusé après l'arrêt du plugin.
+   * flux long, donner un délai plus grand) et l'hôte vérifié contre permissions.net : un hôte absent est REFUSÉ
+   * (TextError nommant le plugin et l'hôte, une ligne au journal et à l'audit par hôte). La boucle locale
+   * (`localhost`, `127.0.0.1`, `::1`) est toujours permise ; `"*"` permet tout hôte (adresse choisie par l'utilisateur).
+   * Refusé après l'arrêt du plugin.
    */
   fetch(url: string | URL, init?: RequestInit & { timeoutMs?: number }): Promise<Response>;
-  hook<I, O>(name: string, mw: Middleware<I, O>): void;
+  /** Ajoute un middleware au hook `name` ; les types d'entrée et de sortie viennent de `HookTypes` (voir hooks.ts). */
+  hook<K extends HookName>(name: K, mw: Middleware<HookInput<K>, HookOutput<K>>): void;
   /** Lance la chaîne d'un hook (ex. tools lance `tool.before`). */
-  runHook<I, O>(name: string, input: I, final: (input: I) => Promise<O>): Promise<O>;
+  runHook<K extends HookName>(name: K, input: HookInput<K>, final: (input: HookInput<K>) => Promise<HookOutput<K>>): Promise<HookOutput<K>>;
 
   /**
    * Lance un processus enfant (programme permis par permissions.exec) ; il est tué (avec ses enfants) au déchargement.

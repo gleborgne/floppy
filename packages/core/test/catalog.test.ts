@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Kernel, definePlugin, ItemStore, tr, type ItemInfo } from "../src/index.ts";
+import { Kernel, definePlugin, ItemStore, tr, type ItemInfo, type ServiceName } from "../src/index.ts";
 
 function plugin() {
   const items: Record<string, ItemInfo> = {
@@ -125,7 +125,7 @@ describe("catalogue des éléments", () => {
 
 describe("catalogue des applications", () => {
   it("chaque fiche dit les services du plugin : le catalogue ouvert depuis un rôle filtre avec", async () => {
-    const addable = (id: string, provides?: string[]) => definePlugin({
+    const addable = (id: string, provides?: ServiceName[]) => definePlugin({
       manifest: { id, version: "0.0.1", licence: "MIT", ...(provides ? { provides } : {}), addable: { section: "ecoute", label: id } },
       apply() {},
     });

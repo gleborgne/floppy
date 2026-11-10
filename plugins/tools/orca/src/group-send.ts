@@ -1,7 +1,7 @@
 // Une sélection figée, un accord ; le dossier reste verrouillé jusqu'à la fin observée du nouveau tour.
 import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { T, TextError, corruptFiles, readJsonFile, writeJsonAtomic, type Context, type Text, type ToolCallInput, type ToolCallMeta, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
+import { T, TextError, corruptFiles, readJsonFile, writeJsonAtomic, type Context, type Text, type ToolCallMeta, type ToolDef, type ToolOutput } from "@floppy/core";
 import type { Hit, OrcaCli, OrcaRunner, OrcaTerminal } from "./index.ts";
 import { isWorker } from "./speech.ts";
 import { deliveryAudit, deliveryMeta, exactTerminal, findExactTerminal, humanLabel, incarnation, instruction, permissionMenu, receiptOf, recipientLabel, turnEndEvidence, STAGE_TEXT, type DeliveryCallbacks, type DeliveryFact, type DeliveryStage } from "./send-support.ts";
@@ -246,7 +246,7 @@ export function groupSendTools(deps: GroupSendDeps): ToolDef[] {
     } finally { busy = false; }
     if ([...plans.values()].some(p => p.recipients.some(r => !FINAL.has(r.stage)))) schedule();
   };
-  ctx.hook<ToolCallInput, ToolResult>("tool.before", async (input, next) => {
+  ctx.hook("tool.before", async (input, next) => {
     if (input.tool.source !== ctx.id) return next(input);
     if (input.name === "orca_annuler_envoi") {
       const p = plans.get(String(input.args.plan));

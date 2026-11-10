@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { definePlugin, T, TextError, tr, type ItemInfo, type Text } from "@floppy/core";
-import type { AvatarEntry, ConversationCommandInput, ConversationCommand } from "@floppy/contracts";
+import type { AvatarEntry } from "@floppy/contracts";
 import { registerDesktop } from "@floppy/contracts";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
 import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, type ShortcutAction } from "./shortcuts.ts";
@@ -126,7 +126,7 @@ export default definePlugin<Config>({
       actions: { open: async (signal) => { const result = await openWindow({ signal }, "", undefined); if (result.status !== "done") throw new TextError(result.text); return { ok: true }; } },
     });
     const hub = ctx.get("body");
-    ctx.hook<ConversationCommandInput, ConversationCommand | undefined>("conversation.command", async (input, next) => {
+    ctx.hook("conversation.command", async (input, next) => {
       const text = input.text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’]/g, "'").trim();
       const opening = /^(?:(?:tu peux|peux-tu|pourrais-tu) )?(?:m'|me )?(?:ouvre|ouvrir|affiche|afficher)(?:[- ]moi)? (?:l'ecran (?:de |des |de tes )|la fenetre (?:de |des |de tes ))?(?:(?:les|tes|des) )?(?:reglages|parametres)(?: de floppy)?(?:,? s'il te plait)?[.!? ]*$/;
       // En anglais : « open the settings », « can you show me Floppy's settings please ».

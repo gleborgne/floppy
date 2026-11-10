@@ -112,4 +112,8 @@ declare module "@floppy/core" {
     delegate: BrainService;
     completion: CompletionService;
   }
+  interface HookTypes {
+    /** Reconnaissance locale d'une commande dite (le lance la conversation) ; undefined : pas une commande. */
+    "conversation.command": { input: ConversationCommandInput; output: ConversationCommand | undefined };
+  }
 }

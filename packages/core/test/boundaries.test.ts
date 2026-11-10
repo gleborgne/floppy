@@ -62,6 +62,25 @@ describe("frontières entre plugins", () => {
     expect(bad).toEqual([]);
   });
 
+  it("un plugin fait ses requêtes par ctx.fetch, jamais par le fetch global (src/)", () => {
+    // ctx.fetch donne le délai, vérifie permissions.net et refuse un hôte non permis ; le fetch global contourne tout cela.
+    // Un faux réseau reçu en paramètre (tests) ou un `typeof fetch` de type restent permis : seul un APPEL ou un fetch
+    // global pris comme valeur est refusé. Aucune exception : chaque appel actuel passe par le contexte.
+    const ALLOWED = new Set<string>([]);
+    const call = /(?<![.\w$])fetch\s*\(/;
+    const asValue = /(?:=|\?\?|\|\||[(,])\s*fetch\s*(?:[,;)]|$)/m;
+    const viaGlobal = /globalThis\.fetch/;
+    const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+    const bad: string[] = [];
+    for (const f of walk(PLUGINS, /\.(ts|js|mjs)$/).filter((f) => relative(PLUGINS, f).split(sep)[2] === "src")) {
+      const rel = relative(ROOT, f).split(sep).join("/");
+      if (ALLOWED.has(rel)) continue;
+      const src = stripComments(readFileSync(f, "utf8"));
+      if (call.test(src) || asValue.test(src) || viaGlobal.test(src)) bad.push(rel);
+    }
+    expect(bad).toEqual([]);
+  });
+
   it("le noyau ne connaît aucun contrat de domaine : ils vivent dans @floppy/contracts et s'ajoutent à Services", () => {
     const bad: string[] = [];
     for (const f of walk(join(ROOT, "packages", "core", "src"), /\.(ts|js|mjs)$/)) {

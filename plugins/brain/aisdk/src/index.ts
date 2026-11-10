@@ -20,6 +20,9 @@ export {
 } from "./prompt.ts";
 export { EmotionTagFilter } from "@floppy/contracts";
 
+/** Borne d'une requête au modèle, flux compris (voir `http` dans apply). */
+export const LLM_HTTP_TIMEOUT_MS = 1_800_000;
+
 const Config = z.object({
   maxSteps: z.number().int().default(8),
   temperature: z.number().default(0.3),
@@ -136,6 +139,8 @@ export default definePlugin<Config>({
     ],
     description: "Cerveau : agent Vercel AI SDK. Son modèle et son délégué sont des slots (choisis dans les réglages ou à la voix).",
     provides: ["brain"],
+    // net "*" : l'adresse du modèle est choisie par l'utilisateur (API distante) ; le llama-server local est sur 127.0.0.1.
+    permissions: { net: ["*"] },
     // Tourne seulement quand quelqu'un s'en sert (la conversation en mode Séparé, GPT Live, le banc).
     lazy: true,
     optional: ["memory", "vocabulary", "mcp"],
@@ -161,9 +166,17 @@ export default definePlugin<Config>({
     const llm = await ctx.slot<LlmService>("brain.main");
     const dlg = await ctx.slot<BrainService>("brain.delegate");
     const agent = llm?.agent;
+    // Les requêtes du SDK passent par ctx.fetch (hôte vérifié, journal). Le SDK donne toujours une adresse (texte) et son
+    // signal d'annulation, que ctx.fetch garde ; la réponse est lue en flux. Borne : 30 min par requête (une étape du
+    // modèle, flux compris) : seulement un filet contre une connexion morte ; le vrai arrêt est l'annulation du tour
+    // et le silence max de la conversation (turn_idle_s, 5 min).
+    const http = ((input: string | URL | Request, init?: RequestInit) => {
+      if (typeof input !== "string" && !(input instanceof URL)) return Promise.reject(new TypeError("requête non prise en charge : adresse attendue"));
+      return ctx.fetch(input, { ...init, timeoutMs: LLM_HTTP_TIMEOUT_MS });
+    }) as typeof fetch;
     const model = !llm || agent ? undefined : llm.apiKey
-      ? (() => { const key = llm.apiKey!(); return key ? createOpenAICompatible({ name: "remote", baseURL: llm.baseURL!, apiKey: key })(llm.model) : undefined; })()
-      : createOpenAICompatible({ name: "llamacpp", baseURL: llm.baseURL!, apiKey: "none" })(llm.model);
+      ? (() => { const key = llm.apiKey!(); return key ? createOpenAICompatible({ name: "remote", baseURL: llm.baseURL!, apiKey: key, fetch: http })(llm.model) : undefined; })()
+      : createOpenAICompatible({ name: "llamacpp", baseURL: llm.baseURL!, apiKey: "none", fetch: http })(llm.model);
     /** Raison pour laquelle le cerveau choisi ne peut pas répondre (dite à l'utilisateur au lieu d'un repli silencieux). */
     const problem = !llm ? say_.unavailable
       : !agent && !model ? say_.noKey(llm.label ?? llm.model)
