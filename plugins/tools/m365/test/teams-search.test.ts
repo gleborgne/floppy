@@ -47,6 +47,20 @@ describe("recherches vocales Teams", () => {
     expect(tr(result.text)).toContain("[message id unread]"); expect(tr(result.text)).not.toContain("[message id read]");
     expect(tr(result.text)).toContain("État de lecture inconnu");
   });
+  it("non-lus : ne lit que les conversations dont le dernier message n'est pas lu, et s'arrête aux conversations hors période", async () => {
+    const recent = (id: string, at: string) => chat(id, { lastMessagePreview: msg(`last-${id}`, { createdDateTime: at }) });
+    const { tool, fetcher } = setup((url) => {
+      if (url.pathname.endsWith("/me/chats")) return url.searchParams.has("page")
+        ? json({ value: [recent("never", "2026-11-09T09:00Z")] })
+        : json({ value: [recent("fresh", "2026-11-09T09:00Z"), recent("seen", "2026-11-08T07:00Z"), recent("old", "2026-01-01T00:00Z")], "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/chats?page=2" });
+      return json({ value: [msg("unread", { createdDateTime: "2026-11-09T09:00Z" })] });
+    });
+    const result = await tool("m365_teams_unread").handler({ days: 30 }, {});
+    expect(tr(result.text)).toContain("[message id unread]");
+    const read = fetcher.mock.calls.map((x) => new URL(String(x[0])).pathname).filter((p) => p.includes("/messages"));
+    expect(read).toEqual(["/v1.0/chats/fresh/messages"]);
+    expect(fetcher.mock.calls.some((x) => String(x[0]).includes("page=2"))).toBe(false);
+  });
   it("une erreur de lecture n'est jamais interprétée comme aucun message", async () => {
     const { tool } = setup((url) => url.pathname.endsWith("/me/chats") ? json({ value: [chat("c")] }) : json({ error: { message: "panne" } }, 503));
     const result = await tool("m365_teams_messages").handler({}, {});

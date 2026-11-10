@@ -23,9 +23,14 @@ export function chatLabel(c: any, me: string, lang: string): string {
   return c.topic ? (fr ? `Groupe « ${c.topic} » (${names})` : `Group “${c.topic}” (${names})`) : (fr ? `Groupe avec ${names}` : `Group with ${names}`);
 }
 
-export async function loadChatPages(g: GraphAuth, scan: Scan): Promise<any[]> {
+const lastAt = (c: any) => Date.parse(c.lastMessagePreview?.createdDateTime ?? "");
+
+/** since : les conversations arrivent de la plus récente à la plus ancienne ; on s'arrête dès qu'une page
+ *  contient une conversation sans message depuis cette date (les pages suivantes sont plus anciennes). */
+export async function loadChatPages(g: GraphAuth, scan: Scan, since?: number): Promise<any[]> {
+  const stop = since === undefined ? undefined : (page: any[]) => page.some((c) => lastAt(c) < since);
   try {
-    return await scan.pages(g, "me/chats?$expand=members,lastMessagePreview&$orderby=lastMessagePreview/createdDateTime desc&$top=50");
+    return await scan.pages(g, "me/chats?$expand=members,lastMessagePreview&$orderby=lastMessagePreview/createdDateTime desc&$top=50", stop);
   } catch (e) {
     // Certains comptes refusent cette expansion. Les erreurs réseau et de droits restent des échecs.
     if (!(e instanceof Error) || !e.message.includes("Microsoft Graph 400")) throw e;
@@ -34,8 +39,8 @@ export async function loadChatPages(g: GraphAuth, scan: Scan): Promise<any[]> {
 }
 
 export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Text>): ToolDef[] {
-  const loadChats = async (scan: Scan, me: string) => {
-    const all = await loadChatPages(g, scan);
+  const loadChats = async (scan: Scan, me: string, since?: number) => {
+    const all = await loadChatPages(g, scan, since);
     for (const c of all) {
       labels.set(c.id, T(chatLabel(c, me, "fr"), chatLabel(c, me, "en")));
       for (const m of others(c, me)) if (m.email) labels.set(norm(m.email), m.displayName);
@@ -88,7 +93,9 @@ export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Te
       const sens = choice(a, "direction", ["both", "received", "sent"], a.only_them ? "received" : "both");
       if (a.only_them && a.direction !== undefined && a.direction !== "received") return invalid("only_them contredit direction.", "only_them conflicts with direction.");
       const me = (await g.get<{ id: string }>("me?$select=id")).id;
-      const all = kind === "read" ? [await g.get<any>(`chats/${encodeURIComponent(String(a.id))}?$expand=members`)] : await loadChats(scan, me);
+      // Une conversation nommée (person, conversation) peut être ancienne : inventaire complet. Sinon on s'arrête à la période.
+      const since = kind === "list" || a.person || a.conversation ? undefined : +p.start;
+      const all = kind === "read" ? [await g.get<any>(`chats/${encodeURIComponent(String(a.id))}?$expand=members`)] : await loadChats(scan, me, since);
       const { selected, pid } = chooseChats(all, me, a);
       if (kind === "list") {
         const shown = selected.slice(0, limit(a.max, max));
@@ -101,15 +108,22 @@ export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Te
       }
       let missingRead = 0;
       const searched = selected.filter((c) => {
-        if (kind === "unread" && !c.viewpoint?.lastMessageReadDateTime) { missingRead++; return false; }
-        return kind !== "unread" || !c.viewpoint?.isHidden;
+        if (c.lastMessagePreview && lastAt(c) < +p.start) return false; // rien dans la période
+        if (kind !== "unread") return true;
+        if (!c.viewpoint?.lastMessageReadDateTime) { missingRead++; return false; }
+        if (c.viewpoint.isHidden) return false;
+        // Dernier message connu et déjà lu : rien de non lu, inutile de lire la conversation.
+        return !c.lastMessagePreview || !(lastAt(c) <= Date.parse(c.viewpoint.lastMessageReadDateTime));
       });
       if (searched.length > 10) scan.partial = true;
-      const rows: { c: any; m: any }[] = [];
-      for (const c of searched.slice(0, 10)) {
+      const read = await Promise.all(searched.slice(0, 10).map(async (c) => {
         labels.set(c.id, T(chatLabel(c, me, "fr"), chatLabel(c, me, "en")));
         const start = kind === "unread" ? Math.max(+p.start, Date.parse(c.viewpoint.lastMessageReadDateTime) + 1) : +p.start;
         const messages = await scan.pages(g, `chats/${encodeURIComponent(c.id)}/messages?$top=50&$orderby=createdDateTime desc`, (page) => page.some((m: any) => Date.parse(m.createdDateTime) < start));
+        return { c, start, messages };
+      }));
+      const rows: { c: any; m: any }[] = [];
+      for (const { c, start, messages } of read) {
         for (const m of messages) {
           const at = Date.parse(m.createdDateTime), author = m.from?.user?.id;
           if (m.messageType !== "message" || m.deletedDateTime || at < start || at >= +p.end) continue;
