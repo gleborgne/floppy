@@ -18,21 +18,34 @@ function desktop(argv: string[] = []) {
   const forked: (EventEmitter & { postMessage: ReturnType<typeof vi.fn>; kill: ReturnType<typeof vi.fn> })[] = [];
   const fork = () => { const c = Object.assign(new EventEmitter(), { postMessage: vi.fn(), kill: vi.fn() }); forked.push(c); return c; };
   const app = { quit:vi.fn(), requestSingleInstanceLock:()=>true, commandLine:{appendSwitch(){}}, whenReady:()=>new Promise(()=>{}), on:events.on.bind(events), getAppPath:()=>'.', getLoginItemSettings:()=>({executableWillLaunchAtLogin:false}), setLoginItemSettings(){} };
-  // main.ts sans ses types (comme Node le lit au lancement), puis sans ses imports : le contexte les fournit.
-  const source = stripTypeScriptTypes(readFileSync(new URL('../src/main.ts', import.meta.url),'utf8'))
-    .replace(/^import .*;\r?$/gm,'').replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.ts',import.meta.url).href));
+  // Les modules du processus principal, sans leurs types (comme Node les lit au lancement), puis sans leurs imports ni
+  // leurs `export` : le contexte fournit Electron et les modules qui ne bougent pas, et les vrais fichiers sont mis bout à bout
+  // (main.ts en dernier, il les relie). Un nouveau module importé par main.ts s'ajoute à cette liste.
+  const modules = ['app-texts', 'tray', 'kernel-process', 'kernel-messages', 'avatar', 'app-windows', 'voice-controls', 'dictation', 'ipc', 'main'];
+  const source = modules.map((name) => stripTypeScriptTypes(readFileSync(new URL(`../src/${name}.ts`, import.meta.url),'utf8'))
+    .replace(/^import .*;\r?$/gm,'').replace(/^export /gm,'')).join(String.fromCharCode(10))
+    .replaceAll('import.meta.url', JSON.stringify(new URL('../src/main.ts',import.meta.url).href));
   const textWindow = Object.assign(new EventEmitter(), { webContents: Object.assign(new EventEmitter(), { send: vi.fn() }), loadFile: vi.fn(), setTitle: vi.fn(), show: vi.fn(), isDestroyed: () => false });
+  // La fenêtre de l'avatar (BrowserWindow d'Electron) : un faux qui garde ce que le vrai code lui demande.
+  const avatarWindow = Object.assign(new EventEmitter(), {
+    webContents: Object.assign(new EventEmitter(), { send: vi.fn(), postMessage: vi.fn(), setWindowOpenHandler: vi.fn() }),
+    loadFile: vi.fn(), setAlwaysOnTop: vi.fn(), setIgnoreMouseEvents: vi.fn(), setBounds: vi.fn(), showInactive: vi.fn(), hide: vi.fn(),
+    isDestroyed: () => false, isVisible: () => true,
+  });
+  class BrowserWindow { constructor() { return avatarWindow as unknown as BrowserWindow; } }
+  class MessageChannelMain { port1 = { close() {} }; port2 = {}; }
+  const screen = { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) };
   Object.assign(app, { isReady: () => true });
   const shortcut = { unregisterAll() {}, register: vi.fn(() => true), unregister: vi.fn() };
-  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(), utilityProcess:{fork}, console,
+  const context: Record<string, any> = { app, globalShortcut:{unregisterAll(){}}, fileURLToPath, delimiter, dirname,join,resolve, process:{env:{},argv,chdir(){},stdout:{write(){}},execPath:'electron'},mkdirSync(){},existsSync:()=>false,renameSync(){},statSync(){throw new Error('absent');},createWriteStream:()=>({write(){},on(){},end(){}}),readFileSync(){throw new Error('absent');},setTimeout:vi.fn(()=>1),clearTimeout:vi.fn(),setInterval:vi.fn(()=>1),clearInterval:vi.fn(), utilityProcess:{fork}, console, BrowserWindow, MessageChannelMain, screen,
     // Modules du processus principal (les imports sont retirés du source) : les vrais, sauf les fenêtres (Electron).
     ...texts, ...trayIcon, ...placement, ...ui, createDesktopContributions, structuredClone, safeWindow:vi.fn(() => textWindow), bringToFront: vi.fn() };
   const popup = vi.fn();
   const menu = { buildFromTemplate: vi.fn(() => ({ popup })) };
   context.Menu = menu;
   context.globalShortcut = shortcut;
-  runInNewContext(source+';globalThis.api={contributions,openAvatarMenu,applyDisplay,startKernel,restartDelay,openTextInput,submitText,applyShortcuts,problems:()=>problems,setWindow:w=>{win=w;},readyText:()=>{winReady=true;currentPorts={};},pending:()=>pending};',context);
-  return { api:context.api,menu,popup,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
+  runInNewContext(source+';globalThis.api={contributions,openAvatarMenu:()=>avatar.openAvatarMenu(),applyDisplay:(s)=>avatar.applyDisplay(s),startKernel:()=>kernelProcess.start(),restartDelay,openTextInput:()=>windows.openTextInput(),submitText:(e,t)=>windows.submitText(e,t),applyShortcuts:(s)=>voice.applyShortcuts(s),problems:()=>tray.problems,createWindow:()=>avatar.createWindow(),pending:()=>kernelProcess.pending};',context);
+  return { api:context.api,menu,popup,events,get child(){ return forked.at(-1)!; },forked,app,textWindow,avatarWindow,shortcut,windows:context.safeWindow,front:context.bringToFront,env:context.process.env as Record<string,string>,timers:context.setTimeout as ReturnType<typeof vi.fn> };
 }
 
 it("garde une seule entrée Réglages au boot, sans corps et après panne", () => {
@@ -50,11 +63,11 @@ it("garde une seule entrée Réglages au boot, sans corps et après panne", () =
 });
 
 it("ignore le menu avatar vide et affiche les contributions actives", () => {
-  const d = desktop(); d.api.setWindow(d.textWindow);
+  const d = desktop(); d.api.createWindow();
   d.api.openAvatarMenu(); expect(d.menu.buildFromTemplate).not.toHaveBeenCalled();
   const identity = { owner: 'demo', id: 'view', token: 'one' };
   d.api.contributions.message({ type: 'desktop.register', ...identity, contribution: { ...identity, title: { fr: 'Autre', en: 'Other' }, menus: ['avatar'], actions: ['open'] } });
-  d.api.openAvatarMenu(); expect(d.popup).toHaveBeenCalledWith({ window: d.textWindow });
+  d.api.openAvatarMenu(); expect(d.popup).toHaveBeenCalledWith({ window: d.avatarWindow });
   d.api.contributions.clear(); d.api.openAvatarMenu(); expect(d.popup).toHaveBeenCalledOnce();
 });
 
@@ -92,9 +105,12 @@ it("la saisie réutilise sa fenêtre et n'envoie qu'à l'avatar connecté depuis
   expect(d.textWindow.webContents.send).toHaveBeenCalledWith('text:focus');
   const e = { sender: d.textWindow.webContents };
   expect(d.api.submitText(e, 'Bonjour')).toBe(false);
-  d.api.startKernel(); d.api.readyText();
-  const send = vi.fn();
-  d.api.setWindow({ isDestroyed: () => false, isVisible: () => true, webContents: { send } });
+  // Un avatar chargé et le port du corps connecté (le vrai chemin : la page est chargée, puis le noyau demande son port).
+  d.api.startKernel(); d.api.createWindow();
+  d.avatarWindow.webContents.emit('did-finish-load');
+  d.child.emit('message', { type: 'need-body-port' });
+  const send = d.avatarWindow.webContents.send;
+  send.mockClear();
   expect(d.api.submitText({sender: {}}, 'Bonjour')).toBe(false);
   for (const invalid of ['', '  ', null, 'a'.repeat(10001)]) expect(d.api.submitText(e, invalid)).toBe(false);
   expect(send).not.toHaveBeenCalled();
@@ -106,8 +122,8 @@ it("la saisie réutilise sa fenêtre et n'envoie qu'à l'avatar connecté depuis
 
 it('ignore un affichage reçu pour une fenêtre déjà détruite',()=>{
   const d=desktop();
-  const window={isDestroyed:()=>true,setAlwaysOnTop(){throw new Error('Object has been destroyed');}};
-  d.api.setWindow(window);
+  d.api.createWindow();
+  Object.assign(d.avatarWindow,{isDestroyed:()=>true,setAlwaysOnTop(){throw new Error('Object has been destroyed');}});
   expect(()=>d.api.applyDisplay({avatar_visible:true})).not.toThrow();
 });
 
@@ -119,8 +135,8 @@ it('ignore les messages du noyau après le début de la fermeture',()=>{
   expect(preventDefault).toHaveBeenCalledOnce();
   expect(d.child.postMessage).toHaveBeenCalledWith({type:'stop'});
   expect(d.app.quit).not.toHaveBeenCalled();
-  const window={isDestroyed:()=>true,setAlwaysOnTop(){throw new Error('Object has been destroyed');}};
-  d.api.setWindow(window);
+  d.api.createWindow();
+  Object.assign(d.avatarWindow,{isDestroyed:()=>true,setAlwaysOnTop(){throw new Error('Object has been destroyed');}});
   expect(()=>d.child.emit('message',{type:'display',settings:{avatar_visible:true}})).not.toThrow();
   d.child.emit('exit',0);
   expect(d.app.quit).toHaveBeenCalledOnce();
