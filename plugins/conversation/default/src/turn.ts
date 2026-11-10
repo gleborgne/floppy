@@ -5,8 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { Context } from "@floppy/core";
 import type { BodyHub, BrainEvent, BrainService, SpeechDelivery, TurnMode } from "@floppy/contracts";
 import type { BodyState, Emotion } from "@floppy/protocol";
-import { type ContextOperation } from "@floppy/contracts";
-import { optionalContext, prepareMemoryContext, memoryContextMessage } from "@floppy/toolkit";
+import { turnMemory, memoryContextMessage } from "@floppy/toolkit";
 import { guessEmotion } from "./feel.ts";
 import { EmotionSettler } from "./settle.ts";
 import { planSentence } from "./plan.ts";
@@ -104,14 +103,10 @@ export function createTurns(d: TurnDeps) {
       const memory = ctx.maybe("memory");
       const vocabulary = ctx.maybe("vocabulary");
       const correlation = { session: b.id, origin: b.id, turn };
-      const optional = <V>(service: ContextOperation["service"], phase: ContextOperation["phase"], work: (signal: AbortSignal) => V | Promise<V>) =>
-        optionalContext(work, ctx, { ...correlation, service, phase, consumer: "conversation", available: !!(service === "memory" ? memory : vocabulary), parent: t.abort.signal });
+      const turnMem = turnMemory({ memory, vocabulary, diagnostics: ctx }, { ...correlation, consumer: "conversation", language: lang, signal: t.abort.signal });
       if (ownsMemory) {
-        await optional("vocabulary", "observe", () => vocabulary?.observe({ text, ...correlation }));
-        const [remembered] = await Promise.all([
-          prepareMemoryContext({ memory, vocabulary, diagnostics: ctx }, { ...correlation, heard: text, language: lang, consumer: "conversation", signal: t.abort.signal }),
-          optional("memory", "record", (signal) => memory?.record({ session: b.id, origin: b.id, role: "user", text }, { signal, ...correlation })),
-        ]);
+        await turnMem.observe(text);
+        const [remembered] = await Promise.all([turnMem.prepare(text), turnMem.record("user", text)]);
         if (remembered) context.push({ role: "user", text: memoryContextMessage(remembered, lang) });
       }
       if (t.abort.signal.aborted) return;
@@ -146,7 +141,7 @@ export function createTurns(d: TurnDeps) {
       }
       } finally { unbind?.(); }
       if (t.abort.signal.aborted) return;
-      if (ownsMemory && full.trim()) await optional("memory", "record", (memorySignal) => memory?.record({ session: b.id, origin: b.id, role: "assistant", text: full.trim() }, { signal: memorySignal, ...correlation }));
+      if (ownsMemory && full.trim()) await turnMem.record("assistant", full.trim());
       for (const p of splitter.flushParts()) say(p.text, p.paragraph);
       if (nextCue) { setEmotion(nextCue.emotion, undefined, nextCue.intensity); nextCue = undefined; }
       mark("brain_done");

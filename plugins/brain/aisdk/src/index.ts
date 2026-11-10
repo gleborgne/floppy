@@ -13,8 +13,7 @@ import { definePlugin, fold } from "@floppy/core";
 import type { BrainEvent, BrainRunInput, BrainService, LlmService } from "@floppy/contracts";
 import { buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, timeLine, waitPhrases, type PromptLang } from "./prompt.ts";
 import { compactHistory } from "./history.ts";
-import { type ContextOperation } from "@floppy/contracts";
-import { EmotionTagFilter, optionalContext, prepareMemoryContext, memoryContextMessage, type FilterOut } from "@floppy/toolkit";
+import { EmotionTagFilter, turnMemory, memoryContextMessage, type FilterOut } from "@floppy/toolkit";
 
 export {
   buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases,
@@ -249,18 +248,13 @@ export default definePlugin<Config>({
         const hostSession = input.toolContext?.session ?? input.session;
         const hostOrigin = input.toolContext ? input.toolContext.origin : input.origin;
         const correlation = { session: hostSession, ...(hostOrigin ? { origin: hostOrigin } : {}), turn };
-        const optional = <V>(service: ContextOperation["service"], phase: ContextOperation["phase"], work: (signal: AbortSignal) => V | Promise<V>, detached = false) =>
-          optionalContext(work, ctx, { ...correlation, service, phase, consumer: "brain", available: !!(service === "memory" ? memory : vocabulary), ...(input.signal && !detached ? { parent: input.signal } : {}) });
-        if (input.recordMemory !== false) {
-          await optional("vocabulary", "observe", () => vocabulary?.observe({ text: input.text, ...correlation }));
-        }
-        const remembered = input.memoryContext !== undefined ? input.memoryContext ?? undefined : await prepareMemoryContext({ memory, vocabulary, diagnostics: ctx }, {
-          ...correlation, heard: input.text, language: lang, consumer: "brain", ...(input.signal ? { signal: input.signal } : {}),
-        });
+        const turnMem = turnMemory({ memory, vocabulary, diagnostics: ctx }, { ...correlation, consumer: "brain", language: lang, ...(input.signal ? { signal: input.signal } : {}) });
+        if (input.recordMemory !== false) await turnMem.observe(input.text);
+        const remembered = input.memoryContext !== undefined ? input.memoryContext ?? undefined : await turnMem.prepare(input.text);
         if (input.signal?.aborted) return;
         // `detached` : un tour coupé enregistre quand même ce qui a été dit (le signal du tour est déjà annulé).
         const record = async (role: "user" | "assistant", text: string, detached = false) => {
-          if (input.recordMemory !== false && text.trim()) await optional("memory", "record", (signal) => memory?.record({ session: correlation.session, role, text, ...(correlation.origin ? { origin: correlation.origin } : {}) }, { signal, ...correlation }), detached);
+          if (input.recordMemory !== false) await turnMem.record(role, text, { detached });
         };
         if (agent || !problem) await record("user", input.text);
         // Cerveau agent (Claude Code) : toute la demande lui va (mêmes outils par le serveur MCP Floppy, même accord).

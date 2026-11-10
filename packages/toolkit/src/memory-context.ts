@@ -57,6 +57,37 @@ export async function prepareMemoryContext(deps: MemoryContextDeps, input: Memor
   return { user: memory?.user ?? "", memory: memory?.memory ?? "", vocabulary: vocabulary ?? "", availability, ...(warning ? { warning } : {}) };
 }
 
+/** Le tour pour lequel on observe, relit et enregistre la mémoire. */
+export interface TurnMemoryTurn {
+  session: string; origin?: string; turn: string; consumer: ContextOperation["consumer"]; language: string; signal?: AbortSignal;
+}
+
+/**
+ * Un seul chemin pour la mémoire d'un tour (conversation et cerveau) : observer le vocabulaire,
+ * relire la photo mémoire, enregistrer ce qui est dit. Chaque opération est facultative et bornée
+ * (`optionalContext`), avec la même écriture d'audit `memory.context`.
+ */
+export function turnMemory(deps: MemoryContextDeps, turn: TurnMemoryTurn) {
+  const { session, origin, consumer, signal: parent } = turn;
+  const correlation = { session, ...(origin ? { origin } : {}), turn: turn.turn };
+  const optional = <V>(service: ContextOperation["service"], phase: ContextOperation["phase"], work: (signal: AbortSignal) => V | Promise<V>, detached = false) =>
+    optionalContext(work, deps.diagnostics, { ...correlation, consumer, service, phase, available: !!deps[service], ...(parent && !detached ? { parent } : {}) });
+  return {
+    /** Montre au vocabulaire ce que l'utilisateur a dit. */
+    observe: async (text: string): Promise<void> => {
+      await optional("vocabulary", "observe", () => deps.vocabulary?.observe({ text, ...correlation }));
+    },
+    /** Photo mémoire du tour ; `undefined` sans aucun fournisseur. */
+    prepare: (heard?: string): Promise<PreparedMemoryContext | undefined> =>
+      prepareMemoryContext(deps, { ...correlation, consumer, language: turn.language, ...(heard !== undefined ? { heard } : {}), ...(parent ? { signal: parent } : {}) }),
+    /** Enregistre un message ; `detached` : un tour coupé enregistre quand même (son signal est déjà annulé). */
+    record: async (role: "user" | "assistant", text: string, opts: { detached?: boolean } = {}): Promise<void> => {
+      if (!text.trim()) return;
+      await optional("memory", "record", (signal) => deps.memory?.record({ session, ...(origin ? { origin } : {}), role, text }, { signal, ...correlation }), opts.detached);
+    },
+  };
+}
+
 /** Même enveloppe de données pour les modèles texte, les agents et les sessions audio. */
 export function memoryContextMessage(context: MemorySnapshot, language: string): string {
   const data = JSON.stringify(context);
