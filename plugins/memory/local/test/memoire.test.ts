@@ -71,4 +71,90 @@ describe("remember : accord", () => {
     k.approvals.respond(k.approvals.pending()[0]!.id, true, "test");
     expect((await p).text).toBe("Remembered.");
   });
+
+  describe("search_history", () => {
+    const D = (m: number, d: number, h: number, mi = 0) => new Date(2026, m - 1, d, h, mi).toISOString();
+    /** Remplit l'historique avec des dates connues, par l'API du service (puis réécrit `t` dans la base). */
+    async function seeded() {
+      const s = await start();
+      const m = s.k.service<MemoryService>("memory")!;
+      const rows: [string, string, string, string][] = [
+        ["user", "Quel temps fait-il à Lyon ?", "a", D(11, 4, 9)],
+        ["assistant", "Il fait doux à Lyon, 14 degrés.", "a", D(11, 4, 9)],
+        ["user", "Rappelle-moi la recette du gratin dauphinois", "b", D(11, 5, 19, 30)],
+        ["assistant", "Pommes de terre, crème, ail, muscade. " + "x".repeat(900), "b", D(11, 5, 19, 31)],
+        ["user", "Merci", "b", D(11, 5, 19, 32)],
+        ["assistant", "Avec plaisir.", "b", D(11, 5, 19, 32)],
+        ["user", "Et la recette du gâteau ?", "c", D(11, 6, 8)],
+      ];
+      for (const [role, text, session] of rows) await m.record({ role: role as "user" | "assistant", text, session });
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(join(s.home, "history.db"));
+      rows.forEach(([, , , t], i) => db.prepare("UPDATE history SET t = ? WHERE rowid = ?").run(t, i + 1));
+      db.close();
+      return s;
+    }
+
+    it("une demande de l'utilisateur rend la réponse qui la suit, avec la date locale", async () => {
+      const { k } = await seeded();
+      const text = tr((await k.tools.call("search_history", { query: "Lyon" })).text, "fr");
+      expect(text).toContain("[2026-11-04 09:00]");
+      expect(text).toContain("Utilisateur : Quel temps fait-il à Lyon ?");
+      expect(text).toContain("Assistant : Il fait doux à Lyon, 14 degrés.");
+      expect(text.match(/\[2026/g)).toHaveLength(1); // demande et réponse touchées : un seul échange
+    });
+
+    it("une réponse rend la demande qui la précède, tronquée", async () => {
+      const { k } = await seeded();
+      const text = tr((await k.tools.call("search_history", { query: "muscade", role: "assistant" })).text, "fr");
+      expect(text).toContain("Utilisateur : Rappelle-moi la recette du gratin dauphinois");
+      expect(text).toContain("Assistant : Pommes de terre");
+      expect(text).toContain("…"); // la réponse longue est coupée
+      expect(text.length).toBeLessThan(900);
+    });
+
+    it("filtre par période (bornes incluses) et par rôle", async () => {
+      const { k } = await seeded();
+      const t = async (a: Record<string, unknown>) => tr((await k.tools.call("search_history", a)).text, "fr");
+      const recette = await t({ query: "recette", since: "2026-11-05", until: "2026-11-05" });
+      expect(recette).toContain("gratin");
+      expect(recette).not.toContain("gâteau");
+      expect(await t({ query: "recette", until: "2026-11-04" })).toBe("Rien trouvé dans l'historique.");
+      expect(await t({ query: "recette", since: "2026-11-06" })).toContain("gâteau");
+      expect(await t({ query: "plaisir", role: "user" })).toBe("Rien trouvé dans l'historique.");
+    });
+
+    it("sans mots mais avec une période : les derniers échanges, du plus ancien au plus récent", async () => {
+      const { k } = await seeded();
+      const text = tr((await k.tools.call("search_history", { since: "2026-11-05", until: "2026-11-05", limit: 2 })).text, "fr");
+      expect(text).toContain("Merci");
+      expect(text).toContain("Avec plaisir.");
+      expect(text).not.toContain("gratin");
+    });
+
+    it("refuse sans mots ni période, une date illisible ou un rôle inconnu ; la requête reste sûre", async () => {
+      const { k } = await seeded();
+      expect((await k.tools.call("search_history", {})).status).toBe("failed");
+      expect((await k.tools.call("search_history", { query: "x", since: "hier" })).status).toBe("failed");
+      expect((await k.tools.call("search_history", { query: "x", since: "2026-02-31" })).status).toBe("failed");
+      expect((await k.tools.call("search_history", { query: "Lyon", role: "robot" })).status).toBe("failed");
+      expect((await k.tools.call("search_history", { query: 'Lyon" OR NEAR( * ) AND' })).status).toBe("done");
+    });
+
+    it("borne la longueur totale", async () => {
+      const { k } = await start();
+      const m = k.service<MemoryService>("memory")!;
+      for (let i = 0; i < 20; i++) { await m.record({ role: "user", text: `chat ${"mot ".repeat(150)}`, session: `s${i}` }); }
+      const text = tr((await k.tools.call("search_history", { query: "chat", limit: 20 })).text, "fr");
+      expect(text.length).toBeLessThan(7000);
+      expect(text).toContain("non montré");
+    });
+
+    it("le contrat MemoryService.search garde sa forme", async () => {
+      const { k } = await seeded();
+      const rows = await k.service<MemoryService>("memory")!.search("Lyon", 5);
+      expect(rows.map((r) => r.role).sort()).toEqual(["assistant", "user"]);
+      expect(Object.keys(rows[0]!).sort()).toEqual(["role", "session", "t", "text"]);
+    });
+  });
 });

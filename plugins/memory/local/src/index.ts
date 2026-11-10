@@ -11,6 +11,7 @@ import { definePlugin, errorText, T, TextError, writeFileAtomic } from "@floppy/
 import type { MemoryService } from "@floppy/contracts";
 import { correctionStore } from "./corrections.ts";
 import { storeOperation, type StoreReporter } from "./store-audit.ts";
+import { dayStartIso, formatExchanges, ftsQuery, searchExchanges } from "./history.ts";
 
 const Config = z.object({
   dir: z.string().optional(),
@@ -59,7 +60,7 @@ export default definePlugin<Config>({
   config: Config,
   apply(ctx, cfg) {
     const report: StoreReporter = (event) => ctx.audit.write({ kind: "memory.store", source: ctx.id, ...event });
-    const { path, read, limit, corrections, insert, find } = storeOperation(report, "startup", () => {
+    const { path, read, limit, db, corrections, insert, find } = storeOperation(report, "startup", () => {
     const dir = cfg.dir ?? join(ctx.home, "memory");
     mkdirSync(dir, { recursive: true });
     const path = (w: Which) => join(dir, FILES[w]);
@@ -87,9 +88,9 @@ export default definePlugin<Config>({
       search: (q, n = 5, options) => storeOperation(report, "history.search", () => {
         options?.signal?.throwIfAborted();
         // Requête FTS5 sûre : chaque mot entre guillemets, reliés par OR.
-        const words = q.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [];
-        if (!words.length) return [];
-        return find.all(words.map((w) => `"${w}"`).join(" OR "), n) as { t: string; role: string; text: string; session: string }[];
+        const fts = ftsQuery(q);
+        if (!fts) return [];
+        return find.all(fts, n) as { t: string; role: string; text: string; session: string }[];
       }, (rows) => ({ count: rows.length }), options),
     };
     ctx.provide("memory", service);
@@ -152,14 +153,31 @@ export default definePlugin<Config>({
       },
       {
         name: "search_history",
-        description: "Cherche dans les conversations passées avec l'utilisateur. query : mots-clés ; limit : nombre de résultats (5 par défaut). Utile pour « qu'est-ce que je t'avais dit sur… ».",
-        inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] },
+        description: "Cherche dans les conversations passées avec l'utilisateur. query : mots-clés (facultatifs si since/until donnés). since / until : période, jours AAAA-MM-JJ en heure locale, bornes incluses (calcule-les depuis la date du jour : « hier », « la semaine dernière »). role : « user » (ce que l'utilisateur a dit) ou « assistant » (ce que tu as répondu). limit : nombre d'échanges (5 par défaut, 20 au plus). Chaque résultat est un échange daté : la demande de l'utilisateur ET la réponse qui l'accompagne, du plus ancien au plus récent. Sans mots-clés mais avec une période : les derniers échanges de cette période. Utile pour « qu'est-ce que je t'avais dit sur… », « qu'est-ce que tu m'avais répondu sur… », « de quoi on a parlé hier ».",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            since: { type: "string", description: "AAAA-MM-JJ, local, inclus." },
+            until: { type: "string", description: "AAAA-MM-JJ, local, inclus." },
+            role: { type: "string", enum: ["user", "assistant"] },
+            limit: { type: "number" },
+          },
+        },
         level: "read",
         handler: async (a, meta) => {
-          const rows = await service.search(String(a.query ?? ""), Number(a.limit ?? 5), meta);
-          if (!rows.length) return { status: "done", text: T("Rien trouvé dans l'historique.", "Nothing found in history.") };
-          const lines = (user: string) => rows.map((r) => `${r.t.slice(0, 16)} ${r.role === "user" ? user : "Assistant"} : ${r.text}`).join("\n");
-          return { status: "done", text: T(lines("Utilisateur"), lines("User")) };
+          const query = String(a.query ?? "");
+          const day = (v: unknown): string | undefined | null => (v === undefined || v === null || v === "" ? undefined : typeof v === "string" && dayStartIso(v) ? v.trim() : null);
+          const since = day(a.since), until = day(a.until);
+          if (since === null || until === null) return { status: "failed", text: T("Date illisible : attendu AAAA-MM-JJ (heure locale).", "Unreadable date: expected YYYY-MM-DD (local time).") };
+          if (a.role !== undefined && a.role !== "" && a.role !== "user" && a.role !== "assistant") return { status: "failed", text: T("role : « user » ou « assistant ».", "role: \"user\" or \"assistant\".") };
+          if (!ftsQuery(query) && !since && !until) return { status: "failed", text: T("Donne des mots-clés ou une période (since / until).", "Give keywords or a period (since / until).") };
+          const list = storeOperation(report, "history.search", () => {
+            meta.signal?.throwIfAborted();
+            return searchExchanges(db, { query, ...(since ? { since } : {}), ...(until ? { until } : {}), ...(a.role === "user" || a.role === "assistant" ? { role: a.role } : {}), limit: Number(a.limit ?? 5) });
+          }, (r) => ({ count: r.length }), meta);
+          if (!list.length) return { status: "done", text: T("Rien trouvé dans l'historique.", "Nothing found in history.") };
+          return { status: "done", text: formatExchanges(list) };
         },
       },
     ]);
