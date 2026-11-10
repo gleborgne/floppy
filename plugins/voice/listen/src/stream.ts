@@ -13,6 +13,39 @@ export const BARGE_IN_MS = 300;
 export const MERGE_GAP_MS = 2000;
 export const DICTATE_PARTIAL_S = 0.6;
 export const DICTATE_MAX_S = 30;
+/** Attente par défaut d'une phrase qui a l'air inachevée (réglage `hold_incomplete_ms`). */
+export const HOLD_INCOMPLETE_MS = 1200;
+
+const HESITATIONS = new Set(["euh", "heu", "hum", "hmm", "uh", "um", "uhm", "er", "eh"]);
+const LINKERS = new Set([
+  // fr
+  "et", "ou", "mais", "donc", "alors", "puis", "car", "ni", "à", "au", "aux", "de", "du", "des", "le", "la", "les", "un", "une",
+  "pour", "avec", "sur", "dans", "que", "qui", "comme", "par", "en", "sans", "chez", "vers",
+  // en
+  "and", "or", "but", "so", "to", "of", "the", "a", "an", "for", "with", "then", "at", "by", "from",
+]);
+
+/**
+ * La phrase a-t-elle l'air inachevée (l'utilisateur hésite, il va reprendre) ? Bilingue et prudente :
+ * - un seul mot (« oui », « stop », « ok ») : jamais ;
+ * - fin sur « … », « ... » ou « , » : oui ;
+ * - fin sur une hésitation (euh, uh…) : oui ;
+ * - fin sur un mot de liaison (et, de, the…) sans ponctuation finale (« . », « ? », « ! ») : oui ;
+ * - fin sur une élision (« l' », « qu' ») : oui.
+ */
+export function looksUnfinished(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  const words = t.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
+  if (words.length < 2) return false;
+  if (/(…|\.\.\.|,)["'»)\]\s]*$/u.test(t)) return true;
+  const rawLast = words[words.length - 1]!;
+  if (/[a-zà-ÿ]['’]$/iu.test(rawLast)) return true;
+  const last = rawLast.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "").toLowerCase();
+  if (HESITATIONS.has(last)) return true;
+  const sentenceEnd = /[.!?]["'»)\]]*$/u.test(t);
+  return !sentenceEnd && LINKERS.has(last);
+}
 
 export interface ListenOptions {
   vad: VadStream;
@@ -20,8 +53,15 @@ export interface ListenOptions {
   minSilenceMs: number;
   /** Transcription partagée : les demandes sont traitées une à la fois, dans l'ordre. */
   transcribe(audio: Float32Array): Promise<string>;
+  /**
+   * Attente (ms) d'une phrase qui a l'air inachevée avant de l'émettre ; 0 = désactivée.
+   * Une fonction est relue à chaque phrase (réglage modifiable à chaud). Défaut : HOLD_INCOMPLETE_MS.
+   */
+  holdIncompleteMs?: number | (() => number);
   /** Horloge en ms (tests). */
   now?: () => number;
+  /** Minuteur (tests) : rend la fonction qui l'annule. Défaut : setTimeout. */
+  schedule?: (fn: () => void, ms: number) => () => void;
   log?(msg: string): void;
   onClose?(): void;
 }
@@ -66,6 +106,8 @@ export class ListenStream implements VoiceStream {
   private buf: Float32Array[] = [];
   private preroll: Float32Array[] = [];
   private pending = new Float32Array(0);
+  /** Transcript retenu en attendant une reprise de parole (phrase qui a l'air inachevée). */
+  private held: { ev: Extract<VoiceEvent, { type: "transcript" }>; at: number; cancel: () => void } | undefined;
 
   constructor(opts: ListenOptions) {
     this.opts = opts;
@@ -92,7 +134,7 @@ export class ListenStream implements VoiceStream {
   }
 
   /** Fin d'une phrase. silenceMs : silence attendu par le détecteur avant la fin (0 avec le bouton). */
-  private endUtterance(audio: Float32Array, merged: boolean, silenceMs: number): void {
+  private endUtterance(audio: Float32Array, merged: boolean, silenceMs: number, holdable = false): void {
     this.lastAudio = audio;
     this.lastEnd = this.now();
     const start = this.startSample;
@@ -101,10 +143,49 @@ export class ListenStream implements VoiceStream {
     this.turnSpoke = false;
     if (audio.length <= SR * MIN_UTTERANCE_S) return;
     const utt = this.utt, end = this.processed;
-    this.queue(audio, (text, sttMs) => this.emit({
-      type: "transcript", text, audio_s: Math.round((audio.length / SR) * 100) / 100, stt_ms: sttMs, merged,
-      utt, start_sample: start, end_sample: end, silence_ms: silenceMs,
-    }));
+    this.queue(audio, (text, sttMs) => {
+      const ev: Extract<VoiceEvent, { type: "transcript" }> = {
+        type: "transcript", text, audio_s: Math.round((audio.length / SR) * 100) / 100, stt_ms: sttMs, merged,
+        utt, start_sample: start, end_sample: end, silence_ms: silenceMs,
+      };
+      if (holdable && this.shouldHold(text, utt)) this.hold(ev);
+      else this.emit(ev);
+    });
+  }
+
+  private holdMs(): number {
+    const v = this.opts.holdIncompleteMs;
+    const ms = typeof v === "function" ? v() : v ?? HOLD_INCOMPLETE_MS;
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+
+  /** Retenir ? Seulement si la phrase a l'air inachevée, hors coupure de parole, et si la reprise pourrait être recollée. */
+  private shouldHold(text: string, utt: number): boolean {
+    return !this.closed && !this.speaking && !this.dictating && this.mergeEnabled && utt === this.utt && !this.inSpeech
+      && this.holdMs() > 0 && looksUnfinished(text);
+  }
+
+  private hold(ev: Extract<VoiceEvent, { type: "transcript" }>): void {
+    this.flushHeld();
+    const at = this.now();
+    const schedule = this.opts.schedule ?? ((fn, ms) => { const h = setTimeout(fn, ms); return () => clearTimeout(h); });
+    const cancel = schedule(() => this.flushHeld(), this.holdMs());
+    this.held = { ev, at, cancel };
+  }
+
+  /** Émet le transcript retenu avec ses valeurs d'origine ; `silence_ms` compte l'attente (latence mesurée juste). */
+  private flushHeld(): void {
+    const h = this.held;
+    if (!h) return;
+    this.held = undefined;
+    h.cancel();
+    this.emit({ ...h.ev, silence_ms: (h.ev.silence_ms ?? 0) + Math.max(0, Math.round(this.now() - h.at)) });
+  }
+
+  /** La parole reprend et sera recollée : le texte retenu n'est jamais émis. */
+  private dropHeld(): void {
+    this.held?.cancel();
+    this.held = undefined;
   }
 
   /** Fin d'un segment de dictée (pause, arrêt ou segment trop long) : version finale. */
@@ -172,8 +253,10 @@ export class ListenStream implements VoiceStream {
       this.buf = [...this.preroll];
       this.startSample = this.processed - this.preroll.reduce((n, p) => n + p.length, 0);
       this.merged = false;
-      const recent = this.now() - this.lastEnd < MERGE_GAP_MS;
-      if (this.mergeEnabled && recent && this.lastAudio && !this.turnSpoke && !this.speaking) {
+      const recent = this.held !== undefined || this.now() - this.lastEnd < MERGE_GAP_MS;
+      const willMerge = this.mergeEnabled && recent && this.lastAudio && !this.turnSpoke && !this.speaking;
+      if (willMerge) this.dropHeld(); else this.flushHeld();
+      if (willMerge && this.lastAudio) {
         // Reprise juste après la fin, avant toute réponse parlée : c'est la même phrase.
         this.buf = [this.lastAudio, ...this.buf];
         this.startSample = this.lastStart;
@@ -186,7 +269,7 @@ export class ListenStream implements VoiceStream {
       this.emit({ type: "vad", state: "silence" });
       const audio = concat(this.buf);
       this.buf = []; this.preroll = [];
-      this.endUtterance(audio, this.merged, this.opts.minSilenceMs);
+      this.endUtterance(audio, this.merged, this.opts.minSilenceMs, true);
     }
   }
 
@@ -194,17 +277,20 @@ export class ListenStream implements VoiceStream {
 
   setSpeaking(on: boolean): void {
     this.speaking = on;
+    if (on) this.flushHeld();
     if (on) this.turnSpoke = true;
     this.barged = false;
   }
 
   setMergeEnabled(on: boolean): void {
     this.mergeEnabled = on;
+    if (!on) this.flushHeld();
     this.lastAudio = undefined;
   }
 
   ptt(on: boolean): void {
     if (on && !this.ptting) {
+      this.flushHeld();
       this.ptting = true; this.buf = [];
       this.resetListening();
       this.startSample = this.received;
@@ -223,6 +309,7 @@ export class ListenStream implements VoiceStream {
 
   dictate(on: boolean): void {
     if (on && !this.dictating) {
+      this.flushHeld();
       this.dictating = true; this.ptting = false; this.buf = [];
       this.resetListening();
       this.segFrames = 0;
@@ -238,6 +325,7 @@ export class ListenStream implements VoiceStream {
 
   close(): void {
     if (this.closed) return;
+    this.dropHeld();
     this.emit({ type: "closed" });
     this.closed = true;
     this.opts.vad.close();

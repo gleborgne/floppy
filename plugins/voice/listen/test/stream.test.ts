@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel, definePlugin } from "@floppy/core";
 import type { SttService, VadEvent, VadService, VadStream, VoiceEvent, VoiceService } from "@floppy/contracts";
-import listen, { ListenStream } from "../src/index.ts";
+import listen, { ListenStream, looksUnfinished } from "../src/index.ts";
 
 const FRAME = 512;
 
@@ -258,5 +258,129 @@ describe("plugin dans le noyau", () => {
       await vi.waitFor(() => expect(got.find((e) => e.type === "transcript")).toMatchObject({ text: "entendu" }));
       a.close();
     } finally { await k.stopAll(); }
+  });
+});
+
+describe("fin de phrase adaptative", () => {
+  /** Flux avec minuteur manuel : `fire()` déclenche l'attente en cours. */
+  function holdSetup(script: Record<number, VadEvent["type"]>, texts: string[], hold: number | undefined = 1200) {
+    const vad = fakeVad(script);
+    let t = 0;
+    const events: VoiceEvent[] = [];
+    let timer: (() => void) | undefined;
+    const waits: number[] = [];
+    const s = new ListenStream({
+      vad: vad.stream, minSilenceMs: 500, now: () => t, holdIncompleteMs: hold,
+      transcribe: async () => texts.shift() ?? "",
+      schedule: (fn, ms) => { timer = fn; waits.push(ms); return () => { if (timer === fn) timer = undefined; }; },
+    });
+    s.on((e) => events.push(e));
+    const frames = (n: number) => { for (let i = 0; i < n; i++) s.pushAudio(new Float32Array(FRAME).fill(0.1)); };
+    const transcripts = () => events.filter((e) => e.type === "transcript") as Extract<VoiceEvent, { type: "transcript" }>[];
+    return { s, events, frames, tick: (ms: number) => { t += ms; }, fire: () => timer?.(), armed: () => timer !== undefined, waits, transcripts };
+  }
+  const flush = () => new Promise((r) => setTimeout(r, 10));
+
+  it("phrase complète : émise tout de suite", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["Quelle heure est-il ?"]);
+    h.frames(50);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(1));
+    expect(h.armed()).toBe(false);
+  });
+
+  it("phrase inachevée : retenue, puis émise à la fin de l'attente avec silence_ms rallongé", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["envoie ça à euh"]);
+    h.frames(50);
+    await flush();
+    expect(h.transcripts()).toHaveLength(0);
+    expect(h.waits).toEqual([1200]);
+    h.tick(1200);
+    h.fire();
+    expect(h.transcripts()).toMatchObject([{ text: "envoie ça à euh", merged: false, utt: 1, silence_ms: 1700 }]);
+  });
+
+  it("reprise pendant l'attente : un seul transcript recollé, le texte retenu n'est jamais émis", async () => {
+    const h = holdSetup({ 12: "start", 30: "end", 40: "start", 60: "end" }, ["envoie ça à euh", "envoie ça à Paul"]);
+    h.frames(35);
+    await flush();
+    expect(h.armed()).toBe(true);
+    h.tick(1000);
+    h.frames(30);
+    expect(h.armed()).toBe(false);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(1));
+    await flush();
+    expect(h.transcripts()).toMatchObject([{ text: "envoie ça à Paul", merged: true }]);
+    expect(h.events.filter((e) => e.type === "merge")).toHaveLength(1);
+  });
+
+  it("reprise après l'attente (déjà émis) : comportement habituel, les deux sont émis", async () => {
+    const h = holdSetup({ 12: "start", 30: "end", 40: "start", 60: "end" }, ["et puis", "et puis voilà"]);
+    h.frames(35);
+    await flush();
+    h.tick(1200); h.fire();
+    expect(h.transcripts()).toHaveLength(1);
+    h.tick(300);
+    h.frames(30);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(2));
+  });
+
+  it("« oui » n'est jamais retenu", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["oui"]);
+    h.frames(50);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(1));
+    expect(h.armed()).toBe(false);
+  });
+
+  it("bouton parler : jamais retenu", async () => {
+    const h = holdSetup({}, ["envoie ça à euh"]);
+    h.s.ptt(true); h.frames(20); h.s.ptt(false);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(1));
+    expect(h.armed()).toBe(false);
+  });
+
+  it("0 désactive l'attente", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["envoie ça à euh"], 0);
+    h.frames(50);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(1));
+  });
+
+  it("pas de retenue pendant une coupure de parole (voix qui joue)", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["envoie ça à euh"]);
+    h.s.setSpeaking(true);
+    h.frames(50);
+    await vi.waitFor(() => expect(h.transcripts()).toHaveLength(1));
+  });
+
+  it("la voix qui démarre pendant l'attente émet le texte retenu", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["envoie ça à euh"]);
+    h.frames(50);
+    await flush();
+    expect(h.transcripts()).toHaveLength(0);
+    h.s.setSpeaking(true);
+    expect(h.transcripts()).toHaveLength(1);
+  });
+
+  it("fermeture pendant l'attente : abandon propre, minuteur nettoyé, rien d'émis", async () => {
+    const h = holdSetup({ 12: "start", 40: "end" }, ["envoie ça à euh"]);
+    h.frames(50);
+    await flush();
+    expect(h.armed()).toBe(true);
+    h.s.close();
+    expect(h.armed()).toBe(false);
+    h.fire();
+    expect(h.transcripts()).toHaveLength(0);
+    expect(h.events.at(-1)).toMatchObject({ type: "closed" });
+  });
+});
+
+describe("looksUnfinished", () => {
+  it("français : mots de liaison, hésitations, points de suspension, virgule", () => {
+    for (const t of ["envoie ça à", "envoie ça à euh", "je voudrais un", "mets le rappel pour demain et", "bon alors,", "je ne sais pas…", "je ne sais pas...", "donne-moi l'", "bon euh."]) expect(looksUnfinished(t), t).toBe(true);
+  });
+  it("anglais : liaisons, hésitations", () => {
+    for (const t of ["send this to", "send it to uh", "I want to talk about the", "well um", "and then,", "wait for it..."]) expect(looksUnfinished(t), t).toBe(true);
+  });
+  it("phrases complètes et mots seuls : non", () => {
+    for (const t of ["", "oui", "non", "stop", "ok", "Oui.", "euh", "envoie ça à Paul", "quelle heure est-il ?", "arrête !", "c'est fait.", "send it to Paul.", "I think so.", "et"]) expect(looksUnfinished(t), t).toBe(false);
   });
 });

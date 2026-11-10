@@ -5,9 +5,9 @@
 // - Les règles d'écoute (interruption, recollage, bouton, dictée) sont dans stream.ts, reprises du service Python.
 import { definePlugin, T, TextError, type Borrowed } from "@floppy/core";
 import type { SttService, VadService, VadStream, VoiceService } from "@floppy/contracts";
-import { ListenStream } from "./stream.ts";
+import { HOLD_INCOMPLETE_MS, ListenStream } from "./stream.ts";
 
-export { ListenStream } from "./stream.ts";
+export { ListenStream, looksUnfinished } from "./stream.ts";
 
 export default definePlugin({
   manifest: {
@@ -72,6 +72,18 @@ export default definePlugin({
     };
     ctx.effect(() => { if (held) void held.then(({ vad, stt }) => { vad.release(); stt.release(); }, () => {}); held = undefined; });
 
+    // Attente d'une phrase qui a l'air inachevée (« envoie ça à… euh »), relue à chaque phrase.
+    let holdMs = ctx.settings.saved<number>("hold_incomplete_ms") ?? HOLD_INCOMPLETE_MS;
+    ctx.settings.declare([{
+      key: "hold_incomplete_ms", section: "listening", type: "number", min: 0, max: 3000, risk: "free",
+      label: T("Attente si la phrase semble inachevée", "Wait when a sentence seems unfinished"),
+      group: T("Écoute", "Listening"),
+      description: T(
+        "Millisecondes pendant lesquelles Floppy attend avant d'envoyer une phrase qui finit sur une hésitation ou un mot de liaison (« euh », « et », « à… »). Si tu reprends, la phrase est recollée sans réponse prématurée. 0 : désactivé.",
+        "Milliseconds Floppy waits before sending a sentence that ends on a hesitation or a linking word (“uh”, “and”, “to…”). If you carry on, the sentence is joined with no premature reply. 0: off."),
+      get: () => holdMs, set: (v) => { const n = Number(v); holdMs = Number.isFinite(n) ? Math.max(0, Math.min(3000, Math.round(n))) : HOLD_INCOMPLETE_MS; },
+    }]);
+
     const service: VoiceService = {
       name: "écoute",
       async open() {
@@ -99,6 +111,7 @@ export default definePlugin({
         return new ListenStream({
           vad: proxy,
           minSilenceMs: vad.service.minSilenceMs,
+          holdIncompleteMs: () => holdMs,
           transcribe: (audio) => {
             // La transcription en service au moment de la demande (elle a pu être réempruntée après une panne).
             const run = sttQueue.then(async () => ((held ? (await held).stt : stt).service.transcribe(audio, { language })));

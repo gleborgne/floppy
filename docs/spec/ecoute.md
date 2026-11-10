@@ -70,6 +70,12 @@ interface SttService {
   - **interruption** (`barge_in`) : 300 ms de parole continue pendant que la voix joue (`setSpeaking(true)`), une fois (réarmé par `setSpeaking`). La conversation baisse alors la voix et attend le texte reconnu pour distinguer l'utilisateur de l'écho (voir fonctionnement.md, point 8) ;
   - **recollage** (`merge`) : reprise moins de 2 s après la fin, sans réponse parlée entre-temps, si autorisé
     (`setMergeEnabled`) : la phrase précédente est remise devant, `merged: true` ;
+  - **fin de phrase adaptative** : si le texte a l'air inachevé (`looksUnfinished` : fin sur « … », « , », une hésitation
+    « euh / uh », ou un mot de liaison « et, de, à / and, to, the » sans ponctuation finale ; jamais un mot seul comme
+    « oui » ou « stop »), le `transcript` est **retenu** `hold_incomplete_ms` (réglage de la rubrique Écoute, 1200 ms,
+    0 = désactivé). Une reprise de parole pendant l'attente recolle l'audio (`merge`) et le texte retenu n'est jamais
+    émis ; sinon il part à la fin du délai, `silence_ms` rallongé de l'attente. Jamais retenu : bouton, dictée, voix qui
+    joue (l'interruption reste immédiate), recollage coupé. Fermeture : le texte retenu est abandonné, minuteur nettoyé ;
   - **bouton** (`ptt`) : le VAD est ignoré ; tout le son entre l'appui et le relâché est une phrase (`silence_ms: 0`) ;
   - **dictée** : segments coupés aux pauses ou à 30 s ; une hypothèse toutes les 0,6 s de parole (jamais deux en même
     temps), puis la version finale ; pas de `transcript` ;
