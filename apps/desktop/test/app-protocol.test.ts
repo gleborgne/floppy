@@ -152,6 +152,15 @@ it("ce qui est accordé ou choisi dans la conversation repart au noyau (message 
   ]);
 });
 
+it("« arrêter l'écoute » demandé dans la conversation fait comme le bouton de la bulle", async () => {
+  const f = await connected();
+  const message = (data: object) => f.app.protocol.windowMessage({ data, ports: [] } as unknown as MessageEvent);
+  message({ floppyChatStopListening: "oui" });             // valeur inattendue : rien
+  expect(sent(f.port)).toEqual([]);
+  message({ floppyChatStopListening: true });
+  expect(sent(f.port)).toEqual([{ type: "listen.stop" }]);
+});
+
 it("bouton de la bulle : ouvre la conversation, et son texte suit la langue de l'interface", async () => {
   vi.useFakeTimers();
   const host = chatHost();
