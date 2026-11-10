@@ -44,7 +44,7 @@ import { Deadline, offerItems, sameEntry } from "./lifecycle-util.ts";
 import { makeContext } from "./context-factory.ts";
 import type { KernelInternals } from "./kernel-internals.ts";
 import { declareCoreSettings } from "./core-settings.ts";
-import { declareSlots, declareServiceSelection } from "./selection-settings.ts";
+import { declareSlots } from "./selection-settings.ts";
 import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
 export type Logger = (rec: { level: LogLevel; source: string; msg: string; data?: Record<string, unknown> }) => void;
@@ -200,7 +200,6 @@ export class Kernel {
   private readonly invalid = new Map<string, ManifestProblem>();
   private entries = new Map<string, Entry>();
   private selection: Record<string, string> = {};
-  private readonly selectable = new Map<string, NonNullable<PluginDef["manifest"]["serviceSelection"]>>();
   private readonly selectionEdits = new Map<string, string>();
   /** Forks en cours (clé "<entrée>/<service>/<élément>"). */
   private forks = new Map<string, Entry>();
@@ -353,7 +352,6 @@ export class Kernel {
     if (this.catalog.has(def.manifest.id)) throw new Error(`plugin déjà enregistré : ${def.manifest.id}`);
     this.catalog.set(def.manifest.id, def);
     this.declareSections(def);
-    declareServiceSelection(this as unknown as KernelInternals, def);
     declareSlots(this as unknown as KernelInternals, def);
     this.apps?.refresh();
     this.tasks?.changed();
@@ -372,7 +370,7 @@ export class Kernel {
    */
   replacePlugin(def: PluginDef<any>): Promise<void> {
     return this.enqueue(async () => {
-      if (this.checkManifest(def)) { this.catalog.set(def.manifest.id, def); this.declareSections(def); declareServiceSelection(this as unknown as KernelInternals, def); declareSlots(this as unknown as KernelInternals, def); }
+      if (this.checkManifest(def)) { this.catalog.set(def.manifest.id, def); this.declareSections(def); declareSlots(this as unknown as KernelInternals, def); }
       else this.sectionOffs.get(String((def?.manifest as { id?: unknown } | undefined)?.id))?.();
       const mine = [...this.entries.values()].filter((e) => e.cfg.plugin === def.manifest.id);
       for (const e of [...mine].reverse()) await this.stopEntry(e, "loaded");
@@ -662,9 +660,9 @@ export class Kernel {
     return id && this.entries.get(id)?.def?.manifest.lazy ? undefined : id;
   }
 
+  /** Le choix de la config (`services: { nom: entrée }`) pour un service, ou undefined (premier actif dans l'ordre de la config). */
   private selectedProvider(name: string): string | undefined {
-    return this.selectionEdits.get(name) ?? (this.selectable.has(name) ? this.settings.savedValue<string>(`service.${name}`) : undefined)
-      ?? this.selection[name] ?? (this.selectable.has(name) ? "@none" : undefined);
+    return this.selection[name];
   }
 
   private needs(e: Entry): { required: string[]; optional: string[] } {

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "floppy": { "plugin": true, "order": 210 },
   "exports": {
     ".": "./src/index.ts"
   },

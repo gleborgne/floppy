@@ -2,7 +2,7 @@
 export const VERSION = "0.1.0";
 
 export { Kernel, consoleLogger, type Logger, type EntryStatus, type SlotStatus, type KernelOptions } from "./plugin/kernel.ts";
-export { definePlugin, manifestError, manifestProblem, type ManifestProblem, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
+export { definePlugin, manifestError, manifestFields, manifestProblem, type ManifestProblem, programName, execAllowed, type PluginDef, type Manifest, type Permissions, type SlotDef, type TaskDef, type TaskSchedule } from "./plugin/manifest.ts";
 export type { Context, Borrowed, ExecOptions, ExecResult, HostChannel, HostMessage, LogLevel, ContextTools, ContextSettings, ContextItems, ContextTasks, OfferDef, OfferItem } from "./plugin/context.ts";
 export { DownloadManager, hostAllowed, type ContextDownloads, type DownloadFile, type DownloadRequest, type DownloadState, type DownloadPhase, type DownloadManagerOptions } from "./downloads.ts";
 export { TaskRegistry, taskTools, type TaskInfo, type TaskOutcome } from "./tasks.ts";
@@ -34,6 +34,7 @@ export { providerConfig, itemSecret, type ItemSecret } from "./provider-config.t
 export { modelLibrary, formatBytes, entrySize, type LibraryEntry, type LibraryOptions } from "./model-library.ts";
 export { programLibrary, pickBuild, findProgram, type ProgramBuild, type ProgramOptions, type ProgramLibrary, type ProgramChange, restartsModels, failoverText, programRuns } from "./program-library.ts";
 export { floatToPcm16, Pcm16Decoder, AudioHistory, wavPcm, pcmWav, wavDataUrl, wavFromDataUrl } from "./audio.ts";
+export { stripAccents, fold, foldTokens, wordsKey, slugify } from "@floppy/protocol";
 export { readSse } from "./streaming.ts";
 export { connectJsonSocket, type JsonSocket } from "./json-socket.ts";
 export type { Availability } from "./services.ts";

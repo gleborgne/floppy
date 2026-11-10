@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { definePlugin, providerConfig, T, TextError, tr } from "@floppy/core";
+import { definePlugin, foldTokens, providerConfig, T, TextError, tr } from "@floppy/core";
 import type { WakewordService, WakewordStream } from "@floppy/contracts";
 
-const tokens = (text: string) => text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) ?? [];
+const tokens = (text: string) => foldTokens(text);
 const Words = z.array(z.string().trim().min(1)).min(1).refine(words => words.some(word => tokens(word).join("").length >= 3), "Il faut au moins un mot d'au moins 3 lettres.");
 // Nom vide : le nom par défaut, dans la langue de l'interface.
 const Config = z.object({ name: z.string().trim().default(""), words: Words.optional() });

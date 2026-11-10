@@ -61,7 +61,6 @@ export default definePlugin<Config>({
     ],
     description: "Passerelle MCP : connecteurs de l'utilisateur (locaux ou distants) + serveur MCP Floppy pour les cerveaux CLI.",
     provides: ["mcp"],
-    runtime: "in-process",
     // Lance les serveurs MCP définis par l'utilisateur : ses commandes, son accord (il les a configurées).
     // net "*" : l'adresse d'un serveur MCP distant est choisie par l'utilisateur.
     permissions: { exec: ["*"], net: ["*"], cloud: true },

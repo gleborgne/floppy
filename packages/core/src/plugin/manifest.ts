@@ -79,8 +79,6 @@ export interface Manifest {
   licence: string;
   /** Services fournis (ctx.provide). */
   provides?: ServiceName[];
-  /** Sélecteur de fournisseur géré par l'hôte (aucun accès au noyau depuis un plugin). */
-  serviceSelection?: { service: ServiceName; section: string; label: Text; none: Text; role?: string };
   /** Choix d'éléments dont ce plugin a besoin (voir SlotDef, ctx.slot). */
   slots?: SlotDef[];
   /** Tâches que ce plugin sait faire (voir TaskDef). Demande `task` dans provides. */
@@ -99,8 +97,6 @@ export interface Manifest {
   inject?: ServiceName[];
   /** Services facultatifs : le plugin démarre sans eux, et redémarre quand ils arrivent ou changent. */
   optional?: ServiceName[];
-  /** `in-process` : plugins du noyau. Les « mains » (MCP, CLI) tournent toujours hors processus. */
-  runtime?: "in-process" | "out-of-process";
   permissions?: Permissions;
   /**
    * Rubriques de la fenêtre des réglages que ce plugin apporte (voir sections.ts). Les doublons entre plugins
@@ -150,8 +146,6 @@ const TaskSchema = z.object({
   configure: z.string().min(1).optional(),
 }).strict();
 
-const ServiceSelectionSchema = z.object({ service: z.string().min(1), section: z.string().min(1), label: text, none: text, role: z.string().optional() }).strict();
-
 // Rubriques de la fenêtre des réglages (SectionDef). La forme seulement : la fusion des doublons est faite par SectionRegistry.
 const SectionSchema = z.object({
   id: z.string().min(1), label: text, description: text.optional(),
@@ -197,21 +191,16 @@ const ManifestSchema = z.object({
   licence: z.string().min(1),
   description: text.optional(),
   provides: strs.optional(),
-  serviceSelection: ServiceSelectionSchema.optional(),
   slots: z.array(SlotSchema).optional(),
   tasks: z.array(TaskSchema).optional(),
   lazy: z.boolean().optional(),
   startTimeout_s: z.number().positive().max(3600).optional(),
   inject: strs.optional(),
   optional: strs.optional(),
-  runtime: z.enum(["in-process", "out-of-process"]).optional(),
   permissions: PermissionsSchema.optional(),
   sections: z.array(SectionSchema).optional(),
   addable: AddableSchema.optional(),
 }).strict().superRefine((m, ctx) => {
-  if (m.serviceSelection && !m.provides?.includes(m.serviceSelection.service)) {
-    ctx.addIssue({ code: "custom", path: ["serviceSelection"], message: "le service choisi doit figurer dans provides" });
-  }
   if (m.tasks?.length && !m.provides?.includes("task")) {
     ctx.addIssue({ code: "custom", path: ["tasks"], message: "un plugin qui déclare des tâches doit avoir « task » dans provides" });
   }
@@ -231,11 +220,13 @@ export type ManifestSchemaMatchesInterface = [
   Ok<Same<typeof PermissionsSchema, Permissions>>,
   Ok<Same<typeof SlotSchema, Loose<SlotDef>>>,
   Ok<Same<typeof TaskSchema, TaskDef>>,
-  Ok<Same<typeof ServiceSelectionSchema, Loose<NonNullable<Manifest["serviceSelection"]>>>>,
   Ok<Same<typeof SectionSchema, SectionDef>>,
   Ok<Same<typeof FieldSchema, FieldDef>>,
   Ok<Same<typeof AddableSchema, NonNullable<Manifest["addable"]>>>,
 ];
+
+/** Les champs que le schéma connaît à la racine d'un manifeste (un plugin tiers n'en a pas d'autres : voir `manifestMismatch`). */
+export const manifestFields: readonly string[] = Object.keys(ManifestSchema.shape);
 
 /** Un problème de manifeste, dans les deux langues. */
 export interface ManifestProblem { fr: string; en: string }

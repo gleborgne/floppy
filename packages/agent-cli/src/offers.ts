@@ -1,5 +1,5 @@
 // Catalogue d'agents fondé sur les offres du noyau : aucun registre global ni import de plugin.
-import { TextError, T, findExe, type Context, type Borrowed } from "@floppy/core";
+import { TextError, T, findExe, fold, type Context, type Borrowed } from "@floppy/core";
 import { existsSync } from "node:fs";
 import type { AgentService } from "@floppy/contracts";
 import { agentCommand } from "./command.ts";
@@ -18,7 +18,7 @@ export interface AgentDefinition {
 /** Les modèles provider/model sont permis, jamais des options ou du texte de shell. */
 export const validAgentModel = (model: string) => /^[a-zA-Z0-9][a-zA-Z0-9._:/@+#-]{0,199}$/.test(model);
 
-const normalize = (s: string) => s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const normalize = (s: string) => fold(s.trim());
 
 /** Le nom complet entrée/élément lève toute ambiguïté entre deux profils du même agent. */
 export async function borrowAgent(ctx: Context, query: string): Promise<Borrowed<AgentService> | undefined> {

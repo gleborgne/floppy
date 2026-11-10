@@ -1,3 +1,5 @@
+import { wordsKey } from "@floppy/core";
+
 /** Références de conversation : seules une présentation ou une discussion explicite les modifient. */
 export interface AgentReference {
   identity: string;
@@ -29,7 +31,7 @@ export interface ReferenceOptions {
 }
 
 interface Context { group: AgentReference[]; focused?: AgentReference; touched: number; announcementKey?: string }
-const words = (s: string): string => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const words = (s: string): string => wordsKey(s);
 const compact = (s: string): string => words(s).replace(/ /g, "");
 const FILLER = new Set(["agent", "agents", "projet", "project", "celui", "celle", "ceux", "celles", "the", "one", "on", "about", "sur", "dans", "pour", "avec", "les", "le", "la", "des", "du", "de", "l", "of", "task", "tache"]);
 

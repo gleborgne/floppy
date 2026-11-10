@@ -8,6 +8,7 @@
 // - Les valeurs choisies sont gardées dans <home>/settings.json et reprises au démarrage.
 // - Le cerveau a 3 outils internes : lister_reglages, changer_reglage, annuler_reglage. Le contrôle du risque est
 //   fait ICI, par le code (le modèle ne peut pas le contourner) ; chaque changement est journalisé.
+import { fold } from "@floppy/protocol";
 import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { ApprovalManager } from "./approval.ts";
 import type { Audit } from "./audit.ts";
@@ -85,7 +86,7 @@ interface ChangeText {
 }
 
 function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return fold(s).trim();
 }
 
 export class SettingsRegistry {

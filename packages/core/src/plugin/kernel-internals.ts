@@ -18,7 +18,6 @@ export type KernelInternals = Omit<Kernel, never> & {
   hold: Kernel["hold"];
   slotKey: Kernel["slotKey"];
   ensureFork: Kernel["ensureFork"];
-  selectedProvider: Kernel["selectedProvider"];
   ensureActive: Kernel["ensureActive"];
   candidateOf: Kernel["candidateOf"];
   stopEntry: Kernel["stopEntry"];
@@ -32,6 +31,4 @@ export type KernelInternals = Omit<Kernel, never> & {
   slotValue: Kernel["slotValue"];
   forks: Kernel["forks"];
   selectionEdits: Kernel["selectionEdits"];
-  selectable: Kernel["selectable"];
-  selection: Kernel["selection"];
 };

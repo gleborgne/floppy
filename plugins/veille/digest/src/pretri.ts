@@ -1,5 +1,7 @@
 // Pré-tri en code, avant le modèle : moins d'articles à lire = moins cher, plus rapide, plus juste.
 // Ordre : déjà vus → trop vieux → mots bannis → doublons entre sources → plafond (les plus récents).
+import { wordsKey } from "@floppy/core";
+
 export interface Article {
   /** Numéro du lot (rempli au moment du tri). */
   id?: number;
@@ -34,7 +36,7 @@ export function normUrl(url: string): string {
 
 /** Minuscules, sans accents ni ponctuation. */
 export function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return wordsKey(s);
 }
 
 const STOP = new Set("le la les un une des de du d l et ou a au aux en dans sur pour par avec sans est sont the a an of to in on for and or is are with".split(" "));

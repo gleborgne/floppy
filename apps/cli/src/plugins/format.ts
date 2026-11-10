@@ -3,7 +3,7 @@
 // Le manifeste du code (index.ts) doit lui correspondre : c'est vérifié dans le processus isolé, au chargement.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { manifestProblem, T, TextError, type Manifest, type Permissions, type Text } from "@floppy/core";
+import { manifestFields, manifestProblem, T, TextError, type Manifest, type Permissions, type Text } from "@floppy/core";
 
 /** Version de l'API des plugins (forme de ctx). Un plugin déclare celle qu'il vise dans `api`. */
 export const PLUGIN_API = 1;
@@ -73,10 +73,14 @@ export function manifestMismatch(pkg: PluginPackage, m: Record<string, unknown>)
   const a = JSON.stringify(normPerms(m.permissions as Permissions | undefined));
   const b = JSON.stringify(normPerms(pkg.permissions));
   if (a !== b) return T(`les droits du code diffèrent de ceux de ${PACKAGE_FILE}`, `the code's permissions differ from ${PACKAGE_FILE}`);
-  for (const k of ["provides", "inject", "optional", "slots", "tasks", "serviceSelection", "addable", "lazy", "runtime"]) {
+  for (const k of ["provides", "inject", "optional", "slots", "tasks", "addable", "lazy"]) {
     if (m[k] !== undefined && !(Array.isArray(m[k]) && (m[k] as unknown[]).length === 0)) {
       return T(`manifest.${k} n'est pas permis à un plugin tiers`, `manifest.${k} is not allowed for a third-party plugin`);
     }
+  }
+  // Un champ que le noyau ne connaît pas (ex. `runtime`, retiré) est refusé aussi : le manifeste du code n'est pas passé au schéma strict.
+  for (const k of Object.keys(m)) {
+    if (!manifestFields.includes(k)) return T(`manifest.${k} : champ inconnu`, `manifest.${k}: unknown field`);
   }
   return undefined;
 }

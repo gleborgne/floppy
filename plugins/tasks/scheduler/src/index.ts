@@ -12,7 +12,7 @@
 // - Les tâches se lancent l'une après l'autre. Une tâche qui échoue n'est pas relancée avant 30 minutes.
 // - Politesse (attendre la fin d'un tour de conversation) : pas de signal propre côté plugin aujourd'hui, donc pas faite.
 import { z } from "zod";
-import { definePlugin, errorText, T, TextError, tr, type ItemInfo, type OpResult, type TaskInfo, type TaskResult, type TaskSchedule, type Text } from "@floppy/core";
+import { definePlugin, errorText, fold, T, TextError, tr, type ItemInfo, type OpResult, type TaskInfo, type TaskResult, type TaskSchedule, type Text } from "@floppy/core";
 import type { NotifyService } from "@floppy/contracts";
 
 const t = T;
@@ -35,7 +35,7 @@ const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const DAYS_LONG = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return fold(s).trim();
 }
 
 export type ParsedSchedule = { ok: true; schedule: TaskSchedule | null } | { ok: false; error: Text };

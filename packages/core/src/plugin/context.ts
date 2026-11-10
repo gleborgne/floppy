@@ -235,8 +235,6 @@ export interface Context {
   /** Service déclaré dans inject (toujours là) ou optional (peut être undefined). */
   get<K extends keyof Services & string>(name: K): Services[K];
   maybe<K extends keyof Services & string>(name: K): Services[K] | undefined;
-  /** Fournisseur explicitement choisi, même s'il est indisponible ; undefined = aucun choix explicite. */
-  selectedProvider<K extends keyof Services & string>(name: K): string | undefined;
 
   effect(dispose: Disposer): () => Promise<void>;
   on<K extends keyof CoreEvents & string>(event: K, fn: (payload: CoreEvents[K]) => void): void;

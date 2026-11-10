@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadConfigFile, manifestError } from "@floppy/core";
-import { loadCatalog, DEV_PACKAGES, PACKAGES } from "../src/catalog.ts";
+import { loadCatalog, shippedPackages } from "../src/catalog.ts";
 
 // Le banc (bench/bench.yml) se lance avec FLOPPY_DEV=1 : ses plugins de développement comptent ici.
 const { plugins: catalog, failed } = await loadCatalog({ dev: true });
@@ -13,7 +13,7 @@ const files = ["floppy.example.yml", "bench/bench.yml"].map((f) => fileURLToPath
 describe("catalogue", () => {
   it("chaque paquet se charge et exporte un plugin", () => {
     expect(failed).toEqual([]);
-    expect(catalog).toHaveLength(PACKAGES.length + DEV_PACKAGES.length);
+    expect(catalog).toHaveLength(shippedPackages({ dev: true }).length);
   });
 
   it("le manifeste de chaque plugin livré est valide (aucun champ inconnu)", () => {

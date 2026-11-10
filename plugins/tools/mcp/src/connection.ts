@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { errorText, imageLogo, itemSecret, T, TextError, tr, type Context, type ItemSecret, type Level, type Rule, type Text, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
+import { errorText, imageLogo, itemSecret, slugify, T, TextError, tr, type Context, type ItemSecret, type Level, type Rule, type Text, type ToolDef, type ToolOutput, type ToolResult } from "@floppy/core";
 import { resolveLevel, type LevelSetting } from "./levels.ts";
 import { azTokenProvider, bearerFetch, runAz, type HttpFetch } from "./azcli.ts";
 
@@ -76,7 +76,7 @@ const MAX_OUT = 4000;
 
 /** Nom d'outil valable pour un modèle : lettres, chiffres, soulignés. */
 export function toolNameOf(label: string): string {
-  return label.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "commande";
+  return slugify(label, "_").slice(0, 60) || "commande";
 }
 
 export function clipOut(s: string): string {

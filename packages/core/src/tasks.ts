@@ -6,6 +6,7 @@
 // - ANNONCE : le noyau, après le passage (initiative + document montré).
 // Règles : un seul passage à la fois par tâche ; délai max ; le plugin est réveillé s'il dort, et gardé en marche
 // pendant le passage ; la fin du dernier passage réussi est gardée dans <home>/tasks.json.
+import { wordsKey } from "@floppy/protocol";
 import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { Audit } from "./audit.ts";
 import type { TaskDef, TaskSchedule } from "./plugin/manifest.ts";
@@ -196,7 +197,7 @@ function alreadyRunning(label: Text): Text {
 }
 
 function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return wordsKey(s);
 }
 
 function readJson(file: string): Record<string, Saved> {

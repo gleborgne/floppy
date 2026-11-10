@@ -1,11 +1,11 @@
 // « Ouvre les réglages d'Orca » : retrouve l'élément des réglages à partir du nom entendu (dictée imparfaite tolérée).
-import type { ProviderSnapshot, Text } from "@floppy/core";
+import { fold, type ProviderSnapshot, type Text } from "@floppy/core";
 
 /** Page à montrer dans la fenêtre des réglages : rubrique, puis page de l'élément. */
 export interface SettingsTarget { section: string; provider: string; id: string }
 export interface FoundTarget { target: SettingsTarget; label: Text; actions: Text[] }
 
-const compact = (s: string): string => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+const compact = (s: string): string => fold(s).replace(/[^a-z0-9]/g, "");
 const forms = (t: Text | undefined): string[] => (t === undefined ? [] : typeof t === "string" ? [t] : Object.values(t).filter((x): x is string => !!x));
 
 function distance(a: string, b: string): number {

@@ -4,6 +4,10 @@
 
 export const PROTOCOL_VERSION = 0;
 
+// Normalisation de texte (accents, casse, ponctuation), partagée par le noyau et les plugins.
+import { fold } from "./text.ts";
+export { stripAccents, fold, foldTokens, wordsKey, slugify } from "./text.ts";
+
 // ------------------------------------------------------------------ Émotions
 /**
  * Émotions pilotées par le noyau. Chaque corps les rend à sa façon :
@@ -31,7 +35,7 @@ export const EMOTION_WORDS_FR: Record<string, Emotion> = {
 export const PROMPT_EMOTIONS_FR = ["content", "joie", "rire", "amour", "fier", "triste", "desole", "surpris", "perplexe", "malicieux", "curieux", "agace"];
 
 export function normWord(w: string): string {
-  return w.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+  return fold(w).replace(/[^a-z]/g, "");
 }
 
 export function emotionFromWord(w: string): Emotion | undefined {
@@ -49,7 +53,7 @@ export const INTENSITY_LIGHT = 0.45;
 
 /** Lit une étiquette d'émotion (sans les crochets) : mot, et intensité éventuelle. */
 export function parseEmotionTag(raw: string): { emotion: Emotion; intensity?: number } | undefined {
-  let w = raw.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  let w = fold(raw.trim());
   let intensity: number | undefined;
   if (/\+\s*$/.test(w)) { intensity = INTENSITY_STRONG; w = w.replace(/\+\s*$/, ""); }
   else if (/-\s*$/.test(w)) { intensity = INTENSITY_LIGHT; w = w.replace(/-\s*$/, ""); }

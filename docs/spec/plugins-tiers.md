@@ -34,7 +34,7 @@ Un plugin distribué est un dossier avec `floppy-plugin.json` et `index.ts` (`ap
 
 - `floppy-plugin.json` : `id`, `version`, `licence`, `api` (aujourd'hui `1`), `description`, `permissions`, `homepage`, `sections`. Il est lu **sans exécuter de code**. Ses champs de manifeste passent le même schéma que ceux d'un plugin livré : un champ inconnu ou mal écrit (`permisions`, `optionnal`) est refusé, avec le champ proche proposé (`api` et `homepage` sont des champs du paquet, pas du manifeste).
 - Permissions permises : `net` (hôtes) et `cloud`. `fs.read`, `fs.write`, `exec` et `approvals` sont refusés : le processus isolé n'a ni fichiers, ni programmes, ni accords.
-- Le manifeste du code doit avoir les mêmes `id`, `version` et `permissions`. `provides`, `inject`, `slots`, `tasks`, `addable`, `lazy` et `runtime` sont refusés. C'est vérifié au chargement, dans le processus isolé (`manifestMismatch`).
+- Le manifeste du code doit avoir les mêmes `id`, `version` et `permissions`. `provides`, `inject`, `optional`, `slots`, `tasks`, `addable` et `lazy` sont refusés, ainsi que tout champ que le noyau ne connaît pas (`runtime`, `serviceSelection` : retirés du manifeste). C'est vérifié au chargement, dans le processus isolé (`manifestMismatch`).
 - Les types sont dans le SDK, `packages/sdk/floppy-plugin.d.ts`, source unique. Le kit des plugins personnels (`coder`) le copie aussi.
 
 ## Contrôles automatiques
@@ -108,7 +108,7 @@ Les commentaires sont retirés avant la recherche des motifs (les chaînes reste
 `apps/cli/src/plugins/sandbox.ts` (côté noyau) et `sandbox-child.ts` (processus du plugin).
 
 - Tout dossier avec `floppy-plugin.json` tourne isolé : installé, copié à la main, ou en mode debug. Il n'est **jamais importé** dans le noyau.
-- Le noyau voit un `PluginDef` mandataire (`runtime: "out-of-process"`). Il ne change pas.
+- Le noyau voit un `PluginDef` mandataire, construit depuis `floppy-plugin.json`. Il ne change pas.
 - Processus : `node --permission --allow-fs-read=<dossier du plugin> --allow-fs-read=<sandbox-child.ts>`.
   - Pas d'écriture, pas de programme, pas de worker, pas de module natif.
   - Chemins réels (noms courts de Windows résolus).

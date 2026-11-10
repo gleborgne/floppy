@@ -276,11 +276,6 @@ export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pe
       e.offers.set(service, od);
       scope.add(() => { if (e.offers.get(service) === od) e.offers.delete(service); });
     },
-    selectedProvider(name) {
-      read(name); // vérifie inject / optional
-      const selected = kernel.selectedProvider(name);
-      return selected === "@none" ? undefined : selected;
-    },
     effect: (dispose) => scope.add(dispose),
     on: (event, fn) => { scope.add(k.bus.on(event, as(fn))); },
     ...(k.host ? { host: hostFor(k, e.cfg.id, scope, as) } : {}),

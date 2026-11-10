@@ -2,13 +2,13 @@
 // Reconnaissance bilingue : les mots français et anglais sont toujours acceptés (sans risque de confusion),
 // quelle que soit la langue de l'assistant.
 
-import { allTexts, tr, type Text } from "@floppy/core";
+import { allTexts, fold, foldTokens, tr, type Text } from "@floppy/core";
 export function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return fold(s);
 }
 
 export function tokens(s: string): string[] {
-  return norm(s).match(/[a-z0-9]+/g) ?? [];
+  return foldTokens(s);
 }
 
 /** Acquiescement ou hésitation isolé : trop ambigu pour détruire une réponse en cours. */

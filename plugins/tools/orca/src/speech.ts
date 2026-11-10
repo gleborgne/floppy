@@ -6,6 +6,7 @@
 // 2. Phrase du LLM local (si disponible, 4 s max) : une phrase courte, parlée, sans jargon, dans la langue de
 //    l'assistant (français ou anglais, Facts.lang).
 //    Sinon : phrase faite par le code à partir du nettoyage.
+import { fold } from "@floppy/core";
 import type { OrcaAgent, OrcaWorktree } from "./index.ts";
 
 export type Kind = "en_cours" | "termines" | "en_attente" | "interrompu";
@@ -30,7 +31,7 @@ export function projectName(w: OrcaWorktree, lang = "fr"): string {
 }
 
 function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  return fold(s).replace(/\s+/g, " ").trim();
 }
 
 /** Worker lancé par un coordinateur Orca : son « en attente » ne concerne pas l'utilisateur. */

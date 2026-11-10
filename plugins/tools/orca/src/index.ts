@@ -8,7 +8,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { basename, delimiter, dirname, extname, isAbsolute, join } from "node:path";
-import { definePlugin, T, tr, type Text, type ToolDef, type ToolOutput, type Context } from "@floppy/core";
+import { definePlugin, fold, T, tr, type Text, type ToolDef, type ToolOutput, type Context } from "@floppy/core";
 import type { AgentTrackingService } from "@floppy/contracts";
 import { cleanTask, facts, isWorker, projectName, type Facts } from "./speech.ts";
 import { summarizeAnnouncement } from "./announcement.ts";
@@ -163,7 +163,7 @@ export function screenText(lines: string[], max = 2000): string {
   return out.length > max ? "…" + out.slice(out.length - max + 1) : out;
 }
 
-export const norm = (s: string): string => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+export const norm = (s: string): string => fold(s).trim();
 const clip = (s: string, n: number): string => {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length > n ? t.slice(0, n - 1) + "…" : t;

@@ -1,9 +1,9 @@
 // Réglages de choix posés par le noyau d'après les manifestes : `slot.<id>` (l'élément en service pour un rôle,
-// ex. le cerveau) et `service.<nom>` (le fournisseur actif d'un service). Changer un choix passe par la file du noyau ;
-// un nouveau choix qui ne démarre pas rend l'ancien (jamais Floppy sans cerveau ni voix).
+// ex. le cerveau). Changer un choix passe par la file du noyau ; un nouveau choix qui ne démarre pas rend l'ancien
+// (jamais Floppy sans cerveau ni voix). Un slot est la seule façon de choisir ; le fournisseur d'un service sans slot
+// vient de `services:` dans la config, sinon de la première entrée active (Kernel.providerOf).
 import type { PluginDef } from "./manifest.ts";
-import { T, TextError, type Text } from "../i18n.ts";
-import { stableStringify } from "../util/process.ts";
+import { T, TextError } from "../i18n.ts";
 import type { KernelInternals } from "./kernel-internals.ts";
 
 /** Slots du manifeste : un réglage `slot.<id>` par slot (fenêtre, voix, CLI). Le premier plugin qui déclare un id le garde. */
@@ -58,42 +58,4 @@ export function declareSlots(k: KernelInternals, def: PluginDef<any>): void {
       },
     }]);
   }
-}
-
-/** Choix du fournisseur d'un service (`manifest.serviceSelection`) : un réglage `service.<nom>`. */
-export function declareServiceSelection(k: KernelInternals, def: PluginDef<any>): void {
-  const choice = def.manifest.serviceSelection;
-  if (!choice) return;
-  const existing = k.selectable.get(choice.service);
-  if (existing) { if (stableStringify(existing) !== stableStringify(choice)) k.log("warn", def.manifest.id, `sélecteur ${choice.service} déjà déclaré avec d'autres métadonnées`); return; }
-  if (!def.manifest.provides?.includes(choice.service)) throw new Error("serviceSelection doit désigner un service fourni");
-  const name = choice.service;
-  k.selectable.set(name, choice);
-  const kernel = k;
-  const current = () => k.selectionEdits.get(name) ?? k.settings.savedValue<string>(`service.${name}`) ?? k.selection[name] ?? "@none";
-  k.settings.declare("core", [{
-    key: `service.${name}`, section: choice.section, label: choice.label, role: choice.role,
-    description: { fr: "Choisis le fournisseur actif. Les connexions en cours sont fermées lors du changement.", en: "Choose the active provider. Switching closes current connections." },
-    type: "enum", risk: "free",
-    riskFor: (v) => v !== "@none" && k.entries.get(String(v))?.def?.manifest.permissions?.cloud ? "ask" : "free",
-    get options() {
-      return [{ value: "@none", label: choice.none }, ...[...kernel.entries.values()]
-        .filter((e) => e.state === "active" && e.provided.has(name))
-        .map((e) => ({ value: e.cfg.id, label: String((e.provided.get(name) as { name?: string }).name ?? e.cfg.id) }))];
-    },
-    get: current,
-    set: async (v) => {
-      const value = String(v);
-      if (value !== "@none" && !k.entries.get(value)?.provided.has(name)) throw new TextError(T("Fournisseur indisponible", "Provider unavailable"));
-      const before = current();
-      await k.enqueue(async () => {
-        const provider = k.entries.get(value)?.provided.get(name) as { availability?: () => { ready: boolean; reason?: string; reasonText?: Text } } | undefined;
-        const availability = provider?.availability?.();
-        if (availability && !availability.ready) throw new TextError(availability.reasonText ?? availability.reason ?? T("Fournisseur non configuré", "Provider not configured"));
-        k.selectionEdits.set(name, value);
-        try { await k.reconcile(); }
-        catch (e) { k.selectionEdits.set(name, before); await k.reconcile(); throw e; }
-      });
-    },
-  }]);
 }

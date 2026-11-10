@@ -11,7 +11,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { definePlugin, errorText, T, TextError, tr, type ItemInfo, type OpResult, type Text, type ToolDef, type PluginDef } from "@floppy/core";
+import { definePlugin, errorText, fold, T, TextError, tr, type ItemInfo, type OpResult, type Text, type ToolDef, type PluginDef } from "@floppy/core";
 import type { CompletionService, SearchService } from "@floppy/contracts";
 import { PrefsStore } from "./prefs.ts";
 import { fetchFeed } from "./feeds.ts";
@@ -100,7 +100,7 @@ function changes(a: Record<string, unknown>, l: "fr" | "en"): string {
 }
 
 /** Minuscules sans accents, coupé en mots. */
-const words = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
+const words = (s: string) => fold(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 2);
 
 /** Articles qui parlent le plus des mots demandés (titre, résumé, source) : les meilleurs ex aequo, ou aucun. */
 export function findArticles(list: DigestArticle[], query: string): DigestArticle[] {

@@ -4,7 +4,7 @@
 // inactif (état « avertissement », pas une erreur) ; le registre d'avatars existe quand même, sans affichage.
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { definePlugin, T, TextError, tr, type ItemInfo, type Text } from "@floppy/core";
+import { definePlugin, fold, T, TextError, tr, type ItemInfo, type Text } from "@floppy/core";
 import type { AvatarEntry } from "@floppy/contracts";
 import { registerDesktop } from "@floppy/contracts";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
@@ -127,7 +127,7 @@ export default definePlugin<Config>({
     });
     const hub = ctx.get("body");
     ctx.hook("conversation.command", async (input, next) => {
-      const text = input.text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’]/g, "'").trim();
+      const text = fold(input.text).replace(/[’]/g, "'").trim();
       const opening = /^(?:(?:tu peux|peux-tu|pourrais-tu) )?(?:m'|me )?(?:ouvre|ouvrir|affiche|afficher)(?:[- ]moi)? (?:l'ecran (?:de |des |de tes )|la fenetre (?:de |des |de tes ))?(?:(?:les|tes|des) )?(?:reglages|parametres)(?: de floppy)?(?:,? s'il te plait)?[.!? ]*$/;
       // En anglais : « open the settings », « can you show me Floppy's settings please ».
       const openingEn = /^(?:(?:can you|could you|please) )?(?:open|show)(?: me)? (?:the |your |floppy'?s? )?(?:settings|preferences|options)(?: window| screen)?(?: of floppy)?(?:,? please)?[.!? ]*$/;

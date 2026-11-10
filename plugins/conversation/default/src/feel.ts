@@ -2,13 +2,14 @@
 // - « user » : Floppy réagit tout de suite à ce qu'on lui dit (« merci », « bravo », « haha »…), avant que le
 //   cerveau réponde. Le cerveau garde le dernier mot : son étiquette remplace la réaction.
 // - « reply » : en mode Live, le modèle ne donne pas d'émotion ; on la devine dans ce qu'il dit, phrase par phrase.
+import { fold } from "@floppy/core";
 import type { Emotion } from "@floppy/protocol";
 
 export interface Guess { emotion: Emotion; intensity: number }
 
 type Rule = [RegExp, Emotion, number];
 
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/['’]/g, " ");
+const norm = (s: string) => fold(s).replace(/['’]/g, " ");
 
 // L'ordre compte : la première règle qui correspond gagne.
 // Mots français et anglais dans les mêmes règles : la réaction marche quelle que soit la langue de l'assistant.

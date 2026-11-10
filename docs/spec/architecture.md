@@ -37,7 +37,7 @@ Un plugin Live fournit le service **`live`**, distinct des contrats texte `brain
 `conversation/default` compose ces services et possède l'activation, le routage, les accords et la politique de fermeture.
 Le slot `conversation.live` choisit le mode : « Séparé » (aucun) ou un moteur Live (Gemini Live, GPT Live). Le slot `voice.tts` choisit la voix du mode Séparé (moteur et voix ensemble : voix locale Qwen3-TTS ou Kokoro, ElevenLabs, Gemini TTS). Le slot `brain.main` choisit le modèle du cerveau, `brain.delegate` le délégué.
 Le noyau fait tourner seulement ce que le mode demande : en Live, ni le cerveau local, ni llama-server, ni le modèle TTS local ne tournent (voir [noyau.md](noyau.md#cycle-de-vie), règles 10 à 13). GPT Live demande le cerveau pour la délégation : il tourne alors.
-`service.wakeword` choisit une seule instance de détecteur, indépendamment du mode de conversation. Les paramètres et modèles appartiennent à son plugin. Chaque détecteur fournit une fenêtre audio avec pré-roll ; la conversation garde la décision d'ouvrir Live, l'écoute libre et la mise en veille. Un changement de fournisseur ferme les détecteurs et sessions dépendants ; un changement de paramètres recrée les détecteurs. Le bouton parler contourne la détection.
+Le slot `listen.wakeword` choisit une seule instance de détecteur, indépendamment du mode de conversation. Les paramètres et modèles appartiennent à son plugin. Chaque détecteur fournit une fenêtre audio avec pré-roll ; la conversation garde la décision d'ouvrir Live, l'écoute libre et la mise en veille. Un changement de fournisseur ferme les détecteurs et sessions dépendants ; un changement de paramètres recrée les détecteurs. Le bouton parler contourne la détection.
 Les choix cloud sont soumis à l'accord à la voix et conservés par les réglages du noyau. Aucun import entre plugins.
 
 | | Mode séparé | Mode live |
@@ -73,7 +73,7 @@ Chaque plugin déclare :
 
 - `id`, `version`, `description`, `licence`.
 - `provides` : les services qu'il fournit. `inject` : les services qu'il attend.
-- `runtime` : `in-process` (plugins du noyau seulement) ou `out-of-process` (processus enfant). Les « mains » sont des serveurs MCP ou des CLI, toujours hors processus.
+- Où tourne le code n'est pas un champ du manifeste : un plugin livré tourne dans le processus du noyau, un plugin tiers dans un processus isolé (voir [Plugins tiers](plugins-tiers.md)). Les « mains » sont des serveurs MCP ou des CLI, toujours hors processus.
 - `permissions` : ce qu'il veut toucher. Exemples : `fs.read: ["<coffre Obsidian>"]`, `net: ["graph.microsoft.com"]`, `exec: ["orca"]`, `cloud: true`, `approvals: "respond"` (répondre aux accords : corps et conversation seulement). Aujourd'hui, `exec` (par `ctx.spawn`) et `approvals` sont **imposés** par le noyau ; les autres sont déclaratifs. Le manifeste est validé par un schéma zod. Voir [Sécurité](securite.md#garde-fous-du-code).
 - `sections`, `addable` : rubriques de la fenêtre des réglages apportées par le plugin, et plugin « application » que l'utilisateur ajoute ou retire (voir [Éléments](elements.md)).
 - `tools` : pour chaque outil, le schéma d'entrée, le **niveau** (`read`, `write`, `send`, `delete`, `physical`), et des métadonnées (non bloquant, quand le lancer, description courte pour les petits modèles).

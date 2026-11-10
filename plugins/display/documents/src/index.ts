@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { definePlugin, type DocRef, type DocumentsService } from "@floppy/core";
+import { definePlugin, slugify, wordsKey, type DocRef, type DocumentsService } from "@floppy/core";
 import type { DocumentEntry } from "@floppy/protocol";
 
 const Config = z.object({});
@@ -63,11 +63,11 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 /** « Comparatif Mac/PC : prix » → « comparatif-mac-pc-prix » (sans accents, 40 caractères au plus). */
 export function slug(titre: string): string {
-  const s = titre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
+  const s = slugify(titre).slice(0, 40).replace(/-+$/, "");
   return s || "document";
 }
 
-const norm = (s: string): string => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const norm = (s: string): string => wordsKey(s);
 const entry = (d: DocRef): DocumentEntry => ({ id: d.id, titre: d.titre, date: d.date, tags: d.tags });
 
 export function createDocumentsPlugin(opts: DocumentsOptions = {}) {

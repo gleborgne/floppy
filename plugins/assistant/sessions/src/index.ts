@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
-import { definePlugin, findExe, writeFileAtomic, type Context, type Text } from "@floppy/core";
+import { definePlugin, findExe, slugify, writeFileAtomic, type Context, type Text } from "@floppy/core";
 import { borrowAgent, validAgentModel } from "@floppy/agent-cli";
 
 const t = (fr: string, en: string): Text => ({ fr, en });
@@ -59,7 +59,7 @@ export const defaultLauncher: Launcher = (dir, title, cmd, args, spawn) => new P
 export function sessionFolderName(consigne: string, now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-  const slug = consigne.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").split("-").slice(0, 6).join("-");
+  const slug = slugify(consigne).split("-").slice(0, 6).join("-");
   return slug ? `${stamp}-${slug}` : stamp;
 }
 

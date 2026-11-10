@@ -64,7 +64,6 @@ export function sandboxedPlugin(o: SandboxOptions): PluginDef<any> {
       ...(pkg.description ? { description: pkg.description } : {}),
       ...(pkg.permissions ? { permissions: pkg.permissions } : {}),
       ...(pkg.sections ? { sections: pkg.sections } : {}),
-      runtime: "out-of-process",
     },
     async apply(ctx: Context, cfg: unknown) {
       if (o.expectHash && hashDir(dir) !== o.expectHash) {

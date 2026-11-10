@@ -1,10 +1,11 @@
 // Écho : le micro reprend la voix de Floppy (haut-parleurs, anti-écho du système imparfait).
 // On compare ce que le micro a entendu avec ce que Floppy vient de dire. Mots en commun = écho.
 
+import { wordsKey } from "@floppy/core";
+
 /** Mots en minuscules, sans accents ni ponctuation. */
 export function words(text: string): string[] {
-  return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+  return wordsKey(text).split(" ").filter(Boolean);
 }
 
 /**

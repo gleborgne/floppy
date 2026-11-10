@@ -124,7 +124,7 @@ export default definePlugin({
 });
 ```
 
-Add it to `apps/cli/src/catalog.ts` and to `floppy.yml`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Give its `package.json` `"floppy": { "plugin": true }` (it is then found by itself; run `npm install` once to link the new workspace) and add it to `floppy.yml`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 

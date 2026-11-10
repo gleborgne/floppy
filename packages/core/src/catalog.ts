@@ -19,6 +19,7 @@
 // - Activer / désactiver à la voix : désactiver = libre ; activer un élément « cloud » = accord.
 // - Les secrets (clés d'API, jetons) ne passent jamais par les fichiers : voir secrets.ts.
 import { join } from "node:path";
+import { fold } from "@floppy/protocol";
 import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
 import type { ApprovalManager } from "./approval.ts";
 import type { Audit } from "./audit.ts";
@@ -266,7 +267,7 @@ export type CatalogOp =
 export type CatalogVia = "ui" | "cli" | "voice" | "assistant";
 
 function norm(s: string): string {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+  return fold(s).trim();
 }
 
 export class CatalogRegistry {

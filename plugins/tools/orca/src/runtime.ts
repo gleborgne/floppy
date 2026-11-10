@@ -1,5 +1,5 @@
 // Collection des faits, références de conversation et diagnostics : aucune dépendance au démarrage du plugin.
-import { T, type Context, type ToolCallMeta, type ToolOutput } from "@floppy/core";
+import { fold, T, type Context, type ToolCallMeta, type ToolOutput } from "@floppy/core";
 import { activityAgentId, activityObservation, createActivityStore, type ActivityAgentRecord, type ActivityDelivery, type ActivityEvent } from "./activity.ts";
 import { createAgentReferences, type AgentReference, type ReferenceFailure } from "./references.ts";
 import { createOrcaDiagnostics } from "./diagnostics.ts";
@@ -34,7 +34,7 @@ export type ReferencedAgent = AgentReference & { record: ActivityAgentRecord; hi
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const finite = (value: unknown): number | undefined => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 const text = (value: unknown): string | undefined => typeof value === "string" && value ? value : undefined;
-const normalized = (value: string): string => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const normalized = (value: string): string => fold(value);
 export const referenceOrigin = (meta: ToolCallMeta): string => JSON.stringify([meta.origin ?? "cli", meta.session ?? meta.origin ?? "cli"]);
 function scopeHasGaps(value: unknown): boolean {
   const scope = object(value);

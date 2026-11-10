@@ -10,8 +10,7 @@ const base = { id: "p", version: "0.1.0", licence: "MIT" };
 describe("manifeste : champs inconnus refusés", () => {
   it("un manifeste complet et correct passe (tous les niveaux)", () => {
     expect(manifestError({
-      ...base, description: { fr: "d", en: "d" }, provides: ["task", "llm"], inject: ["a"], optional: ["b"], lazy: true, startTimeout_s: 30, runtime: "in-process",
-      serviceSelection: { service: "llm", section: "s", label: "L", none: "N", role: "r" },
+      ...base, description: { fr: "d", en: "d" }, provides: ["task", "llm"], inject: ["a"], optional: ["b"], lazy: true, startTimeout_s: 30,
       slots: [{ id: "a.b", service: "llm", section: "s", label: "L", description: "D", none: "N", defaultFirst: true, display: "tabs", step: 1 }],
       tasks: [{ id: "t", label: "T", description: "D", schedule: { at: "07:30", jours: [1, 2] }, timeout_s: 60, configure: "veille" }],
       permissions: { "fs.read": ["~/x"], "fs.write": ["~/y"], net: ["a.com"], exec: ["git"], cloud: true, approvals: "respond" },
@@ -48,7 +47,7 @@ describe("manifeste : champs inconnus refusés", () => {
     });
   });
 
-  it("champ inconnu dans slots[], permissions, addable, sections[], tasks[], serviceSelection et un champ de formulaire", () => {
+  it("champ inconnu dans slots[], permissions, addable, sections[], tasks[] et un champ de formulaire", () => {
     expect(manifestError({ ...base, slots: [{ id: "a", service: "llm", section: "s", label: "L", defualtFirst: true }] })).toBe("slots.0.defualtFirst : champ inconnu (voulais-tu « defaultFirst » ?)");
     expect(manifestError({ ...base, permissions: { network: ["a.com"] } })).toBe("permissions.network : champ inconnu");
     expect(manifestError({ ...base, permissions: { nett: ["a.com"] } })).toBe("permissions.nett : champ inconnu (voulais-tu « net » ?)");
@@ -56,7 +55,9 @@ describe("manifeste : champs inconnus refusés", () => {
     expect(manifestError({ ...base, addable: { section: "s", label: "A", fields: [{ key: "k", label: "K", type: "text", placehoder: "x" }] } })).toBe("addable.fields.0.placehoder : champ inconnu (voulais-tu « placeholder » ?)");
     expect(manifestError({ ...base, sections: [{ id: "s", label: "S", ordre: 1 }] })).toBe("sections.0.ordre : champ inconnu (voulais-tu « order » ?)");
     expect(manifestError({ ...base, provides: ["task"], tasks: [{ id: "t", label: "T", timeout: 5 }] })).toBe("tasks.0.timeout : champ inconnu (voulais-tu « timeout_s » ?)");
-    expect(manifestError({ ...base, provides: ["llm"], serviceSelection: { service: "llm", section: "s", label: "L", none: "N", rol: "x" } })).toBe("serviceSelection.rol : champ inconnu (voulais-tu « role » ?)");
+    // Champs retirés (sélecteur de fournisseur `serviceSelection`, étiquette `runtime`) : refusés comme tout champ inconnu.
+    expect(manifestError({ ...base, runtime: "in-process" })).toBe("runtime : champ inconnu");
+    expect(manifestError({ ...base, provides: ["llm"], serviceSelection: { service: "llm", section: "s", label: "L", none: "N" } })).toBe("serviceSelection : champ inconnu");
   });
 
   it("champ inconnu dans une union (schedule, logo) : le problème est nommé", () => {

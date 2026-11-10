@@ -9,7 +9,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { streamText, isStepCount, hasToolCall, dynamicTool, jsonSchema, ToolChoiceViolationError, type ModelMessage, type ToolSet } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { definePlugin } from "@floppy/core";
+import { definePlugin, fold } from "@floppy/core";
 import type { BrainEvent, BrainRunInput, BrainService, LlmService } from "@floppy/contracts";
 import { buildPrompt, delegateDescription, pickPhrase, promptLang, readPhrases, waitPhrases, type PromptLang } from "./prompt.ts";
 import { EmotionTagFilter, optionalContext, prepareMemoryContext, memoryContextMessage, type ContextOperation, type FilterOut } from "@floppy/contracts";
@@ -86,7 +86,7 @@ const POLITE_RE = {
 export function claimState(raw: string, lang: string = "fr"): "claim" | "maybe" | "no" {
   const l = promptLang(lang);
   const claims = l === "en" ? CLAIMS_EN : CLAIMS_FR;
-  const s = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[’`]/g, "'").replace(/\s+/g, " ").trimStart();
+  const s = fold(raw).replace(/[’`]/g, "'").replace(/\s+/g, " ").trimStart();
   const bare = s.replace(POLITE_RE[l], "");
   if (!bare) return "maybe";
   if (claims.some((c) => bare.startsWith(c))) return "claim";

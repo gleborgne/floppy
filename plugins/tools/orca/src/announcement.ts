@@ -1,5 +1,5 @@
 // Synthèse hors conversation : aucun outil ni historique du cerveau, deux phrases au plus.
-import type { Context } from "@floppy/core";
+import { fold, type Context } from "@floppy/core";
 import type { CompletionService } from "@floppy/contracts";
 import { cleanMessage, completionSentence, waitingSentence, llmPrompt, type Facts } from "./speech.ts";
 
@@ -14,7 +14,7 @@ function withoutNoAction(text: string): string {
     /^you (?:don't|do not) need to do anything$/,
   ];
   return text.split(/(?<=[.!?])\s+/).filter(sentence => {
-    const normalized = sentence.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’‘]/g, "'").toLowerCase().replace(/[.!?]+$/, "").trim();
+    const normalized = fold(sentence).replace(/[’‘]/g, "'").replace(/[.!?]+$/, "").trim();
     return !emptyFollowUp.some(pattern => pattern.test(normalized));
   }).join(" ");
 }
@@ -24,7 +24,7 @@ export function announcementText(f: Facts, summary: string | undefined, state?: 
   const text = withoutNoAction(summary?.replace(/\s+/g, " ").trim() ?? "");
   if (!text || text.length > 220 || text.split(/\s+/).length > 30 || /[`#*<>]/.test(text)
     || (text.match(/[.!?](?:\s|$)/g)?.length ?? 0) > 2) return fallback();
-  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const normalized = fold(text);
   if (f.outcome === "failure" && !/echec|echou|fail|error/.test(normalized)) return fallback();
   if (f.outcome === "interruption" && !/interromp|interrupt|cancel/.test(normalized)) return fallback();
   if (f.kind === "en_attente" && !/attend|attente|reponse|validation|approv|waiting|answer/.test(normalized)) return fallback();

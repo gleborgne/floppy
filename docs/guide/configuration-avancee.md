@@ -66,7 +66,7 @@ Seules les voix de la langue de l'assistant et de l'anglais sont montrées ; le 
 
 ### Plugins de mot d'activation
 
-Dans **Réglages → Écoute**, chaque plugin possède son formulaire. Configurer les instances puis choisir **Moteur de mot d'activation** (`service.wakeword`) : une seule instance est active. Le nom de chaque instance dans le sélecteur est configurable. Les plugins peuvent aussi être ajoutés, désactivés ou retirés depuis cette rubrique.
+Dans **Réglages → Écoute**, chaque plugin possède son formulaire. Configurer les instances puis choisir **Moteur de mot d'activation** (slot `listen.wakeword`) : une seule instance est active. Le nom de chaque instance dans le sélecteur est configurable. Les plugins peuvent aussi être ajoutés, désactivés ou retirés depuis cette rubrique.
 
 - **Dans le texte transcrit** (`wakeword/stt`) : plugin sélectionné par défaut, qui cherche les mots dans chaque phrase déjà transcrite par l'écoute. Les mots et variantes se modifient directement dans son onglet (Réglages → Écoute → 3 · Mot d'activation), en pastilles ; chaque changement s'enregistre seul. Sous les mots, « Dernier réveil » montre la dernière phrase qui a réveillé Floppy. Les anciennes variantes du réglage `mot_activation` sont reprises. Aucun deuxième modèle ou flux STT n'est ouvert : la transcription ne tourne que quand le détecteur de parole entend quelqu'un parler.
 - **Bouton uniquement** : aucun plugin wakeword actif ; le texte transcrit ne peut pas réactiver l'assistant hors de l'écoute libre.
@@ -75,7 +75,7 @@ Dans **Réglages → Écoute**, chaque plugin possède son formulaire. Configure
 
 Un détecteur dédié peut ouvrir Live dès la détection, sans attendre une transcription complète. Un court pré-roll configurable (1,5 s par défaut) et l'audio reçu pendant la connexion sont conservés pour le début de la demande. Le STT local reste utilisable pour la cascade et les commandes vocales. Un moteur sélectionné en erreur ne bascule pas silencieusement sur un autre ; le bouton parler reste disponible.
 
-Pour ajouter un moteur, créer `plugins/wakeword/<nom>`, fournir `WakewordService` (type de `@floppy/contracts`), déclarer `provides: ["wakeword"]` et le même `manifest.serviceSelection` que les autres moteurs, puis l'enregistrer dans le catalogue des plugins installés. Le formulaire appartient au plugin (`ctx.items`/`providerConfig`) ; `onChange` prévient la conversation de recréer ses détecteurs. Un moteur audio reçoit du float32 mono 16 kHz avec des indices absolus. Un moteur `input: "transcript"` reçoit les transcriptions existantes par `pushTranscript`. Les détections reprennent l'horloge du corps ; sans indices, une transcription peut activer la cascade mais ne permet pas de rejouer de l'audio vers Live. Aucun changement de Gemini, GPT Live ou de la conversation n'est nécessaire pour un nouveau moteur.
+Pour ajouter un moteur, créer `plugins/wakeword/<nom>`, fournir `WakewordService` (type de `@floppy/contracts`), déclarer `provides: ["wakeword"]` et offrir chaque détecteur par `ctx.offer("wakeword", …)` comme les autres moteurs (c'est le slot `listen.wakeword` de la conversation qui le choisit), puis lui donner le champ `floppy` de son `package.json`. Le formulaire appartient au plugin (`ctx.items`/`providerConfig`) ; `onChange` prévient la conversation de recréer ses détecteurs. Un moteur audio reçoit du float32 mono 16 kHz avec des indices absolus. Un moteur `input: "transcript"` reçoit les transcriptions existantes par `pushTranscript`. Les détections reprennent l'horloge du corps ; sans indices, une transcription peut activer la cascade mais ne permet pas de rejouer de l'audio vers Live. Aucun changement de Gemini, GPT Live ou de la conversation n'est nécessaire pour un nouveau moteur.
 
 Ces choix sont également accessibles par la CLI (après avoir renseigné les clés dans les formulaires) :
 
@@ -147,4 +147,4 @@ export default definePlugin({
 });
 ```
 
-Puis l'ajouter à `apps/cli/src/catalog.ts` et à `floppy.yml`.
+Donner à son `package.json` le champ `"floppy": { "plugin": true }` (il est alors trouvé tout seul ; un `npm install` lie le nouveau workspace), puis l'ajouter à `floppy.yml`.

@@ -76,6 +76,10 @@ describe("format floppy-plugin.json", () => {
     expect(manifestMismatch(PKG, { ...m, permissions: { net: ["a.com"] } })).toBeDefined();
     expect(manifestMismatch(PKG, { ...m, version: "2" })).toBeDefined();
     expect(manifestMismatch(PKG, { ...m, provides: ["llm"] })).toBeDefined();
+    // Un champ que le noyau ne connaît pas est refusé, y compris `runtime` et `serviceSelection` (retirés du manifeste).
+    expect(tr(manifestMismatch(PKG, { ...m, runtime: "in-process" })!, "en")).toBe("manifest.runtime: unknown field");
+    expect(tr(manifestMismatch(PKG, { ...m, serviceSelection: {} })!, "en")).toBe("manifest.serviceSelection: unknown field");
+    expect(manifestMismatch(PKG, { ...m, description: "d", sections: [] })).toBeUndefined();
   });
 });
 
