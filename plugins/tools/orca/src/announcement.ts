@@ -3,9 +3,25 @@ import type { Context } from "@floppy/core";
 import type { CompletionService } from "@floppy/contracts";
 import { cleanMessage, completionSentence, waitingSentence, llmPrompt, type Facts } from "./speech.ts";
 
+/** Retire seulement l'absence de suite, pas les faits négatifs sur le travail. */
+function withoutNoAction(text: string): string {
+  const emptyFollowUp = [
+    /^rien n'est (?:attendu|requis|demande) de (?:vous|toi|votre part|ta part)(?: pour (?:le moment|la suite))?$/,
+    /^(?:aucune (?:action|intervention|reponse|validation)|pas d'action)(?: de (?:votre|ta) part)? (?:(?:n'est|est) )?(?:requise|necessaire|attendue|demandee)(?: de (?:vous|toi|votre part|ta part))?$/,
+    /^(?:vous n'avez|tu n'as) rien a faire$/,
+    /^no (?:further )?(?:action|response|approval|intervention)(?: is)? (?:required|needed|expected)(?: (?:from|of) you)?$/,
+    /^nothing (?:is )?(?:expected|required|needed) (?:of|from) you$/,
+    /^you (?:don't|do not) need to do anything$/,
+  ];
+  return text.split(/(?<=[.!?])\s+/).filter(sentence => {
+    const normalized = sentence.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’‘]/g, "'").toLowerCase().replace(/[.!?]+$/, "").trim();
+    return !emptyFollowUp.some(pattern => pattern.test(normalized));
+  }).join(" ");
+}
+
 export function announcementText(f: Facts, summary: string | undefined, state?: string, toolName?: string | null): string {
   const fallback = () => f.kind === "en_attente" ? waitingSentence(f, state, toolName) : completionSentence(f);
-  const text = summary?.replace(/\s+/g, " ").trim();
+  const text = withoutNoAction(summary?.replace(/\s+/g, " ").trim() ?? "");
   if (!text || text.length > 220 || text.split(/\s+/).length > 30 || /[`#*<>]/.test(text)
     || (text.match(/[.!?](?:\s|$)/g)?.length ?? 0) > 2) return fallback();
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

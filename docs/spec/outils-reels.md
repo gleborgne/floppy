@@ -184,6 +184,8 @@ Le titre du thread est conservé pour l'identifier. L'annonce nomme l'action pri
 
 Le slot `orca.summary` (service `completion`, réglage « Synthèse des agents Orca ») choisit le modèle emprunté uniquement pour cette synthèse, sans outils ni historique de conversation, puis rendu. Le modèle peut être local ou distant selon le fournisseur choisi. L'ensemble de la préparation de synthèse est borné à 10 secondes, indépendant de l'acquittement du pont. Une erreur, une absence de contexte ou de modèle, un texte trop long ou plus de deux phrases utilise une annonce courte de l'état connu, jamais le rapport brut. Un échec ou une interruption explicite ne devient pas une réussite dans la reformulation. Français et anglais sont pris en charge. Les annonces importantes sont lues par la conversation quand la voix est prête et libre ; cacher l'avatar ne les rend pas muettes.
 
+L'absence de suite attendue reste implicite : aucune formule comme « Rien n'est attendu de vous » ou « Aucune action requise » n'est annoncée. La consigne du modèle l'interdit et les phrases explicites d'absence d'action sont retirées avant l'annonce, en français et en anglais, sans supprimer les faits négatifs utiles du rapport.
+
 ## Initiatives en général
 
 N'importe quel plugin peut émettre `initiative { source, text, importance, key }` sur le bus : rappels, build cassé, réunion proche… La conversation applique toujours les mêmes règles (voir [Fonctionnement → Initiatives](fonctionnement.md#initiatives)).

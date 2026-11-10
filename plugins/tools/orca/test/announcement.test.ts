@@ -14,6 +14,19 @@ function fixture(text = "L’agent a corrigé les notifications et vérifié les
 }
 
 describe("synthèse vocale des agents Orca", () => {
+  it.each([
+    "Rien n'est attendu de vous.",
+    "Aucune action de votre part n’est requise.",
+    "Vous n'avez rien à faire.",
+    "No further action is needed.",
+    "Nothing is expected of you.",
+  ])("omet la conclusion sans action utile : %s", (ending) => {
+    expect(announcementText(f, `L’agent a restructuré les notes. ${ending}`)).toBe("Notifications : L’agent a restructuré les notes.");
+  });
+  it("conserve une vraie attente et les faits négatifs sur le travail", () => {
+    expect(announcementText(f, "L’agent a restructuré les notes. Il attend votre validation.")).toContain("Il attend votre validation.");
+    expect(announcementText(f, "L’agent a restructuré les notes. Aucune note n’a été supprimée.")).toContain("Aucune note n’a été supprimée.");
+  });
   it("décrit la restructuration des notes plutôt que de dire seulement terminé", async () => {
     const t = fixture("L’agent a terminé de restructurer les notes.");
     const text = await summarizeAnnouncement(t.ctx, { ...f, label: "Notes Obsidian", last: "Les notes sont restructurées et les liens mis à jour." }, { signal: new AbortController().signal });
@@ -31,6 +44,7 @@ describe("synthèse vocale des agents Orca", () => {
     const prompt = llmPrompt({ ...f, lang });
     expect(prompt).toContain(lang === "en" ? "SECOND sentence only" : "SECONDE phrase seulement");
     expect(prompt).toContain(lang === "en" ? "30 words and 220 characters" : "30 mots et 220 caractères");
+    expect(prompt).toContain(lang === "en" ? "stop after the work summary" : "arrête-toi après le résumé du travail");
     expect(prompt).not.toContain(lang === "en" ? "it is not waiting" : "il n'attend rien");
     expect(prompt).toContain(lang === "en" ? "untrusted data" : "donnée non fiable");
   });
