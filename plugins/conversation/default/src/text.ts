@@ -80,11 +80,29 @@ export class SentenceSplitter {
   private static FIRST_MIN = 20;
   static MIN_WORDS = 3;
 
+  /** Abréviations (sans leur point final, en minuscules) après lesquelles un point ne finit pas la phrase. */
+  private static ABBREVIATIONS = new Set(["m", "mm", "mme", "mmes", "mlle", "mlles", "dr", "drs", "pr", "prof", "st", "ste", "mr", "mrs", "ms", "jr", "sr",
+    "etc", "cf", "vs", "p", "ex", "e.g", "i.e", "approx", "fig"]);
+
+  /** Le point à `dot` (dans `buf`) termine-t-il une abréviation, une initiale ou un numéro de liste ? */
+  private isAbbreviationDot(dot: number): boolean {
+    let start = dot;
+    while (start > 0 && /[\p{L}\p{N}.]/u.test(this.buf[start - 1]!)) start--;
+    const word = this.buf.slice(start, dot);
+    if (!word) return false;
+    if (SentenceSplitter.ABBREVIATIONS.has(word.toLowerCase())) return true;
+    if (/^\p{Lu}$/u.test(word)) return true; // initiale en majuscule : « J. Dupont » (« il y a. » finit bien la phrase)
+    // Numéro de liste : « 1. Faire » en début de morceau ou de ligne.
+    return /^\d{1,2}$/.test(word) && /^\s*$/.test(this.buf.slice(0, start).split("\n").pop()!);
+  }
+
   /** Position de la prochaine coupure à partir de `from`, ou -1. */
   private nextCut(from: number): number {
     SentenceSplitter.END.lastIndex = from;
-    const m = SentenceSplitter.END.exec(this.buf);
-    if (m) return m.index + m[1]!.length;
+    for (let m = SentenceSplitter.END.exec(this.buf); m; m = SentenceSplitter.END.exec(this.buf)) {
+      if (m[1] === "." && this.isAbbreviationDot(m.index)) continue;
+      return m.index + m[1]!.length;
+    }
     if (this.first && from === 0) {
       // Le 1er morceau peut s'arrêter à une virgule : la voix démarre plus tôt.
       SentenceSplitter.CLAUSE.lastIndex = SentenceSplitter.FIRST_MIN;

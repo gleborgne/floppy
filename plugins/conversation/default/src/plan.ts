@@ -6,6 +6,7 @@ import { emotionInfo, expressivenessFactor } from "@floppy/toolkit";
 import type { Emotion, SpeechGesture } from "@floppy/protocol";
 import { sentenceGesture } from "./gesture.ts";
 import type { Settled } from "./settle.ts";
+import { spokenForm } from "./spoken-form.ts";
 
 export interface SentencePlan {
   text: string;
@@ -34,7 +35,7 @@ export function deliveryFor(o: { emotion?: string; intensity?: number; profile: 
 export function planSentence(o: { text: string; settled: Settled; paragraph: boolean; request: string; profile: SpeechDelivery["profile"]; language: "fr" | "en"; tone: string }): SentencePlan {
   const { settled } = o;
   return {
-    text: o.text,
+    text: spokenForm(o.text, o.language), // la voix lit la forme parlée ; le geste se juge sur le texte écrit
     ...(settled.emotion === undefined ? {} : { emotion: settled.emotion }),
     ...(settled.intensity === undefined ? {} : { intensity: settled.intensity }),
     ...(settled.cue ? { cue: { emotion: settled.cue.emotion as Emotion, ...(settled.cue.intensity === undefined ? {} : { intensity: settled.cue.intensity }) } } : {}),

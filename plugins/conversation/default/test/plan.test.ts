@@ -68,6 +68,13 @@ describe("planSentence", () => {
     expect(plan(new EmotionSettler(), "Voilà.", undefined, { request: "raconte une blague" }).gesture.intent).toBe("playful");
   });
 
+  it("le texte envoyé à la voix est la forme parlée, dans la langue du plan ; le geste suit le texte écrit", () => {
+    expect(plan(new EmotionSettler(), "RDV à 14:30, 20% de remise ?").text).toBe("RDV à 14 h 30, 20 pour cent de remise ?");
+    const en = planSentence({ ...base, language: "en", text: "Meet at 14:30.", settled: new EmotionSettler().next(), paragraph: false });
+    expect(en.text).toBe("Meet at 2:30 PM.");
+    expect(plan(new EmotionSettler(), "Vois https://contoso.com/x ?").gesture.intent).toBe("question");
+  });
+
   it("le profil d'expressivité règle l'intensité du geste", () => {
     const g = (profile: "discreet" | "natural" | "playful") => plan(new EmotionSettler(), "Oui ?", undefined, { profile }).gesture.intensity;
     expect(g("discreet")).toBeLessThan(g("natural"));
