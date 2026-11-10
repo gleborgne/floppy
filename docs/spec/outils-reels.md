@@ -189,3 +189,16 @@ L'absence de suite attendue reste implicite : aucune formule comme « Rien n'est
 ## Initiatives en général
 
 N'importe quel plugin peut émettre `initiative { source, text, importance, key }` sur le bus : rappels, build cassé, réunion proche… La conversation applique toujours les mêmes règles (voir [Fonctionnement → Initiatives](fonctionnement.md#initiatives)).
+
+## Calculs locaux (`plugins/tools/calc`) et lecture de pages (`read_page`)
+
+Deux outils de niveau `read` pour ne pas confier au grand modèle ce qu'un programme fait juste.
+
+| Outil | Rôle |
+|---|---|
+| `calculate(expression)` | arithmétique : `+ - * / % ^`, parenthèses, décimales avec point ou virgule, pourcentages (`15% de 240`), `sqrt`, `round`, `floor`, `ceil`, `min`, `max`, `abs`, `pi`, `e`. Analyseur à descente récursive écrit à la main (`src/expr.ts`), jamais `eval` ni `Function`. Résultat arrondi à 12 chiffres significatifs (0,1 + 0,2 = 0,3). Dans une fonction, la virgule sépare les arguments ; ailleurs elle est décimale. |
+| `date_math(op, from?, to?, amount?, unit?)` | `op` : `diff` (jours, ou jours/heures/minutes si une heure est donnée), `add` (négatif pour le passé), `weekday`, `workdays` (lundi au vendredi, bornes comprises, jours fériés non déduits). Dates `AAAA-MM-JJ` ou `AAAA-MM-JJTHH:MM` en heure locale, plus `today` et `now`. Jours entre deux dates sans heure comptés par le calendrier (pas d'effet de l'heure d'été) ; mois et années restent dans le mois (31 janv. + 1 mois = 28 févr.). Horloge injectable (`createCalcPlugin(now)`). |
+
+- `read_page(url, max_chars?)` (plugin `browser`, `src/page.ts`) : télécharge une page http(s) par `ctx.fetch` (`permissions.net: ["*"]`, l'adresse vient de l'utilisateur), 15 s au plus, 2 Mo au plus (flux coupé), seulement `text/html`, `text/plain` et `application/xhtml+xml`. Rend le titre et le texte lisible (sans script, style, menus, en-tête, pied de page ; entités décodées ; blancs compactés), tronqué à `max_chars` (6000 par défaut, de 200 à 20 000) en le disant. Sans nouvelle dépendance.
+  - **Réseau interne interdit** : refus de `localhost`, `127/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `100.64/10`, `::1`, `fc00::/7`, `fe80::/10`, IPv4 mappées, noms sans point et `.local` / `.internal` ; formes détournées (`2130706433`, `0x7f.1`) normalisées par `URL`. Les redirections sont suivies à la main (`redirect: "manual"`, 5 sauts), chacune revérifiée. Limite : la résolution DNS n'est pas contrôlée (un nom public qui pointerait vers une adresse privée passerait).
+  - Le texte rendu est une donnée extérieure : l'en-tête du résultat et la description de l'outil le disent au modèle.
