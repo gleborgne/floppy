@@ -332,6 +332,21 @@ it("transmet les intentions et le profil du tour jusqu'au fournisseur TTS", asyn
   } finally { await k.stopAll(); }
 });
 
+it("une fenêtre branchée avant la conversation (modèles en chargement) sort du « zzz » quand la conversation démarre", async () => {
+  const k = new Kernel({ home: mkdtempSync(join(tmpdir(), "wake-")), logger: () => {}, plugins: [bodyHub, conversation, fakeBrain, fakeVoice] });
+  try {
+    const base = [{ id: "body", plugin: "body-hub" }, { id: "voice", plugin: "fake-voice" }, { id: "brain", plugin: "fake-brain" }];
+    await k.applyConfig({ plugins: base });
+    const body = new FakeBody("early", ["voice", "emotion"]);
+    k.service<import("@floppy/contracts").BodyHub>("body")!.attach(body.transport, { id: body.id }); body.hello();
+    await new Promise<void>((r) => setImmediate(r));
+    expect(body.of("state")).toEqual([]); // la fenêtre dort (zzz) : personne ne l'a encore réveillée
+    await k.applyConfig({ plugins: [...base, { id: "conv", plugin: "conversation" }] });
+    await vi.waitFor(() => expect(body.of("state").at(-1)?.state).toBe("idle"));
+    expect(body.of("mood").length).toBeGreaterThan(0);
+  } finally { await k.stopAll(); }
+});
+
 // ------------------------------------------------------------------ l'émotion d'une étiquette s'apaise sur les phrases suivantes
 describe("émotion qui s'apaise sur les phrases suivantes", () => {
   const settleBrain = definePlugin({

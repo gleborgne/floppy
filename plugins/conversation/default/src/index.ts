@@ -506,6 +506,12 @@ export default definePlugin<Config>({
     };
     if (wakeword) ctx.effect(wakeword.onChange(() => { wake.splice(0, wake.length, ...(wakeword.words?.() ?? ctx.assistant.wake_words)); for (const b of bodies.values()) if (b.voice) void attachWakeword(b); }));
 
+    /** Corps prêt à écouter : il quitte le « zzz » du démarrage (ou de l'arrêt précédent de la conversation). */
+    const wakeUp = (b: Body, capabilities: readonly string[]) => {
+      hub.send(b.id, { type: "state", state: "idle" });
+      hub.send(b.id, { type: "emotion", emotion: "neutral" });
+      if (capabilities.includes("emotion")) hub.send(b.id, { type: "mood", ...mood.snapshot() });
+    };
     const offHub = hub.on((ev) => {
       if (ev.type === "join") {
         const b: Body = {
@@ -513,9 +519,7 @@ export default definePlugin<Config>({
           muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", awaiting: new Set(), history: new AudioHistory(),
         };
         bodies.set(b.id, b);
-        hub.send(b.id, { type: "state", state: "idle" });
-        hub.send(b.id, { type: "emotion", emotion: "neutral" });
-        if (ev.body.capabilities.includes("emotion")) hub.send(b.id, { type: "mood", ...mood.snapshot() });
+        wakeUp(b, ev.body.capabilities);
         if (b.voice) attachVoice(b).catch((e) => { ctx.log("error", `voix de ${b.id} : ${String(e)}`); hub.send(b.id, { type: "error", text: shown(T("L'écoute locale n'est pas prête. Vérifie le service voix.", "Local listening is not ready. Check the voice service.")) }); });
       } else if (ev.type === "leave") {
         const b = bodies.get(ev.bodyId);
@@ -600,10 +604,12 @@ export default definePlugin<Config>({
     // La conversation s'arrête (changement de cerveau, de voix, relance) : Floppy n'écoute plus, il « dort »
     // jusqu'à ce qu'elle reparte (elle renvoie alors « idle » à chaque corps).
     ctx.effect(() => { try { hub.broadcast({ type: "state", state: "sleep" }); } catch { /* hub arrêté */ } });
-    // Corps déjà branchés avant ce plugin (redémarrage de la conversation).
+    // Corps déjà branchés avant ce plugin : au démarrage, la fenêtre se branche avant que les modèles soient
+    // chargés ; ou la conversation redémarre. Sans « idle », Floppy resterait en « zzz ».
     for (const s of hub.sessions()) {
       const b: Body = { id: s.id, voice: s.capabilities.includes("voice"), text: s.capabilities.includes("text"), muted: false, awakeUntil: 0, lastTurnAt: 0, playing: false, state: "idle", awaiting: new Set(), history: new AudioHistory() };
       bodies.set(b.id, b);
+      wakeUp(b, s.capabilities);
       if (b.voice) attachVoice(b).catch((e) => { ctx.log("error", `voix de ${b.id} : ${String(e)}`); hub.send(b.id, { type: "error", text: shown(T("L'écoute locale n'est pas prête. Vérifie le service voix.", "Local listening is not ready. Check the voice service.")) }); });
     }
     ctx.effect(async () => { for (const b of bodies.values()) { b.wakeAbort?.abort(); b.wakeStream?.close(); b.turn?.abort.abort(); b.output?.cancel(); b.off?.(); b.stream?.close(); } await Promise.all([...bodies.values()].map((b) => b.live?.stop("déchargement"))); });

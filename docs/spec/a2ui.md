@@ -52,4 +52,6 @@ Plutôt que des cartes sur l'avatar, les résultats longs s'ouvrent dans une **f
 
 Tant que la voix et le cerveau chargent leurs modèles, l'avatar dort (yeux fermés, zzz). Il se réveille au premier
 état envoyé par la conversation (« idle »). Quand la conversation s'arrête (changement de cerveau ou de voix), elle
-envoie « sleep » à tous les corps, puis « idle » quand elle repart.
+envoie « sleep » à tous les corps, puis « idle » quand elle repart. La fenêtre se branche en général avant que la
+conversation démarre : au démarrage, la conversation envoie donc « idle » aux corps déjà branchés, pas seulement à
+ceux qui arrivent après elle.
