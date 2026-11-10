@@ -211,6 +211,8 @@ Cette première version utilise les émotions déjà émises par le cerveau, des
 agacées neutralisent cette gestuelle. Il n'y a ni nouvel appel au modèle ni changement des consignes TTS.
 Ce classement reste heuristique ; il ne reconnaît pas précisément les mots importants ou la chute d'une blague.
 
+Un seul plan par phrase (`SentencePlan`, `plugins/conversation/default/src/plan.ts`) porte désormais l'émotion à montrer (avec son apaisement), le geste, le silence de paragraphe et la livraison donnée à la voix. Une fonction pure, `planSentence`, le construit quand la phrase part à la synthèse ; `voice-events.ts` le consomme au premier bloc audio, dans l'ordre fixe silence, émotion, geste, audio, et le retire alors (ou à la fin de la phrase). Les phrases hors plan (erreur, demande d'accord, initiatives) n'ont ni émotion planifiée ni geste ; elles reçoivent la même livraison par `deliveryFor`. Le mode Live ne l'utilise pas encore.
+
 Le message `speech.gesture` porte l'intention, l'intensité du profil et `nextAudio`. Il va uniquement au corps
 vocal d'origine s'il annonce `speech_timing`, immédiatement avant le premier bloc de la phrase et après
 l'éventuelle pause de paragraphe. Le bureau le place sur la même horloge audio que les émotions. Un repère

@@ -160,15 +160,14 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
               b.playing = true;
             } else if (t && !t.abort.signal.aborted) {
               if (!t.spoke) { t.spoke = true; t.marks.first_audio ??= Math.round(performance.now() - t.t0); }
-              const c = t.cues.get(ev.id);
+              const plan = t.plans.get(ev.id);
               if (!b.playing || b.state !== "speaking") { setState(b, "speaking"); b.stream?.setSpeaking(true); }
               b.playing = true;
-              if (t.pauses?.delete(ev.id)) hub.sendAudio(b.id, silenceLike(ev.data, PARAGRAPH_PAUSE_MS));
-              if (c) { t.cues.delete(ev.id); setEmotion(c.emotion, undefined, c.intensity, { body: b.id, id: ev.id }, c.settling ? { mood: false } : undefined); }
-              const gesture = t.gestures?.get(ev.id);
-              if (gesture) {
-                t.gestures!.delete(ev.id);
-                if (hub.has(b.id, "speech_timing")) hub.send(b.id, { type: "speech.gesture", ...gesture, nextAudio: ev.id });
+              if (plan) {
+                t.plans.delete(ev.id);
+                if (plan.pauseBefore) hub.sendAudio(b.id, silenceLike(ev.data, PARAGRAPH_PAUSE_MS));
+                if (plan.cue) setEmotion(plan.cue.emotion, undefined, plan.cue.intensity, { body: b.id, id: ev.id }, plan.settling ? { mood: false } : undefined);
+                if (hub.has(b.id, "speech_timing")) hub.send(b.id, { type: "speech.gesture", ...plan.gesture, nextAudio: ev.id });
               }
             }
             hub.sendAudio(b.id, ev.data);
@@ -177,7 +176,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
           case "speak_done":
             if (ev.error && (b.init?.id === ev.id || b.turn?.pending.has(ev.id))) hub.send(b.id, { type: "error", text: ev.error });
             if (b.init?.id === ev.id) { b.init.done = true; if (!b.playing) finishInit(b); }
-            else if (b.turn?.pending.has(ev.id)) { b.turn.pending.delete(ev.id); b.turn.gestures?.delete(ev.id); maybeFinish(b, b.turn); }
+            else if (b.turn?.pending.has(ev.id)) { b.turn.pending.delete(ev.id); b.turn.plans.delete(ev.id); maybeFinish(b, b.turn); }
             break;
           case "closed":
             b.stream = undefined;
