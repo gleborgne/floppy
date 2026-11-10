@@ -40,11 +40,13 @@ import type { DocumentsService, TaskService } from "../services.ts";
 import { KernelConfig, type EntryConfig, type KernelConfigInput, type AssistantSettings } from "../config/schema.ts";
 import { findExe, stableStringify } from "../util/process.ts";
 import { ChildRegistry } from "../util/children.ts";
-import { Deadline, offerItems, sameEntry } from "./lifecycle-util.ts";
+import { Deadline, sameEntry } from "./lifecycle-util.ts";
 import { makeContext } from "./context-factory.ts";
 import type { KernelInternals } from "./kernel-internals.ts";
 import { declareCoreSettings } from "./core-settings.ts";
 import { declareSlots } from "./selection-settings.ts";
+import { slotKey, slotOptions, slotStatuses, slotValue } from "./slots.ts";
+import { borrowItem, ensureFork, loseBorrowers, restartForks, retryFork } from "./forks.ts";
 import { probeMachine, type MachineInfo, type ProbeOptions } from "../machine.ts";
 
 export type Logger = (rec: { level: LogLevel; source: string; msg: string; data?: Record<string, unknown> }) => void;
@@ -439,20 +441,9 @@ export class Kernel {
     }
   }
 
-  /** Relance les forks d'une entrée (nouveau programme) : ceux en marche repartent, ceux en panne sont réessayés. */
+  /** Relance les forks d'une entrée (forks.ts). */
   restartForks(parent: string, service?: string): Promise<void> {
-    return this.enqueue(async () => {
-      const list = [...this.forks.entries()].filter(([, f]) => f.fork!.parent === parent && (!service || f.fork!.service === service));
-      for (const [key, f] of list) {
-        // Un fork en panne n'a rien fourni : ceux qui le voulaient (slot) tournent sans lui ; ils repartent pour le redemander.
-        if (f.state === "error") {
-          for (const y of [...this.all()]) if (y.state === "active" && [...y.slotBound.values()].includes(key)) await this.stopEntry(y, "loaded");
-        }
-        if (f.state !== "loaded") await this.stopEntry(f, "loaded");
-        this.forks.delete(key);
-      }
-      if (list.length) await this.reconcile();
-    });
+    return restartForks(this as unknown as KernelInternals, parent, service);
   }
 
   /** Relance une entrée en erreur (ou active). */
@@ -507,35 +498,9 @@ export class Kernel {
     return info;
   }
 
-  /**
-   * Emprunte un élément offert (« <entrée>/<élément> ») pour l'hôte (ex. test de vitesse du premier lancement) :
-   * le noyau le fait tourner jusqu'à release(). Undefined : élément absent ou en panne.
-   */
+  /** Emprunte un élément offert pour l'hôte (forks.ts). */
   borrowItem<T = unknown>(service: string, value: string): Promise<{ service: T; release(): void } | undefined> {
-    const cut = value.indexOf("/");
-    if (cut < 1) return Promise.resolve(undefined);
-    const entry = value.slice(0, cut);
-    const item = value.slice(cut + 1);
-    return this.enqueue(async () => {
-      const p = this.entries.get(entry);
-      const offer = p?.state === "active" ? p.offers.get(service) : undefined;
-      if (!offer || !offerItems(offer).some((i) => i.id === item)) return undefined;
-      const key = `${entry}/${service}/${item}`;
-      this.hold(key, 1);
-      const f = await this.ensureFork(key);
-      const svc = f?.provided.get(service) as T | undefined;
-      if (!svc) { this.hold(key, -1); await this.reconcile(); return undefined; }
-      let done = false;
-      return {
-        service: svc,
-        release: () => {
-          if (done) return;
-          done = true;
-          this.hold(key, -1);
-          void this.enqueue(() => this.reconcile()).catch(() => {});
-        },
-      };
-    });
+    return borrowItem<T>(this as unknown as KernelInternals, service, value);
   }
 
   status(): EntryStatus[] {
@@ -553,18 +518,7 @@ export class Kernel {
 
   /** Les slots, leur choix et l'état de l'élément choisi. */
   slots(): SlotStatus[] {
-    return [...this.slotDefs.values()].map(({ def, owner }) => {
-      const key = this.slotKey(def.id);
-      const f = key ? this.forks.get(key) : undefined;
-      return {
-        id: def.id, service: def.service, section: def.section, label: def.label, owner,
-        ...(def.description ? { description: def.description } : {}), ...(def.none ? { none: def.none } : {}), ...(def.display ? { display: def.display } : {}),
-        ...(def.step ? { step: def.step } : {}),
-        value: this.slotValue(def.id),
-        state: f ? f.state : key ? "idle" : "none",
-        ...(f?.error ? { error: tr(f.error, this.uiLang) } : {}),
-      };
-    });
+    return slotStatuses(this as unknown as KernelInternals);
   }
 
   /** Fournisseur actif d'un service (pour l'app hôte et les tests). */
@@ -762,86 +716,20 @@ export class Kernel {
   // ------------------------------------------------------------------ slots et forks
 
   private slotOptions(slot: SlotDef): (SettingOption & { cloud?: boolean; note?: Text })[] {
-    const out: (SettingOption & { cloud?: boolean; note?: Text })[] = slot.none ? [{ value: "@none", label: slot.none }] : [];
-    for (const e of this.entries.values()) {
-      const offer = e.state === "active" ? e.offers.get(slot.service) : undefined;
-      if (!offer) continue;
-      for (const i of offerItems(offer)) {
-        out.push({
-          value: `${e.cfg.id}/${i.id}`, label: i.label,
-          ...(i.aliases?.length ? { aliases: i.aliases } : {}), ...(i.slow ? { slow: true } : {}), ...(i.cloud ? { cloud: true } : {}),
-          ...(i.note ? { note: i.note } : {}),
-        });
-      }
-    }
-    return out;
+    return slotOptions(this as unknown as KernelInternals, slot);
   }
 
-  /** Valeur d'un slot : le choix de l'utilisateur, sinon floppy.yml, sinon le premier élément (slot obligatoire) ou « aucun ». */
   private slotValue(id: string): string {
-    const key = `slot.${id}`;
-    const v = this.selectionEdits.get(key) ?? this.settings.savedValue<string>(key) ?? this.slotDefaults[id];
-    const slot = this.slotDefs.get(id)?.def;
-    if (v) return slot ? this.followRename(slot, v) : v;
-    if (!slot || (slot.none && !slot.defaultFirst)) return "@none";
-    return this.slotOptions(slot).find((o) => o.value !== "@none")?.value ?? "@none";
+    return slotValue(this as unknown as KernelInternals, id);
   }
 
-  /** Choix « <entrée>/<ancien id> » d'un élément renommé par son plugin (OfferDef.renamed) : rend le nouvel id. */
-  private followRename(slot: SlotDef, v: string): string {
-    const cut = v.indexOf("/");
-    if (cut < 1) return v;
-    const p = this.entries.get(v.slice(0, cut));
-    const to = (p?.state === "active" ? p.offers.get(slot.service) : undefined)?.renamed?.[v.slice(cut + 1)];
-    return to ? `${v.slice(0, cut)}/${to}` : v;
-  }
-
-  /** Clé du fork choisi pour un slot ("<entrée>/<service>/<élément>"), si l'élément est offert en ce moment. */
   private slotKey(id: string): string | undefined {
-    const slot = this.slotDefs.get(id)?.def;
-    if (!slot) return undefined;
-    const v = this.slotValue(id);
-    const cut = v.indexOf("/");
-    if (v === "@none" || cut < 1) return undefined;
-    const entry = v.slice(0, cut);
-    const item = v.slice(cut + 1);
-    const p = this.entries.get(entry);
-    const offer = p?.state === "active" ? p.offers.get(slot.service) : undefined;
-    if (!offer || !offerItems(offer).some((i) => i.id === item)) return undefined;
-    return `${entry}/${slot.service}/${item}`;
+    return slotKey(this as unknown as KernelInternals, id);
   }
 
-  /** Démarre (si besoin) le fork d'un élément. Rend le fork s'il est actif. */
-  private async ensureFork(key: string): Promise<Entry | undefined> {
-    const [parent = "", service = ""] = key.split("/", 2);
-    const item = key.slice(parent.length + service.length + 2);
-    const p = this.entries.get(parent);
-    const offer = p?.state === "active" ? p.offers.get(service) : undefined;
-    if (!p || !offer) return undefined;
-    let f = this.forks.get(key);
-    if (f?.state === "active") return f;
-    if (f && f.state !== "loaded") return undefined; // en panne (choisir de nouveau pour réessayer), ou déjà en démarrage
-    if (!f) {
-      f = {
-        cfg: { id: key, plugin: p.cfg.plugin, disabled: false }, def: p.def!, parsed: p.parsed, state: "loaded",
-        provided: new Map(), bound: new Map(), used: new Set(), slotBound: new Map(), offers: new Map(), retries: 0,
-        fork: { parent, service, item },
-      };
-      this.forks.set(key, f);
-    }
-    if (offer.max) {
-      const others = [...this.forks.values()]
-        .filter((x) => x !== f && x.fork!.parent === parent && x.fork!.service === service && x.state === "active")
-        .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
-      while (others.length >= offer.max) {
-        const old = others.shift()!;
-        this.log("info", old.cfg.id, `place libérée pour ${item}`);
-        await this.stopEntry(old, "loaded");
-        this.forks.delete(old.cfg.id);
-      }
-    }
-    await this.startEntry(f);
-    return f.state === "active" ? f : undefined;
+  /** Démarre (si besoin) le fork d'un élément. Rend le fork s'il est actif (forks.ts). */
+  private ensureFork(key: string): Promise<Entry | undefined> {
+    return ensureFork(this as unknown as KernelInternals, key);
   }
 
   /**
@@ -1003,16 +891,7 @@ export class Kernel {
 
   private async retryNow(e: Entry): Promise<void> {
     if (this.stopped || e.state !== "error") return;
-    if (e.fork) {
-      if (this.forks.get(e.cfg.id) !== e) return;
-      // Ceux qui voulaient ce fork tournent sans lui : ils repartent pour le redemander (comme restartForks).
-      for (const y of [...this.all()]) if (y.state === "active" && [...y.slotBound.values()].includes(e.cfg.id)) await this.stopEntry(y, "loaded");
-      e.state = "loaded";
-      delete e.error;
-      this.emitState(e);
-      await this.reconcile();
-      return;
-    }
+    if (e.fork) { await retryFork(this as unknown as KernelInternals, e); return; }
     if (this.entries.get(e.cfg.id) !== e) return;
     e.state = "loaded";
     delete e.error;
@@ -1050,20 +929,12 @@ export class Kernel {
     const errors = await (e.disposing ?? this.als.run(e.cfg.id, () => scope.dispose({ timeoutMs: this.disposeTimeoutMs })));
     delete e.disposing;
     e.scope = undefined;
-    if (e.fork) this.loseBorrowers(e.cfg.id);
+    if (e.fork) loseBorrowers(this as unknown as KernelInternals, e.cfg.id);
     for (const err of errors) this.log("warn", e.cfg.id, `fermeture : ${err.message}`);
     if (after === "loaded" && e.cfg.disabled) e.state = "disabled";
     else e.state = after === "error" ? "error" : (e.def ? "loaded" : "error");
     this.emitState(e);
     if (wasActive) for (const name of provided) this.bus.emit("service.changed", { name, provider: this.providerOf(name) });
-  }
-
-  /** Prévient ceux qui ont emprunté ce fork : il s'est arrêté (panne, arrêt, nouveau choix). */
-  private loseBorrowers(key: string): void {
-    const set = this.borrowers.get(key);
-    if (!set) return;
-    this.borrowers.delete(key);
-    for (const fn of set) { try { fn(); } catch { /* rien */ } }
   }
 
   private emitState(e: Entry): void {
