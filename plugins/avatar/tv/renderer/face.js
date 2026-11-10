@@ -4,7 +4,8 @@
 // - Ressorts : chaque paramètre suit sa cible comme un ressort un peu souple (il dépasse un peu, puis revient).
 // - Élan : une émotion vive commence par un petit tassement, puis le visage « saute » (impulsion sur le ressort).
 // - Intensité : 0.45 donne un petit sourire, 1 le sourire normal, 1.25 un grand sourire.
-// - Humeur : sans émotion en cours, le visage montre l'humeur (joyeux, penaud, fatigué) au lieu du neutre.
+// - Humeur : sans émotion en cours, le visage montre l'humeur au lieu du neutre : petit sourire calme au repos,
+//   somnolent (paupières lourdes) quand il est seul longtemps, penaud seulement si le moral est franchement bas.
 // - Respiration, clignements (parfois doubles), regard qui suit la souris, oreille qui réagit à la voix entendue.
 // - Signaux : hochement de tête (nod), se redresser (perk), sursaut (startle), réaction à un clic (poke),
 //   « oui ? » quand il entend son nom (wake).
@@ -231,10 +232,25 @@ export class Face {
     // Humeur : visible au repos, et un peu sous les émotions légères.
     const moodW = emotion === "neutral" ? 1 : clamp(1 - k, 0, 0.5);
     if (moodW && this.state !== "sleep") {
-      // Le sourire d'humeur commence au-dessus du caractère de base (0.2) : au repos normal, visage neutre.
-      if (valence > 0.3) blend(t, EMOTION_PRESETS.happy, (valence - 0.3) * 0.8 * moodW);
-      if (valence < -0.1) blend(t, EMOTION_PRESETS.sorry, (-valence - 0.1) * 0.7 * moodW);
-      if (energy < 0.35 && !active) blend(t, EMOTION_PRESETS.tired, ((0.35 - energy) / 0.35) * 0.8 * moodW);
+      if (active) {
+        // En conversation, l'état dessine le visage : seul un franc bon moral s'y ajoute (comme avant).
+        if (valence > 0.3) blend(t, EMOTION_PRESETS.happy, (valence - 0.3) * 0.8 * moodW);
+      } else if (emotion === "neutral") {
+        // Au repos, le caractère de base (0.2) donne un petit sourire calme (30 % du « happy ») ;
+        // il grandit avec le moral et disparaît vers -0.17, sans jamais devenir une moue.
+        blend(t, EMOTION_PRESETS.happy, clamp(0.3 + (valence - 0.2) * 0.8, 0, 0.85));
+      }
+      // Penaud seulement si le moral est franchement bas (sous -0.3), proportionnel ensuite.
+      if (valence < -0.3) blend(t, EMOTION_PRESETS.sorry, (-valence - 0.3) * 1.0 * moodW);
+      // Seul longtemps : paupières lourdes et regard un peu bas, sans inclinaison de paupière ni bouche
+      // tombante (ce serait de la tristesse). Vers l'énergie 0, les yeux se plissent : il pique du nez.
+      if (energy < 0.35 && !active) {
+        const d = ((0.35 - energy) / 0.35) * moodW;
+        t.lidTop += 0.4 * d;
+        t.eyeY += 4 * d;
+        t.eyeH -= 8 * d * d;
+        t.halo += -0.2 * d;
+      }
       if (energy > 0.75) t.eyeH += (energy - 0.75) * 16 * moodW;
     }
     if (this.state === "sleep") { Object.assign(t, EMOTION_PRESETS.sleepy); delete t.fx; t.hue = 0; fx.clear(); fx.add("zzz"); }
