@@ -10,16 +10,20 @@
 // - On compare l'heure du mur (Date.now) à la dernière réussite : ça marche aussi après la mise en veille du PC.
 //   Un passage manqué (PC éteint) est donc rattrapé une fois, après un délai au démarrage (le temps de charger les modèles).
 // - Les tâches se lancent l'une après l'autre. Une tâche qui échoue n'est pas relancée avant 30 minutes.
+// - Rappels et minuteurs à la voix (set_reminder, list_reminders, cancel_reminder) : reminders.ts.
 // - Politesse (attendre la fin d'un tour de conversation) : pas de signal propre côté plugin aujourd'hui, donc pas faite.
 import { z } from "zod";
 import { definePlugin, errorText, fold, T, TextError, tr, type ItemInfo, type OpResult, type TaskInfo, type TaskResult, type TaskSchedule, type Text } from "@floppy/core";
 import type { NotifyService } from "@floppy/contracts";
+import { registerReminders, type RemindersOptions } from "./reminders.ts";
 
 const t = T;
 
 export const Config = z.object({
   /** Attente avant la première vérification (secondes) : laisse les modèles se charger. */
   startupDelay_s: z.number().min(0).max(3600).default(120),
+  /** Attente avant d'annoncer les rappels dont l'heure est passée pendant l'arrêt (secondes). */
+  reminderStartupDelay_s: z.number().min(0).max(600).default(10),
 });
 type Config = z.infer<typeof Config>;
 
@@ -237,7 +241,7 @@ export function isDue(schedule: TaskSchedule, lastRun: Date | string | undefined
 
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
-export function createSchedulerPlugin() {
+export function createSchedulerPlugin(reminderOptions: Pick<RemindersOptions, "now"> = {}) {
   return definePlugin<Config>({
     manifest: {
       id: "scheduler",
@@ -584,6 +588,7 @@ export function createSchedulerPlugin() {
       };
 
       declareNew();
+      registerReminders(ctx, { ...reminderOptions, startupDelay_s: cfg.reminderStartupDelay_s });
       ctx.tasks.onChange(() => { try { declareNew(); updateStatus(); ctx.items.changed(); } catch (e) { ctx.log("warn", `tâches : ${String(e)}`); } });
       updateStatus();
       ctx.timeout(() => { void check(); }, cfg.startupDelay_s * 1000);

@@ -63,6 +63,15 @@ Une tâche a souvent besoin d'un élément choisi dans un slot (le cerveau du tr
 - **Rattrapage** : un passage manqué (PC éteint à 7 h 30) tourne une fois, 2 minutes après le démarrage.
 - Changer l'heure ne déclenche pas de rattrapage immédiat. Une tâche en échec est réessayée 30 minutes plus tard, pas chaque minute.
 
+## Rappels et minuteurs à la voix (implémenté, `plugins/tasks/scheduler/src/reminders.ts`)
+
+- Outils : `set_reminder` (niveau `write` ; `text` et `in_minutes` **ou** `at` en `AAAA-MM-JJTHH:MM` local ; refuse le passé et plus d'un an ; rend l'heure prévue en clair), `list_reminders` (`read`), `cancel_reminder` (`write` ; par id `rN` ou par mots du texte, refuse l'ambigu). 50 rappels en attente au plus.
+- Stockage : `<home>/scheduler/reminders.json` (écriture atomique). Ils survivent au redémarrage.
+- Un seul `ctx.timeout` est armé sur le prochain rappel, par paliers de 20 jours au plus ; il est réarmé après chaque changement.
+- À l'heure : annonce `initiative` d'importance `important`, source `scheduler`, clé `reminder:<id>`, texte dans la langue de l'assistant ; le rappel est ensuite retiré (une seule annonce).
+- Rattrapage : un rappel passé pendant l'arrêt est annoncé `reminderStartupDelay_s` (10 s) après le démarrage, avec « en retard, prévu à HH:MM » si le retard dépasse 2 minutes.
+- Accord : l'accord suit la règle du niveau `write`. Pour ne pas le demander à chaque rappel, une règle ciblée peut le lever (`approvals.toolRules`, source `scheduler`, outils `set_reminder` et `cancel_reminder`, niveau `write`, règle `always`), comme pour `correct_vocabulary`.
+
 ## Limites connues
 
 - **Politesse** pas encore faite : le Planificateur ne sait pas si une conversation est en cours (aucun événement « tour en cours » sur le bus). À ajouter : un événement `turn.start` / `turn.end` émis par la conversation.
