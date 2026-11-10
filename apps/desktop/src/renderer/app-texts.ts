@@ -4,14 +4,14 @@
 import { $, type CardEl } from "./app-dom.ts";
 
 export type Lang = "fr" | "en";
-export type TextKey = "you" | "listen" | "stopListening" | "faceTip" | "closeTip" | "micDown" | "ask" | "yes" | "no" | "important" | "info" | "error";
+export type TextKey = "you" | "listen" | "stopListening" | "openChat" | "faceTip" | "closeTip" | "micDown" | "ask" | "yes" | "no" | "important" | "info" | "error";
 const TEXTS: Record<Lang, Record<TextKey, string>> = {
   fr: {
-    you: "Toi", listen: "Je t'écoute…", stopListening: "Arrêter l'écoute", faceTip: "Floppy — Ctrl+Alt+F pour parler", closeTip: "Cliquer pour fermer",
+    you: "Toi", listen: "Je t'écoute…", stopListening: "Arrêter l'écoute", openChat: "Ouvrir la conversation", faceTip: "Floppy — Ctrl+Alt+F pour parler", closeTip: "Cliquer pour fermer",
     micDown: "Micro indisponible", ask: "Ton accord ?", yes: "Oui", no: "Non", important: "Important", info: "Info", error: "Erreur",
   },
   en: {
-    you: "You", listen: "I'm listening…", stopListening: "Stop listening", faceTip: "Floppy — Ctrl+Alt+F to talk", closeTip: "Click to close",
+    you: "You", listen: "I'm listening…", stopListening: "Stop listening", openChat: "Open the conversation", faceTip: "Floppy — Ctrl+Alt+F to talk", closeTip: "Click to close",
     micDown: "Microphone unavailable", ask: "Your approval?", yes: "Yes", no: "No", important: "Important", info: "Info", error: "Error",
   },
 };
@@ -59,6 +59,8 @@ export function createTexts(): Texts {
     $("listenLabel").textContent = L("listen");
     $("stopListening").setAttribute("title", L("stopListening"));
     $("stopListening").setAttribute("aria-label", L("stopListening"));
+    $("openChat")?.setAttribute("title", L("openChat"));
+    $("openChat")?.setAttribute("aria-label", L("openChat"));
     $("faceWrap")?.setAttribute("title", L("faceTip"));
     const you = $("you")?.querySelector("b");
     if (you) you.textContent = L("you");

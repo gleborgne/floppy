@@ -1,11 +1,11 @@
-// Bulle de conversation, cartes (infos, erreurs, demandes d'accord) et indicateur d'écoute.
+// Bulle de conversation, cartes (infos, erreurs, demandes d'accord, listes de choix) et indicateur d'écoute.
 import { $, type CardEl } from "./app-dom.ts";
 import type { SessionView } from "./app-session.ts";
 import type { TextKey, Texts } from "./app-texts.ts";
 
 /** Texte d'une carte : un texte, ou une clé de TEXTS (suit la langue de l'interface). */
 export type CardText = string | { key: string };
-export interface CardButton { label: CardText; cls?: string; onClick: () => void }
+export interface CardButton { label: CardText; /** Deuxième ligne, plus discrète (liste de choix). */ detail?: string; cls?: string; onClick: () => void }
 
 export interface BubbleDeps {
   texts: Pick<Texts, "L">;
@@ -34,9 +34,9 @@ export function createBubble(deps: BubbleDeps) {
     if (!atRest()) return;
     hideTimer = setTimeout(() => {
       if (!atRest()) return;
-      // Seules les demandes d'accord retiennent la bulle (il faut y répondre). Les infos partent avec elle.
-      if ($("cards").querySelector(".card.ask")) return;
-      $("cards").querySelectorAll(".card:not(.ask)").forEach((c) => c.remove());
+      // Seules les demandes d'accord et les listes de choix retiennent la bulle (il faut y répondre). Les infos partent avec elle.
+      if ($("cards").querySelector(".card.ask, .card.pick")) return;
+      $("cards").querySelectorAll(".card:not(.ask):not(.pick)").forEach((c) => c.remove());
       $("bubble").classList.add("hide");
       setTimeout(() => { if ($("bubble").classList.contains("hide")) { $("you").textContent = ""; $("reply").textContent = ""; } }, 250);
     }, ms);
@@ -73,14 +73,15 @@ export function createBubble(deps: BubbleDeps) {
     const h = document.createElement("h3");
     const p = document.createElement("p"); p.textContent = text;
     el.append(h, p);
-    const btns: [HTMLButtonElement, CardText][] = [];
+    const sticky = kind === "ask" || kind === "pick";   // il faut y répondre : ni clic pour fermer, ni expiration
+    const btns: [HTMLButtonElement, CardText, string | undefined][] = [];
     if (buttons) {
-      const row = document.createElement("div"); row.className = "row";
+      const row = document.createElement("div"); row.className = kind === "pick" ? "row col" : "row";
       for (const b of buttons) {
         const btn = document.createElement("button");
         btn.className = b.cls ?? "";
         btn.onclick = b.onClick;
-        btns.push([btn, b.label]);
+        btns.push([btn, b.label, b.detail]);
         row.append(btn);
       }
       el.append(row);
@@ -88,12 +89,15 @@ export function createBubble(deps: BubbleDeps) {
     const txt = (x: CardText): string => (typeof x === "object" ? L(x.key as TextKey) : x);
     el._relabel = () => {
       h.textContent = txt(title);
-      for (const [btn, label] of btns) btn.textContent = txt(label);
-      if (kind !== "ask") el.title = L("closeTip");
+      for (const [btn, label, detail] of btns) {
+        btn.textContent = txt(label);
+        if (detail) { const d = document.createElement("small"); d.textContent = detail; btn.append(d); }
+      }
+      if (!sticky) el.title = L("closeTip");
     };
     el._relabel();
     // Info, erreur : clic = fermer. L'expiration ne retire jamais le texte pendant la lecture.
-    if (kind !== "ask") {
+    if (!sticky) {
       const same = [...$("cards").querySelectorAll<CardEl>(`.card.${kind}`)].find((c) => c.textContent === el.textContent);
       if (same) { showBubble(); return same; }
       el.style.cursor = "pointer";
@@ -122,6 +126,8 @@ export function createBubble(deps: BubbleDeps) {
     hasCards: (): boolean => $("cards").children.length > 0,
     /** Ni phrase de l'utilisateur, ni réponse, ni carte. */
     isEmpty: (): boolean => !$("you").textContent && !$("reply").textContent && !$("cards").children.length,
+    /** La fenêtre « Conversation » est visible : la même conversation n'apparaît pas deux fois, la bulle s'efface. */
+    setChatOpen(on: boolean): void { document.body.classList.toggle("chatopen", on); },
     /** Réglage « bubble » (message display) : sans bulle, seules les cartes restent visibles. */
     setEnabled(on: boolean): void {
       bubbleOn = on;

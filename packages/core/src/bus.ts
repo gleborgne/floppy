@@ -1,11 +1,16 @@
 // Bus d'événements du noyau. Les plugins s'abonnent par ctx.on (désabonnement automatique au déchargement).
 import type { ApprovalRequest, DecisionReason } from "./approval.ts";
+import type { ChoiceReason, ChoiceRequest } from "./choice.ts";
 
 export interface CoreEvents {
   /** Demande d'accord à montrer sur les corps. */
   "approval.request": ApprovalRequest;
   /** Demande fermée (réponse, délai, annulation) : les corps retirent la carte. */
   "approval.closed": { id: string; ok: boolean; reason: DecisionReason; by?: string };
+  /** Choix dans une liste à montrer sur les corps qui ont la capacité `choice`. */
+  "choice.request": ChoiceRequest;
+  /** Choix fermé (réponse, délai, annulation) : les corps retirent la liste. */
+  "choice.closed": { id: string; picked?: string; reason: ChoiceReason; by?: string };
   /**
    * Initiative : l'assistant a quelque chose à dire de lui-même (un job Orca fini, un rappel…).
    * important = dit à voix haute dès que possible (pas pendant un tour, pas en veille) + carte ;

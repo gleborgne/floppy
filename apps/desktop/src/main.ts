@@ -5,7 +5,7 @@
 // - avatar.ts : fenêtre de l'avatar (sans cadre, transparente, toujours devant), sa place, son masquage automatique.
 // - tray.ts : icône dans la barre des tâches (couleur = état) et son menu.
 // - voice-controls.ts / dictation.ts : parler, dormir, dictée, raccourcis globaux.
-// - app-windows.ts : réglages, « Bienvenue », résultats, documents, saisie. ipc.ts : les canaux des pages.
+// - app-windows.ts : réglages, « Bienvenue », résultats, documents. chat-window.ts : la fenêtre « Conversation ». ipc.ts : les canaux des pages.
 // Relie l'avatar au noyau par un MessagePort (même protocole que le WebSocket des autres corps).
 import { app, globalShortcut, session, dialog } from "electron";
 import type { WebContents } from "electron";
@@ -20,6 +20,7 @@ import { createKernelProcess } from "./kernel-process.ts";
 import { createKernelMessages } from "./kernel-messages.ts";
 import { createAvatar } from "./avatar.ts";
 import { createAppWindows } from "./app-windows.ts";
+import { createChatWindow } from "./chat-window.ts";
 import { createVoiceControls } from "./voice-controls.ts";
 import { createDictation } from "./dictation.ts";
 import { registerIpc } from "./ipc.ts";
@@ -47,13 +48,16 @@ process.chdir(ROOT); // les chemins relatifs de floppy.yml partent de la racine 
 // mais se parlent dans les deux sens (la barre des tâches se rafraîchit pour tous, et lit l'état de tous).
 const texts = createTexts();
 const contributions = createDesktopContributions({ create: safeWindow, lang: () => texts.lang(),
-  local: [{ id: "settings", title: { fr: "Réglages", en: "Settings" }, menus: ["tray"], order: 10, open: () => { windows.openSettings(); } }],
+  local: [
+    { id: "settings", title: { fr: "Réglages", en: "Settings" }, menus: ["tray"], order: 10, open: () => { windows.openSettings(); } },
+    { id: "chat", title: { fr: "Ouvrir la conversation", en: "Open the conversation" }, menus: ["avatar"], order: 10, open: () => { chat.open(); } },
+  ],
   send: (message) => kernelProcess.kernel()?.postMessage(message), changed: () => tray.refresh(),
   log: (id, reason) => console.log(`[desktop] ${id}: ${reason}`),
 });
 const tray = createTray({
   texts, quitting: () => quitting, menu: (location) => contributions.menu(location),
-  kernel: () => kernelProcess, avatar: () => avatar, voice: () => voice, dictation: () => dictation, windows: () => windows,
+  kernel: () => kernelProcess, avatar: () => avatar, voice: () => voice, dictation: () => dictation, windows: () => windows, chat: () => chat,
 });
 const kernelProcess = createKernelProcess({
   root: ROOT, config: CONFIG, entry: join(here, "kernel.ts"), texts, quitting: () => quitting,
@@ -71,11 +75,14 @@ const avatar = createAvatar({
 });
 const windows = createAppWindows({
   texts, contributions, refreshTray: () => tray.refresh(),
-  kernel: () => kernelProcess, avatar: () => avatar, voice: () => voice, dictation: () => dictation,
+  kernel: () => kernelProcess, avatar: () => avatar, dictation: () => dictation, chat: () => chat,
+});
+const chat = createChatWindow({
+  texts, refreshTray: () => tray.refresh(), kernel: () => kernelProcess, avatar: () => avatar, voice: () => voice,
 });
 const voice = createVoiceControls({
   texts, kernelLog: kernelProcess.log, problems: tray.problems, refreshTray: () => tray.refresh(),
-  avatar: () => avatar, dictation: () => dictation, windows: () => windows,
+  avatar: () => avatar, dictation: () => dictation, chat: () => chat,
 });
 const dictation = createDictation({
   texts, kernelLog: kernelProcess.log, problems: tray.problems, refreshTray: () => tray.refresh(), avatar: () => avatar,
@@ -101,7 +108,7 @@ app.whenReady().then(() => {
   voice.applyShortcuts(avatar.display().shortcuts ?? texts.shortcuts);
   registerIpc({
     texts, contributions, refreshTray: () => tray.refresh(),
-    kernel: () => kernelProcess, messages: () => messages, avatar: () => avatar, voice: () => voice, dictation: () => dictation, windows: () => windows,
+    kernel: () => kernelProcess, messages: () => messages, avatar: () => avatar, voice: () => voice, dictation: () => dictation, windows: () => windows, chat: () => chat,
   });
 });
 

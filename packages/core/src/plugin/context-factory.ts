@@ -8,7 +8,7 @@ import type { Entry } from "./kernel.ts";
 import type { KernelInternals } from "./kernel-internals.ts";
 import { EffectScope } from "./effects.ts";
 import { execAllowed, programName, type PluginDef } from "./manifest.ts";
-import type { Context, ContextApprovals, HostChannel, HostMessage } from "./context.ts";
+import type { Context, ContextApprovals, ContextChoices, HostChannel, HostMessage } from "./context.ts";
 import { ItemStore } from "../catalog.ts";
 import { cleanLogo } from "../logo.ts";
 import { scopedSecrets } from "../secrets.ts";
@@ -57,6 +57,22 @@ export function approvalsFor(k: KernelInternals, manifest: PluginDef["manifest"]
     },
     respond: (rid, ok, by) => may ? k.approvals.respond(rid, ok, by) : deny("approvals.respond"),
     pending: () => may ? k.approvals.pending() : deny("approvals.pending"),
+  };
+}
+
+/** Vue des choix dans une liste pour un plugin : même règle que les accords (poser pour tous, répondre avec permissions.approvals). */
+export function choicesFor(k: KernelInternals, manifest: PluginDef["manifest"], id: string, scope: EffectScope): ContextChoices {
+  const may = manifest.permissions?.approvals === "respond";
+  const deny = (what: string): never => { throw new Error(`${id} : ${what} demande permissions.approvals: "respond" dans le manifeste (seuls les corps et la CLI répondent aux choix)`); };
+  const stop = new AbortController();
+  scope.add(() => stop.abort());
+  return {
+    ask: (input) => {
+      if (scope.isClosed) return Promise.resolve({ reason: "cancelled" as const });
+      return k.choices.ask({ ...input, source: id, signal: input.signal ? AbortSignal.any([input.signal, stop.signal]) : stop.signal });
+    },
+    respond: (rid, option, by) => may ? k.choices.respond(rid, option, by) : deny("choices.respond"),
+    pending: () => may ? k.choices.pending() : deny("choices.pending"),
   };
 }
 
@@ -121,6 +137,7 @@ export function makeContext(k: KernelInternals, e: Entry, scope: EffectScope, pe
     machine: () => k.machine(),
     restartOffers: (service) => k.restartForks(e.fork?.parent ?? e.cfg.id, service),
     approvals: approvalsFor(k, def.manifest, e.cfg.id, scope),
+    choices: choicesFor(k, def.manifest, e.cfg.id, scope),
     audit: k.audit,
     home: k.home,
     workspace: (name) => {

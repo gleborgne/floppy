@@ -24,8 +24,15 @@ body { font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-ser
   transition: opacity 180ms ease, transform 180ms ease;
   /* La bulle ne dépasse jamais le haut de la fenêtre (560 px - 230 px de tête). Le texte en haut défile,
      les cartes (accord, info, erreur) restent en bas, à part : elles ne cachent plus la conversation. */
-  display: flex; flex-direction: column; max-height: calc(100vh - 236px);
+  display: flex; flex-direction: column; max-height: calc(100vh - 248px);   /* 12 px de plus : le bouton « conversation » dépasse du coin en haut à droite */
 }
+/* Conversation ouverte et visible : la même conversation ne s'affiche pas deux fois. */
+body.chatopen #bubble { display: none; }
+/* Bouton « ouvrir la conversation » : une pastille accrochée au coin haut droit de la bulle, un peu en dehors. */
+#openChat { position: absolute; top: -9px; right: -9px; z-index: 1; width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--card); color: var(--muted); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+#openChat svg { width: 14px; height: 14px; }
+#openChat:hover { color: var(--ink); background: rgb(24, 31, 42); }
+#openChat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #bubble.hide { opacity: 0; transform: translateY(8px) scale(0.97); pointer-events: none; }
 #bubble::after { /* pointe vers le visage */
   content: ""; position: absolute; left: 50%; bottom: -8px; width: 14px; height: 14px;
@@ -70,6 +77,10 @@ body.nobubble #scroll { display: none; }
 .card button.yes { background: var(--accent); color: #042326; border-color: transparent; }
 .card button:hover { filter: brightness(1.12); }
 .card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card h3:empty { display: none; }
+.card .row.col { flex-direction: column; gap: 6px; }
+.card .row.col button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 10px; text-align: left; }
+.card button small { font-size: 12px; font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
 .card .ttl { height: 2px; margin-top: 8px; background: var(--accent); transform-origin: left; border-radius: 2px; opacity: 0.6; }
 .card.info { background: rgba(255, 255, 255, 0.04); border-color: var(--line); }
 .card.error { border-color: rgba(255, 100, 80, 0.5); background: rgba(255, 100, 80, 0.08); }

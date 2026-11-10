@@ -89,9 +89,13 @@ export type BodyState = (typeof STATES)[number];
 /**
  * `panel` : le corps sait ouvrir une fenêtre de résultats décrite en A2UI (voir docs/spec/a2ui.md).
  * `document` : le corps sait afficher un document Markdown (fenêtre « Documents » avec la liste des anciens).
+ * `choice` : le corps sait montrer une liste d'options et rendre celle que l'utilisateur choisit (choice.request).
  */
-export const CAPABILITIES = ["voice", "text", "voice_note", "display", "emotion", "gesture", "approval", "panel", "document", "speech_timing"] as const;
+export const CAPABILITIES = ["voice", "text", "voice_note", "display", "emotion", "gesture", "approval", "panel", "document", "speech_timing", "choice"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
+
+/** Une option d'un choix dans une liste (choice.request) : textes déjà dans la langue de l'assistant. */
+export interface ChoiceOption { id: string; label: string; detail?: string }
 
 /** Une ligne de la liste des documents (date ISO). */
 export interface DocumentEntry { id: string; title: string; date: string; tags: string[] }
@@ -113,6 +117,8 @@ export type BodyToKernel =
   | { type: "mute"; on: boolean }                          // « dors » / réveil
   | { type: "listen.stop" }                               // fin de l'écoute active, sans mise en veille
   | { type: "approval.response"; id: string; ok: boolean }
+  /** L'utilisateur a choisi une option (son id) dans la liste d'un choice.request. */
+  | { type: "choice.response"; id: string; option: string }
   | { type: "tool.result"; callId: string; ok: boolean; text: string }
   | { type: "document.open"; id: string }                // l'utilisateur choisit un ancien document dans la liste
   /** L'utilisateur supprime un document de la liste. current : le document affiché (s'il est supprimé, on montre le suivant). */
@@ -141,6 +147,10 @@ export type KernelToBody =
   | { type: "duck"; on: boolean }
   | { type: "approval.request"; id: string; tool: string; summary: string; level: string; ttl_s: number }
   | { type: "approval.closed"; id: string; ok: boolean }
+  /** Choix dans une liste : une seule option à rendre (choice.response) avant ttl_s secondes. Corps qui ont `choice`. */
+  | { type: "choice.request"; id: string; title: string; options: ChoiceOption[]; ttl_s: number }
+  /** Choix fermé (réponse, délai, annulation) : le corps retire la liste. picked : l'option retenue, absente sinon. */
+  | { type: "choice.closed"; id: string; picked?: string }
   | { type: "tool.call"; callId: string; name: string; args: Record<string, unknown> }
   | { type: "card"; title: string; lines: string[] }
   /** Fenêtre de résultats : messages A2UI (surfaceUpdate, beginRendering). Un même id remplace la fenêtre. */

@@ -23,6 +23,7 @@ import { manifestProblem, type ManifestProblem, type Manifest, type PluginDef, t
 import type { LogLevel, OfferDef } from "./context.ts";
 import type { SettingOption } from "../settings.ts";
 import { ApprovalManager } from "../approval.ts";
+import { ChoiceManager } from "../choice.ts";
 import { MemoryAudit, type Audit } from "../audit.ts";
 import { ToolRegistry } from "../tools.ts";
 import { SettingsRegistry } from "../settings.ts";
@@ -163,6 +164,7 @@ export class Kernel {
   readonly hooks = new Hooks();
   readonly audit: Audit;
   readonly approvals: ApprovalManager;
+  readonly choices: ChoiceManager;
   readonly tools: ToolRegistry;
   readonly settings: SettingsRegistry;
   /** Rubriques de la fenêtre des réglages (déclarées par le noyau et les plugins). */
@@ -248,6 +250,8 @@ export class Kernel {
     this.tools.lang = () => this.assistant.language;
     // Langue des messages : celle de l'assistant pour ce qui est dit (voix), celle de l'interface pour ce qui est lu.
     this.approvals.lang = () => this.assistant.language;
+    this.choices = new ChoiceManager(this.bus, this.audit);
+    this.choices.lang = () => this.assistant.language;
     this.settings = new SettingsRegistry(join(this.home, "settings.json"), this.approvals, this.audit, (via) => (via === "voice" ? this.assistant.language : this.uiLang));
     // Outils internes des réglages : redéclarés quand la liste des réglages change (descriptions à jour).
     let offSettingsTools = () => {};
@@ -471,6 +475,7 @@ export class Kernel {
       // Un démarrage commencé entre-temps (la file finissait un travail) est annulé aussi.
       for (const e of this.all()) if (e.state === "starting") this.abortStart(e, T("arrêt de Floppy", "Floppy is stopping"), { cancelled: true });
       this.approvals.cancelAll();
+      this.choices.cancelAll();
       for (const e of [...this.entries.values()].reverse()) await this.stopEntry(e, "loaded");
     });
   }

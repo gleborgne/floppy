@@ -36,6 +36,7 @@ const Incoming = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mute"), on: z.boolean() }),
   z.object({ type: z.literal("listen.stop") }),
   z.object({ type: z.literal("approval.response"), id: z.string(), ok: z.boolean() }),
+  z.object({ type: z.literal("choice.response"), id: z.string(), option: z.string().max(200) }),
   z.object({ type: z.literal("tool.result"), callId: z.string(), ok: z.boolean(), text: z.string() }),
   z.object({ type: z.literal("playback"), playing: z.boolean() }),
   z.object({ type: z.literal("document.open"), id: z.string().max(200) }),
@@ -82,6 +83,13 @@ export default definePlugin<Config>({
     const isOn = (s: Session) => store.isEnabled(s.id);
     const canApprove = (s: Session) => isOn(s) && s.capabilities.includes("approval") && (!cfg.approvalsFrom.length || cfg.approvalsFrom.includes(s.id));
 
+    const canChoose = (s: Session) => isOn(s) && s.capabilities.includes("choice") && (!cfg.approvalsFrom.length || cfg.approvalsFrom.includes(s.id));
+    const choiceMsg = (r: { id: string; title: string; options: { id: string; label: string; detail?: string }[] }, ttl_s: number): KernelToBody =>
+      ({ type: "choice.request", id: r.id, title: r.title, options: r.options, ttl_s });
+    /** Carte lisible pour un corps sans `choice` : l'utilisateur répond par texte ou à la voix (numéro ou nom). */
+    const choiceCard = (r: { title: string; options: { label: string; detail?: string }[] }): KernelToBody =>
+      ({ type: "card", title: r.title, lines: r.options.map((o, i) => `${i + 1}. ${o.label}${o.detail ? ` — ${o.detail}` : ""}`) });
+
     const registerTool = (s: Session, d: BodyToolDecl) => {
       const cur = bodyTools.get(d.name);
       if (cur) { cur.owners.add(s.id); return; }
@@ -126,6 +134,16 @@ export default definePlugin<Config>({
       for (const s of sessions.values()) if (isOn(s) && s.capabilities.includes("approval")) s.transport.send({ type: "approval.closed", id: c.id, ok: c.ok });
     });
 
+    ctx.on("choice.request", (r) => {
+      const msg = choiceMsg(r, r.ttl_s);
+      for (const s of sessions.values()) if (canChoose(s)) s.transport.send(msg);
+      const origin = r.origin ? sessions.get(r.origin) : undefined;
+      if (origin && isOn(origin) && !origin.capabilities.includes("choice") && origin.capabilities.includes("display")) origin.transport.send(choiceCard(r));
+    });
+    ctx.on("choice.closed", (c) => {
+      for (const s of sessions.values()) if (isOn(s) && s.capabilities.includes("choice")) s.transport.send({ type: "choice.closed", id: c.id, ...(c.picked !== undefined ? { picked: c.picked } : {}) });
+    });
+
     const hub: BodyHub = {
       attach(transport, opts = {}) {
         let session: Session | undefined;
@@ -149,6 +167,8 @@ export default definePlugin<Config>({
             if (canApprove(session)) for (const r of ctx.approvals.pending()) {
               transport.send({ type: "approval.request", id: r.id, tool: r.tool, summary: r.summary, level: r.level, ttl_s: Math.max(1, Math.round((r.expiresAt - Date.now()) / 1000)) });
             }
+            // Choix dans une liste déjà en cours.
+            if (canChoose(session)) for (const r of ctx.choices.pending()) session.transport.send(choiceMsg(r, Math.max(1, Math.round((r.expiresAt - Date.now()) / 1000))));
             ctx.log("info", `corps branché : ${id} (${name}) [${msg.capabilities.join(", ")}]`);
             ctx.audit.write({ kind: "body.join", body: id, name, capabilities: msg.capabilities });
             emit({ type: "join", body: { id, name, capabilities: msg.capabilities, tools: session.tools } });
@@ -163,6 +183,11 @@ export default definePlugin<Config>({
           if (msg.type === "approval.response") {
             if (!canApprove(s)) { ctx.log("warn", `${s.id} n'a pas le droit de répondre aux accords`); return; }
             ctx.approvals.respond(msg.id, msg.ok, s.id);
+            return;
+          }
+          if (msg.type === "choice.response") {
+            if (!canChoose(s)) { ctx.log("warn", `${s.id} n'a pas le droit de répondre aux choix`); return; }
+            ctx.choices.respond(msg.id, msg.option, s.id);
             return;
           }
           if (msg.type === "tool.result") {
@@ -208,6 +233,7 @@ export default definePlugin<Config>({
       speech_timing: T("Expressions synchronisées", "Synchronized expressions"),
       voice: T("voix", "voice"), text: T("texte", "text"), voice_note: T("messages vocaux", "voice notes"), display: T("écran", "screen"),
       emotion: T("émotions", "emotions"), gesture: T("gestes", "gestures"), approval: T("accord", "approval"), panel: T("fenêtre de résultats", "results window"),
+      choice: T("choix dans une liste", "choice in a list"),
     };
     const OFF = "nom:";
     ctx.items.declare({

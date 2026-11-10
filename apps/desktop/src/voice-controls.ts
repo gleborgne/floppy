@@ -7,7 +7,7 @@ import type { Say } from "./app-types.ts";
 import type { Texts } from "./app-texts.ts";
 import type { AvatarWindow } from "./avatar.ts";
 import type { Dictation } from "./dictation.ts";
-import type { AppWindows } from "./app-windows.ts";
+import type { ChatWindow } from "./chat-window.ts";
 
 export interface VoiceControlsDeps {
   texts: Texts;
@@ -18,7 +18,7 @@ export interface VoiceControlsDeps {
   refreshTray(): void;
   avatar(): Pick<AvatarWindow, "win" | "activity" | "toggleWindow">;
   dictation(): Pick<Dictation, "toggleDictate">;
-  windows(): Pick<AppWindows, "openTextInput">;
+  chat(): Pick<ChatWindow, "open">;
 }
 
 export interface VoiceControls {
@@ -43,7 +43,7 @@ export function createVoiceControls(deps: VoiceControlsDeps): VoiceControls {
   function togglePtt() { activity(); pttOn = !pttOn; deps.avatar().win()?.webContents.send("shortcut", pttOn ? "ptt-on" : "ptt-off"); refreshTray(); }
   function toggleMute() { muted = !muted; deps.avatar().win()?.webContents.send("shortcut", muted ? "mute-on" : "mute-off"); refreshTray(); }
 
-  const SHORTCUT_ACTIONS: Record<string, () => void> = { write: () => deps.windows().openTextInput(), talk: () => togglePtt(), dictate: () => deps.dictation().toggleDictate(), sleep: () => toggleMute(), avatar: () => deps.avatar().toggleWindow() };
+  const SHORTCUT_ACTIONS: Record<string, () => void> = { write: () => { deps.chat().open(); }, talk: () => togglePtt(), dictate: () => deps.dictation().toggleDictate(), sleep: () => toggleMute(), avatar: () => deps.avatar().toggleWindow() };
   const registered = new Map<string, string>(); // action -> raccourci posé
   /** Pose les raccourcis globaux choisis. Un raccourci déjà pris par une autre app (ex. Ctrl+Alt+Espace) est signalé. */
   function applyShortcuts(next: unknown): void {

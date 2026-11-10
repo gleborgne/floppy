@@ -56,3 +56,43 @@ export function placeOptions(a: unknown): SpotOptions {
     target: p.target === "window" ? "window" : "screen",
   };
 }
+
+export interface ChatSpotContext {
+  /** Fenêtre de l'avatar (position et taille) et zone utile de son écran. */
+  avatar: Area;
+  work: Area;
+  /** Hauteur de la tête, en bas de la fenêtre de l'avatar. */
+  head: number;
+  /** Taille voulue de la conversation et hauteur en dessous de laquelle on ne la réduit plus. */
+  size: { width: number; height: number; minHeight: number };
+}
+
+/**
+ * Où poser la fenêtre « Conversation » : juste au-dessus de la tête (bord bas = haut de la tête − 8 px, bords droits alignés),
+ * réduite jusqu'à sa hauteur minimale si la place manque ; sinon sous l'avatar ; sinon à côté (à gauche, puis à droite).
+ * Toujours dans la zone utile de l'écran.
+ */
+export function chatSpot({ avatar, work, head, size }: ChatSpotContext): Area {
+  const gap = 8;
+  const width = Math.min(size.width, work.width);
+  const clampX = (x: number) => Math.min(Math.max(x, work.x), work.x + work.width - width);
+  const fit = (height: number, y: number, x: number): Area => {
+    const h = Math.min(height, work.height);
+    return { x: Math.round(clampX(x)), y: Math.round(Math.min(Math.max(y, work.y), work.y + work.height - h)), width, height: Math.round(h) };
+  };
+  const aligned = avatar.x + avatar.width - width;
+  // Au-dessus de la tête.
+  const bottom = avatar.y + avatar.height - head - gap;
+  const above = bottom - work.y;
+  if (above >= size.minHeight) { const h = Math.min(size.height, above); return fit(h, bottom - h, aligned); }
+  // Sous l'avatar.
+  const top = avatar.y + avatar.height + gap;
+  const below = work.y + work.height - top;
+  if (below >= size.minHeight) return fit(Math.min(size.height, below), top, aligned);
+  // À côté : le bas aligné sur celui de l'avatar, à gauche si cela tient, sinon à droite.
+  const h = Math.min(size.height, work.height);
+  const y = avatar.y + avatar.height - h;
+  const left = avatar.x - gap - width;
+  if (left >= work.x) return fit(h, y, left);
+  return fit(h, y, avatar.x + avatar.width + gap);
+}

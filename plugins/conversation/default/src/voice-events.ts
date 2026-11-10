@@ -28,14 +28,15 @@ export interface VoiceDeps {
   interrupt(b: Body, why: string): void;
   finishInit(b: Body): void;
   runTurn(b: Body, text: string, mode: TurnMode, tEnd: number): Promise<void>;
-  answerApproval(b: Body, text: string): boolean;
+  /** Réponse courte à ce qui attend l'utilisateur : accord (oui / non), puis choix dans une liste. */
+  answerPending(b: Body, text: string): boolean;
   onUtterance(b: Body, raw: string, kind: "voice" | "text" | "ptt", tEnd: number, onAccepted?: () => void): void;
   quickSetting(b: Body, q: { key: string; value: string; label: string; slow: boolean }, mode: TurnMode, said: string): Promise<void>;
 }
 
 export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
   return (b, ev) => {
-    const { ctx, hub, lang, shown, live, liveUnavailable, wake, bodies, setState, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerApproval, onUtterance, quickSetting } = d;
+    const { ctx, hub, lang, shown, live, liveUnavailable, wake, bodies, setState, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerPending, onUtterance, quickSetting } = d;
     const freeListen = d.freeListen();
         switch (ev.type) {
           case "vad":
@@ -76,7 +77,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
             }
             // Parole de l'utilisateur pendant que la voix était baissée : il coupe vraiment la parole.
             if (b.duck) userBargeIn(b);
-            if (answerApproval(b, ev.text)) break;
+            if (answerPending(b, ev.text)) break;
             b.wakeStream?.pushTranscript?.({ text: ev.text, startSample: ev.start_sample, endSample: ev.end_sample });
             const activation = b.wakeActivation;
             const activated = !b.live?.active && !!activation && Date.now() <= activation.expires && (activation.endSample === undefined || (ev.end_sample !== undefined && ev.end_sample >= activation.endSample));

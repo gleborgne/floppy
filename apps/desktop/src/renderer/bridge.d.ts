@@ -17,6 +17,9 @@ interface FloppyHostApi {
   openPanel(p: { id?: string; title?: string; a2ui?: unknown[] }): void;
   openDocument(d: { id?: string; title?: string; markdown?: string; entries?: unknown[] }): void;
   updateDocuments(entries: unknown[]): void;
+  /** Relaie à la fenêtre « Conversation » un message du noyau (types connus seulement, relus par le preload). */
+  chat(m: { type: string; [key: string]: unknown }): void;
+  openChat(): void;
   setInteractive(on: boolean): void;
   drag(phase: "start" | "move" | "end"): void;
 }
@@ -70,11 +73,17 @@ interface FloppyOnboardingApi {
   onState(cb: (state: OnboardingState) => void): Unsubscribe;
 }
 
-interface FloppyTextApi {
+interface FloppyChatApi {
+  /** Le texte part vers Floppy par l'avatar ; faux si Floppy n'est pas prêt (le brouillon reste). */
   submit(text: string): Promise<boolean>;
   close(): void;
-  onLang(cb: (lang: string) => void): void;
-  onFocus(cb: () => void): void;
+  answerApproval(id: string, ok: boolean): void;
+  answerChoice(id: string, option: string): void;
+  link(url: string): void;
+  onInit(cb: (data: ChatInit) => void): Unsubscribe;
+  onChange(cb: (delta: ChatDelta) => void): Unsubscribe;
+  onLang(cb: (lang: string) => void): Unsubscribe;
+  onFocus(cb: () => void): Unsubscribe;
 }
 
 interface FloppyDictationApi {
@@ -94,7 +103,7 @@ interface Window {
   floppyDocs: FloppyDocsApi;
   floppyPanel: FloppyPanelApi;
   floppyOnboarding: FloppyOnboardingApi;
-  floppyText: FloppyTextApi;
+  floppyChat: FloppyChatApi;
   floppyDictation: FloppyDictationApi;
   lucideIcon?: (name: string) => SVGSVGElement;
   lucideIconPaths?: (name: string) => string[];

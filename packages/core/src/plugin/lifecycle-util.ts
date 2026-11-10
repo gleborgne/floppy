@@ -5,7 +5,7 @@ import { stableStringify } from "../util/process.ts";
 import type { OfferDef, OfferItem } from "./context.ts";
 
 /** Événements émis seulement par le noyau (ctx.emit les refuse aux plugins). */
-export const KERNEL_EVENTS = new Set(["approval.request", "approval.closed", "plugin.state", "service.changed", "task.done", "floppy.restart"]);
+export const KERNEL_EVENTS = new Set(["approval.request", "approval.closed", "choice.request", "choice.closed", "plugin.state", "service.changed", "task.done", "floppy.restart"]);
 
 export function sameEntry(a: EntryConfig, b: EntryConfig): boolean {
   return a.plugin === b.plugin && a.disabled === b.disabled && stableStringify(a.config) === stableStringify(b.config);

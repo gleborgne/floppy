@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src https: data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Floppy — Conversation</title>
+  <link rel="stylesheet" href="./chat.css">
+  <script type="module" src="./chat.js"></script>
+</head>
+<body>
+  <main id="log" role="log" aria-live="polite" aria-label="Conversation" tabindex="0"></main>
+  <p id="empty">Rien pour l'instant. Écris à Floppy ou parle-lui.</p>
+  <form id="request">
+    <p id="error" role="alert" hidden></p>
+    <div class="field">
+      <textarea id="prompt" rows="2" maxlength="10000" aria-label="Écrire à Floppy" placeholder="Écrire à Floppy…"></textarea>
+      <button type="submit" id="send">Envoyer</button>
+    </div>
+    <p id="hint"></p>
+  </form>
+</body>
+</html>

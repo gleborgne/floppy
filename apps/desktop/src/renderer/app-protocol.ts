@@ -35,7 +35,10 @@ const TOOLS: BodyToolDecl[] = [
  */
 const CORNER_OF_TOOL: Record<string, string> = { bas_droite: "bottom_right", bas_gauche: "bottom_left", haut_droite: "top_right", haut_gauche: "top_left", centre: "center" };
 
-const CAPABILITIES: Capability[] = ["voice", "display", "emotion", "approval", "panel", "document", "speech_timing"];
+const CAPABILITIES: Capability[] = ["voice", "display", "emotion", "approval", "panel", "document", "speech_timing", "choice"];
+
+/** Ce que la fenêtre « Conversation » reçoit du noyau (relayé par l'app, qui relit chaque champ). */
+const CHAT_RELAYED = new Set(["transcript", "reply.delta", "reply.done", "notify", "card", "error", "approval.request", "approval.closed", "choice.request", "choice.closed"]);
 
 export interface ProtocolDeps {
   host?: FloppyHostApi;
@@ -55,7 +58,16 @@ export interface ProtocolDeps {
 
 export function createProtocol(deps: ProtocolDeps) {
   const { host, texts, face, loadAvatar, life, bubble, playback, mic, session, link } = deps;
-  const { approvals } = session;
+  const { approvals, choices } = session;
+  /** Une demande d'accord ou une liste de choix est ouverte : l'avatar reste attentif et ne se cache pas. */
+  const pending = (): number => approvals.size + choices.size;
+  /** Barre du temps restant : se vide jusqu'à l'expiration de la demande. */
+  const ttlBar = (el: CardEl, ttl_s: number): void => {
+    const bar = document.createElement("div");
+    bar.className = "ttl";
+    bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: ttl_s * 1000, fill: "forwards" });
+    el.append(bar);
+  };
   const send = (msg: BodyToKernel): void => link.send(msg);
 
   $("stopListening")?.addEventListener("click", () => {
@@ -64,6 +76,8 @@ export function createProtocol(deps: ProtocolDeps) {
     session.pttOn = false;
     send({ type: "listen.stop" });
   });
+
+  $("openChat")?.addEventListener("click", () => host?.openChat?.());
 
   async function onToolCall(m: ToolCallMsg): Promise<void> {
     try {
@@ -83,6 +97,7 @@ export function createProtocol(deps: ProtocolDeps) {
   }
 
   function onMessage(m: KernelMsg): void {
+    if (CHAT_RELAYED.has(m.type) && (m.type !== "transcript" || m.final)) host?.chat?.(m);
     switch (m.type) {
       case "welcome":
         if (typeof m.assistant?.language === "string") texts.setAssistantLang(m.assistant.language.slice(0, 2).toLowerCase());
@@ -92,7 +107,7 @@ export function createProtocol(deps: ProtocolDeps) {
         session.state = m.state;
         if (m.state !== "idle") life.touch();
         face.setState(m.state);
-        face.setAttention(approvals.size ? "approval" : m.state);
+        face.setAttention(pending() ? "approval" : m.state);
         host?.setState(m.state);
         if (m.state === "listening" || m.state === "thinking") { session.pttOn = session.pttOn && m.state === "listening"; }
         bubble.showListening(m.state === "listening");
@@ -125,10 +140,7 @@ export function createProtocol(deps: ProtocolDeps) {
           { label: { key: "yes" }, cls: "yes", onClick: () => send({ type: "approval.response", id: m.id, ok: true }) },
           { label: { key: "no" }, onClick: () => send({ type: "approval.response", id: m.id, ok: false }) },
         ]);
-        const bar = document.createElement("div");
-        bar.className = "ttl";
-        bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: m.ttl_s * 1000, fill: "forwards" });
-        el.append(bar);
+        ttlBar(el, m.ttl_s);
         approvals.set(m.id, el);
         face.setAttention("approval");
         break;
@@ -136,8 +148,27 @@ export function createProtocol(deps: ProtocolDeps) {
       case "approval.closed": {
         approvals.get(m.id)?.remove();
         approvals.delete(m.id);
-        face.setAttention(approvals.size ? "approval" : session.state);
-        if (!approvals.size) host?.approvalClosed();
+        face.setAttention(pending() ? "approval" : session.state);
+        if (!pending()) host?.approvalClosed();
+        if (!bubble.hasCards()) bubble.hideSoon(4000);
+        break;
+      }
+      case "choice.request": {
+        host?.activity("approval");   // comme un accord : l'avatar ne se cache pas tant qu'on n'a pas choisi
+        const el = bubble.card("pick", m.title, "", m.options.map((o) => ({
+          label: o.label, ...(o.detail ? { detail: o.detail } : {}),
+          onClick: () => { el.querySelectorAll("button").forEach((b) => { b.disabled = true; }); send({ type: "choice.response", id: m.id, option: o.id }); },
+        })));
+        ttlBar(el, m.ttl_s);
+        choices.set(m.id, el);
+        face.setAttention("approval");
+        break;
+      }
+      case "choice.closed": {
+        choices.get(m.id)?.remove();
+        choices.delete(m.id);
+        face.setAttention(pending() ? "approval" : session.state);
+        if (!pending()) host?.approvalClosed();
         if (!bubble.hasCards()) bubble.hideSoon(4000);
         break;
       }
@@ -158,11 +189,13 @@ export function createProtocol(deps: ProtocolDeps) {
     link.attach(p);
     // Nouvelle connexion : les anciennes demandes d'accord n'existent plus côté noyau. On retire les cartes
     // et on prévient l'app (sinon le masquage automatique reste bloqué).
-    if (approvals.size) {
-      for (const el of approvals.values()) el.remove();
+    if (pending()) {
+      for (const el of [...approvals.values(), ...choices.values()]) el.remove();
       approvals.clear();
+      choices.clear();
       host?.approvalClosed();
     }
+    host?.chat?.({ type: "session.reset" });
     p.onmessage = (e) => {
       const d = e.data;
       if (d?.j) onMessage(d.j);
@@ -182,6 +215,11 @@ export function createProtocol(deps: ProtocolDeps) {
       if (typeof disp.avatar === "string") void loadAvatar(disp.avatar, disp.avatarUrl);
       bubble.setEnabled(disp.bubble !== false);
     }
+    if (typeof e.data?.floppyChatOpen === "boolean") bubble.setChatOpen(e.data.floppyChatOpen);
+    const chatApproval = e.data?.floppyChatApproval;
+    if (chatApproval && typeof chatApproval.id === "string") send({ type: "approval.response", id: chatApproval.id, ok: chatApproval.ok === true });
+    const chatChoice = e.data?.floppyChatChoice;
+    if (chatChoice && typeof chatChoice.id === "string" && typeof chatChoice.option === "string") send({ type: "choice.response", id: chatChoice.id, option: chatChoice.option });
     const docOpen = e.data?.floppyDocumentOpen;
     if (typeof docOpen === "string") send({ type: "document.open", id: docOpen });
     const docDel = e.data?.floppyDocumentDelete;

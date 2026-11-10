@@ -290,6 +290,7 @@ Le `ctx` est la seule porte vers le noyau :
 | `secrets` | coffre des secrets, **cloisonné** : seuls les noms `<id du manifeste>/…` |
 | `home` | dossier de données (`%LOCALAPPDATA%assistant`) |
 | `approvals` | `check` pour tous ; `respond` et `pending` seulement avec `permissions.approvals: "respond"` |
+| `choices` | `ask` pour tous (choix d'une option dans une liste, voir [Choix dans une liste](#choix-dans-une-liste)) ; `respond` et `pending` seulement avec `permissions.approvals: "respond"` |
 | `audit` | journal |
 | `spawn` | refuse un programme absent de `permissions.exec` ; `keep: true` : programme ouvert pour l'utilisateur (navigateur, terminal), détaché, laissé ouvert |
 | `exec` | commande courte (`permissions.exec`), délai de 30 s par défaut, arrêtée avec le plugin ; rend `{ stdout, stderr, code }` |
@@ -437,6 +438,17 @@ flowchart LR
 - Chaque appel reçoit un `callId` neuf du registre. La session et le tour hôte (`session`, `turn`) sont repris dans l'accord et le résultat pour relier les événements. Un outil peut déclarer `auditArgs` pour réduire les paramètres journalisés ; son erreur brute est alors remplacée par `tool-failed`. Un filtre qui lève une erreur produit seulement `{ redacted: true }`, jamais les paramètres d'origine. Les détails utiles restent dans la réponse utilisateur de l'outil.
 - Un plugin demande un accord par `ctx.approvals.check`. Seuls `body-hub`, `conversation` et `bench-api` (catalogue de développement, `FLOPPY_DEV=1`) peuvent répondre (`permissions.approvals: "respond"`) ; voir [Sécurité](securite.md#laccord).
 - La demande d'accord a un **id secret** (UUID) et une durée de vie. Le modèle ne le voit jamais. Seuls les corps (bus) et la CLI répondent. **La première réponse gagne**, les suivantes sont ignorées.
+
+#### Choix dans une liste
+
+Le noyau peut demander à l'utilisateur de choisir **une** option dans une liste, comme pour un accord (`ChoiceManager`, `packages/core/src/choice.ts`, `kernel.choices`).
+
+- `ctx.choices.ask({ title, options: [{ id, label, detail? }], origin?, ttl_s?, signal? })` rend `{ picked?, reason: "user" | "timeout" | "cancelled", by? }`. Titre, libellés et détails sont des `Text`, résolus dans la langue de l'assistant. 2 à 20 options, ids non vides et uniques, sinon `TextError`. `ttl_s` : 60 s par défaut, borné à 5..600. Sans réponse : `timeout`.
+- Id secret (UUID), jamais vu du modèle. Seuls les corps répondent : `respond(id, option, by)` refuse une demande inconnue ou fermée et une option absente de la liste. La première réponse valide gagne.
+- Événements du bus : `choice.request` (la demande, dans la langue de l'assistant) et `choice.closed` (`id`, `picked?`, `reason`, `by?`). Une entrée du journal `kind: "choice"` à la fermeture (source, origine, nombre d'options, choix, raison, auteur).
+- Les demandes d'un plugin sont annulées à son arrêt, et toutes à l'arrêt du noyau. `respond` et `pending` demandent `permissions.approvals: "respond"`, comme les accords. Non exposé aux plugins tiers.
+- Routage (`body-hub`) : `choice.request` va aux corps qui ont la capacité `choice` (et autorisés par `approvalsFrom`) ; un corps branché pendant l'attente la reçoit avec le temps restant. Si le corps d'origine n'a pas `choice` mais a `display`, il reçoit une `card` numérotée (`1. libellé — détail`) et l'utilisateur répond par texte ou à la voix (traité par `conversation`). `choice.closed` va aux corps `choice`.
+- Dans la conversation (`plugins/conversation/default`) : l'outil `ask_choice` (niveau `read` ; `question`, `options` = 2 à 9 textes) pose la question avec `ttl_s` 90 s et rend au modèle le libellé choisi, ou « aucun choix » / « annulé » avec la consigne de ne pas reposer la question. Sur le corps vocal d'origine, en tour vocal, la question et les options sont dites (« Un : …, deux : … ») comme l'invite d'accord ; en tour texte, rien n'est dit. Une réponse courte (`matchChoice`, `src/choice-match.ts`, français et anglais) répond sur le corps d'origine, sans exiger la capacité `choice`, comme un accord : un chiffre (« 2 »), un nombre (« deux », « two »), un rang (« la deuxième », « the second one », « premier », « last »), ou le nom d'une option (libellé cité ou mot distinctif d'une seule option). Ambigu, hors liste ou sans rapport : l'énoncé suit son cours normal. Un accord en attente garde la priorité ; un corps en veille ne répond pas à la voix. Limite : en Live, le modèle parle seul, les options ne sont donc pas lues (elles restent affichées et la réponse marche).
 
 Testé (`plugins/tools/test/tools.test.ts`) : une écriture refusée ou sans réponse **n'atteint jamais** le serveur MCP ; sans jeton, le serveur MCP Floppy répond 401 ; un serveur MCP cassé au démarrage n'empêche pas les autres.
 

@@ -215,6 +215,7 @@ Tokens live in CSS custom properties, one `:root` block per window. In the Setti
 | `--ink`, `--muted`, `--accent`, `--card`, `--line` (bubble window) | `apps/desktop/src/renderer/style.css` |
 | `--bg`, `--side`, `--card`, `--line`, `--text`, `--muted`, `--accent`, `--bad` | `apps/desktop/src/renderer/documents.css` |
 | `--bg`, `--card`, `--line`, `--text`, `--muted`, `--accent`, `--accent-ink` | `apps/desktop/src/renderer/panel.css` |
+| `--bg`, `--panel`, `--panel-2`, `--field-well`, `--ink`, `--muted`, `--muted-2`, `--accent`, `--accent-ink`, `--line`, `--edge`, `--bad`, `--good` (Conversation window) | `apps/desktop/src/renderer/chat.css` |
 | `--neon`, `--neon2` | inline `<style>` in `apps/desktop/src/renderer/dictation.html` |
 
 ### Primary
@@ -278,7 +279,7 @@ Tokens live in CSS custom properties, one `:root` block per window. In the Setti
 
 **Documents window.** A 270px sidebar (190px below 640px) and a reading column centred at max 70ch (padding 26px 34px 48px).
 
-**Avatar window.** Transparent, 230px tall face area at the bottom, the bubble stacked above it, never taller than `calc(100vh - 236px)`; conversation scrolls inside, cards (approval, info, error) stay pinned below the conversation in their own 150px scroll area. Without conversation text, cards use the available bubble height before scrolling, including when the listening indicator is present. Notification text stays visible throughout speech and listening; automatic dismissal resumes at rest. Removing the last content hides the bubble immediately.
+**Avatar window.** Transparent, 230px tall face area at the bottom, the bubble stacked above it, never taller than `calc(100vh - 248px)` (12px of room for the open button that hangs off its top-right corner); conversation scrolls inside, cards (approval, info, error) stay pinned below the conversation in their own 150px scroll area. Without conversation text, cards use the available bubble height before scrolling, including when the listening indicator is present. Notification text stays visible throughout speech and listening; automatic dismissal resumes at rest. Removing the last content hides the bubble immediately.
 
 **Spacing rhythm.** Gaps of 8px between controls are the default; 10 to 12px between icon and label or inside rows; 16px row padding; 18 to 22px between blocks; 28 to 36px window padding. Values outside the frontmatter scale (2, 3, 5, 7, 9px) appear only inside controls for optical alignment.
 
@@ -364,6 +365,18 @@ Compact and quiet; the cyan fill is spent on one action per view.
 
 ### Approval card (signature)
 - Inside the bubble, below the conversation: 12px radius, `rgba(70, 227, 234, 0.07)` fill and 0.3 cyan border; title in 12px cyan at 600, text at 13px. Two equal buttons side by side, 9px radius: "Yes" filled `accent`, the other neutral at 6% white. A 2px cyan bar under the buttons shrinks from full width to zero over the request's time-to-live. Variants: `info` (neutral fill, `line` border) and `error` (red tint, red title). In the assistant pane the equivalent permission card (`.perm`) uses a cyan 1px border on `panel-2` and drops to `line` once answered.
+
+### Open-conversation button (signature)
+- A small round badge (26px, `bubble-card` fill, `line` border, `muted` icon turning `ink` on hover, the Lucide `message-square` icon at 14px) hung on the speech bubble's top-right corner, 9px outside it, so it stays inside the 320px window and inside the clickable zone (it belongs to `#bubble`). Visible whenever the bubble is; tooltip and `aria-label` "Open the conversation" follow the interface language. A click opens the Conversation window.
+
+### Pick card (signature)
+- A choice list inside the bubble, below the conversation, sharing the approval card's frame (12px radius, 7% cyan fill, 30% cyan border, 12px cyan title, 2px cyan time-left bar). One full-width button per option, stacked 6px apart: the label in 13px/600 over an optional detail line in 12px `muted`. No button is filled cyan (nothing is "the" answer); a click disables the rest. Like an approval it keeps the bubble open and the avatar awake until the choice is closed.
+
+### Conversation window
+- A calm workshop window (420 by 520px, minimum 340 by 320, `bg`), opened above the avatar's head and following it (see `docs/spec/corps-et-avatar.md`). Top to bottom: the log (scrolls, text selectable and copyable, 14px/16px padding, 10px between entries), then a `panel` input strip with a `line` hairline on top.
+- **Entries.** "You": right-aligned, 14px radius with a 4px corner at the bottom right, 12% cyan tint and 40% cyan border, a cyan bold "You" prefix (Signal Cyan for the user's own message). Floppy's reply: left, no bubble, plain text while it streams, then the finished Markdown on the page background (cyan links and list markers, `panel-2` code, as in Documents at 14px). Info and error: the compact `.card` of the bubble (neutral, red tint). Approval and pick: the same cards as in the bubble (Yes filled cyan, 32px tall buttons; options as full-width rows with a cyan number 1 to 9), the time-left bar included; once closed the card keeps its title and one line of outcome ("Approved" in `good`, "Refused or expired", "Chosen: X" or "No choice") and loses its buttons.
+- **Input strip.** The `field-well` textarea (2 rows, grows to 160px) and a primary "Send" button (the one filled cyan action), a `bad` error line above when Floppy is not ready (the draft stays), a 12px `muted-2` hint below. Enter sends, Shift+Enter breaks the line, Escape closes (the log stays), digits 1 to 9 pick a row of the open list when the field is empty or not focused.
+- **Flat at rest** (no shadow); the empty log says so in `muted`. While the window is open and visible the avatar's bubble is hidden.
 
 ### Documents
 - Sidebar of rows (title clamped to two lines at 14px/600, date in 12px `muted`); current row has a 12% cyan tint and a 2px cyan left bar; a trash button appears on hover, focus or when armed, and arming turns it red with a "Confirm" label. The reading column renders Markdown: cyan links with 3px underline offset, cyan list markers, block quotes with a 3px cyan-at-50% left rule, code and tables on `doc-card`, zebra rows at 2.5% white.

@@ -11,6 +11,7 @@ import type { AvatarWindow } from "./avatar.ts";
 import type { VoiceControls } from "./voice-controls.ts";
 import type { Dictation } from "./dictation.ts";
 import type { AppWindows } from "./app-windows.ts";
+import type { ChatWindow } from "./chat-window.ts";
 
 /** Ce dont le menu a besoin des autres modules (lus à chaque affichage : ils sont créés après l'icône). */
 export interface TrayDeps {
@@ -20,7 +21,8 @@ export interface TrayDeps {
   avatar(): Pick<AvatarWindow, "win" | "state" | "toggleWindow" | "placeHome" | "showWin">;
   voice(): Pick<VoiceControls, "pttOn" | "muted" | "togglePtt" | "toggleMute">;
   dictation(): Pick<Dictation, "dictating" | "toggleDictate">;
-  windows(): Pick<AppWindows, "openTextInput" | "openOnboarding">;
+  windows(): Pick<AppWindows, "openOnboarding">;
+  chat(): Pick<ChatWindow, "open">;
   /** Entrées de menu des contributions (voir desktop-contributions.ts). */
   menu(location: "tray"): MenuItemConstructorOptions[];
 }
@@ -61,7 +63,7 @@ export function createTray(deps: TrayDeps): TrayIcon {
       ...[...problems].map(([id, p]) => ({ label: `✖ ${problemName(id)} : ${trx(p)}`.slice(0, 90), enabled: false })),
       { type: "separator" },
       { label: deps.voice().pttOn() ? T("pttStop") : T("pttStart"), click: () => deps.voice().togglePtt() },
-      { label: T("write"), click: () => { deps.windows().openTextInput(); } },
+      { label: T("write"), click: () => { deps.chat().open(); } },
       { label: dictating ? T("dictateStop") : T("dictateStart"), click: () => deps.dictation().toggleDictate() },
       { label: deps.voice().muted() ? T("wake") : T("mute"), click: () => deps.voice().toggleMute() },
       { label: win && !win.isDestroyed() && win.isVisible() ? T("hide") : T("show"), click: () => deps.avatar().toggleWindow() },

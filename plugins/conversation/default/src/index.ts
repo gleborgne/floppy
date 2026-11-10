@@ -6,6 +6,8 @@
 // - Règle d'or : la réponse revient sur le corps d'origine, dans sa forme (voix ou texte).
 // - État et émotion : envoyés à tous les corps qui savent les montrer.
 // - « oui » / « non » à la voix répond à une demande d'accord en cours (« yes » / « no » aussi).
+// - Choix dans une liste (outil ask_choice) : les options sont dites sur le corps vocal d'origine ; « 2 », « la deuxième »,
+//   « the last one » ou le nom d'une option répondent, à la voix ou tapés, sur n'importe quel corps d'origine.
 // - Langues : ce que Floppy dit suit la langue de l'assistant (ctx.assistant.language, le plugin redémarre quand
 //   elle change) ; les erreurs montrées dans les fenêtres suivent la langue de l'interface (ctx.uiLang()).
 // - Interruption : si l'utilisateur parle pendant la voix, tout s'arrête (cerveau, synthèse, lecture).
@@ -13,6 +15,7 @@ import { definePlugin, type Text, AudioHistory, T, tr, errorText } from "@floppy
 import type { BrainService, LiveService, TtsService, WakewordService, TurnMode, SpeechDelivery } from "@floppy/contracts";
 import type { BodyState, Cue, Emotion } from "@floppy/protocol";
 import { isSleepCommand, isWakeUpPhrase, stripWakeWord, yesNo, matchQuickSetting } from "./text.ts";
+import { matchChoice, choicePrompt } from "./choice-match.ts";
 
 import { SpeechQueue } from "./speech.ts";
 import { LiveConversation } from "./live.ts";
@@ -29,6 +32,7 @@ import { expressivenessFactor } from "@floppy/toolkit";
 export { PHRASES };
 
 export * from "./text.ts";
+export { matchChoice, choicePrompt } from "./choice-match.ts";
 export { liveInstructions } from "./live.ts";
 export { MoodTracker, AFFECT } from "./mood.ts";
 export { guessEmotion, ReplyFeeler } from "./feel.ts";
@@ -267,13 +271,30 @@ export default definePlugin<Config>({
       setEmotion(answer ? "happy" : "neutral");
       return true;
     };
+    // Choix dans une liste : même règle d'origine que les accords, mais aucune capacité requise du corps
+    // (un corps voix seule ou texte seul répond). Un accord en attente garde la priorité.
+    const choicesFor = (b: Body) => {
+      const capable = hub.sessions().filter((s) => s.enabled !== false && s.capabilities.includes("choice"));
+      return ctx.choices.pending().filter((p) => p.origin === b.id || (!p.origin && capable.length === 1 && capable[0]!.id === b.id));
+    };
+    const answerChoice = (b: Body, text: string): boolean => {
+      if (b.muted || approvalsFor(b).length) return false;
+      const pending = choicesFor(b).at(-1);
+      const picked = pending ? matchChoice(text, wake, pending.options) : undefined;
+      if (!pending || picked === undefined) return false;
+      if (!ctx.choices.respond(pending.id, picked, `${b.id}:voix`)) return false;
+      setEmotion("happy");
+      return true;
+    };
+    /** Une réponse courte à ce qui est en attente : accord (oui / non) d'abord, puis choix dans une liste. */
+    const answerPending = (b: Body, text: string): boolean => answerApproval(b, text) || answerChoice(b, text);
     const onUtterance = (b: Body, raw: string, kind: "voice" | "text" | "ptt", tEnd: number, onAccepted: () => void = () => {}) => {
       let done = false;
       const accepted = () => { if (!done) { done = true; mood.touch(); onAccepted(); } };
       const text = raw.trim();
       if (!text) return;
-      if (kind === "text" && approvalsFor(b).length) b.muted = false;
-      if (answerApproval(b, text)) { accepted(); return; }
+      if (kind === "text" && (approvalsFor(b).length || choicesFor(b).length)) b.muted = false;
+      if (answerPending(b, text)) { accepted(); return; }
       const woke = kind !== "voice";
       // 2. En veille : seul le mot d'activation réveille.
       if (b.muted) {
@@ -357,10 +378,59 @@ export default definePlugin<Config>({
 
     ctx.on("approval.closed", (c) => { for (const b of bodies.values()) { b.awaiting.delete(c.id); b.live?.touch(); } });
 
+    // ------------------------------------------------------------ choix dans une liste : question et options dites sur le corps vocal d'origine
+    // Limite : en Live (session ouverte), le modèle parle seul et ne peut pas lire les options : elles s'affichent
+    // sur le corps (carte ou liste) et « 2 » ou le nom d'une option répondent quand même.
+    ctx.on("choice.request", (r) => {
+      const b = r.origin ? bodies.get(r.origin) : undefined;
+      b?.awaiting.add(r.id);
+      if (!b || b.live?.active) return;
+      const prompt = choicePrompt(r.title, r.options, lang);
+      if (b.stream && b.turn?.mode === "voice") {
+        const id = `c-${r.id.slice(0, 8)}`;
+        b.turn.pending.add(id);
+        speakOut(b, id, prompt);
+      } else if (b.stream && b.quick) sayDirect(b, prompt);
+    });
+    ctx.on("choice.closed", (c) => { for (const b of bodies.values()) b.awaiting.delete(c.id); });
+
+    // Outil du modèle : l'utilisateur choisit entre quelques options concrètes. `options` est une liste de textes
+    // (le schéma qu'un modèle remplit le plus sûrement) : pas de détail, les ids sont fabriqués ici.
+    const MIN_OPTIONS = 2, MAX_OPTIONS = 9, CHOICE_TTL_S = 90;
+    ctx.tools.register([{
+      name: "ask_choice",
+      description: "Demande à l'utilisateur de choisir UNE option parmi quelques options concrètes (2 à 9), affichées sur son écran et dites à voix haute. "
+        + "À utiliser quand il doit trancher entre des possibilités précises (quel fichier, quel contact, quelle heure) et que tu ne peux pas décider à sa place. "
+        + "Sa réponse revient comme résultat de l'outil : le libellé choisi. Attends ce résultat. Ne relis pas les options toi-même à voix haute, ne les répète pas dans ta réponse, "
+        + "et ne repose pas la question si le résultat dit qu'aucun choix n'a été fait.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "La question posée, courte (ex. « Quel fichier ouvrir ? »)." },
+          options: { type: "array", items: { type: "string" }, minItems: MIN_OPTIONS, maxItems: MAX_OPTIONS, description: "Les options, des textes courts et distincts, dans l'ordre à présenter." },
+        },
+        required: ["question", "options"],
+      },
+      level: "read",
+      handler: async (a, meta) => {
+        const labels = (Array.isArray(a.options) ? a.options : []).map((o) => String(o ?? "").trim()).filter(Boolean);
+        const title = String(a.question ?? "").trim();
+        if (!title || labels.length < MIN_OPTIONS || labels.length > MAX_OPTIONS) {
+          return { status: "failed", text: T(`Il faut une question et entre ${MIN_OPTIONS} et ${MAX_OPTIONS} options (reçu : ${labels.length}).`, `A question and ${MIN_OPTIONS} to ${MAX_OPTIONS} options are needed (got: ${labels.length}).`) };
+        }
+        const options = labels.map((label, i) => ({ id: `o${i + 1}`, label }));
+        const r = await ctx.choices.ask({ title, options, ttl_s: CHOICE_TTL_S, ...(meta.origin ? { origin: meta.origin } : {}), ...(meta.signal ? { signal: meta.signal } : {}) });
+        const picked = options.find((o) => o.id === r.picked);
+        if (r.reason === "user" && picked) return { status: "done", text: T(`L'utilisateur a choisi : ${picked.label}`, `The user chose: ${picked.label}`) };
+        if (r.reason === "timeout") return { status: "failed", text: T("Aucun choix fait (l'utilisateur n'a pas répondu à temps). Ne repose pas la question : dis-le simplement, ou laisse tomber.", "No choice made (the user did not answer in time). Do not ask again: just say so, or drop it.") };
+        return { status: "failed", text: T("Choix annulé. Ne repose pas la question.", "Choice cancelled. Do not ask again.") };
+      },
+    }]);
+
     // ------------------------------------------------------------ corps
     const onVoice = voiceHandler({
       ctx, hub, lang, shown, live, liveUnavailable, wake, freeListen: () => freeListen, bodies,
-      setState, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerApproval, onUtterance, quickSetting,
+      setState, setEmotion, cue, maybeFinish, mayEcho, endDuck, duckFor, userBargeIn, interrupt, finishInit, runTurn, answerPending, onUtterance, quickSetting,
     });
     const attachWakeword = async (b: Body) => {
       b.wakeAbort?.abort(); b.wakeStream?.close(); b.wakeStream = undefined; b.wakeActivation = undefined;
@@ -410,7 +480,7 @@ export default definePlugin<Config>({
         tone: () => tone, profile: () => profile, freeListen: () => freeListen,
         onInput: (text) => {
           if (isSleepCommand(text, wake)) { b.muted = true; b.history?.clear(); b.live?.stop("veille"); setState(b, "sleep"); return; }
-          answerApproval(b, text);
+          answerPending(b, text);
         },
         onState: (state) => { setState(b, b.muted ? "sleep" : state); b.stream?.setSpeaking(!b.muted && state === "speaking"); if (!b.muted && state === "listening") b.awakeUntil = Date.now() + freeListen * 1000; },
         onPlaying: (on) => { b.playing = on; if (!on) { b.feeler?.reset(); neutralSoon(); } },

@@ -15,6 +15,8 @@ export interface Session {
   dictating: boolean;
   /** Demandes d'accord affichées, par id. */
   approvals: Map<string, CardEl>;
+  /** Listes de choix affichées, par id. */
+  choices: Map<string, CardEl>;
 }
 /** Lecture seule de la session, pour les modules qui ne l'écrivent pas. */
 export interface SessionView {
@@ -23,8 +25,9 @@ export interface SessionView {
   readonly pttOn: boolean;
   readonly dictating: boolean;
   readonly approvals: ReadonlyMap<string, CardEl>;
+  readonly choices: ReadonlyMap<string, CardEl>;
 }
-export const createSession = (): Session => ({ state: "sleep", muted: false, pttOn: false, dictating: false, approvals: new Map() });
+export const createSession = (): Session => ({ state: "sleep", muted: false, pttOn: false, dictating: false, approvals: new Map(), choices: new Map() });
 
 /** Le lien avec le noyau : un MessagePort, { j: <message JSON> } vers le noyau, { a: <audio micro> }. */
 export interface Link {

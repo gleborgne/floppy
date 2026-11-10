@@ -1,4 +1,4 @@
-// Fenêtres secondaires de l'app : réglages, « Bienvenue », résultats (A2UI), « Documents » (Markdown), saisie d'une demande ;
+// Fenêtres secondaires de l'app : réglages, « Bienvenue », résultats (A2UI), « Documents » (Markdown) ;
 // et la langue de l'interface, qui se propage à toutes les fenêtres.
 // Propriétaire de ces fenêtres et des conversations de l'assistant ouvertes depuis les réglages.
 import type { BrowserWindow } from "electron";
@@ -9,7 +9,7 @@ import type { Msg } from "./app-types.ts";
 import type { Texts } from "./app-texts.ts";
 import type { KernelProcess } from "./kernel-process.ts";
 import type { AvatarWindow } from "./avatar.ts";
-import type { VoiceControls } from "./voice-controls.ts";
+import type { ChatWindow } from "./chat-window.ts";
 import type { Dictation } from "./dictation.ts";
 import type { createDesktopContributions } from "./desktop-contributions.ts";
 
@@ -24,9 +24,9 @@ export interface AppWindowsDeps {
   contributions: Pick<ReturnType<typeof createDesktopContributions>, "language">;
   refreshTray(): void;
   kernel(): Pick<KernelProcess, "kernel" | "hasBodyPort">;
-  avatar(): Pick<AvatarWindow, "win" | "winReady" | "display" | "activity">;
-  voice(): Pick<VoiceControls, "setMuted">;
+  avatar(): Pick<AvatarWindow, "win" | "winReady" | "display">;
   dictation(): Pick<Dictation, "sendLang">;
+  chat(): Pick<ChatWindow, "setLang">;
 }
 
 export interface AppWindows {
@@ -34,7 +34,6 @@ export interface AppWindows {
   onbWin(): BrowserWindow | null;
   panelWin(): BrowserWindow | null;
   docsWin(): BrowserWindow | null;
-  textWin(): BrowserWindow | null;
   /** Conversations de l'assistant ouvertes depuis la fenêtre des réglages (fermées avec elle). */
   coderSessions: Set<string>;
   /** Langue de l'interface reçue du noyau : titres et pages des fenêtres suivent tout de suite. */
@@ -44,8 +43,6 @@ export interface AppWindows {
   openSettings(): BrowserWindow;
   openOnboarding(): BrowserWindow;
   showSettingsConfirmed(): Promise<void>;
-  openTextInput(): BrowserWindow;
-  submitText(e: { sender: unknown }, raw: unknown): boolean;
 }
 
 export function createAppWindows(deps: AppWindowsDeps): AppWindows {
@@ -58,7 +55,6 @@ export function createAppWindows(deps: AppWindowsDeps): AppWindows {
   let onbWin: BrowserWindow | null = null;               // fenêtre « Bienvenue » (premier lancement)
   let panelWin: BrowserWindow | null = null;
   let docsWin: BrowserWindow | null = null;
-  let textWin: BrowserWindow | null = null;             // saisie envoyée sur le corps vocal de l'avatar
   const coderSessions = new Set<string>(); // conversations de l'assistant ouvertes depuis la fenêtre des réglages
 
   function setLang(l: unknown): void {
@@ -68,8 +64,7 @@ export function createAppWindows(deps: AppWindowsDeps): AppWindows {
     deps.contributions.language();
     settingsWin?.setTitle(T("settingsTitle"));
     onbWin?.setTitle(T("onboardingTitle"));
-    textWin?.setTitle(T("textTitle"));
-    textWin?.webContents.send("text:lang", lang);
+    deps.chat().setLang();
     // Les autres fenêtres suivent aussi la langue de l'interface, tout de suite.
     if (docsWin && !docsWin.isDestroyed()) docsWin.webContents.send("documents:lang", lang);
     deps.dictation().sendLang(lang);
@@ -156,30 +151,8 @@ export function createAppWindows(deps: AppWindowsDeps): AppWindows {
     if (target.isDestroyed() || !target.isVisible()) throw textError(both("notVisible"));
   }
 
-  // ------------------------------------------------------------------ saisie d'une demande
-  function openTextInput() {
-    if (textWin && !textWin.isDestroyed()) { bringToFront(textWin); textWin.webContents.send("text:focus"); return textWin; }
-    textWin = safeWindow({ size: { width: 560, height: 340, minWidth: 360, minHeight: 320 }, title: T("textTitle"), preload: "preload-text.cjs" });
-    textWin.loadFile(pageFile("text"));
-    textWin.webContents.once("did-finish-load", () => textWin?.webContents.send("text:lang", lang()));
-    textWin.once("ready-to-show", () => { bringToFront(textWin); textWin?.webContents.send("text:focus"); });
-    textWin.on("closed", () => { textWin = null; });
-    return textWin;
-  }
-  /** N'accepte que la fenêtre de saisie et un avatar connecté ; un échec conserve le brouillon. */
-  function submitText(e: { sender: unknown }, raw: unknown): boolean {
-    const win = deps.avatar().win();
-    if (!textWin || e.sender !== textWin.webContents) return false;
-    if (typeof raw !== "string" || !raw.trim() || raw.length > 10000 || !kernel() || !deps.kernel().hasBodyPort() || !deps.avatar().winReady() || !win || win.isDestroyed()) return false;
-    deps.avatar().activity();
-    deps.voice().setMuted(false);
-    win.webContents.send("text-request", raw.trim());
-    refreshTray();
-    return true;
-  }
-
   return {
-    settingsWin: () => settingsWin, onbWin: () => onbWin, panelWin: () => panelWin, docsWin: () => docsWin, textWin: () => textWin,
-    coderSessions, setLang, openPanel, openDocuments, openSettings, openOnboarding, showSettingsConfirmed, openTextInput, submitText,
+    settingsWin: () => settingsWin, onbWin: () => onbWin, panelWin: () => panelWin, docsWin: () => docsWin,
+    coderSessions, setLang, openPanel, openDocuments, openSettings, openOnboarding, showSettingsConfirmed,
   };
 }

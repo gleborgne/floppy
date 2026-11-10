@@ -17,6 +17,7 @@ export { ToolRegistry, REFUSED_TEXT, NEVER_TEXT, type ToolDef, type ToolInfo, ty
 export { EffectScope, type Disposer } from "./plugin/effects.ts";
 export { Hooks, type Middleware, type Next, type HookTypes, type HookName, type HookInput, type HookOutput } from "./plugin/hooks.ts";
 export { Bus, type CoreEvents, type PluginState } from "./bus.ts";
+export { ChoiceManager, type ChoiceInput, type ChoiceOptionInput, type ChoiceRequest, type ChoiceResult, type ChoiceReason } from "./choice.ts";
 export { ApprovalManager, strictest, type ApprovalInput, type ApprovalRequest, type Decision, type DecisionReason } from "./approval.ts";
 export { FileAudit, MemoryAudit, type Audit, type AuditRecord } from "./audit.ts";
 export { KernelConfig, EntryConfig, AssistantSettings, ApprovalSettings, Level, Rule, type KernelConfigInput } from "./config/schema.ts";

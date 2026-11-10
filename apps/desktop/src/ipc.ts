@@ -1,4 +1,4 @@
-// Canaux IPC des pages (avatar, réglages, « Bienvenue », résultats, documents, saisie, dictée) vers le processus principal.
+// Canaux IPC des pages (avatar, réglages, « Bienvenue », résultats, documents, conversation, dictée) vers le processus principal.
 // Chaque canal vérifie d'où vient l'appel (`e.sender`) avant d'agir ; l'état appartient aux modules appelés, pas à celui-ci.
 import { shell, ipcMain, dialog } from "electron";
 import { placeOptions, type Bilingual } from "./placement.ts";
@@ -10,6 +10,7 @@ import type { AvatarWindow } from "./avatar.ts";
 import type { VoiceControls } from "./voice-controls.ts";
 import type { Dictation } from "./dictation.ts";
 import type { AppWindows } from "./app-windows.ts";
+import type { ChatWindow } from "./chat-window.ts";
 import { DOC_ID, cleanDocList } from "./app-windows.ts";
 import type { createDesktopContributions } from "./desktop-contributions.ts";
 
@@ -22,7 +23,8 @@ export interface IpcDeps {
   avatar(): Pick<AvatarWindow, "win" | "setState" | "setApprovalOpen" | "activity" | "settleIdle" | "placeAvatar" | "dragWindow">;
   voice(): Pick<VoiceControls, "stateChanged">;
   dictation(): Pick<Dictation, "onDictation" | "onLevel" | "onStop">;
-  windows(): Pick<AppWindows, "settingsWin" | "onbWin" | "panelWin" | "docsWin" | "textWin" | "coderSessions" | "openSettings" | "openOnboarding" | "openPanel" | "openDocuments" | "submitText">;
+  windows(): Pick<AppWindows, "settingsWin" | "onbWin" | "panelWin" | "docsWin" | "coderSessions" | "openSettings" | "openOnboarding" | "openPanel" | "openDocuments">;
+  chat(): Pick<ChatWindow, "relay" | "openFromAvatar" | "submit" | "answerApproval" | "answerChoice" | "link" | "close">;
 }
 
 /** Branche tous les canaux (une fois, quand l'app est prête). */
@@ -46,10 +48,16 @@ export function registerIpc(deps: IpcDeps): void {
   });
   ipcMain.on("activity", (_e, kind) => { avatar().setApprovalOpen(kind === "approval"); avatar().activity(); });
   ipcMain.on("approval-closed", () => { avatar().setApprovalOpen(false); avatar().settleIdle(); });
-  ipcMain.handle("text:submit", (e, text) => windows().submitText(e, text));
+  // Conversation : chaque canal vérifie son expéditeur dans le module (l'avatar pour relayer et ouvrir, la fenêtre pour le reste).
+  ipcMain.on("chat:event", (e, event) => { deps.chat().relay(e, event); });
+  ipcMain.on("chat:open", (e) => { deps.chat().openFromAvatar(e); });
+  ipcMain.handle("chat:submit", (e, text) => deps.chat().submit(e, text));
+  ipcMain.on("chat:approval", (e, id, ok) => { deps.chat().answerApproval(e, id, ok); });
+  ipcMain.on("chat:choice", (e, id, option) => { deps.chat().answerChoice(e, id, option); });
+  ipcMain.on("chat:link", (e, url) => { deps.chat().link(e, url); });
+  ipcMain.on("chat:close", (e) => { deps.chat().close(e); });
   ipcMain.handle("desktop:get", (e, ...args) => contributions.get(e, ...args));
   ipcMain.handle("desktop:action", (e, action, ...args) => contributions.action(e, action, ...args));
-  ipcMain.on("text:close", (e) => { const textWin = windows().textWin(); if (textWin && e.sender === textWin.webContents) textWin.close(); });
   ipcMain.on("open-settings", () => openSettings());
   // Réponse : { ok, text: { fr, en } } ; la page de l'avatar choisit la langue de l'assistant (c'est Floppy qui le dit).
   ipcMain.handle("avatar:place", (e, a) => {

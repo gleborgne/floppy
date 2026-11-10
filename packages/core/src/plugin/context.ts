@@ -5,6 +5,7 @@ import type { HookInput, HookName, HookOutput, Middleware } from "./hooks.ts";
 import type { Disposer } from "./effects.ts";
 import type { ServiceName, Services } from "../services.ts";
 import type { ApprovalInput, ApprovalRequest, Decision } from "../approval.ts";
+import type { ChoiceInput, ChoiceRequest, ChoiceResult } from "../choice.ts";
 import type { Audit } from "../audit.ts";
 import type { AssistantSettings } from "../config/schema.ts";
 import type { ToolDef, ToolInfo, ToolResult, ToolCallMeta } from "../tools.ts";
@@ -50,6 +51,16 @@ export interface ContextApprovals {
   check(input: ApprovalInput): Promise<Decision>;
   respond(id: string, ok: boolean, by: string): boolean;
   pending(): ApprovalRequest[];
+}
+
+/**
+ * Choix dans une liste vus par un plugin. `ask` : demander à l'utilisateur de choisir une option (tout plugin ; annulé
+ * à l'arrêt du plugin). `respond` / `pending` : seulement avec `permissions.approvals: "respond"` (corps, conversation).
+ */
+export interface ContextChoices {
+  ask(input: Omit<ChoiceInput, "source">): Promise<ChoiceResult>;
+  respond(id: string, option: string, by: string): boolean;
+  pending(): ChoiceRequest[];
 }
 
 /** Accès au registre d'outils. Les outils ajoutés sont retirés au déchargement du plugin. */
@@ -186,6 +197,7 @@ export interface Context {
    */
   restartOffers(service?: ServiceName): Promise<void>;
   readonly approvals: ContextApprovals;
+  readonly choices: ContextChoices;
   readonly audit: Audit;
   /**
    * Espace de travail du plugin dans le répertoire de travail : <home>/workspaces/<id du plugin>/<nom> (créé).
