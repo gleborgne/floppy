@@ -4,7 +4,7 @@
 // - Le système rend une phrase entière en WAV (pas de flux) : on la découpe en morceaux de 100 ms pour la lecture.
 import { z } from "zod";
 import { definePlugin, T, TextError, wavPcm, type OfferItem } from "@floppy/core";
-import type { TtsChunk, TtsService } from "@floppy/contracts";
+import { emotionNote, type TtsChunk, type TtsService } from "@floppy/contracts";
 import { engineFor, type SystemVoice } from "./engines.ts";
 
 export { engineFor, parseEspeakVoices, parseSayVoices, parseWindowsVoices } from "./engines.ts";
@@ -68,7 +68,7 @@ export default definePlugin<Config>({
       }
     }
     const byItem = new Map(voices.map((v) => [itemId(v.id), v]));
-    const items: OfferItem[] = [...byItem].map(([id, v]) => ({ id, label: `${v.name} (${v.lang})`, ...(alias(v.name) ? { aliases: [alias(v.name)] } : {}) }));
+    const items: OfferItem[] = [...byItem].map(([id, v]) => ({ id, label: `${v.name} (${v.lang})`, note: emotionNote(false), ...(alias(v.name) ? { aliases: [alias(v.name)] } : {}) }));
 
     ctx.offer("tts", {
       items: () => items,

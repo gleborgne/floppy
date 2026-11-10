@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { definePlugin, providerConfig, readSse, Pcm16Decoder, T, TextError } from "@floppy/core";
 import type { TtsService } from "@floppy/contracts";
-import { speechInstructions } from "@floppy/contracts";
+import { emotionNote, speechInstructions } from "@floppy/contracts";
 
 const Config = z.object({
   model: z.string().regex(/^[\w.-]+$/).default("gemini-3.1-flash-tts-preview"),
@@ -77,7 +77,7 @@ export default definePlugin({
     };
     // Le compte est une voix qu'on active (slot voice.tts) : le noyau la met en service seulement en mode Séparé.
     ctx.offer("tts", {
-      items: () => [{ id: "account", label: `${service.name} · ${account.config().voice || "?"}`, cloud: true }],
+      items: () => [{ id: "account", label: `${service.name} · ${account.config().voice || "?"}`, cloud: true, note: emotionNote(true) }],
       start(f) {
         const a = account.availability();
         if (!a.ready) throw new TextError(a.reasonText ?? T("Fournisseur non configuré", "Provider not configured"));

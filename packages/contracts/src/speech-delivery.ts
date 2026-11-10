@@ -2,6 +2,16 @@ import type { SpeechDelivery } from "./voice.ts";
 import { emotionInfo, expressivenessFactor } from "./emotion-sheet.ts";
 
 
+/**
+ * Note courte d'une voix dans les réglages : joue-t-elle les émotions ? `need` complète le « non » quand une condition
+ * simple existe (ex. « un modèle v3 ou v4 »). Un seul libellé pour tous les moteurs vocaux.
+ */
+export function emotionNote(plays: boolean, need?: { fr: string; en: string }): { fr: string; en: string } {
+  if (plays) return { fr: "Joue les émotions", en: "Plays emotions" };
+  return need
+    ? { fr: `Ne joue pas les émotions avec ce modèle (${need.fr})`, en: `Does not play emotions with this model (${need.en})` }
+    : { fr: "Ne joue pas les émotions", en: "Does not play emotions" };
+}
 
 /** Description courte pour les adaptateurs à balises ou à consignes. Aucune syntaxe fournisseur. */
 export function speechStyle(d: SpeechDelivery, language: "fr" | "en" = d.language): string {

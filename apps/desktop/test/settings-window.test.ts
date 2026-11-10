@@ -60,6 +60,16 @@ describe("fenêtre des réglages (Preact)", () => {
     await flush();
   });
 
+  it("la liste des voix montre la note de chaque voix (joue ou non les émotions)", async () => {
+    byText("#nav button", "Voix")!.click();
+    // Un onglet par plugin : la note suit la voix, dans sa ligne.
+    const tabs = [...document.querySelectorAll("#content .stab")] as HTMLElement[];
+    const notes: string[] = [];
+    for (const tab of tabs) { tab.click(); await flush(); notes.push(...[...document.querySelectorAll("#content .srow .rd")].map((e) => e.textContent ?? "")); }
+    expect(notes.some((n) => n.endsWith(" · Joue les émotions"))).toBe(true); // jointe au détail de la voix
+    expect(notes.some((n) => n.includes("il faut un modèle v3 ou v4"))).toBe(true);
+  });
+
   it("un rafraîchissement garde la page : même bouton Retour, pas d'animation rejouée, retour au premier clic", async () => {
     byText("#nav button", "Cerveau")!.click();
     byText(".srow.pick", "Gemma 4 12B")!.click();

@@ -8,7 +8,7 @@ type KText = string | { fr?: string; en?: string } | null | undefined;
 interface SettingsSection {
   id: string; label: KText; description?: KText; order?: number; icon?: string; parent?: string; merge?: boolean; view?: string;
 }
-interface SettingOption { value: string; label: KText; cloud?: boolean }
+interface SettingOption { value: string; label: KText; cloud?: boolean; note?: KText }
 interface SettingInfo {
   key: string; section: string; group?: KText; label: KText; description?: KText;
   type: "enum" | "boolean" | "number" | "text" | (string & {});

@@ -3,7 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expressionProfile, fishDeliveryText } from "../src/expression.ts";
-import { clean, speechRequest } from "../src/index.ts";
+import { Kernel, definePlugin } from "@floppy/core";
+import { clean, makePlugin, speechRequest } from "../src/index.ts";
 import { comparisonModel, comparisonPage, sample, SCENES } from "../../../../bench/voice-compare.ts";
 
 describe("profils expressifs audio.cpp", () => {
@@ -55,5 +56,33 @@ describe("comparaison vocale locale", () => {
     } }, "Bonjour", delivery);
     expect(result.audioSeconds).toBe(3 / 24000);
     await expect(sample({ name: "empty", async *speak() {} }, "Bonjour")).rejects.toThrow("aucun son");
+  });
+});
+
+describe("note d'expressivité des voix audio.cpp", () => {
+  async function notes(models: Record<string, unknown>) {
+    const home = mkdtempSync(join(tmpdir(), "tts-note-"));
+    const consumer = definePlugin({
+      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voix", label: "Voix" }] },
+      async apply() {},
+    });
+    const k2 = new Kernel({ logger: () => {}, home, plugins: [makePlugin(), consumer] });
+    try {
+      await k2.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { exe: join(home, "x.exe"), scanDirs: [], models } }, { id: "c", plugin: "consumer" }] });
+      const options = (k2.settings.list().find((s) => s.key === "slot.voice.tts")?.options ?? []) as { value: string; note?: { en: string } }[];
+      return Object.fromEntries(options.map((o) => [o.value.replace("tts/", ""), o.note?.en]));
+    } finally { await k2.stopAll(); }
+  }
+  it("Qwen CustomVoice 1.7B intégrée et Fish S2 Pro jouent les émotions, une voix clonée Qwen non", async () => {
+    const wav = join(mkdtempSync(join(tmpdir(), "ref-")), "ref.wav");
+    writeFileSync(wav, "x");
+    const out = await notes({
+      builtin: { label: "Qwen", model: "Qwen3-TTS-12Hz-1.7B-CustomVoice-Q8.gguf", famille: "qwen3_tts", voix: "integree", speaker: "vivian" },
+      cloned: { label: "Clone", model: "qwen3-tts-1.7b-customvoice.gguf", famille: "qwen3_tts", voix: "clone", refWav: wav, refText: "Bonjour" },
+      fish: { label: "Fish", model: "fish-audio-s2-pro-q8_0.gguf", famille: "fish_audio", voix: "clone", refWav: wav, refText: "Bonjour" },
+    });
+    expect(out.builtin).toBe("Plays emotions");
+    expect(out.fish).toBe("Plays emotions");
+    expect(out.cloned).toBe("Does not play emotions");
   });
 });

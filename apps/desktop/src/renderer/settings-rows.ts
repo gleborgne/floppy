@@ -8,7 +8,7 @@ import { openCatalogue, openEditor } from "./settings-dialogs.ts";
 import type { CatalogRole } from "./settings-dialogs.ts";
 import {
   S, activate, appProviders, canFill, filledBy, matches, openDetail, pageOf, provBusy, quickOp, itemOp, playAudio,
-  render, setSlot, slotStateText, slotsFor, t, toast, tr, valueOf,
+  render, setSlot, slotNote, slotStateText, slotsFor, t, toast, tr, valueOf,
 } from "./settings-state.ts";
 
 // ------------------------------------------------------------------ onglets génériques
@@ -185,7 +185,7 @@ export function itemRow(slot: SettingsSlot, p: ItemProvider, it: ProviderItem, p
   const editable = (p.can.update && it.editable !== false) || (p.can.enable && it.toggleable !== false) || (p.can.remove && it.removable !== false);
   return row({
     key: `${p.id}/${it.id}`,
-    name: tr(it.label), detail: tr(it.detail), state: S.pendingSlot === slot.id && !here ? "" : st, stateCls: cls, cloud: it.cloud, here,
+    name: tr(it.label), detail: [tr(it.detail), slotNote(slot, v)].filter(Boolean).join(" · "), state: S.pendingSlot === slot.id && !here ? "" : st, stateCls: cls, cloud: it.cloud, here,
     canAct: canFill(slot, p, it) && it.status !== "warn" && it.status !== "error", onAct: () => activate(slot, v, page),
     onOff: slot.none ? () => activate(slot, "@none", page) : null,
     onSettings: editable ? () => openDetail(p, it) : null, rowLink: true,
@@ -198,7 +198,7 @@ export function optionRow(slot: SettingsSlot, o: SettingOption, page: string): V
   const here = slot.value === o.value;
   return row({
     key: `o:${o.value}`,
-    name: tr(o.label), state: here ? slotStateText(slot) : "", stateCls: here && slot.state === "error" ? "err" : "", cloud: o.cloud, here,
+    name: tr(o.label), detail: tr(o.note), state: here ? slotStateText(slot) : "", stateCls: here && slot.state === "error" ? "err" : "", cloud: o.cloud, here,
     canAct: true, onAct: () => activate(slot, o.value, page),
     onOff: slot.none ? () => activate(slot, "@none", page) : null,
   });

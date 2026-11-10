@@ -763,8 +763,8 @@ export class Kernel {
 
   // ------------------------------------------------------------------ slots et forks
 
-  private slotOptions(slot: SlotDef): (SettingOption & { cloud?: boolean })[] {
-    const out: (SettingOption & { cloud?: boolean })[] = slot.none ? [{ value: "@none", label: slot.none }] : [];
+  private slotOptions(slot: SlotDef): (SettingOption & { cloud?: boolean; note?: Text })[] {
+    const out: (SettingOption & { cloud?: boolean; note?: Text })[] = slot.none ? [{ value: "@none", label: slot.none }] : [];
     for (const e of this.entries.values()) {
       const offer = e.state === "active" ? e.offers.get(slot.service) : undefined;
       if (!offer) continue;
@@ -772,6 +772,7 @@ export class Kernel {
         out.push({
           value: `${e.cfg.id}/${i.id}`, label: i.label,
           ...(i.aliases?.length ? { aliases: i.aliases } : {}), ...(i.slow ? { slow: true } : {}), ...(i.cloud ? { cloud: true } : {}),
+          ...(i.note ? { note: i.note } : {}),
         });
       }
     }

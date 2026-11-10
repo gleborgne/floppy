@@ -13,7 +13,7 @@ import { libButton, openCatalogue, openItemSettings, roleOf } from "./settings-d
 import { inlineForm } from "./settings-form.ts";
 import { addButtons, addPluginBtn, avatarGrid, inUseBadge, itemRow, noneRow, optionRow, providerCard, row, secHead } from "./settings-rows.ts";
 import {
-  S, appProviders, modeSlotOf, pageOf, quickOp, render, secLabel, slotLabelOf, slotSetting, slotStateText, slotsOn, t, tr, uiTab, valueOf,
+  S, appProviders, modeSlotOf, pageOf, quickOp, render, secLabel, slotLabelOf, slotNote, slotSetting, slotStateText, slotsOn, t, tr, uiTab, valueOf,
 } from "./settings-state.ts";
 
 /** L'application (plugin installé) d'une entrée : [fournisseur « apps-… », élément]. */
@@ -199,7 +199,7 @@ function singleItem(slot: SettingsSlot, p: ItemProvider, it: ProviderItem, page:
   const out: Child[] = [];
   if (!here || slot.state === "error" || !form) out.push(h("div", { class: "scard" }, itemRow(slot, p, it, page)));
   if (form) out.push(form);
-  const detail = tr(it.detail);
+  const detail = [tr(it.detail), slotNote(slot, valueOf(p, it))].filter(Boolean).join(" · ");
   if (here && form && detail) out.push(h("p", { class: "ddesc idline", text: detail }));
   return out;
 }

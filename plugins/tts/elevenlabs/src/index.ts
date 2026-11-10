@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { definePlugin, providerConfig, Pcm16Decoder, T, TextError } from "@floppy/core";
-import type { TtsService } from "@floppy/contracts";
-import { deliveryText } from "./expression.ts";
+import { emotionNote, type TtsService } from "@floppy/contracts";
+import { deliveryText, playsEmotions } from "./expression.ts";
 
 const Config = z.object({
   model: z.string().min(1).default("eleven_flash_v2_5"),
@@ -56,7 +56,9 @@ export default definePlugin({
     };
     // Le compte est une voix qu'on active (slot voice.tts) : le noyau la met en service seulement en mode Séparé.
     ctx.offer("tts", {
-      items: () => [{ id: "account", label: `${service.name} · ${account.config().voice || "?"}`, cloud: true }],
+      items: () => [{ id: "account", label: `${service.name} · ${account.config().voice || "?"}`, cloud: true,
+        // Relu à chaque affichage de la liste : suit le modèle choisi dans les réglages.
+        note: emotionNote(playsEmotions(account.config().model), T("il faut un modèle v3 ou v4", "a v3 or v4 model is needed")) }],
       start(f) {
         const a = account.availability();
         if (!a.ready) throw new TextError(a.reasonText ?? T("Fournisseur non configuré", "Provider not configured"));

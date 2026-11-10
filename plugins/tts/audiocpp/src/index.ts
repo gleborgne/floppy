@@ -7,7 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, wr
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { definePlugin, modelLibrary, programLibrary, restartsModels, failoverText, type ProgramBuild, findExe, httpHealthy, startLocalServer, scanGguf as scanAll, Pcm16Decoder, pcmWav, wavPcm, wavDataUrl, wavFromDataUrl, TextError, type Context, type FieldDef, type ItemInfo, type ItemKind, type ModelNeeds, type OpResult, type Text } from "@floppy/core";
-import { speechInstructions, type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
+import { emotionNote, speechInstructions, type SpeechDelivery, type TtsChunk, type TtsService } from "@floppy/contracts";
 import { dynamicCatalogue } from "./catalogue.ts";
 import { expressionProfile, fishDeliveryText, voxDeliveryText } from "./expression.ts";
 
@@ -487,7 +487,7 @@ return definePlugin<Config>({
 
     ctx.offer("tts", {
       max: 1, // la mémoire du GPU
-      items: () => enabled().filter(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m))).map((m) => ({ id: m.id, label: m.label, slow: true })),
+      items: () => enabled().filter(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m))).map((m) => ({ id: m.id, label: m.label, slow: true, note: emotionNote(expressionProfile(familyOf(m), m.model, m.voix) !== "none") })),
       startTimeout_s: cfg.startTimeout_s + 60,
       async start(f, id) {
         const e = enabled().find((m) => m.id === id);

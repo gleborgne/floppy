@@ -48,6 +48,7 @@ Réglages et fournisseurs ont quelques champs de plus pour la fenêtre :
 | `role` | `SettingDef` | rôle fonctionnel libre. Les réglages `slot.<id>` ont le rôle `<id>` (ex. `brain.main`). |
 | `offers` | `ProviderDef` | service que les éléments offrent (`ctx.offer`, même id d'élément). La fenêtre met « Activer » sur chaque élément, pour chaque slot de ce service. |
 | `slow` | `SettingOption` | choisir cette valeur prend du temps (charger un modèle) : la voie rapide de la conversation le dit avant (« ça prend quelques secondes »). |
+| `note` | `OfferItem` → `SettingOption` | courte précision bilingue d'un élément offert (`ctx.offer`), affichée sous son nom dans la liste du slot, jointe à son détail. Relue à chaque lecture de `items()`. Le noyau ne lui donne aucun sens (voix : « Joue les émotions » ou non). |
 | `layout` | `ProviderDef` | `list` (liste + détail, défaut) ou `grid` (cartes : avatars). |
 | `capabilities` | `ProviderDef` | capacités libres du fournisseur, par exemple `live` (modèle unique qui écoute et parle ; testé, mais aucun plugin livré ne le déclare encore). |
 

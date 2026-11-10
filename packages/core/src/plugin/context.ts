@@ -100,6 +100,8 @@ export interface OfferItem {
   aliases?: string[];
   /** Les données partent dans le cloud : le choisir à la voix demande l'accord. */
   cloud?: boolean;
+  /** Courte précision affichée avec l'élément dans la liste du slot (ex. une capacité qu'il a ou n'a pas). */
+  note?: Text;
   /** Le démarrer prend du temps (charger un modèle) : la voie rapide le dit avant. */
   slow?: boolean;
 }

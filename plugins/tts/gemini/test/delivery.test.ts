@@ -43,3 +43,10 @@ it("rassure sans réinjecter le sarcasme et respecte l'annulation du flux", asyn
   abort.abort(); expect(f.fetch.mock.calls[0]![1].signal!.aborted).toBe(true);
   await stream.return?.();
 });
+
+it("la liste des voix dit que Gemini joue les émotions", async () => {
+  let items!: () => { note?: { fr: string; en: string } }[];
+  const ctx = { alive: true, fetch: vi.fn(), effect() {}, offer(_name: string, def: { items: typeof items }) { items = def.items; } };
+  await gemini.apply(ctx as unknown as Context, { model: "test", voice: "test" });
+  expect(items()[0]!.note).toEqual({ fr: "Joue les émotions", en: "Plays emotions" });
+});

@@ -94,7 +94,7 @@ export default definePlugin<Config>({
     let profile: SpeechDelivery["profile"] = savedProfile === "discreet" || savedProfile === "natural" || savedProfile === "playful" ? savedProfile : cfg.expressiveness;
     ctx.settings.declare([{
       key: "expressivite", section: "voix", type: "enum", risk: "free",
-      label: T("Expressivité", "Expressiveness"), description: T("Intensité des expressions et jeu des voix compatibles.", "Expression intensity and delivery of compatible voices."),
+      label: T("Expressivité", "Expressiveness"), description: T("Intensité des expressions. Seules les voix compatibles jouent les émotions : la liste des voix l'indique.", "Expression intensity. Only compatible voices play emotions: the voice list shows which."),
       options: [{ value: "discreet", label: T("Discret", "Discreet"), aliases: ["discret", "discrete", "discreet"] },
         { value: "natural", label: T("Naturel", "Natural"), aliases: ["naturel", "naturelle", "natural"] },
         { value: "playful", label: T("Joueur", "Playful"), aliases: ["joueur", "joueuse", "playful"] }],

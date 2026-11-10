@@ -117,6 +117,8 @@ export const secLabel = (id: string): string => tr(sectionById(id)?.label) || id
 // choisi seulement quand quelqu'un s'en sert. La fenêtre ne connaît aucun slot : tout vient de settings.slots.
 export const slotsOn = (page: string): SettingsSlot[] => (S.settings.slots ?? []).filter((x) => pageOf(x.section) === page);
 export const slotSetting = (slot: SettingsSlot): SettingInfo | undefined => S.settings.list.find((x) => x.key === `slot.${slot.id}`);
+/** Courte précision qu'un plugin joint à un choix du slot (OfferItem.note) : vide s'il n'en a pas. */
+export const slotNote = (slot: SettingsSlot, value: string): string => tr(slotSetting(slot)?.options?.find((o) => o.value === value)?.note);
 /** Slots qu'un fournisseur d'éléments peut remplir. */
 export const slotsFor = (p: ItemProvider): SettingsSlot[] => (S.settings.slots ?? []).filter((x) => offersOf(p).includes(x.service));
 export const valueOf = (p: ItemProvider, it: ProviderItem): string => `${p.source}/${it.id}`;
