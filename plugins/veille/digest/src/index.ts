@@ -4,8 +4,8 @@
 // Rôles :
 // - La tâche « quotidienne » (contrat task) : le noyau la lance (Planificateur à l'heure, ou « fais ma veille »),
 //   et annonce le résultat. Ce plugin ne connaît ni l'horloge ni les corps.
-// - Deux slots, choisis dans la rubrique Veille : veille.tri (service completion, ex. Claude Sonnet) et
-//   veille.recherche (service search : SearXNG, Recherche Claude… ou aucun = flux RSS seulement).
+// - Deux slots, choisis dans la rubrique Veille : watch.triage (service completion, ex. Claude Sonnet) et
+//   watch.search (service search : SearXNG, Recherche Claude… ou aucun = flux RSS seulement).
 //   Ils sont empruntés (ctx.borrow) le temps du passage : rien ne tourne entre deux veilles.
 // - Pré-tri en code avant le modèle (déjà vus, trop vieux, mots bannis, doublons, plafond) : voir pretri.ts.
 import { mkdirSync } from "node:fs";
@@ -22,20 +22,20 @@ import { runPipeline, digestMarkdown, type Interet, type PipelineConfig } from "
 const both = (f: (lang: "fr" | "en") => string): Text => T(f("fr"), f("en"));
 
 const InteretCfg = z.object({
-  nom: z.string().min(1),
+  name: z.string().min(1),
   description: z.string().default(""),
-  flux: z.array(z.string()).default([]),
-  requetes: z.array(z.string()).default([]),
+  feeds: z.array(z.string()).default([]),
+  queries: z.array(z.string()).default([]),
   max: z.number().int().min(1).max(30).default(8),
 });
 
 const Config = z.object({
   /** Centres d'intérêt de départ (floppy.yml). Ceux ajoutés dans les réglages sont gardés à part. */
-  interets: z.record(z.string(), InteretCfg).default({}),
-  seuil: z.number().min(0).max(10).default(6),
-  lot: z.number().int().min(5).max(50).default(20),
-  maxVersModele: z.number().int().min(5).max(200).default(60),
-  fenetreJours: z.number().int().min(1).max(30).default(2),
+  interests: z.record(z.string(), InteretCfg).default({}),
+  threshold: z.number().min(0).max(10).default(6),
+  batch: z.number().int().min(5).max(50).default(20),
+  maxToModel: z.number().int().min(5).max(200).default(60),
+  windowDays: z.number().int().min(1).max(30).default(2),
 });
 type Config = z.infer<typeof Config>;
 
@@ -46,15 +46,15 @@ export interface VeilleOptions {
 }
 
 const KIND = {
-  id: "interet",
+  id: "interest",
   label: T("Centre d'intérêt", "Interest"),
   fields: [
-    { key: "nom", label: T("Nom", "Name"), type: "text" as const, required: true, placeholder: T("IA locale", "Local AI") },
+    { key: "name", label: T("Nom", "Name"), type: "text" as const, required: true, placeholder: T("IA locale", "Local AI") },
     { key: "description", label: T("Ce qui t'intéresse", "What you care about"), type: "textarea" as const, hint: T("Dit au modèle qui trie : « les nouveaux modèles open weights, llama.cpp, pas le business ».", "Told to the sorting model: “new open-weights models, llama.cpp, not the business side”.") },
-    { key: "flux", label: T("Flux RSS ou Atom", "RSS or Atom feeds"), type: "list" as const,
+    { key: "feeds", label: T("Flux RSS ou Atom", "RSS or Atom feeds"), type: "list" as const,
       placeholder: T("https://simonwillison.net/atom/everything/\nhttps://www.reddit.com/r/LocalLLaMA/top/.rss?t=day", "https://…/feed.xml"),
       hint: T("Une adresse par ligne. « Essayer » lit chaque flux et dit combien d'articles il donne.", "One address per line. “Try” reads each feed and tells how many articles it gives.") },
-    { key: "requetes", label: T("Recherches web", "Web searches"), type: "list" as const,
+    { key: "queries", label: T("Recherches web", "Web searches"), type: "list" as const,
       placeholder: T("llama.cpp nouvelle version\nmodèle open weights", "llama.cpp new release\nopen weights model"),
       hint: T("Une recherche par ligne, faite par le moteur de recherche choisi dans cette rubrique. Sans flux ni recherche, le nom sert de recherche.", "One search per line, run by the search engine chosen in this section. With no feed and no search, the name is used as the search.") },
     { key: "max", label: T("Articles au plus par veille", "Max articles per run"), type: "number" as const, default: 8, min: 1, max: 30, advanced: true },
@@ -65,8 +65,8 @@ function cleanInteret(v: Record<string, unknown>): Omit<Interet, "id"> {
   const list = (x: unknown) => (Array.isArray(x) ? x : typeof x === "string" ? x.split(/\n|,/) : []).map((s) => String(s).trim()).filter(Boolean);
   const max = Number(v.max);
   return {
-    nom: String(v.nom ?? "").trim(), description: String(v.description ?? "").trim(),
-    flux: list(v.flux), requetes: list(v.requetes), max: Number.isFinite(max) && max >= 1 ? Math.min(30, Math.round(max)) : 8,
+    name: String(v.name ?? "").trim(), description: String(v.description ?? "").trim(),
+    feeds: list(v.feeds), queries: list(v.queries), max: Number.isFinite(max) && max >= 1 ? Math.min(30, Math.round(max)) : 8,
   };
 }
 
@@ -77,13 +77,13 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 function modified(cur: Omit<Interet, "id">, a: Record<string, unknown>): Record<string, unknown> {
   const outFlux = strList(a.retirer_flux).map((x) => x.toLowerCase());
   const outReq = strList(a.retirer_requetes);
-  const flux = cur.flux.filter((u) => !outFlux.some((x) => u.toLowerCase().includes(x)));
-  const requetes = cur.requetes.filter((q) => !outReq.some((x) => same(q, x)));
-  for (const u of strList(a.flux)) if (!flux.some((x) => same(x, u))) flux.push(u);
-  for (const q of strList(a.requetes)) if (!requetes.some((x) => same(x, q))) requetes.push(q);
-  const nom = strList(a.nouveau_nom)[0] ?? cur.nom;
+  const feeds = cur.feeds.filter((u) => !outFlux.some((x) => u.toLowerCase().includes(x)));
+  const queries = cur.queries.filter((q) => !outReq.some((x) => same(q, x)));
+  for (const u of strList(a.flux)) if (!feeds.some((x) => same(x, u))) feeds.push(u);
+  for (const q of strList(a.requetes)) if (!queries.some((x) => same(x, q))) queries.push(q);
+  const name = strList(a.nouveau_nom)[0] ?? cur.name;
   const description = typeof a.description === "string" && a.description.trim() ? a.description.trim() : cur.description;
-  return { nom, description, flux, requetes, max: cur.max };
+  return { name, description, feeds, queries, max: cur.max };
 }
 
 /** Ce que change « modifier », pour la demande d'accord. */
@@ -126,19 +126,19 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
       provides: ["task"],
       optional: ["documents"],
       permissions: { net: ["*"] },
-      sections: [{ id: "veille", label: T("Veille", "News watch"), description: T("Tes centres d'intérêt, le cerveau qui trie, le moteur de recherche. Affine à la voix : « le 3 ne m'intéresse pas ».", "Your interests, the sorting brain, the search engine. Fine-tune by voice: “number 3 doesn't interest me”.") }],
+      sections: [{ id: "watch", label: T("Veille", "News watch"), description: T("Tes centres d'intérêt, le cerveau qui trie, le moteur de recherche. Affine à la voix : « le 3 ne m'intéresse pas ».", "Your interests, the sorting brain, the search engine. Fine-tune by voice: “number 3 doesn't interest me”.") }],
       slots: [
-        { id: "veille.tri", service: "completion", section: "veille", label: T("Cerveau du tri", "Sorting brain"), description: T("Le modèle qui note et résume les articles. Il tourne seulement pendant la veille.", "The model that scores and summarizes articles. It only runs during the news watch.") },
-        { id: "veille.recherche", service: "search", section: "veille", label: T("Moteur de recherche", "Search engine"), none: T("Aucun (flux RSS seulement)", "None (RSS only)") },
+        { id: "watch.triage", service: "completion", section: "watch", label: T("Cerveau du tri", "Sorting brain"), description: T("Le modèle qui note et résume les articles. Il tourne seulement pendant la veille.", "The model that scores and summarizes articles. It only runs during the news watch.") },
+        { id: "watch.search", service: "search", section: "watch", label: T("Moteur de recherche", "Search engine"), none: T("Aucun (flux RSS seulement)", "None (RSS only)") },
       ],
       tasks: [{
         id: "quotidienne", label: T("Veille du jour", "Daily news watch"),
         description: T("Lit les flux et fait les recherches, trie les nouveaux articles et prépare le digest.", "Reads feeds, runs searches, sorts new articles and writes the digest."),
         schedule: { at: "07:30" }, timeout_s: 900,
         // Les réglages de la Veille (centres d'intérêt, cerveau du tri, moteur) sont sous sa tâche, pas dans le menu.
-        configure: "veille",
+        configure: "watch",
       }],
-      addable: { section: "veille", label: T("Veille", "News watch"), description: T("Un digest par jour sur tes centres d'intérêt.", "A daily digest on your interests."), single: true },
+      addable: { section: "watch", label: T("Veille", "News watch"), description: T("Un digest par jour sur tes centres d'intérêt.", "A daily digest on your interests."), single: true },
     },
     config: Config,
     apply(ctx, cfg) {
@@ -154,19 +154,19 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
       const store = ctx.items.store();
 
       const base: Record<string, Record<string, unknown>> = {};
-      for (const [id, v] of Object.entries(cfg.interets)) base[id] = v as unknown as Record<string, unknown>;
+      for (const [id, v] of Object.entries(cfg.interests)) base[id] = v as unknown as Record<string, unknown>;
       const all = (): (Interet & { enabled: boolean })[] => Object.entries(store.merge(base))
         .map(([id, v]) => ({ id, ...cleanInteret(v as Record<string, unknown>), enabled: store.isEnabled(id) }));
       /** Une source (flux ou recherche) peut être coupée sans être supprimée : case décochée dans le détail. */
       const srcId = (kind: "f" | "q", v: string) => `${kind}:${v}`;
       const srcOn = (id: string, child: string) => store.child(id, child) !== false;
       const actifs = () => all().filter((i) => i.enabled).map((i) => ({
-        ...i, flux: i.flux.filter((u) => srcOn(i.id, srcId("f", u))), requetes: i.requetes.filter((q) => srcOn(i.id, srcId("q", q))),
+        ...i, feeds: i.feeds.filter((u) => srcOn(i.id, srcId("f", u))), queries: i.queries.filter((q) => srcOn(i.id, srcId("q", q))),
       }));
       const findInteret = (q: string | undefined) => {
         if (!q) return undefined;
         const n = q.toLowerCase().trim();
-        return all().find((i) => i.id === n || i.nom.toLowerCase() === n) ?? all().find((i) => i.nom.toLowerCase().includes(n) || n.includes(i.nom.toLowerCase()));
+        return all().find((i) => i.id === n || i.name.toLowerCase() === n) ?? all().find((i) => i.name.toLowerCase().includes(n) || n.includes(i.name.toLowerCase()));
       };
 
       // ---------------------------------------------------------------- centres d'intérêt (rubrique Veille)
@@ -174,34 +174,34 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
       const short = (url: string) => url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, "");
       const info = (i: Interet & { enabled: boolean }): ItemInfo => {
         const p = prefs.of(i.id);
-        const noEngine = ctx.settings.value("slot.veille.recherche") === "@none";
-        const fluxOn = i.flux.filter((u) => srcOn(i.id, srcId("f", u))).length;
-        const reqOn = i.requetes.filter((q) => srcOn(i.id, srcId("q", q))).length;
+        const noEngine = ctx.settings.value("slot.watch.search") === "@none";
+        const fluxOn = i.feeds.filter((u) => srcOn(i.id, srcId("f", u))).length;
+        const reqOn = i.queries.filter((q) => srcOn(i.id, srcId("q", q))).length;
         const none = !fluxOn && !(reqOn && !noEngine);
         const summary = (l: "fr" | "en") => [
-          i.flux.length ? (l === "en" ? plural(fluxOn, "feed", "feeds") : plural(fluxOn, "flux", "flux")) : "",
-          i.requetes.length ? (l === "en" ? plural(reqOn, "search", "searches") : plural(reqOn, "recherche", "recherches")) : "",
+          i.feeds.length ? (l === "en" ? plural(fluxOn, "feed", "feeds") : plural(fluxOn, "flux", "flux")) : "",
+          i.queries.length ? (l === "en" ? plural(reqOn, "search", "searches") : plural(reqOn, "recherche", "recherches")) : "",
         ].filter(Boolean).join(" · ");
         const avis = (l: "fr" | "en") => (l === "en" ? [
-          p.aime.length ? `you like ${p.aime.join(", ")}` : "",
-          p.evite.length ? `you avoid ${p.evite.join(", ")}` : "",
-          p.bannis.length ? `never: ${p.bannis.join(", ")}` : "",
-          p.exemples.length ? plural(p.exemples.length, "rated article", "rated articles") : "",
+          p.likes.length ? `you like ${p.likes.join(", ")}` : "",
+          p.avoids.length ? `you avoid ${p.avoids.join(", ")}` : "",
+          p.banned.length ? `never: ${p.banned.join(", ")}` : "",
+          p.examples.length ? plural(p.examples.length, "rated article", "rated articles") : "",
         ] : [
-          p.aime.length ? `tu aimes ${p.aime.join(", ")}` : "",
-          p.evite.length ? `tu évites ${p.evite.join(", ")}` : "",
-          p.bannis.length ? `jamais : ${p.bannis.join(", ")}` : "",
-          p.exemples.length ? plural(p.exemples.length, "article noté", "articles notés") : "",
+          p.likes.length ? `tu aimes ${p.likes.join(", ")}` : "",
+          p.avoids.length ? `tu évites ${p.avoids.join(", ")}` : "",
+          p.banned.length ? `jamais : ${p.banned.join(", ")}` : "",
+          p.examples.length ? plural(p.examples.length, "article noté", "articles notés") : "",
         ]).filter(Boolean).join(" · ");
         const children = [
-          ...i.flux.map((u) => ({ id: srcId("f", u), label: short(u), enabled: srcOn(i.id, srcId("f", u)), tag: T("flux", "feed") })),
-          ...i.requetes.map((q) => ({
+          ...i.feeds.map((u) => ({ id: srcId("f", u), label: short(u), enabled: srcOn(i.id, srcId("f", u)), tag: T("flux", "feed") })),
+          ...i.queries.map((q) => ({
             id: srcId("q", q), label: q, enabled: srcOn(i.id, srcId("q", q)),
             ...(noEngine ? { tag: T("aucun moteur choisi", "no search engine"), tone: "warn" as const } : { tag: T("recherche", "search") }),
           })),
         ];
         return {
-          id: i.id, label: i.nom, kind: "interet", enabled: i.enabled,
+          id: i.id, label: i.name, kind: "interest", enabled: i.enabled,
           detail: both((l) => [
             i.description || (l === "en" ? "Add a description: the model sorts better when it knows what you are looking for." : "Ajoute une description : le modèle trie mieux quand il sait ce que tu cherches."),
             avis(l) ? (l === "en" ? `Your feedback: ${avis(l)}.` : `Tes avis : ${avis(l)}.`) : "",
@@ -210,35 +210,35 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           statusText: !i.enabled ? T("mis de côté : pas dans la veille", "set aside")
             : none ? T("aucune source active : ajoute un flux", "no active source: add a feed")
             : T(`${summary("fr")} · ${i.max} articles au plus`, `${summary("en")} · max ${i.max} articles`),
-          values: { nom: i.nom, description: i.description, flux: i.flux, requetes: i.requetes, max: i.max },
+          values: { name: i.name, description: i.description, feeds: i.feeds, queries: i.queries, max: i.max },
           editable: true, removable: true, toggleable: true,
           children, childrenLabel: T("Sources", "Sources"),
         };
       };
       const check = (v: Omit<Interet, "id">): Text | undefined => {
-        if (!v.nom) return T("Il faut un nom.", "A name is required.");
-        const bad = v.flux.find((u) => !/^https?:\/\//i.test(u));
+        if (!v.name) return T("Il faut un nom.", "A name is required.");
+        const bad = v.feeds.find((u) => !/^https?:\/\//i.test(u));
         if (bad) return T(`Adresse de flux invalide : ${bad}`, `Invalid feed address: ${bad}`);
         return undefined;
       };
       /** Jamais de centre d'intérêt vide : sans flux ni recherche, le nom devient la recherche web. */
       const sourced = (v: Omit<Interet, "id">): { v: Omit<Interet, "id">; note: Text } => {
-        if (v.flux.length || v.requetes.length || !v.nom) return { v, note: "" };
-        const noEngine = ctx.settings.value("slot.veille.recherche") === "@none";
+        if (v.feeds.length || v.queries.length || !v.name) return { v, note: "" };
+        const noEngine = ctx.settings.value("slot.watch.search") === "@none";
         return {
-          v: { ...v, requetes: [v.nom] },
+          v: { ...v, queries: [v.name] },
           note: noEngine
-            ? T(` Pas de source donnée : je chercherai « ${v.nom} » sur le web, mais aucun moteur de recherche n'est choisi (Réglages, rubrique Veille).`, ` No source given: I will search the web for “${v.nom}”, but no search engine is chosen (Settings, News watch section).`)
-            : T(` Pas de source donnée : je cherche « ${v.nom} » sur le web.`, ` No source given: I search the web for “${v.nom}”.`),
+            ? T(` Pas de source donnée : je chercherai « ${v.name} » sur le web, mais aucun moteur de recherche n'est choisi (Réglages, rubrique Veille).`, ` No source given: I will search the web for “${v.name}”, but no search engine is chosen (Settings, News watch section).`)
+            : T(` Pas de source donnée : je cherche « ${v.name} » sur le web.`, ` No source given: I search the web for “${v.name}”.`),
         };
       };
       const add = (values: Record<string, unknown>): OpResult => {
         const { v, note } = sourced(cleanInteret(values));
         const bad = check(v);
         if (bad) return { ok: false, text: bad };
-        const id = store.add("interet", v as unknown as Record<string, unknown>, v.nom, Object.keys(base));
+        const id = store.add("interest", v as unknown as Record<string, unknown>, v.name, Object.keys(base));
         ctx.items.changed();
-        return { ok: true, id, text: T(`« ${v.nom} » ajouté à la veille.${tr(note, "fr")}`, `“${v.nom}” added to the news watch.${tr(note, "en")}`) };
+        return { ok: true, id, text: T(`« ${v.name} » ajouté à la veille.${tr(note, "fr")}`, `“${v.name}” added to the news watch.${tr(note, "en")}`) };
       };
       const update = (id: string, values: Record<string, unknown>): OpResult => {
         const cur = all().find((i) => i.id === id);
@@ -248,23 +248,23 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
         if (bad) return { ok: false, text: bad };
         store.update(id, v as unknown as Record<string, unknown>);
         ctx.items.changed();
-        return { ok: true, id, text: T(`« ${v.nom} » modifié.${tr(note, "fr")}`, `“${v.nom}” updated.${tr(note, "en")}`) };
+        return { ok: true, id, text: T(`« ${v.name} » modifié.${tr(note, "fr")}`, `“${v.name}” updated.${tr(note, "en")}`) };
       };
       const remove = (id: string): OpResult => {
         const cur = all().find((i) => i.id === id);
         if (!cur) return { ok: false, text: T(`Centre d'intérêt inconnu : ${id}`, `Unknown interest: ${id}`) };
         store.remove(id);
         ctx.items.changed();
-        return { ok: true, text: T(`« ${cur.nom} » retiré de la veille.`, `“${cur.nom}” removed from the news watch.`) };
+        return { ok: true, text: T(`« ${cur.name} » retiré de la veille.`, `“${cur.name}” removed from the news watch.`) };
       };
       ctx.items.declare({
-        id: "veille-interets", section: "veille", order: 10,
+        id: "watch-interests", section: "watch", order: 10,
         label: T("Centres d'intérêt", "Interests"),
         description: T("Chaque sujet a ses flux et ses recherches. Le modèle note les nouveaux articles d'après ta description et tes avis.", "Each topic has its feeds and searches. The model scores new articles from your description and your feedback."),
         addLabel: T("Ajouter un centre d'intérêt", "Add an interest"),
         kinds: [KIND],
         list: () => all().map(info),
-        add: async (kind, values) => (kind === "interet" ? add(values) : { ok: false, text: T(`Type inconnu : ${kind}.`, `Unknown type: ${kind}.`) }),
+        add: async (kind, values) => (kind === "interest" ? add(values) : { ok: false, text: T(`Type inconnu : ${kind}.`, `Unknown type: ${kind}.`) }),
         update: async (id, values) => update(id, values),
         remove: async (id) => remove(id),
         setChild: async (id, child, on) => {
@@ -273,19 +273,19 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           store.setChild(id, child, on);
           ctx.items.changed();
           const what = child.slice(2);
-          return { ok: true, text: on ? T(`« ${what} » remis dans « ${cur.nom} ».`, `“${what}” back in “${cur.nom}”.`) : T(`« ${what} » coupé pour « ${cur.nom} » (gardé dans la liste).`, `“${what}” turned off for “${cur.nom}” (kept in the list).`) };
+          return { ok: true, text: on ? T(`« ${what} » remis dans « ${cur.name} ».`, `“${what}” back in “${cur.name}”.`) : T(`« ${what} » coupé pour « ${cur.name} » (gardé dans la liste).`, `“${what}” turned off for “${cur.name}” (kept in the list).`) };
         },
         // « Essayer » dans le formulaire : lit chaque flux et dit ce qu'il donne.
         test: async (_kind, values) => {
           const v = cleanInteret(values);
           const bad = check(v);
           if (bad) return { ok: false, text: bad };
-          if (!v.flux.length) {
-            return { ok: true, text: v.requetes.length
+          if (!v.feeds.length) {
+            return { ok: true, text: v.queries.length
               ? T("Pas de flux à lire. Les recherches seront faites par le moteur choisi dans la rubrique.", "No feed to read. Searches will be run by the engine chosen in this section.")
               : T("Pas de flux ni de recherche : le nom servira de recherche web.", "No feed and no search: the name will be used as the web search.") };
           }
-          const results = await Promise.all(v.flux.map(async (u) => {
+          const results = await Promise.all(v.feeds.map(async (u) => {
             try {
               const items = await fetchFeed(u, { fetch: opts.fetch ?? ctx.fetch, timeoutMs: 10_000 });
               const d = items[0]?.date ? new Date(items[0].date) : undefined;
@@ -300,8 +300,8 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           return {
             ok: fails === 0,
             text: fails
-              ? T(`${plural(fails, "flux ne répond pas", "flux ne répondent pas")} sur ${v.flux.length}.`, `${fails} of ${v.flux.length} ${v.flux.length > 1 ? "feeds" : "feed"} not answering.`)
-              : T(`Les ${plural(v.flux.length, "flux répond", "flux répondent")}.`, v.flux.length > 1 ? `All ${v.flux.length} feeds answer.` : "The feed answers."),
+              ? T(`${plural(fails, "flux ne répond pas", "flux ne répondent pas")} sur ${v.feeds.length}.`, `${fails} of ${v.feeds.length} ${v.feeds.length > 1 ? "feeds" : "feed"} not answering.`)
+              : T(`Les ${plural(v.feeds.length, "flux répond", "flux répondent")}.`, v.feeds.length > 1 ? `All ${v.feeds.length} feeds answer.` : "The feed answers."),
             children: results.map((r) => r.child),
           };
         },
@@ -310,20 +310,20 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           if (!cur) return { ok: false, text: T(`Centre d'intérêt inconnu : ${id}`, `Unknown interest: ${id}`) };
           store.setEnabled(id, on);
           ctx.items.changed();
-          return { ok: true, text: on ? T(`« ${cur.nom} » remis dans la veille.`, `“${cur.nom}” back in the news watch.`) : T(`« ${cur.nom} » mis de côté (rien n'est supprimé).`, `“${cur.nom}” set aside (nothing deleted).`) };
+          return { ok: true, text: on ? T(`« ${cur.name} » remis dans la veille.`, `“${cur.name}” back in the news watch.`) : T(`« ${cur.name} » mis de côté (rien n'est supprimé).`, `“${cur.name}” set aside (nothing deleted).`) };
         },
       });
 
       // ---------------------------------------------------------------- la tâche
-      const pcfg: PipelineConfig = { seuil: cfg.seuil, lot: cfg.lot, maxVersModele: cfg.maxVersModele, fenetreJours: cfg.fenetreJours };
+      const pcfg: PipelineConfig = { threshold: cfg.threshold, batch: cfg.batch, maxToModel: cfg.maxToModel, windowDays: cfg.windowDays };
       ctx.provide("task", {
         async run(taskId, input) {
           if (taskId !== "quotidienne") throw new TextError(T(`tâche inconnue : ${taskId}`, `unknown task: ${taskId}`));
           const interets = actifs();
           if (!interets.length) return { summary: say(T("La veille n'a aucun centre d'intérêt : ajoutes-en un dans Réglages, rubrique Veille.", "The news watch has no interest: add one in Settings, News watch section.")), announce: "normal" };
-          const tri = await ctx.borrow<CompletionService>("veille.tri");
+          const tri = await ctx.borrow<CompletionService>("watch.triage");
           if (!tri) throw new TextError(T("aucun cerveau choisi pour le tri (Réglages, rubrique Veille)", "no brain chosen for sorting (Settings, News watch section)"));
-          const rech = interets.some((i) => i.requetes.length) ? await ctx.borrow<SearchService>("veille.recherche") : undefined;
+          const rech = interets.some((i) => i.queries.length) ? await ctx.borrow<SearchService>("watch.search") : undefined;
           try {
             const date = now();
             const r = await runPipeline({
@@ -382,7 +382,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
             if (a.article !== undefined && !art) return { status: "failed", text: T(`Il n'y a pas d'article ${String(a.article)} dans le dernier digest.`, `There is no article ${String(a.article)} in the latest digest.`) };
             const it = findInteret(a.interet ? String(a.interet) : undefined)?.id ?? art?.interet;
             const sujet = a.sujet ? String(a.sujet).trim() : "";
-            const nom = it ? all().find((i) => i.id === it)?.nom ?? it : "";
+            const nom = it ? all().find((i) => i.id === it)?.name ?? it : "";
             const where = it ? T(` pour « ${nom} »`, ` for “${nom}”`) : T(" pour toute la veille", " for the whole news watch");
             const w = (l: "fr" | "en") => tr(where, l);
             const done: Text[] = [];
@@ -400,7 +400,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
                   ? both((l) => (l === "en" ? `forgot “${sujet}”` : `oublié « ${sujet} »`) + w(l))
                   : both((l) => (l === "en" ? `“${sujet}” was not in your preferences` : `« ${sujet} » n'était pas dans tes préférences`) + w(l)));
               } else {
-                const list = avis === "plus" ? "aime" : avis === "moins" ? "evite" : "bannis";
+                const list = avis === "plus" ? "likes" : avis === "moins" ? "avoids" : "banned";
                 prefs.addTopic(list, sujet, it);
                 done.push(both((l) => (avis === "plus" ? (l === "en" ? `more “${sujet}”` : `plus de « ${sujet} »`)
                   : avis === "moins" ? (l === "en" ? `less “${sujet}”` : `moins de « ${sujet} »`)
@@ -429,8 +429,8 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
               const lines = l.map((i) => {
                 const p = prefs.merged(i.id);
                 return en
-                  ? `- ${i.nom}${i.enabled ? "" : " (off)"}: ${i.flux.length} feeds, searches: ${i.requetes.join(", ") || "none"}${p.aime.length ? `; likes: ${p.aime.join(", ")}` : ""}${p.evite.length ? `; avoids: ${p.evite.join(", ")}` : ""}${p.bannis.length ? `; banned: ${p.bannis.join(", ")}` : ""}`
-                  : `- ${i.nom}${i.enabled ? "" : " (désactivé)"} : ${i.flux.length} flux, recherches : ${i.requetes.join(", ") || "aucune"}${p.aime.length ? ` ; aime : ${p.aime.join(", ")}` : ""}${p.evite.length ? ` ; évite : ${p.evite.join(", ")}` : ""}${p.bannis.length ? ` ; bannis : ${p.bannis.join(", ")}` : ""}`;
+                  ? `- ${i.name}${i.enabled ? "" : " (off)"}: ${i.feeds.length} feeds, searches: ${i.queries.join(", ") || "none"}${p.likes.length ? `; likes: ${p.likes.join(", ")}` : ""}${p.avoids.length ? `; avoids: ${p.avoids.join(", ")}` : ""}${p.banned.length ? `; banned: ${p.banned.join(", ")}` : ""}`
+                  : `- ${i.name}${i.enabled ? "" : " (désactivé)"} : ${i.feeds.length} flux, recherches : ${i.queries.join(", ") || "aucune"}${p.likes.length ? ` ; aime : ${p.likes.join(", ")}` : ""}${p.avoids.length ? ` ; évite : ${p.avoids.join(", ")}` : ""}${p.banned.length ? ` ; bannis : ${p.banned.join(", ")}` : ""}`;
               });
               const titres = d.map((x) => `${x.numero}. ${x.titre}`).join("\n");
               return en
@@ -501,7 +501,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
               const r: OpResult = a.action === "retirer" ? remove(cur.id) : update(cur.id, modified(cur, a));
               return { status: r.ok ? "done" : "failed", text: r.text };
             }
-            const r = add({ nom, description: a.description ?? "", flux: a.flux ?? [], requetes: a.requetes ?? [] });
+            const r = add({ name: nom, description: a.description ?? "", feeds: a.flux ?? [], queries: a.requetes ?? [] });
             return { status: r.ok ? "done" : "failed", text: r.text };
           },
         },

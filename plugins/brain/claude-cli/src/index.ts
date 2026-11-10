@@ -287,13 +287,13 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
+      { id: "brain", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Claude Code (CLI) comme cerveau ou pour la délégation, branché seulement sur le serveur MCP Floppy.",
     provides: ["delegate", "llm", "brain", "completion", "agent"],
     inject: ["mcp"],
     permissions: { exec: ["claude"], "fs.write": ["workspaces/brain-claude-cli"], cloud: true },
-    addable: { section: "cerveau", label: "Claude Code", description: { fr: "Ton abonnement Claude, par le CLI officiel : Opus, Sonnet ou Haiku. Cerveau ou délégué.", en: "Your Claude subscription, through the official CLI: Opus, Sonnet or Haiku. Brain or delegate." }, cloud: true, single: true, program: "claude" },
+    addable: { section: "brain", label: "Claude Code", description: { fr: "Ton abonnement Claude, par le CLI officiel : Opus, Sonnet ou Haiku. Cerveau ou délégué.", en: "Your Claude subscription, through the official CLI: Opus, Sonnet or Haiku. Brain or delegate." }, cloud: true, single: true, program: "claude" },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -338,7 +338,7 @@ export default definePlugin<Config>({
         hint: T("Pour les tâches complexes que le cerveau principal lui confie.", "For the complex tasks the main brain hands over.") },
     ];
     ctx.items.declare({
-      id: "claude-cli", section: "cerveau", order: 30, offers: ["llm", "delegate"],
+      id: "claude-cli", section: "brain", order: 30, offers: ["llm", "delegate"],
       label: T("Claude Code (CLI)", "Claude Code (CLI)"),
       description: T("Ton abonnement Claude, par le CLI officiel. Aucune clé d'API.", "Your Claude subscription, through the official CLI. No API key."),
       badge: T("cloud", "cloud"),

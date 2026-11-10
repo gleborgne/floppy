@@ -82,12 +82,12 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
+      { id: "brain", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Modèles distants au format API OpenAI (Mistral, OpenRouter…) : adresse, modèle, clé dans le coffre.",
     provides: ["llm", "completion"],
     permissions: { net: ["*"], cloud: true },
-    addable: { section: "cerveau", label: { fr: "API compatible OpenAI", en: "OpenAI-compatible API" }, description: { fr: "Mistral, OpenRouter, OpenAI… : adresse, modèle, clé.", en: "Mistral, OpenRouter, OpenAI…: address, model, key." }, cloud: true, single: true },
+    addable: { section: "brain", label: { fr: "API compatible OpenAI", en: "OpenAI-compatible API" }, description: { fr: "Mistral, OpenRouter, OpenAI… : adresse, modèle, clé.", en: "Mistral, OpenRouter, OpenAI…: address, model, key." }, cloud: true, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -173,7 +173,7 @@ export default definePlugin<Config>({
     };
 
     ctx.items.declare({
-      id: "llm-remote", section: "cerveau", order: 20, offers: "llm",
+      id: "llm-remote", section: "brain", order: 20, offers: "llm",
       label: T("API compatible OpenAI", "OpenAI-compatible API"),
       description: T("Toute API au format OpenAI : adresse, modèle, clé. Les données partent dans le cloud.", "Any OpenAI-format API: address, model, key. Data goes to the cloud."),
       addLabel: T("Ajouter un modèle distant", "Add a remote model"),

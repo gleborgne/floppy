@@ -23,11 +23,11 @@ export function createExternalAgent(def: AgentDefinition & { protocol?: AgentPro
     manifest: {
       id: `agent-${def.id}`, version: "0.1.0", licence: "MIT",
       description: `Agent ${def.label} : sessions${def.protocol ? ", cerveau et délégation" : " interactives"}.`,
-      sections: [{ id: "cerveau", label: T("Cerveau", "Brain") }],
+      sections: [{ id: "brain", label: T("Cerveau", "Brain") }],
       provides: def.protocol ? ["agent", "llm", "delegate"] : ["agent"],
       ...(def.protocol ? { inject: ["mcp"] } : {}),
       permissions: { exec: [def.program, "node"], net: ["127.0.0.1", "localhost", "::1"], "fs.write": [`workspaces/agent-${def.id}`], cloud: true },
-      addable: { section: "cerveau", label: def.label, single: true, program: def.program, cloud: true, aliases: def.aliases,
+      addable: { section: "brain", label: def.label, single: true, program: def.program, cloud: true, aliases: def.aliases,
         description: def.protocol ? T(`${def.label} : cerveau, délégation et sessions. Profil séparé, clé API dans le coffre.`,
           `${def.label}: brain, delegation and sessions. Separate profile, API key in the vault.`)
           : T(`${def.label} : ouvre une session interactive avec ses propres outils.`, `${def.label}: open an interactive session with its own tools.`),
@@ -56,7 +56,7 @@ export function createExternalAgent(def: AgentDefinition & { protocol?: AgentPro
         ] satisfies FieldDef[] : []),
       ];
       ctx.items.declare({
-        id: `${ctx.id}-agent`, section: "cerveau", label: def.label,
+        id: `${ctx.id}-agent`, section: "brain", label: def.label,
         offers: def.protocol ? ["agent", "llm", "delegate"] : ["agent"],
         kinds: [{ id: "cli", label: def.label, fields }],
         list: () => {

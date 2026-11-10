@@ -51,7 +51,7 @@ if (values.home) process.env.FLOPPY_HOME = resolve(values.home);
 else if (cmd === "dev" && rest[0] && !process.env.FLOPPY_HOME) process.env.FLOPPY_HOME = join(resolve(rest[0]), ".floppy-dev");
 const home = floppyHome();
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-/** Langue de l'interface (réglage langue_interface) : les messages propres à la CLI. */
+/** Langue de l'interface (réglage ui_language) : les messages propres à la CLI. */
 const lang = cliLang(home);
 const say = sayer(lang);
 

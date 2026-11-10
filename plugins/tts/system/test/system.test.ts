@@ -55,7 +55,7 @@ describe.runIf(process.platform === "win32")("Windows, pour de vrai", () => {
   it("liste les voix, démarre une voix et dit une phrase", async () => {
     let got: TtsService | undefined;
     const consumer = definePlugin({
-      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voix", label: "Voix" }] },
+      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voice", label: "Voix" }] },
       async apply(c) { got = await c.slot<TtsService>("voice.tts"); },
     });
     const home = mkdtempSync(join(tmpdir(), "tts-system-"));

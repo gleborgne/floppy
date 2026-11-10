@@ -14,11 +14,11 @@ const model = file("qwen3-tts-base.gguf");
 const wav = file("ref.wav");
 const cfg = { port: 8095, backend: "cpu" as const, device: 0, threads: 4 };
 
-const clone = clean({ label: "Q", model, voix: "clone", refWav: wav, refText: "Bonjour", langue: "fr" });
+const clone = clean({ label: "Q", model, voice: "clone", refWav: wav, refText: "Bonjour", language: "fr" });
 
 describe("serverConfig / speechRequest", () => {
   it("Fish S2 traduit le jeu en une balise modérée sans changer les mots ni la voix", () => {
-    const fish = clean({ label: "Fish", famille: "fish_audio", model: "fish-audio-s2-pro-q8_0.gguf", voix: "clone", refWav: wav, refText: "Bonjour" });
+    const fish = clean({ label: "Fish", family: "fish_audio", model: "fish-audio-s2-pro-q8_0.gguf", voice: "clone", refWav: wav, refText: "Bonjour" });
     const delivery = { intent: "playful", profile: "playful", language: "fr" } as const;
     expect(speechRequest(fish, "Bien joué !", "fr").input).toBe("Bien joué !");
     expect(speechRequest(fish, "Bien joué !", "fr", delivery)).toMatchObject({ input: "[warm and playful] Bien joué !", voice: "voix", options: { text_chunk_mode: "tag_aware" } });
@@ -29,7 +29,7 @@ describe("serverConfig / speechRequest", () => {
   });
   it("adapte le jeu au CustomVoice 1.7B sans envoyer de consignes dynamiques aux voix clonées", () => {
     const delivery = { intent: "reassure", profile: "playful", language: "fr", tone: "sarcastique" } as const;
-    const custom = clean({ label: "Q", model: "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf", voix: "integree", speaker: "Vivian", instruct: "toujours sarcastique" });
+    const custom = clean({ label: "Q", model: "qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf", voice: "builtin", speaker: "Vivian", instruct: "toujours sarcastique" });
     const req = speechRequest(custom, "Ça va aller.", "fr", delivery);
     expect(req.input).toBe("Ça va aller."); expect(req.instructions).toContain("calme"); expect(req.instructions).not.toContain("toujours sarcastique");
     expect(speechRequest(clone, "Bonjour", "fr", delivery)).not.toHaveProperty("instructions");
@@ -39,43 +39,43 @@ describe("serverConfig / speechRequest", () => {
     const c = serverConfig(clone, cfg, { voiceDir: "C:\\x\\voices" }) as { models: Record<string, unknown>[]; voice_dir: string; backend: string; port: number };
     expect(c).toMatchObject({ host: "127.0.0.1", port: 8095, backend: "cpu", max_loaded_models: 1, ui: false, voice_dir: "C:/x/voices" });
     expect(c.models[0]).toMatchObject({ family: "qwen3_tts", task: "tts", mode: "streaming" });
-    const v = clean({ label: "V", model, famille: "autre", familleAutre: "kokoro_tts", mode: "offline" });
+    const v = clean({ label: "V", model, family: "other", familyOther: "kokoro_tts", mode: "offline" });
     expect((serverConfig(v, cfg, { voiceDir: "v" }) as { models: Record<string, unknown>[] }).models[0]).toMatchObject({ family: "kokoro_tts", mode: "offline" });
   });
 
   it("clone : voix + langue ; sans texte, x_vector_only_mode", () => {
     expect(speechRequest(clone, "Salut")).toEqual({ model: "modele", input: "Salut", voice: "voix", stream_format: "sse", language: "fr" });
-    const sans = clean({ label: "Q", model, voix: "clone", refWav: wav });
+    const sans = clean({ label: "Q", model, voice: "clone", refWav: wav });
     expect(speechRequest(sans, "x")).toMatchObject({ options: { x_vector_only_mode: true } });
   });
 
   it("langue : celle du modèle, sinon celle de l'assistant", () => {
-    const sans = clean({ label: "Q", model, voix: "clone", refWav: wav });
-    expect(sans.langue).toBe("");
+    const sans = clean({ label: "Q", model, voice: "clone", refWav: wav });
+    expect(sans.language).toBe("");
     expect(speechRequest(sans, "Hi", "en")).toMatchObject({ language: "en" });
     expect(speechRequest(sans, "Salut", "fr")).toMatchObject({ language: "fr" });
     expect(speechRequest(clone, "Salut", "en")).toMatchObject({ language: "fr" });
   });
 
   it("voxcpm2 : retry_badcase false ; voix intégrée : voice_id ; style : instructions", () => {
-    const vox = clean({ label: "V", model, famille: "voxcpm2", voix: "clone", refWav: wav, refText: "a" });
+    const vox = clean({ label: "V", model, family: "voxcpm2", voice: "clone", refWav: wav, refText: "a" });
     expect(speechRequest(vox, "x")).toMatchObject({ options: { retry_badcase: false } });
     expect(rateOf(vox)).toBe(48000);
     expect(rateOf(clone)).toBe(24000);
     expect(rateOf(clean({ label: "a", model, rate: 16000 }))).toBe(16000);
-    const int = clean({ label: "I", model, voix: "integree", speaker: "Vivian", instruct: "calme" });
+    const int = clean({ label: "I", model, voice: "builtin", speaker: "Vivian", instruct: "calme" });
     const r = speechRequest(int, "x");
     expect(r).toMatchObject({ options: { voice_id: "Vivian" }, instructions: "calme" });
     expect(r).not.toHaveProperty("voice");
   });
 
   it("voix pour le processeur : Pocket TTS clonée sans texte, Supertonic intégrée ; bonnes fréquences", () => {
-    const pocket = clean({ label: "P", model, famille: "pocket_tts", voix: "clone", refWav: wav });
-    expect(pocket.famille).toBe("pocket_tts");
+    const pocket = clean({ label: "P", model, family: "pocket_tts", voice: "clone", refWav: wav });
+    expect(pocket.family).toBe("pocket_tts");
     expect(rateOf(pocket)).toBe(24000);
     // x_vector_only_mode est propre à Qwen3 et VoxCPM2 : Pocket TTS refuserait une option inconnue.
     expect(speechRequest(pocket, "Salut", "fr")).toEqual({ model: "modele", input: "Salut", voice: "voix", stream_format: "sse", language: "fr" });
-    const st = clean({ label: "S", model, famille: "supertonic", voix: "integree", speaker: "F1" });
+    const st = clean({ label: "S", model, family: "supertonic", voice: "builtin", speaker: "F1" });
     expect(rateOf(st)).toBe(44100);
     expect(speechRequest(st, "Salut", "fr")).toMatchObject({ options: { voice_id: "F1" }, language: "fr" });
     expect(serverConfig(st, { ...cfg, backend: "cpu" }, { voiceDir: "v" })).toMatchObject({ backend: "cpu", models: [{ family: "supertonic" }] });
@@ -191,13 +191,13 @@ describe("noyau : fork, serveur lancé, voix en flux", () => {
     };
     let got: TtsService | undefined;
     const consumer = definePlugin({
-      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voix", label: "Voix" }] },
+      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voice", label: "Voix" }] },
       async apply(c) { got = await c.slot<TtsService>("voice.tts"); },
     });
     const home = mkdtempSync(join(tmpdir(), "tts-home-"));
     const exe = file("fake-server.exe");
     const k = new Kernel({ logger: () => {}, home, plugins: [wrapped, consumer] });
-    const base = { id: "tts", plugin: "tts-audiocpp", config: { exe, port: 8095, backend: "cpu", scanDirs: [], models: { q: { label: "Qwen", model, voix: "clone", refWav: wav, refText: "Bonjour" } } } };
+    const base = { id: "tts", plugin: "tts-audiocpp", config: { exe, port: 8095, backend: "cpu", scanDirs: [], models: { q: { label: "Qwen", model, voice: "clone", refWav: wav, refText: "Bonjour" } } } };
     try {
       await k.applyConfig({ plugins: [base], slots: { "voice.tts": "tts/q" } });
       expect(spawned).toEqual([]); // personne ne s'en sert
@@ -211,8 +211,8 @@ describe("noyau : fork, serveur lancé, voix en flux", () => {
       expect(chunks.every((c) => c.rate === 24000)).toBe(true);
       expect(chunks.flatMap((c) => [...c.pcm])).toEqual([1, 2, 3]);
       expect(state.bodies[0]).toMatchObject({ model: "modele", input: "Bonjour", voice: "voix", stream_format: "sse" });
-      const p = (await k.items.snapshot()).find((x) => x.id === "voix-locale")!;
-      expect(p).toMatchObject({ section: "voix", offers: "tts" });
+      const p = (await k.items.snapshot()).find((x) => x.id === "local-voice")!;
+      expect(p).toMatchObject({ section: "voice", offers: "tts" });
       expect(p.items.find((i) => i.id === "q")).toMatchObject({ active: true, status: "ok" });
       expect((p.items.find((i) => i.id === "q")!.detail as { fr: string }).fr).toBe("voix clonée · parle avec qwen3-tts-base.gguf");
       // La taille est celle du modèle : sur le groupe, jamais sur la voix.
@@ -232,25 +232,25 @@ describe("catalogue", () => {
     const localModel = file("qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf");
     const k = new Kernel({ logger: () => {}, home, plugins: [tts] });
     await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { models: {
-      anna: { label: "Anna", model: localModel, voix: "integree", speaker: "Ono_Anna", langue: "fr" },
-      base: { label: "Clone", model, voix: "clone", refWav: wav },
+      anna: { label: "Anna", model: localModel, voice: "builtin", speaker: "Ono_Anna", language: "fr" },
+      base: { label: "Clone", model, voice: "clone", refWav: wav },
     } } }] });
-    const list = async () => (await k.items.snapshot()).find(p => p.id === "voix-locale")!.items;
+    const list = async () => (await k.items.snapshot()).find(p => p.id === "local-voice")!.items;
     try {
       expect((await list()).find(i => i.id === "anna")!.actions).toContainEqual(expect.objectContaining({ id: "add-builtins" }));
       expect((await list()).find(i => i.id === "base")!.actions?.some(a => a.id === "add-builtins")).toBeFalsy();
-      const add = () => k.items.run({ op: "action", provider: "voix-locale", id: "anna", action: "add-builtins" }, "ui");
+      const add = () => k.items.run({ op: "action", provider: "local-voice", id: "anna", action: "add-builtins" }, "ui");
       expect((await add()).ok).toBe(true);
       const voices = (await list()).filter(i => i.values?.model === localModel);
       expect(voices).toHaveLength(9);
       expect(voices.find(i => i.id === "anna")!.label).toBe("Anna");
       expect(voices.map(i => String(i.values!.speaker).toLowerCase())).toEqual(expect.arrayContaining(["serena", "ryan", "aiden", "vivian", "sohee", "ono_anna"]));
-      expect(voices.every(i => i.values!.langue === "fr" && i.values!.voix === "integree")).toBe(true);
+      expect(voices.every(i => i.values!.language === "fr" && i.values!.voice === "builtin")).toBe(true);
       expect(new Set(voices.map(i => i.group!.id)).size).toBe(1);
       expect((await add()).ok).toBe(true);
       expect((await list()).filter(i => i.values?.model === localModel)).toHaveLength(9);
       expect((await list()).find(i => i.id === "anna")!.actions?.some(a => a.id === "add-builtins")).toBeFalsy();
-      expect((await k.items.run({ op: "action", provider: "voix-locale", id: "base", action: "add-builtins" }, "ui")).ok).toBe(false);
+      expect((await k.items.run({ op: "action", provider: "local-voice", id: "base", action: "add-builtins" }, "ui")).ok).toBe(false);
     } finally { await k.stopAll(); }
   });
 
@@ -260,13 +260,13 @@ describe("catalogue", () => {
     const k = new Kernel({ logger: () => {}, home, plugins: [tts] });
     await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { exe, scanDirs: [dir] } }] });
     try {
-      const run = (op: Record<string, unknown>) => k.items.run({ provider: "voix-locale", ...op } as never, "ui");
+      const run = (op: Record<string, unknown>) => k.items.run({ provider: "local-voice", ...op } as never, "ui");
       expect((await run({ op: "add", kind: "gguf", values: { label: "X", model: join(dir, "absent.gguf") } })).ok).toBe(false);
-      const r = await run({ op: "add", kind: "gguf", values: { label: "Ma voix", model, voix: "clone", refWav: wav } });
+      const r = await run({ op: "add", kind: "gguf", values: { label: "Ma voix", model, voice: "clone", refWav: wav } });
       expect(r).toMatchObject({ ok: true, id: "ma-voix" });
-      const p = (await k.items.snapshot()).find((x) => x.id === "voix-locale")!;
+      const p = (await k.items.snapshot()).find((x) => x.id === "local-voice")!;
       expect(p.items[0]).toMatchObject({ kind: "voice", enabled: true, active: false });
-      const t = await run({ op: "test", kind: "gguf", values: { label: "X", model, voix: "clone", refWav: wav } });
+      const t = await run({ op: "test", kind: "gguf", values: { label: "X", model, voice: "clone", refWav: wav } });
       expect(t).toMatchObject({ ok: true });
       expect(String((t as { text: string }).text)).toContain("Estimation");
       const s = await run({ op: "action", id: "", action: "scan" });
@@ -295,14 +295,14 @@ describe.runIf(!!realExe && !!realPocket && !!realRef)("pour de vrai : Pocket TT
   it("le plugin lance audio.cpp, clone la voix et parle en flux", async () => {
     let got: TtsService | undefined;
     const consumer = definePlugin({
-      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voix", label: "Voix" }] },
+      manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "tts", section: "voice", label: "Voix" }] },
       async apply(c) { got = await c.slot<TtsService>("voice.tts"); },
     });
     const txt = realRef!.replace(/\.wav$/i, ".txt");
     const refText = existsSync(txt) ? readFileSync(txt, "utf8").trim() : "";
     const k = new Kernel({ logger: () => {}, home: mkdtempSync(join(tmpdir(), "tts-real-")), plugins: [tts, consumer] });
     const base = { id: "tts", plugin: "tts-audiocpp", config: { exe: realExe, port: 8099, backend: "cpu", threads: 4, scanDirs: [],
-      models: { p: { label: "Pocket", model: realPocket, famille: "pocket_tts", voix: "clone", refWav: realRef, refText } } } };
+      models: { p: { label: "Pocket", model: realPocket, family: "pocket_tts", voice: "clone", refWav: realRef, refText } } } };
     try {
       await k.applyConfig({ plugins: [base, { id: "c", plugin: "consumer" }], slots: { "voice.tts": "tts/p" } });
       for (const phrase of ["Bonjour, je suis Floppy.", "Je tourne sans carte graphique."]) {
@@ -330,7 +330,7 @@ describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simul
     const sha = (p: string) => createHash("sha256").update(body(p)).digest("hex");
     const paths = ["Mini/mini.gguf", "Mini/embeddings/alba.safetensors", "Mini/embeddings/marius.safetensors"];
     const known = [{
-      id: "mini", famille: "pocket_tts" as const, langue: "fr", label: { fr: "Mini TTS", en: "Mini TTS" }, model: "Mini/mini.gguf",
+      id: "mini", family: "pocket_tts" as const, language: "fr", label: { fr: "Mini TTS", en: "Mini TTS" }, model: "Mini/mini.gguf",
       voices: [{ id: "alba", label: "Alba" }, { id: "marius", label: "Marius" }],
       files: paths.map((p) => ({ url: `https://huggingface.co/r/resolve/c/${p}`, path: p, size: body(p).length, sha256: sha(p) })),
     }];
@@ -342,19 +342,19 @@ describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simul
     await k.applyConfig({ plugins: [{ id: "tts-local", plugin: "tts-audiocpp", config: { models: {} } }], services: {} });
     const prov = async (id: string) => (await k.items.snapshot()).find((p) => p.id === id)!;
 
-    await k.items.run({ op: "action", provider: "voix-locale-library", id: "mini", action: "download" }, "ui");
-    for (let i = 0; i < 100 && (await prov("voix-locale")).items.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
-    const items = (await prov("voix-locale")).items;
+    await k.items.run({ op: "action", provider: "local-voice-library", id: "mini", action: "download" }, "ui");
+    for (let i = 0; i < 100 && (await prov("local-voice")).items.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+    const items = (await prov("local-voice")).items;
     const gguf = join(k.modelsDir, "tts-local", "Mini", "mini.gguf");
     expect(items.map((x) => x.label)).toEqual(["Alba", "Marius"]);
-    expect(items[0]!.values).toMatchObject({ model: gguf, famille: "pocket_tts", voix: "integree", speaker: "alba", langue: "fr" });
+    expect(items[0]!.values).toMatchObject({ model: gguf, family: "pocket_tts", voice: "builtin", speaker: "alba", language: "fr" });
     expect(items[1]!.values).toMatchObject({ speaker: "marius" });
     expect(items[0]!.group).toMatchObject({ label: { fr: "Mini TTS" } });
     expect(items[0]!.group?.id).toBe(items[1]!.group?.id);
     expect(existsSync(join(k.modelsDir, "tts-local", "Mini", "embeddings", "marius.safetensors"))).toBe(true);
 
-    await k.items.run({ op: "action", provider: "voix-locale-library", id: "mini", action: "remove" }, "ui");
-    expect((await prov("voix-locale")).items).toHaveLength(0);
+    await k.items.run({ op: "action", provider: "local-voice-library", id: "mini", action: "remove" }, "ui");
+    expect((await prov("local-voice")).items).toHaveLength(0);
     expect(existsSync(gguf)).toBe(false);
   });
 
@@ -362,13 +362,13 @@ describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simul
     const { KNOWN_VOICE_MODELS } = await import("../src/known-voices.ts");
     for (const m of KNOWN_VOICE_MODELS) {
       expect(m.files.some((f) => f.path === m.model)).toBe(true);
-      if (m.clone) { expect(m.voices).toEqual([]); expect(clones(clean({ famille: m.famille, model: m.model }))).toBe(true); }
+      if (m.clone) { expect(m.voices).toEqual([]); expect(clones(clean({ family: m.family, model: m.model }))).toBe(true); }
       else expect(m.voices.length).toBeGreaterThan(0);
       for (const f of m.files) {
         expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
         expect(f.url).toMatch(/\/resolve\/[0-9a-f]{40}\//);
       }
-      if (m.famille === "pocket_tts") expect(m.files.length).toBe(m.voices.length + 1);
+      if (m.family === "pocket_tts") expect(m.files.length).toBe(m.voices.length + 1);
     }
   });
 });
@@ -376,8 +376,8 @@ describe("bibliothèque : un modèle de voix arrive avec ses voix (réseau simul
 describe("ce que demande une voix (premier lancement)", () => {
   it("Pocket TTS et Supertonic : processeur ; Qwen3-TTS : puce graphique (CUDA, Vulkan, Metal)", async () => {
     const { voiceNeeds } = await import("../src/index.ts");
-    expect(voiceNeeds({ famille: "pocket_tts" })).toMatchObject({ device: "cpu" });
-    expect(voiceNeeds({ famille: "supertonic" })).toMatchObject({ device: "cpu" });
-    expect(voiceNeeds({ famille: "qwen3_tts" })).toMatchObject({ device: "gpu", backends: ["cuda", "vulkan", "metal"] });
+    expect(voiceNeeds({ family: "pocket_tts" })).toMatchObject({ device: "cpu" });
+    expect(voiceNeeds({ family: "supertonic" })).toMatchObject({ device: "cpu" });
+    expect(voiceNeeds({ family: "qwen3_tts" })).toMatchObject({ device: "gpu", backends: ["cuda", "vulkan", "metal"] });
   });
 });

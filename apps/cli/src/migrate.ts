@@ -27,6 +27,7 @@ export function migrateCommand(home: string, opts: MigrateOptions, say: (fr: str
     else lines.push(`[${r.step}] ${label} — ${say(dryRun ? `${r.changes.length} fichier(s) à modifier` : `${r.changes.length} fichier(s) modifié(s)`, dryRun ? `${r.changes.length} file(s) to change` : `${r.changes.length} file(s) changed`)}`);
     for (const c of r.changes) { changed++; lines.push(`  ${c.file} : ${c.keys.join(", ")}`); }
     for (const s of r.skipped) lines.push(`  ${s.file} : ${say(s.why === "unreadable" ? "illisible, laissé tel quel" : "conflit entre deux clés, laissé tel quel", s.why === "unreadable" ? "unreadable, left as is" : "two keys in conflict, left as is")}`);
+    for (const c of r.conflicts ?? []) lines.push(`  ${c.file} : ${c.key} (${say("les deux noms sont présents : le nouveau est gardé", "both names are present: the new one is kept")})`);
   }
   if (dryRun) lines.push(changed ? say("Rien n'a été modifié. Pour appliquer (après une sauvegarde du dossier) : floppy migrate --apply", "Nothing was changed. To apply (after backing up the folder): floppy migrate --apply") : say("Rien à faire.", "Nothing to do."));
   else lines.push(say(`Terminé : ${changed} fichier(s) modifié(s). Les originaux sont gardés à côté (*.bak-<étape>).`, `Done: ${changed} file(s) changed. Originals are kept next to them (*.bak-<step>).`));

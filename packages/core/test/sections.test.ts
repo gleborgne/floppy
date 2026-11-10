@@ -8,10 +8,10 @@ import * as core from "../src/index.ts";
 describe("rubriques de la fenêtre", () => {
   it("fusion : le premier libellé gagne, les champs manquants sont complétés, tri par ordre", () => {
     const r = new SectionRegistry();
-    r.declare("a", [{ id: "voix", label: "Voix", order: 20 }, { id: "corps", label: "Corps", order: 50 }]);
-    r.declare("b", [{ id: "voix", label: { fr: "Autre" }, description: "La voix", icon: "mic", order: 5 }, { id: "ecoute", label: "Écoute", order: 30 }]);
+    r.declare("a", [{ id: "voice", label: "Voix", order: 20 }, { id: "body", label: "Corps", order: 50 }]);
+    r.declare("b", [{ id: "voice", label: { fr: "Autre" }, description: "La voix", icon: "mic", order: 5 }, { id: "listening", label: "Écoute", order: 30 }]);
     const l = r.list();
-    expect(l.map((s) => s.id)).toEqual(["voix", "ecoute", "corps"]);
+    expect(l.map((s) => s.id)).toEqual(["voice", "listening", "body"]);
     expect(l[0]).toMatchObject({ label: "Voix", description: "La voix", icon: "mic", order: 20, sources: ["a", "b"] });
   });
 
@@ -26,18 +26,18 @@ describe("rubriques de la fenêtre", () => {
 
   it("le noyau déclare general et plugins ; les plugins ajoutent les leurs par leur manifeste", () => {
     const p = definePlugin({
-      manifest: { id: "p", version: "0", licence: "MIT", sections: [{ id: "general", label: "Ignoré" }, { id: "cerveau", label: "Cerveau", order: 10 }] },
+      manifest: { id: "p", version: "0", licence: "MIT", sections: [{ id: "general", label: "Ignoré" }, { id: "brain", label: "Cerveau", order: 10 }] },
       apply() {},
     });
     const k = new Kernel({ logger: () => {}, plugins: [p], home: mkdtempSync(join(tmpdir(), "sec-")) });
     const l = k.sections.list();
-    expect(l.map((s) => s.id)).toEqual(["general", "cerveau", "plugins"]);
+    expect(l.map((s) => s.id)).toEqual(["general", "brain", "plugins"]);
     expect(l[0]!.label).toEqual({ fr: "Général", en: "General" });
   });
 
-  it("langue_interface : alias dérivés de LANGS ; sectionOf n'existe plus", () => {
+  it("ui_language : alias dérivés de LANGS ; sectionOf n'existe plus", () => {
     const k = new Kernel({ logger: () => {}, home: mkdtempSync(join(tmpdir(), "sec-")) });
-    const s = k.settings.list().find((x) => x.key === "langue_interface")!;
+    const s = k.settings.list().find((x) => x.key === "ui_language")!;
     expect(s.options!.map((o) => [o.value, o.aliases])).toEqual(LANGS.map((l) => [l.value, [...l.aliases]]));
     expect((core as Record<string, unknown>).sectionOf).toBeUndefined();
   });
@@ -48,7 +48,7 @@ describe("rôle des réglages", () => {
     const p = definePlugin({
       manifest: { id: "p", version: "0", licence: "MIT" },
       apply(ctx) {
-        const base = { description: "", type: "text" as const, risk: "free" as const, section: "cerveau", get: () => "", set: () => {} };
+        const base = { description: "", type: "text" as const, risk: "free" as const, section: "brain", get: () => "", set: () => {} };
         ctx.settings.declare([{ ...base, key: "moteur", label: "Moteur", role: "brain.main" }, { ...base, key: "aide", label: "Aide", role: "brain.delegate" }, { ...base, key: "autre", label: "Autre" }]);
       },
     });
@@ -67,7 +67,7 @@ describe("fournisseurs : présentation et capacités", () => {
     const p = definePlugin({
       manifest: { id: "p", version: "0", licence: "MIT" },
       apply(ctx) {
-        const base = { section: "corps", label: "X", list: () => [] };
+        const base = { section: "body", label: "X", list: () => [] };
         ctx.items.declare({ ...base, id: "a", layout: "grid", capabilities: ["live"] });
         ctx.items.declare({ ...base, id: "b" });
       },

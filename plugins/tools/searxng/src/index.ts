@@ -15,7 +15,7 @@ const t = (fr: string, en: string): Text => ({ fr, en });
 export const Config = z.object({
   /** Adresse de SearXNG, sans /search. */
   url: z.string().default("http://localhost:8888"),
-  langue: z.string().default("fr"),
+  language: z.string().default("fr"),
   categories: z.array(z.string()).default(["general"]),
   timeoutMs: z.number().min(500).default(10000),
   /** Nombre maximum de résultats gardés. */
@@ -63,7 +63,7 @@ export async function searxngSearch(
   const u = new URL(`${base}/search`);
   u.searchParams.set("q", q);
   u.searchParams.set("format", "json");
-  u.searchParams.set("language", cfg.langue);
+  u.searchParams.set("language", cfg.language);
   if (cfg.categories.length) u.searchParams.set("categories", cfg.categories.join(","));
   const range = opts.since ? timeRange(opts.since) : undefined;
   if (range) u.searchParams.set("time_range", range);
@@ -97,13 +97,13 @@ export function createSearxngPlugin(fetchImpl?: FetchLike) {
       version: "0.1.0",
       licence: "MIT",
       sections: [
-        { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
+        { id: "connectors", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Recherche sur internet avec un SearXNG (adresse à donner).",
       provides: ["search"],
       permissions: { net: ["*"] },
       addable: {
-        section: "connecteurs",
+        section: "connectors",
         single: true,
         logo: SEARXNG,
         label: t("SearXNG", "SearXNG"),
@@ -114,7 +114,7 @@ export function createSearxngPlugin(fetchImpl?: FetchLike) {
         aliases: ["searxng", "recherche web", "méta-recherche"],
         fields: [
           { key: "url", label: t("Adresse de SearXNG", "SearXNG address"), type: "text", required: true, default: "http://localhost:8888", placeholder: t("http://localhost:8888", "http://localhost:8888") },
-          { key: "langue", label: t("Langue des résultats", "Results language"), type: "text", default: "fr" },
+          { key: "language", label: t("Langue des résultats", "Results language"), type: "text", default: "fr" },
           { key: "categories", label: t("Catégories", "Categories"), type: "list", default: ["general"], advanced: true, hint: t("general, news, science…", "general, news, science…") },
           { key: "max", label: t("Nombre de résultats", "Number of results"), type: "number", default: 10, min: 1, max: 50, advanced: true },
           { key: "timeoutMs", label: t("Délai (ms)", "Timeout (ms)"), type: "number", default: 10000, min: 500, advanced: true },

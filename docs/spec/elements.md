@@ -78,7 +78,7 @@ flowchart LR
   F -- "enable seulement" --> C
 ```
 
-- Un **fournisseur** (`ProviderDef`) appartient à une rubrique : `cerveau`, `voix`, `connecteurs`, `corps`, `avatars`.
+- Un **fournisseur** (`ProviderDef`) appartient à une rubrique : `brain`, `voice`, `connectors`, `body`, `avatars` (les autres : `listening`, `system`, `tasks`, `watch`).
 - Il donne ses **types d'éléments** (`kinds`). Chaque type a des **champs** (`FieldDef`) : texte, nombre, oui/non,
   choix, secret, fichier, liste, texte long, paires clé = valeur, **enregistrement audio**. Options : champ requis,
   avancé (replié), visible selon un autre champ (`showIf`), filtres de fichier. Un fournisseur qui a 2 ou 3 types
@@ -152,7 +152,7 @@ ajoutées (plugins `manifest.addable`). « Oui, j'ai un plugin pour ça. » → 
 
 ## Plusieurs langues
 
-- La fenêtre des réglages et les menus de l'icône sont en **français et en anglais** (réglage `langue_interface`,
+- La fenêtre des réglages et les menus de l'icône sont en **français et en anglais** (réglage `ui_language`,
   rubrique Général).
 - Les plugins donnent leurs textes en `Text` : `"Voix"` ou `{ fr: "Voix", en: "Voice" }` (`packages/core/src/i18n.ts`).
 - Floppy reconnaît un nom dit à l'oral dans toutes les langues données.
@@ -162,8 +162,8 @@ ajoutées (plugins `manifest.addable`). « Oui, j'ai un plugin pour ça. » → 
 | Rubrique | Fournisseurs (plugin) |
 |---|---|
 | Cerveau | `llm-local` (llm-llamacpp), `llm-remote` (llm-openai), `claude-cli` (brain-claude-cli), `codex-cli` (brain-codex-cli), `agy-cli` (brain-agy-cli) ; rôles « cerveau principal » et « délégation » (réglages de brain-aisdk) |
-| Voix | `voix-locale` (tts-audiocpp) |
-| Connecteurs | `connectors` (tools : MCP local, MCP distant, commande), `apps-connecteurs` (applications : navigateur, Orca) |
+| Voix | `local-voice` (tts-audiocpp) |
+| Connecteurs | `connectors` (tools : MCP local, MCP distant, commande), `apps-connectors` (applications : navigateur, Orca) |
 | Corps et affichage | `bodies` (body-hub), `ws-devices` (body-ws), `reachy` (body-reachy), `avatars` (body-electron) |
 
 Le détail de chaque fournisseur est plus bas, rempli au fur et à mesure.
@@ -204,7 +204,7 @@ La ligne « En service » en haut de la page montre chaque slot, son élément e
 
 | Fournisseur | Types (ajout) | Notes |
 |---|---|---|
-| `voix-locale` (tts-audiocpp, `offers: "tts"`) | `voice` (« Nouvelle voix ») : nom, enregistrement (champ `audio`), ce qu'il dit, modèle qui la fait parler (seulement ceux qui clonent : Qwen3-TTS Base, VoxCPM2, Pocket TTS), phrase d'essai. `gguf` : nom, fichier, famille (Qwen3-TTS, VoxCPM2, Pocket TTS, Supertonic, autre), voix clonée (WAV + texte) ou intégrée (nom), style, langue | Voir « Studio de voix » ci-dessous. Le service Python `voices` (voice-cascade) est archivé depuis le 6 novembre 2026. |
+| `local-voice` (tts-audiocpp, `offers: "tts"`) | `voice` (« Nouvelle voix ») : nom, enregistrement (champ `audio`), ce qu'il dit, modèle qui la fait parler (seulement ceux qui clonent : Qwen3-TTS Base, VoxCPM2, Pocket TTS), phrase d'essai. `gguf` : nom, fichier, famille (Qwen3-TTS, VoxCPM2, Pocket TTS, Supertonic, autre), voix clonée (WAV + texte) ou intégrée (nom), style, langue | Voir « Studio de voix » ci-dessous. Le service Python `voices` (voice-cascade) est archivé depuis le 6 novembre 2026. |
 | `sherpa` (stt-sherpa, `offers: ["vad", "stt"]`) | `onnx` : nom, fichier ou dossier ; le type (détecteur ou transcription) est lu aux fichiers | Voir [ecoute.md](ecoute.md). |
 | `tts-elevenlabs-account`, `tts-gemini-account` (`offers: "tts"`) | compte : modèle, voix, clé | « Activer » sur le compte = cette voix cloud en service (accord à la voix). |
 
@@ -216,7 +216,7 @@ Une **voix** n'est plus un modèle : c'est un enregistrement de 10 à 20 s et la
 de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partagé par ses voix. Maquette :
 <https://claude.ai/artifact/S8bjdyUCVGTL19pbDn31YB>.
 
-- Chaque élément de `voix-locale` reste un couple « voix + modèle » (l'élément offert au slot), mais il est toujours
+- Chaque élément de `local-voice` reste un couple « voix + modèle » (l'élément offert au slot), mais il est toujours
   rangé sous son modèle (`group` = le fichier GGUF). La page montre **une carte par modèle** : en tête, son nom, sa taille,
   son format, son matériel (carte graphique ou processeur) et son état (chargé ou en veille), puis toutes ses voix.
   Toutes les voix intégrées sont visibles dès l'ouverture, sans repli ni bouton « Voir ».
@@ -257,7 +257,7 @@ de Ko). Le **modèle** (le fichier GGUF, 2,5 Go pour Qwen3-TTS 1.7B) est partag�
 | Fournisseur | Types (ajout) | Notes |
 |---|---|---|
 | `connectors` (tools) | `mcp-local` (commande, arguments, variables, une variable secrète, cloud, filtre) ; `mcp-remote` (adresse, connexion : aucune / jeton secret / Azure CLI) ; `command` (une commande sans shell devient un outil : `{texte}` dans les arguments, niveau lecture ou écriture, délai, sortie coupée à 4000 caractères) | Tout se fait à chaud. Sous-éléments = outils du serveur avec leur niveau ; cocher = donné au cerveau. « Essayer » se connecte et liste les outils sans rien enregistrer. Les anciens réglages `connecteur_<clé>` sont repris une fois puis supprimés. |
-| `apps-connecteurs` (noyau) | un type par plugin « application » : `browser` (navigateur), `orca` | Voir « Applications » plus bas. |
+| `apps-connectors` (noyau) | un type par plugin « application » : `browser` (navigateur), `orca` | Voir « Applications » plus bas. |
 
 Exemple : ajouter le MCP Office 365 = « Ajouter » → « Serveur MCP local » → commande donnée par la doc du serveur
 → « Essayer » → cocher les outils de lecture → « Ajouter ». Aucun code à changer.
@@ -279,7 +279,7 @@ connecteur. Exemples : **Navigateur** (outil `ouvrir_url`) et **Orca**. Un plugi
 
 ```ts
 addable: {
-  section: "connecteurs", single: true,
+  section: "connectors", single: true,
   label: { fr: "Navigateur", en: "Web browser" },
   description: { fr: "…", en: "…" },
   fields: [ { key: "ask", label: { fr: "Demander mon accord avant d'ouvrir", en: "Ask me before opening" }, type: "boolean", default: true } ],

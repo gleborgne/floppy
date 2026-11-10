@@ -29,7 +29,7 @@ function brain(j: string[]): PluginDef<any> {
   return definePlugin({
     manifest: {
       id: "brain", version: "0", licence: "MIT", provides: ["brain"], lazy: true,
-      slots: [{ id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau principal" }],
+      slots: [{ id: "brain.main", service: "llm", section: "brain", label: "Cerveau principal" }],
     },
     async apply(ctx) {
       const llm = await ctx.slot<{ model: string }>("brain.main");
@@ -57,7 +57,7 @@ function conv(j: string[]): PluginDef<any> {
   return definePlugin({
     manifest: {
       id: "conv", version: "0", licence: "MIT", optional: ["brain"],
-      slots: [{ id: "conversation.live", service: "live", section: "cerveau", label: "Mode", none: "Séparé" }],
+      slots: [{ id: "conversation.live", service: "live", section: "brain", label: "Mode", none: "Séparé" }],
     },
     async apply(ctx) {
       const l = await ctx.slot("conversation.live");
@@ -130,7 +130,7 @@ describe("à la demande : plugins lazy, forks, slots", () => {
   it("deux slots sur le même élément : un seul fork", async () => {
     const j: string[] = [];
     const side = definePlugin({
-      manifest: { id: "side", version: "0", licence: "MIT", slots: [{ id: "side.model", service: "llm", section: "cerveau", label: "Modèle annexe" }] },
+      manifest: { id: "side", version: "0", licence: "MIT", slots: [{ id: "side.model", service: "llm", section: "brain", label: "Modèle annexe" }] },
       async apply(ctx) { const m = await ctx.slot<{ model: string }>("side.model"); j.push(`side ${m?.model}`); },
     });
     const { k, config } = setup(j, [side], { "brain.main": "m/a", "side.model": "m/a" });
@@ -193,7 +193,7 @@ describe("slot facultatif qui prend le premier élément (defaultFirst)", () => 
   const user = (seen: string[]) => definePlugin({
     manifest: {
       id: "user", version: "0", licence: "MIT",
-      slots: [{ id: "voice.tts", service: "llm", section: "voix", label: "Voix", none: "Aucune", defaultFirst: true }],
+      slots: [{ id: "voice.tts", service: "llm", section: "voice", label: "Voix", none: "Aucune", defaultFirst: true }],
     },
     async apply(ctx) { const v = await ctx.slot<{ model: string }>("voice.tts"); seen.push(v?.model ?? "-"); },
   });

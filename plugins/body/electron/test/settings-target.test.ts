@@ -14,16 +14,16 @@ const snap = (section: string, id: string, items: { id: string; label: ProviderS
 
 describe("trouver l'élément des réglages", () => {
   const providers = [
-    snap("connecteurs", "apps-connecteurs", [
+    snap("connectors", "apps-connectors", [
       { id: "orca", label: "Orca", actions: [{ id: "orca-plugin", label: "Installer dans Orca" }] },
       { id: "m365", label: { fr: "Microsoft 365", en: "Microsoft 365" } },
     ]),
-    snap("voix", "voices", [{ id: "siwis", label: { fr: "Voix Siwis", en: "Siwis voice" } }]),
+    snap("voice", "voices", [{ id: "siwis", label: { fr: "Voix Siwis", en: "Siwis voice" } }]),
     snap("modeles", "lib", [{ id: "orca-mini", label: "Orca" }], "library"),
   ];
 
   it("nom exact, nom dans le libellé, dictée approximative, autre langue", () => {
-    expect(findSettingsTarget(providers, "Orca")?.target).toEqual({ section: "connecteurs", provider: "apps-connecteurs", id: "orca" });
+    expect(findSettingsTarget(providers, "Orca")?.target).toEqual({ section: "connectors", provider: "apps-connectors", id: "orca" });
     expect(findSettingsTarget(providers, "orka")?.target.id).toBe("orca");
     expect(findSettingsTarget(providers, "microsoft")?.target.id).toBe("m365");
     expect(findSettingsTarget(providers, "Siwis voice")?.target.id).toBe("siwis");
@@ -53,7 +53,7 @@ describe("ouvrir_reglages sur un élément", () => {
       manifest: { id: "faux-orca", version: "0.0.0", description: "test", licence: "MIT" },
       apply(ctx) {
         ctx.items.declare({
-          id: "apps-test", section: "connecteurs", label: "Apps",
+          id: "apps-test", section: "connectors", label: "Apps",
           list: () => [{ id: "orca", label: "Orca", enabled: true, actions: [{ id: "orca-plugin", label: T("Installer dans Orca", "Install in Orca") }] }],
           action: async () => ({ ok: true, text: "ok" }),
         });
@@ -63,7 +63,7 @@ describe("ouvrir_reglages sur un élément", () => {
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }, { id: "faux", plugin: "faux-orca" }] });
     try {
       const r = await k.tools.call("ouvrir_reglages", { element: "orka" });
-      expect(requests.at(-1)?.target).toEqual({ section: "connecteurs", provider: "apps-test", id: "orca" });
+      expect(requests.at(-1)?.target).toEqual({ section: "connectors", provider: "apps-test", id: "orca" });
       expect(r).toMatchObject({ status: "done" });
       expect(JSON.stringify(r)).toContain("« Installer dans Orca »");
       const none = await k.tools.call("ouvrir_reglages", { element: "Telegram" });

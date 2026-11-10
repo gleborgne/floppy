@@ -5,7 +5,7 @@ const base = { name: "Floppy", today: new Date("2026-11-05"), mode: "voice" as c
 
 describe("buildPrompt : ton", () => {
   it("inclut la ligne de ton", () => {
-    const s = buildPrompt({ ...base, ton: "sobre et factuel" });
+    const s = buildPrompt({ ...base, tone: "sobre et factuel" });
     expect(s).toContain("Ton : sobre et factuel. Le ton change seulement tes mots, jamais ce que tu fais (outils, accords).");
   });
   it("sans ton, pas de ligne", () => {
@@ -58,7 +58,7 @@ describe("buildPrompt : langue de l'assistant", () => {
     expect(fr).toContain("Réponds en français");
   });
   it("anglais : mêmes chemins, mêmes outils, réponses en anglais", () => {
-    const s = buildPrompt({ ...base, tools, delegateTool: "deleguer", lang: "en", emotions: true, ton: "dry and factual" });
+    const s = buildPrompt({ ...base, tools, delegateTool: "deleguer", lang: "en", emotions: true, tone: "dry and factual" });
     expect(s).toContain("You are Floppy");
     expect(s).toContain("Answer in English");
     expect(s).toMatch(/1\. ASK[\s\S]*2\. DELEGATE[\s\S]*3\. DO/);

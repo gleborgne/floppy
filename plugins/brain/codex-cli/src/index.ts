@@ -234,13 +234,13 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
+      { id: "brain", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Codex (CLI d'OpenAI) comme cerveau ou pour la délégation, branché seulement sur le serveur MCP Floppy.",
     provides: ["delegate", "llm", "agent"],
     inject: ["mcp"],
     permissions: { exec: ["codex"], "fs.write": ["workspaces/brain-codex-cli"], cloud: true },
-    addable: { section: "cerveau", label: "Codex", description: { fr: "Ton abonnement ChatGPT, par le CLI Codex. Cerveau ou délégué.", en: "Your ChatGPT subscription, through the Codex CLI. Brain or delegate." }, cloud: true, single: true, program: "codex", aliases: ["codex", "openai", "chatgpt"] },
+    addable: { section: "brain", label: "Codex", description: { fr: "Ton abonnement ChatGPT, par le CLI Codex. Cerveau ou délégué.", en: "Your ChatGPT subscription, through the Codex CLI. Brain or delegate." }, cloud: true, single: true, program: "codex", aliases: ["codex", "openai", "chatgpt"] },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -275,7 +275,7 @@ export default definePlugin<Config>({
     const brains = new Set<{ renew(): void }>();
     const name = T("Codex", "Codex");
     ctx.items.declare({
-      id: "codex-cli", section: "cerveau", order: 31, offers: ["llm", "delegate"],
+      id: "codex-cli", section: "brain", order: 31, offers: ["llm", "delegate"],
       label: name,
       description: T("Ton abonnement ChatGPT, par le CLI Codex. Aucune clé d'API.", "Your ChatGPT subscription, through the Codex CLI. No API key."),
       badge: T("cloud", "cloud"),

@@ -4,13 +4,8 @@ import { T, TextError, type Text } from "@floppy/core";
 
 export type ShortcutAction = "talk" | "write" | "dictate" | "sleep" | "avatar";
 
-/**
- * Frontière avec les réglages : les clés `raccourci_<action>` restent françaises jusqu'au lot des réglages ;
- * le message `display` (et tout le reste du code) parle déjà des actions en anglais.
- */
-export const SHORTCUT_SETTING_KEY: Record<ShortcutAction, string> = {
-  talk: "raccourci_parler", write: "raccourci_ecrire", dictate: "raccourci_dicter", sleep: "raccourci_dormir", avatar: "raccourci_avatar",
-};
+/** Clé du réglage d'une action : `shortcut_talk`, `shortcut_write`, `shortcut_dictate`, `shortcut_sleep`, `shortcut_avatar`. */
+export const shortcutSettingKey = (action: ShortcutAction): string => `shortcut_${action}`;
 
 export const SHORTCUT_DEFAULTS: Record<ShortcutAction, string> = {
   talk: "Ctrl+Alt+F",

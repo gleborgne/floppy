@@ -6,8 +6,8 @@ const chain = (step?: number) => definePlugin({
   manifest: {
     id: "chain", version: "0", licence: "MIT",
     slots: [
-      { id: "a.first", service: "vad", section: "ecoute", label: "Parole", ...(step === undefined ? {} : { step }) },
-      { id: "a.plain", service: "stt", section: "ecoute", label: "Texte" },
+      { id: "a.first", service: "vad", section: "listening", label: "Parole", ...(step === undefined ? {} : { step }) },
+      { id: "a.plain", service: "stt", section: "listening", label: "Texte" },
     ],
   },
   apply() {},

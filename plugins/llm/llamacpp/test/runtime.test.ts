@@ -28,7 +28,7 @@ it("lance llama-server pour le modèle du slot, tue l'ancien avant le nouveau (m
   };
   let got: LlmService | undefined;
   const consumer = definePlugin({
-    manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" }] },
+    manifest: { id: "consumer", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "brain", label: "Cerveau" }] },
     async apply(c) { got = await c.slot<LlmService>("brain.main"); },
   });
   const k = new Kernel({ logger: () => {}, plugins: [wrapped, consumer] });
@@ -77,19 +77,19 @@ it("le tri (completion « cerveau ») partage le serveur du cerveau : jamais un 
   };
   let brainCtx: import("@floppy/core").Context | undefined;
   const brain = definePlugin({
-    manifest: { id: "brain", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" }] },
+    manifest: { id: "brain", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "brain", label: "Cerveau" }] },
     async apply(c) { await c.slot<LlmService>("brain.main"); },
   });
   const veille = definePlugin({
-    manifest: { id: "veille", version: "0", licence: "MIT", slots: [{ id: "veille.tri", service: "completion", section: "veille", label: "Tri" }] },
+    manifest: { id: "veille", version: "0", licence: "MIT", slots: [{ id: "watch.triage", service: "completion", section: "watch", label: "Tri" }] },
     apply(c) { brainCtx = c; },
   });
   const k = new Kernel({ logger: () => {}, plugins: [wrapped, brain, veille] });
   const base = { id: "llm", plugin: "llm-llamacpp", config: { exe: "llama-server", scanDirs: [], models: { a: { label: "A", model: "a.gguf" }, b: { label: "B", model: "b.gguf" } } } };
   try {
-    await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }], slots: { "brain.main": "llm/a", "veille.tri": "llm/cerveau" } });
+    await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }], slots: { "brain.main": "llm/a", "watch.triage": "llm/brain" } });
     // Le cerveau dort : le tri charge le modèle du cerveau, puis le libère.
-    const b1 = await brainCtx!.borrow<import("@floppy/contracts").CompletionService>("veille.tri");
+    const b1 = await brainCtx!.borrow<import("@floppy/contracts").CompletionService>("watch.triage");
     expect(spawned).toEqual(["a"]);
     const r = await b1!.service.complete({ system: "s", prompt: "p", schema: { type: "object" } });
     expect(r.json).toEqual({ ok: true });
@@ -98,9 +98,10 @@ it("le tri (completion « cerveau ») partage le serveur du cerveau : jamais un 
     await k.idle(); await k.idle();
     expect(state.killed).toBe(1);
     // Le cerveau tourne : le tri réutilise son serveur (pas de 2e lancement), et le serveur reste après le tri.
-    await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }, { id: "brain", plugin: "brain" }], slots: { "brain.main": "llm/a", "veille.tri": "llm/cerveau" } });
+    // Ici le choix est écrit comme avant le renommage de l'élément (« llm/cerveau ») : il est suivi vers « llm/brain ».
+    await k.applyConfig({ plugins: [base, { id: "v", plugin: "veille" }, { id: "brain", plugin: "brain" }], slots: { "brain.main": "llm/a", "watch.triage": "llm/cerveau" } });
     expect(spawned).toEqual(["a", "a"]);
-    const b2 = await brainCtx!.borrow<import("@floppy/contracts").CompletionService>("veille.tri");
+    const b2 = await brainCtx!.borrow<import("@floppy/contracts").CompletionService>("watch.triage");
     expect(spawned).toEqual(["a", "a"]);
     b2!.release();
     await k.idle(); await k.idle();

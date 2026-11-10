@@ -24,7 +24,7 @@ describe("noyau bilingue", () => {
     const k = new Kernel({ logger: () => {}, plugins: [broken] });
     await k.applyConfig({ plugins: [{ id: "c", plugin: "casse" }, { id: "x", plugin: "inconnu" }] });
     expect(k.status().find((s) => s.id === "c")?.error).toBe("apply a échoué : disque plein");
-    await k.settings.change("langue_interface", "en", "ui");
+    await k.settings.change("ui_language", "en", "ui");
     expect(k.status().find((s) => s.id === "c")?.error).toBe("apply failed: disk full");
     expect(k.status().find((s) => s.id === "x")?.error).toBe("unknown plugin: inconnu");
     await k.stopAll();
@@ -33,7 +33,7 @@ describe("noyau bilingue", () => {
   it("refus et outils internes dans la langue de l'assistant", async () => {
     const k = new Kernel({ logger: () => {}, plugins: [risky] });
     await k.applyConfig({ plugins: [{ id: "r", plugin: "risque" }], approvals: { delete: "never" } });
-    await k.settings.change("langue_assistant", "en", "ui");
+    await k.settings.change("assistant_language", "en", "ui");
     await k.idle();
     expect((await k.tools.call("effacer", {})).text).toMatch(/^Action forbidden by the configuration/);
     expect((await k.tools.call("inexistant", {})).text).toBe("Unknown tool: inexistant");

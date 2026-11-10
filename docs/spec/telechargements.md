@@ -88,7 +88,7 @@ donner `sample` (extrait sonore), recopié dans `ItemInfo.sample`.
 
 La fenêtre des Réglages montre cette note sur la ligne du modèle, dans la bibliothèque « Modèles à télécharger » : une
 étiquette « Français : bien » ou « Français : moyen » (grise), « Français : mal » (jaune, `chip warn`), pour la langue de
-l'assistant (réglage `langue_assistant`, lu dans la liste des réglages que la fenêtre reçoit déjà : aucun message de plus).
+l'assistant (réglage `assistant_language`, lu dans la liste des réglages que la fenêtre reçoit déjà : aucun message de plus).
 Pas de note pour cette langue, pas d'étiquette. Elle suit un changement de langue de l'assistant au dessin suivant. Les
 éléments déjà installés d'un rôle (liste des voix, de la transcription) n'ont pas cette étiquette : les plugins ne
 recopient pas `languages` dans les éléments qu'ils offrent.

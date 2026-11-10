@@ -76,8 +76,8 @@ export interface PromptInput {
   emotions: boolean;
   /** Nom de l'outil de délégation, s'il existe (sinon le chemin « déléguer » est retiré). */
   delegateTool?: string;
-  /** Ton de la voix (réglage « ton »). */
-  ton?: string;
+  /** Ton de la voix (réglage `tone`). */
+  tone?: string;
   /** Outils visibles ce tour-ci (ctx.tools.list() : cachés et désactivés exclus). Le prompt ne parle que d'eux. */
   tools?: { name: string }[];
   /** Langue de l'assistant (« fr » par défaut) : langue du prompt et des réponses. */
@@ -143,10 +143,10 @@ Pour effectuer une action, appelle réellement l'outil correspondant. Une phrase
 Tu n'as que les outils listés ici : n'en suppose aucun autre (ni shell, ni fichiers, ni web s'ils n'y figurent pas).
 
 ${paths}`;
-  const ton = p.ton?.trim();
-  if (ton) s += `
+  const tone = p.tone?.trim();
+  if (tone) s += `
 
-Ton : ${ton}. Le ton change seulement tes mots, jamais ce que tu fais (outils, accords).`;
+Ton : ${tone}. Le ton change seulement tes mots, jamais ce que tu fais (outils, accords).`;
   if (p.emotions) {
     s += `\n\n${emotionTagPrompt("fr")}`;
   }
@@ -208,10 +208,10 @@ To perform an action, actually call the matching tool. A confirmation sentence d
 You only have the tools listed here: don't assume any other (no shell, no files, no web unless they are listed).
 
 ${paths}`;
-  const ton = p.ton?.trim();
-  if (ton) s += `
+  const tone = p.tone?.trim();
+  if (tone) s += `
 
-Tone: ${ton}. The tone only changes your words, never what you do (tools, approvals).`;
+Tone: ${tone}. The tone only changes your words, never what you do (tools, approvals).`;
   if (p.emotions) {
     s += `\n\n${emotionTagPrompt("en")}`;
   }

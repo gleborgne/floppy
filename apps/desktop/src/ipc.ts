@@ -141,13 +141,13 @@ export function registerIpc(deps: IpcDeps): void {
     return kernelRequest({ type: "onboarding.apply", selection: { ...(brain !== undefined ? { brain } : {}), ...(stt !== undefined ? { stt } : {}), ...(tts !== undefined ? { tts } : {}) } });
   });
   ipcMain.handle("onboarding:skip", (e) => fromOnb(e) ? kernelRequest({ type: "onboarding.skip" }) : null);
-  // Répertoire de travail choisi dans « Bienvenue » : le noyau le note puis repart dans ce dossier (réglage dossier_floppy).
+  // Répertoire de travail choisi dans « Bienvenue » : le noyau le note puis repart dans ce dossier (réglage home_folder).
   ipcMain.handle("onboarding:home", async (e) => {
     const onbWin = windows().onbWin();
     if (!fromOnb(e) || !onbWin) return null;
     const r = await dialog.showOpenDialog(onbWin, { title: T("pickTitle"), properties: ["openDirectory", "createDirectory"] });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
-    return kernelRequest({ type: "settings.set", key: "dossier_floppy", value: r.filePaths[0] });
+    return kernelRequest({ type: "settings.set", key: "home_folder", value: r.filePaths[0] });
   });
   ipcMain.on("onboarding:close", (e) => { if (fromOnb(e)) windows().onbWin()?.close(); });
   ipcMain.on("onboarding:settings", (e) => { if (fromOnb(e)) openSettings(); });

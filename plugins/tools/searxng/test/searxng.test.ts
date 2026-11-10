@@ -30,17 +30,17 @@ async function serve(handler: Parameters<typeof createServer>[1]): Promise<{ url
 }
 const json = (body: unknown) => (_: unknown, res: any) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify(body)); };
 
-/** Consommateur : un slot « veille.recherche » (service search) emprunté le temps d'une recherche. */
+/** Consommateur : un slot « watch.search » (service search) emprunté le temps d'une recherche. */
 async function boot(url: string, extra: Record<string, unknown> = {}) {
   let ctxRef: Context | undefined;
   const user = definePlugin({
-    manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "veille.recherche", service: "search", section: "veille", label: "Recherche", none: "Aucune" }] },
+    manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "watch.search", service: "search", section: "watch", label: "Recherche", none: "Aucune" }] },
     apply(ctx) { ctxRef = ctx; },
   });
   const k = new Kernel({ logger: () => {}, plugins: [createSearxngPlugin(), user] });
   kernels.push(k);
   await k.applyConfig({
-    slots: { "veille.recherche": "sx/searxng" },
+    slots: { "watch.search": "sx/searxng" },
     plugins: [{ id: "sx", plugin: "searxng", config: { url, ...extra } }, { id: "u", plugin: "user" }],
   });
   return { k, ctx: ctxRef! };
@@ -50,7 +50,7 @@ describe("searxng", () => {
   it("service search emprunté par un slot : résultats convertis, requête JSON", async () => {
     const srv = await serve(json(FAKE));
     const { ctx } = await boot(srv.url);
-    const b = await ctx.borrow<SearchService>("veille.recherche");
+    const b = await ctx.borrow<SearchService>("watch.search");
     expect(b).toBeDefined();
     expect(b!.service.cloud).toBe(false);
     const hits = await b!.service.search("floppy", { since: new Date(Date.now() - 3 * 86_400_000) });
@@ -71,7 +71,7 @@ describe("searxng", () => {
   it("max limite le nombre de résultats", async () => {
     const srv = await serve(json(FAKE));
     const { ctx } = await boot(srv.url);
-    const b = await ctx.borrow<SearchService>("veille.recherche");
+    const b = await ctx.borrow<SearchService>("watch.search");
     expect(await b!.service.search("x", { max: 1 })).toHaveLength(1);
     b!.release();
   });
@@ -90,7 +90,7 @@ describe("searxng", () => {
   it("application de la rubrique Connecteurs", async () => {
     const srv = await serve(json(FAKE));
     const { k } = await boot(srv.url);
-    const kind = k.items.provider("apps-connecteurs")!.kinds!.find((x) => x.id === "searxng");
+    const kind = k.items.provider("apps-connectors")!.kinds!.find((x) => x.id === "searxng");
     expect(kind).toBeDefined();
     expect(kind?.cloud).toBeFalsy();
   });

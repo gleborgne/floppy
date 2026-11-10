@@ -3,11 +3,11 @@
 import type { ProviderSnapshot, SettingInfo } from "@floppy/core";
 
 /** Réglages que la fenêtre peut changer, par « façon » : les mêmes que dans les Réglages (aucun chemin à part). */
-export const WAY_KEYS = { wake: "slot.listen.wakeword", talk: "raccourci_parler" } as const;
+export const WAY_KEYS = { wake: "slot.listen.wakeword", talk: "shortcut_talk" } as const;
 /** Valeur du slot « mot d'activation » quand il est éteint. */
 export const NO_WAKE = "@none";
 /** Fournisseur des connecteurs (rubrique « connecteurs » : navigateur, recherche, courrier…). */
-export const TOOLS_PROVIDER = "apps-connecteurs";
+export const TOOLS_PROVIDER = "apps-connectors";
 
 export interface Ways {
   wake: { on: boolean; value: string; fallback: string } | null;

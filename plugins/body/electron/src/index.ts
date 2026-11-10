@@ -8,7 +8,7 @@ import { definePlugin, fold, T, TextError, tr, type ItemInfo, type Text } from "
 import type { AvatarEntry } from "@floppy/contracts";
 import { registerDesktop } from "@floppy/toolkit";
 import { findSettingsTarget, type FoundTarget } from "./settings-target.ts";
-import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, SHORTCUT_SETTING_KEY, type ShortcutAction } from "./shortcuts.ts";
+import { normalizeShortcut, SHORTCUT_DEFAULTS, SHORTCUT_LABELS, shortcutSettingKey, type ShortcutAction } from "./shortcuts.ts";
 import type { BodyToKernel, BodyTransport, KernelToBody } from "@floppy/protocol";
 
 /** Port de message d'Electron côté utilityProcess (MessagePortMain). */
@@ -76,7 +76,7 @@ export interface DisplaySettings {
   hide_after: number;
   bubble: boolean;
   always_on_top: boolean;
-  /** Lancer Floppy à l'ouverture de la session (réglage `demarrage_windows`). */
+  /** Lancer Floppy à l'ouverture de la session (réglage `autostart`). */
   autostart: boolean;
   /** Avatar affiché (id d'un plugin plugins/avatar/<id>/) et adresse file:// de son dessin. */
   avatar: string;
@@ -101,8 +101,8 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "corps", label: { fr: "Corps et affichage", en: "Bodies and display" } },
-      { id: "systeme", order: 80, label: { fr: "Système", en: "System" }, description: { fr: "Démarrage et comportement de l'application.", en: "Startup and behaviour of the application." } },
+      { id: "body", label: { fr: "Corps et affichage", en: "Bodies and display" } },
+      { id: "system", order: 80, label: { fr: "Système", en: "System" }, description: { fr: "Démarrage et comportement de l'application.", en: "Startup and behaviour of the application." } },
     ],
     description: "Transport MessagePort : l'avatar de l'app Electron.",
     inject: ["body"],
@@ -192,14 +192,14 @@ export default definePlugin<Config>({
     // Réglages d'affichage : gardés ici, appliqués par le processus principal (message "display").
     const display: DisplaySettings = {
       avatar_visible: ctx.settings.saved<boolean>("avatar_visible") ?? true,
-      hide_after: ctx.settings.saved<number>("masquer_apres") ?? 0,
-      bubble: ctx.settings.saved<boolean>("bulle") ?? true,
-      always_on_top: ctx.settings.saved<boolean>("toujours_devant") ?? true,
-      autostart: ctx.settings.saved<boolean>("demarrage_windows") ?? false,
+      hide_after: ctx.settings.saved<number>("hide_after") ?? 0,
+      bubble: ctx.settings.saved<boolean>("bubble") ?? true,
+      always_on_top: ctx.settings.saved<boolean>("always_on_top") ?? true,
+      autostart: ctx.settings.saved<boolean>("autostart") ?? false,
       avatar: "",
       avatarUrl: "",
       shortcuts: Object.fromEntries((Object.keys(SHORTCUT_DEFAULTS) as ShortcutAction[]).map((a) => {
-        const saved = ctx.settings.saved<string>(SHORTCUT_SETTING_KEY[a]);
+        const saved = ctx.settings.saved<string>(shortcutSettingKey(a));
         let v = SHORTCUT_DEFAULTS[a];
         if (typeof saved === "string") { try { v = normalizeShortcut(saved); } catch { /* valeur gardée illisible : défaut */ } }
         return [a, v];
@@ -227,35 +227,35 @@ export default definePlugin<Config>({
     const readAvatars = () => [...avatars.values()];
     const pushDisplay = () => parent.postMessage({ type: "display", settings: { ...display } });
     const GROUP: Text = { fr: "Affichage", en: "Display" };
-    // `key` : clé du réglage (encore française, voir le lot des réglages) ; `field` : champ du message `display`.
-    const bool = (key: string, field: "avatar_visible" | "bubble" | "always_on_top" | "autostart", label: Text, description: Text) => ({
-      key, label, description, type: "boolean" as const, group: GROUP, section: "corps", risk: "free" as const,
-      get: () => display[field],
-      set: (v: unknown) => { display[field] = v === true || v === "true"; pushDisplay(); },
+    // Un réglage booléen d'affichage : sa clé est le nom du champ du message `display`.
+    const bool = (key: "avatar_visible" | "bubble" | "always_on_top" | "autostart", label: Text, description: Text) => ({
+      key, label, description, type: "boolean" as const, group: GROUP, section: "body", risk: "free" as const,
+      get: () => display[key],
+      set: (v: unknown) => { display[key] = v === true || v === "true"; pushDisplay(); },
     });
     ctx.settings.declare([
-      bool("avatar_visible", "avatar_visible", { fr: "Avatar visible", en: "Avatar visible" },
+      bool("avatar_visible", { fr: "Avatar visible", en: "Avatar visible" },
         { fr: "Montre ou cache l'avatar à l'écran. Il revient quand on lui parle.", en: "Shows or hides the avatar on screen. It comes back when you talk to it." }),
       {
-        key: "masquer_apres", label: { fr: "Masquer après", en: "Hide after" }, type: "number", min: 0, max: 120, group: GROUP, section: "corps", risk: "free",
+        key: "hide_after", label: { fr: "Masquer après", en: "Hide after" }, type: "number", min: 0, max: 120, group: GROUP, section: "body", risk: "free",
         description: { fr: "Minutes d'inactivité avant de cacher l'avatar (0 = jamais).", en: "Minutes of inactivity before hiding the avatar (0 = never)." },
         get: () => display.hide_after,
         set: (v) => { display.hide_after = Math.max(0, Math.min(120, Math.round(Number(v)))); pushDisplay(); },
       },
-      bool("bulle", "bubble", { fr: "Bulle de texte", en: "Text bubble" },
+      bool("bubble", { fr: "Bulle de texte", en: "Text bubble" },
         { fr: "Affiche la bulle avec ce qui est dit au-dessus de l'avatar.", en: "Shows the bubble with what is said above the avatar." }),
-      bool("toujours_devant", "always_on_top", { fr: "Toujours devant", en: "Always on top" },
+      bool("always_on_top", { fr: "Toujours devant", en: "Always on top" },
         { fr: "Garde l'avatar au-dessus des autres fenêtres.", en: "Keeps the avatar above other windows." }),
       {
-        ...bool("demarrage_windows", "autostart", { fr: "Démarrer avec l'ordinateur", en: "Start with the computer" },
+        ...bool("autostart", { fr: "Démarrer avec l'ordinateur", en: "Start with the computer" },
           { fr: "Lance Floppy à l'ouverture de ta session.", en: "Starts Floppy when you sign in." }),
-        group: { fr: "Système", en: "System" } as Text, section: "systeme",
+        group: { fr: "Système", en: "System" } as Text, section: "system",
       },
       // Raccourcis clavier : un réglage par action, dans Réglages → Système. Vide = raccourci désactivé.
       ...(Object.keys(SHORTCUT_DEFAULTS) as ShortcutAction[]).map((a) => ({
-        key: SHORTCUT_SETTING_KEY[a], label: SHORTCUT_LABELS[a].label,
+        key: shortcutSettingKey(a), label: SHORTCUT_LABELS[a].label,
         description: { fr: `${tr(SHORTCUT_LABELS[a].description, "fr")} Par défaut : ${SHORTCUT_DEFAULTS[a]}. Vide : désactivé.`, en: `${tr(SHORTCUT_LABELS[a].description, "en")} Default: ${SHORTCUT_DEFAULTS[a]}. Empty: off.` } as Text,
-        type: "text" as const, min: 0, maxLength: 40, section: "systeme", group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } as Text, risk: "free" as const,
+        type: "text" as const, min: 0, maxLength: 40, section: "system", group: { fr: "Raccourcis clavier", en: "Keyboard shortcuts" } as Text, risk: "free" as const,
         presets: [{ value: SHORTCUT_DEFAULTS[a], label: { fr: `${SHORTCUT_DEFAULTS[a]} (par défaut)`, en: `${SHORTCUT_DEFAULTS[a]} (default)` } }],
         get: () => display.shortcuts[a],
         set: (v: unknown) => {
@@ -268,7 +268,7 @@ export default definePlugin<Config>({
       })),
     ]);
     ctx.items.declare({
-      id: "avatars", section: "corps", layout: "grid", order: 10,
+      id: "avatars", section: "body", layout: "grid", order: 10,
       label: { fr: "Avatars", en: "Avatars" },
       description: { fr: "Les avatars sont des plugins : mêmes états et émotions envoyés par le noyau.", en: "Avatars are plugins: same states and emotions sent by the kernel." },
       list: () => readAvatars().map((a): ItemInfo => {

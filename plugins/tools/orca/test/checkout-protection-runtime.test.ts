@@ -28,7 +28,7 @@ async function setup(opts: { home?: string; at?: number; state?: string; stateAt
   const k = new Kernel({ home, logger: () => {}, plugins: [createOrcaPlugin({ cli, run, now: () => time, bridge: opts.bridge ?? false, phrase: async () => undefined }), definePlugin({ manifest: { id: "probe", version: "1", licence: "MIT", inject: ["agentTracking"] }, apply(ctx) { tracking = ctx.get("agentTracking"); } })] });
   kernels.push(k);
   k.bus.on("approval.request", e => k.approvals.respond(e.id, true, "test"));
-  await k.applyConfig({ plugins: [{ id: "orca", plugin: "orca", config: { pollSeconds: 600, notifications: "aucune" } }, { id: "probe", plugin: "probe" }] });
+  await k.applyConfig({ plugins: [{ id: "orca", plugin: "orca", config: { pollSeconds: 600, notifications: "none" } }, { id: "probe", plugin: "probe" }] });
   await tracking.refresh();
   if (opts.bridge) await until(() => expect(existsSync(join(home, "orca-bridge.json"))).toBe(true));
   const file = join(home, "orca-checkout-protection.json");

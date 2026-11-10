@@ -11,14 +11,14 @@ export function declareCoreSettings(k: KernelInternals): void {
     { id: "plugins", order: 60, view: "plugins", label: { fr: "Plugins", en: "Plugins" }, description: { fr: "Les plugins chargés par le noyau, et les réglages des plugins que tu as créés.", en: "Plugins loaded by the kernel, and settings of the plugins you created." } },
   ]);
   k.settings.declare("core", [{
-    key: "langue_interface", section: "general", group: { fr: "Langue", en: "Language" },
+    key: "ui_language", section: "general", group: { fr: "Langue", en: "Language" },
     label: { fr: "Langue de l'interface", en: "Interface language" },
     description: { fr: "Langue de la fenêtre des réglages et des menus.", en: "Language of the settings window and menus." },
     type: "enum", options: LANGS.map((l) => ({ value: l.value, label: l.label, aliases: [...l.aliases] })), risk: "free",
     get: () => k.uiLang,
     set: (v) => { k.uiLang = String(v); },
   }, {
-    key: "langue_assistant", section: "general", group: { fr: "Langue", en: "Language" },
+    key: "assistant_language", section: "general", group: { fr: "Langue", en: "Language" },
     label: { fr: "Langue de l'assistant", en: "Assistant language" },
     description: {
       fr: "La langue dans laquelle Floppy écoute et parle. Changer de langue redémarre les plugins (quelques secondes).",
@@ -34,7 +34,7 @@ export function declareCoreSettings(k: KernelInternals): void {
   // Répertoire de travail : config, réglages, modèles, espaces des agents, plugins tiers, journaux (voir util/home.ts).
   // Le changer relance le noyau ; les données suivent, sauf si le nouveau dossier a déjà des données de Floppy.
   k.settings.declare("core", [{
-    key: "dossier_floppy", section: "general", group: { fr: "Dossier de Floppy", en: "Floppy's folder" },
+    key: "home_folder", section: "general", group: { fr: "Dossier de Floppy", en: "Floppy's folder" },
     label: { fr: "Répertoire de travail", en: "Working folder" },
     description: {
       fr: "Le dossier où Floppy garde tout : config, réglages, modèles, espaces de travail des agents, plugins, journaux. Le changer relance Floppy et y déplace ses données (un dossier qui a déjà des données de Floppy est repris tel quel).",
@@ -60,7 +60,7 @@ export function declareCoreSettings(k: KernelInternals): void {
     k.bus.emit("initiative", { source: "downloads", text, importance: "normal", key: `download:${d.key}` });
   });
   {
-    const saved = k.settings.savedValue<string>("langue_assistant");
+    const saved = k.settings.savedValue<string>("assistant_language");
     if (saved && isLang(saved)) k.assistantLang = saved;
   }
 }

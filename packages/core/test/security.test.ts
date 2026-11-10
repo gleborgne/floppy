@@ -131,7 +131,7 @@ function itemsPlugin() {
       itemStore.fixe = { id: "fixe", label: "Fixe", enabled: true, toggleable: false };
       itemStore.libre = { id: "libre", label: "Libre", enabled: true, toggleable: true };
       ctx.items.declare({
-        id: "fake", section: "cerveau", label: "Faux", list: () => Object.values(itemStore),
+        id: "fake", section: "brain", label: "Faux", list: () => Object.values(itemStore),
         setEnabled: async (id, on) => { itemStore[id]!.enabled = on; return { ok: true, text: "" }; },
       });
     },
@@ -237,7 +237,7 @@ describe("8. lister_elements : rubriques dynamiques", () => {
   it("l'enum suit les rubriques du registre", async () => {
     const k = await bootItems();
     const tool = k.tools.list().find((t) => t.name === "lister_elements")!;
-    expect(JSON.stringify(tool.inputSchema)).toContain("cerveau");
+    expect(JSON.stringify(tool.inputSchema)).toContain("brain");
     expect(JSON.stringify(tool.inputSchema)).not.toContain("avatars");
     await k.stopAll();
   });

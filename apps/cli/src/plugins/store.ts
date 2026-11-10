@@ -66,7 +66,7 @@ export function createPluginStore(kernel: Kernel, opts: StoreOptions): PluginSto
   const home = kernel.home;
   const reviewer = opts.reviewer ?? coderReviewer(kernel);
   const lang = () => kernel.assistantSettings.language ?? "fr";
-  let agent = kernel.settings.savedValue<string>("plugins_tiers_relecteur") ?? "auto";
+  let agent = kernel.settings.savedValue<string>("third_party_plugins_reviewer") ?? "auto";
   let offPending: () => void = () => {};
   let declared = "";
 
@@ -199,7 +199,7 @@ export function createPluginStore(kernel: Kernel, opts: StoreOptions): PluginSto
   }
 
   const offSettings = kernel.settings.declare("plugin-store", [{
-    key: "plugins_tiers_relecteur",
+    key: "third_party_plugins_reviewer",
     label: T("Relecteur des plugins tiers", "Third-party plugin reviewer"),
     description: T("L'agent de code qui relit un plugin tiers avant son installation. Automatique : le premier installé.",
       "The coding agent that reviews a third-party plugin before it is installed. Automatic: the first one installed."),

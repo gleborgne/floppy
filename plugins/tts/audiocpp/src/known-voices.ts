@@ -12,19 +12,19 @@ const HF_EXTENDED = "https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/73c
 export interface KnownVoiceModel extends LibraryEntry {
   /** Fichier GGUF, relatif au dossier des téléchargements. */
   model: string;
-  famille: "pocket_tts" | "qwen3_tts" | "supertonic" | "voxcpm2" | "chatterbox" | "voxtral_tts" | "fish_audio" | "omnivoice";
+  family: "pocket_tts" | "qwen3_tts" | "supertonic" | "voxcpm2" | "chatterbox" | "voxtral_tts" | "fish_audio" | "omnivoice";
   /** Sans voix intégrées : crée une fiche à personnaliser avec un enregistrement. */
   clone?: boolean;
   mode?: "streaming" | "offline";
   /** Code de langue imposé au modèle (vide : la langue de l'assistant). */
-  langue: string;
+  language: string;
   /** Voix intégrées : une par élément créé. */
   voices: { id: string; label: Text }[];
 }
 
 export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
   {
-    id: "pocket-tts-french", famille: "pocket_tts", langue: "fr",
+    id: "pocket-tts-french", family: "pocket_tts", language: "fr",
     // Notes par langue (`languages`) : seulement ce que le dépôt ou la fiche publique du modèle dit ; langue absente = inconnue.
     // Modèle entraîné pour le français (langue imposée « fr ») : l'anglais n'est pas son affaire.
     languages: { fr: "good", en: "poor" },
@@ -94,7 +94,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     ],
   },
   {
-    id: "pocket-tts-english", famille: "pocket_tts", langue: "en",
+    id: "pocket-tts-english", family: "pocket_tts", language: "en",
     languages: { en: "good", fr: "poor" },
     label: T("Pocket TTS anglais", "Pocket TTS English"),
     description: T("Voix légère et naturelle, sur le processeur. 26 voix incluses.", "Light, natural voice, on the CPU. 26 voices included."),
@@ -160,7 +160,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     ],
   },
   {
-    id: "supertonic-3", famille: "supertonic", langue: "",
+    id: "supertonic-3", family: "supertonic", language: "",
     label: T("Supertonic 3", "Supertonic 3"),
     description: T("Très rapide sur le processeur. 10 voix incluses (F1 à F5, M1 à M5).", "Very fast on the CPU. 10 voices included (F1 to F5, M1 to M5)."),
     licence: { name: "OpenRAIL-M", url: "https://huggingface.co/Supertone/supertonic-3/blob/main/LICENSE" },
@@ -170,7 +170,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     files: [{ url: `${HF}/Supertonic-3-GGUF/supertonic-3-f16.gguf`, path: "Supertonic-3-GGUF/supertonic-3-f16.gguf", size: 312785732, sha256: "7a44c47d1f387e4fb163e2eed9615b58470c77e26ac8b2b1a6be49dfb8670899" }],
   },
   {
-    id: "qwen3-tts-customvoice", famille: "qwen3_tts", langue: "",
+    id: "qwen3-tts-customvoice", family: "qwen3_tts", language: "",
     // Fiche publique de Qwen3-TTS : 10 langues dont l'anglais et le français ; l'anglais et le chinois sont ses plus solides.
     languages: { en: "good", fr: "fair" },
     label: T("Qwen3-TTS 1.7B CustomVoice", "Qwen3-TTS 1.7B CustomVoice"),
@@ -182,7 +182,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     files: [{ url: `${HF}/Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf`, path: "Qwen3-TTS-12Hz-1.7B-CustomVoice-GGUF/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf", size: 2817055200, sha256: "c8ac3f94b6e73f137c0e7ecc9270bc8faec7a476ff799b87e48844d1d0987ac3" }],
   },
   {
-    id: "voxcpm2", famille: "voxcpm2", langue: "", clone: true,
+    id: "voxcpm2", family: "voxcpm2", language: "", clone: true,
     // Description : « Multilingue, dont le français », qualité à évaluer : « correct » ; l'anglais n'y est pas dit : inconnu.
     languages: { fr: "fair" },
     label: "VoxCPM2 2B · BF16",
@@ -193,7 +193,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     files: [{ url: `${HF_EXTENDED}/VoxCPM2-GGUF/voxcpm2-bf16.gguf`, path: "VoxCPM2-GGUF/voxcpm2-bf16.gguf", size: 4772295296, sha256: "dc48028ebf08b9fd2456cbf5fa1ab52568d16660e34d0fa418c35e251ca1ecab" }],
   },
   {
-    id: "chatterbox", famille: "chatterbox", langue: "", clone: true, mode: "offline",
+    id: "chatterbox", family: "chatterbox", language: "", clone: true, mode: "offline",
     // Description : « Français », qualité à évaluer : « correct » ; Chatterbox multilingue vise d'abord l'anglais (fiche publique).
     languages: { en: "good", fr: "fair" },
     label: T("Chatterbox multilingue · Q8", "Chatterbox Multilingual · Q8"),
@@ -204,7 +204,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     files: [{ url: `${HF_EXTENDED}/Chatterbox-GGUF/chatterbox-q8_0.gguf`, path: "Chatterbox-GGUF/chatterbox-q8_0.gguf", size: 2088399204, sha256: "45d71d8d248ba831014813bbbbba74c7d786dd9447c02090fe05c44344f69453" }],
   },
   {
-    id: "voxtral-tts", famille: "voxtral_tts", langue: "",
+    id: "voxtral-tts", family: "voxtral_tts", language: "",
     // Voix intégrées : une femme et un homme français (fr_female, fr_male), et des voix en anglais (casual, cheerful, neutral).
     languages: { fr: "good", en: "good" },
     label: "Voxtral 4B TTS · Q8",
@@ -228,7 +228,7 @@ export const KNOWN_VOICE_MODELS: KnownVoiceModel[] = [
     files: [{ url: `${HF_EXTENDED}/Voxtral-4B-TTS-2603-GGUF/voxtral-4b-tts-2603-q8_0.gguf`, path: "Voxtral-4B-TTS-2603-GGUF/voxtral-4b-tts-2603-q8_0.gguf", size: 4722918208, sha256: "46eca2bfc66c89c415b66995d3544e91dea3320c93765ec0596f5c616354972d" }],
   },
   {
-    id: "fish-audio-s2-pro", famille: "fish_audio", langue: "", clone: true,
+    id: "fish-audio-s2-pro", family: "fish_audio", language: "", clone: true,
     // Description : « Multilingue, dont le français », qualité à évaluer : « correct » ; l'anglais est sa langue la mieux servie (fiche publique).
     languages: { en: "good", fr: "fair" },
     label: "Fish Audio S2 Pro · Q8",

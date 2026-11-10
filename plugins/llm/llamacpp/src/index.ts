@@ -22,7 +22,7 @@ import { scanGguf, scanFolders, scanOllama, ollamaDir, type FoundModel } from ".
 import { parseModelJson } from "@floppy/agent-cli";
 const DEFAULT_ARGS = ["-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "--fit", "off", "-ngl", "99", "-np", "1"];
 
-/** Dossiers de modèles connus (LM Studio). Ceux de l'utilisateur s'ajoutent par le réglage « llm_local_dossiers ». */
+/** Dossiers de modèles connus (LM Studio). Ceux de l'utilisateur s'ajoutent par le réglage « llm_local_folders ». */
 export const DEFAULT_SCAN_DIRS = [join(homedir(), ".lmstudio", "models"), join(homedir(), ".cache", "lm-studio", "models")];
 
 const ModelEntry = z.object({
@@ -46,7 +46,7 @@ const ModelEntry = z.object({
 });
 
 const Config = z.object({
-  /** Programme llama-server. Absent : réglage « llm_local_programme », sinon `llama-server` trouvé dans le PATH. */
+  /** Programme llama-server. Absent : réglage « llm_local_program », sinon `llama-server` trouvé dans le PATH. */
   exe: z.string().optional(),
   /** Ancienne forme : un seul modèle. */
   model: z.string().optional(),
@@ -327,13 +327,13 @@ return definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
+      { id: "brain", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "LLM local (llama-server) : chaque modèle tourne à la demande, un seul chargé à la fois.",
     provides: ["llm", "completion"],
     // net : modèles choisis et recherche sur Hugging Face (voir known-models.ts, hf.ts).
     permissions: { exec: ["llama-server"], net: ["huggingface.co", "github.com"] },
-    addable: { section: "cerveau", label: "llama.cpp", description: { fr: "Modèles GGUF sur ce PC, lancés seulement quand ils servent. Un seul à la fois.", en: "GGUF models on this PC, run only while in use. One at a time." }, single: true },
+    addable: { section: "brain", label: "llama.cpp", description: { fr: "Modèles GGUF sur ce PC, lancés seulement quand ils servent. Un seul à la fois.", en: "GGUF models on this PC, run only while in use. One at a time." }, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -427,10 +427,12 @@ return definePlugin<Config>({
 
     // Appels ponctuels (tri de la veille…) avec LE MODÈLE DU CERVEAU : même serveur, rien de plus sur le GPU.
     // Un seul élément, qui suit le cerveau principal : choisir un autre modèle ici chargerait un 2e modèle.
+    // `renamed` : un choix gardé avant le renommage de l'élément (« <entrée>/cerveau ») est suivi vers « <entrée>/brain ».
     ctx.offer("completion", {
+      renamed: { cerveau: "brain" },
       items: () => {
         const m = brainModel();
-        return [{ id: "cerveau", label: T(`Modèle local du cerveau${m ? ` (${m.label})` : ""}`, `Brain's local model${m ? ` (${m.label})` : ""}`) }];
+        return [{ id: "brain", label: T(`Modèle local du cerveau${m ? ` (${m.label})` : ""}`, `Brain's local model${m ? ` (${m.label})` : ""}`) }];
       },
       async start(f) {
         const e = brainModel();
@@ -441,17 +443,17 @@ return definePlugin<Config>({
     });
 
     // ---- Chemins propres à chaque PC : réglages (fenêtre ou CLI), jamais à la voix (ils lancent un programme).
-    let exeSetting = ctx.settings.saved<string>("llm_local_programme") ?? "";
-    let dirsSetting = ctx.settings.saved<string>("llm_local_dossiers") ?? "";
+    let exeSetting = ctx.settings.saved<string>("llm_local_program") ?? "";
+    let dirsSetting = ctx.settings.saved<string>("llm_local_folders") ?? "";
     ctx.settings.declare([
       {
-        key: "llm_local_programme", section: "cerveau", group: T("LLM local", "Local LLM"), type: "text", maxLength: 500, risk: "cli",
+        key: "llm_local_program", section: "brain", group: T("LLM local", "Local LLM"), type: "text", maxLength: 500, risk: "cli",
         label: T("Programme llama-server", "llama-server program"),
         description: T("Chemin complet du programme llama-server. Vide : Floppy le cherche dans le PATH.", "Full path to the llama-server program. Empty: Floppy looks for it in the PATH."),
         get: () => exeSetting, set: (v) => { exeSetting = String(v ?? "").trim(); },
       },
       {
-        key: "llm_local_dossiers", section: "cerveau", group: T("LLM local", "Local LLM"), type: "text", maxLength: 2000, risk: "cli",
+        key: "llm_local_folders", section: "brain", group: T("LLM local", "Local LLM"), type: "text", maxLength: 2000, risk: "cli",
         label: T("Dossiers de modèles", "Model folders"),
         description: T("Dossiers où chercher des fichiers .gguf, séparés par « ; ». Les dossiers de LM Studio sont toujours lus.", "Folders to search for .gguf files, separated by “;”. LM Studio folders are always read."),
         get: () => dirsSetting, set: (v) => { dirsSetting = String(v ?? "").trim(); },
@@ -459,7 +461,7 @@ return definePlugin<Config>({
     ]);
     // Le programme llama-server, téléchargé par Floppy dans la bonne version pour la machine (CUDA, Vulkan, Metal…).
     const program = programLibrary(ctx, {
-      id: "llm-local-program", section: "cerveau", order: 10, offers: "llm", label: "llama.cpp", program: "llama-server",
+      id: "llm-local-program", section: "brain", order: 10, offers: "llm", label: "llama.cpp", program: "llama-server",
       version: LLAMA_VERSION, builds: LLAMA_BUILDS, licence: { name: "MIT", url: "https://github.com/ggml-org/llama.cpp/blob/master/LICENSE" },
       // Nouvelle version pour la puce graphique, repli, réparation : le cerveau en marche repart avec.
       changed: (why) => { ctx.items.changed(); if (restartsModels(why)) void ctx.restartOffers(); },
@@ -510,7 +512,7 @@ return definePlugin<Config>({
       runningOf()?.id === m.id ? { ok: false, text: T(`${m.label} est chargé en ce moment : active d'abord un autre cerveau, puis ${what.fr}.`, `${m.label} is loaded right now: activate another brain first, then ${what.en}.`) } : undefined;
 
     ctx.items.declare({
-      id: "llm-local", section: "cerveau", order: 10, offers: "llm",
+      id: "llm-local", section: "brain", order: 10, offers: "llm",
       label: T("LLM local", "Local LLM"),
       description: T("Modèles GGUF lancés par llama-server sur ce PC, seulement quand ils servent. Un seul chargé à la fois.", "GGUF models run by llama-server on this PC, only while in use. Only one loaded at a time."),
       addLabel: T("Ajouter un modèle local", "Add a local model"),
@@ -589,7 +591,7 @@ return definePlugin<Config>({
     const fileOf = (e: LibraryEntry) => resolve(ctx.downloads.dir, e.files[0]!.path);
     const mine = (e: LibraryEntry) => all().filter((m) => samePath(m.model, fileOf(e)));
     modelLibrary(ctx, {
-      id: "llm-local-library", section: "cerveau", order: 11, offers: "llm",
+      id: "llm-local-library", section: "brain", order: 11, offers: "llm",
       label: T("Modèles GGUF", "GGUF models"),
       searchHint: T("Chercher sur Hugging Face (ex. gemma, qwen, mistral)", "Search Hugging Face (e.g. gemma, qwen, mistral)"),
       entries: () => known,
@@ -625,7 +627,7 @@ return definePlugin<Config>({
     };
     const FROM = { lmstudio: "LM Studio", ollama: "Ollama" } as const;
     ctx.items.declare({
-      id: "llm-local-found", section: "cerveau", layout: "library", offers: "llm", order: 12,
+      id: "llm-local-found", section: "brain", layout: "library", offers: "llm", order: 12,
       label: T("Modèles déjà sur ta machine", "Models already on your computer"),
       description: T("Trouvés dans LM Studio et Ollama : llama.cpp les lance tels quels, sans rien télécharger.",
         "Found in LM Studio and Ollama: llama.cpp runs them as they are, without downloading anything."),

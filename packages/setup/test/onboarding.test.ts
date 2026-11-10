@@ -20,7 +20,7 @@ function providers(opts: { llamaMissing?: boolean; whisperEn?: boolean; onlyWhis
   const parakeet = it_("parakeet", "stt", 1.3e9, "cpu", { languages: { fr: "good", en: "good" } });
   return [
     lib("sherpa-library", "sherpa", [it_("silero-vad", "vad", 50e6, "cpu"), ...(opts.onlyWhisperEn ? [whisper] : [parakeet, ...(opts.whisperEn ? [whisper] : [])])]),
-    lib("voix-locale-library", "tts-local", [
+    lib("local-voice-library", "tts-local", [
       it_("pocket-tts-french", "tts", 0.8 * GIB, "cpu", { languages: { fr: "good", en: "poor" } }),
       { ...it_("qwen3-tts", "tts", 4.5 * GIB, "gpu", { languages: { en: "good", fr: "fair" } }), needs: { memory: 4.5 * GIB, device: "gpu", backends: ["cuda"] } },
     ]),
@@ -32,7 +32,7 @@ function providers(opts: { llamaMissing?: boolean; whisperEn?: boolean; onlyWhis
 /** Valeurs de choix (`fournisseur/id`). */
 const V = {
   vad: "sherpa-library/silero-vad", parakeet: "sherpa-library/parakeet", whisper: "sherpa-library/whisper-en",
-  pocket: "voix-locale-library/pocket-tts-french", qwen: "voix-locale-library/qwen3-tts",
+  pocket: "local-voice-library/pocket-tts-french", qwen: "local-voice-library/qwen3-tts",
   q4: "llm-local-library/qwen-4b", gemma: "llm-local-library/gemma-12b", mistral: "llm-local-library/mistral-24b",
 };
 
@@ -450,10 +450,10 @@ describe("langue de l'assistant", () => {
 
 describe("Claude Code, Codex, Antigravity", () => {
   const manifests = [
-    { id: "brain-claude-cli", addable: { section: "cerveau", label: "Claude Code", program: "claude" } },
-    { id: "brain-codex-cli", addable: { section: "cerveau", label: "Codex", program: "codex" } },
-    { id: "brain-agy-cli", addable: { section: "cerveau", label: "Antigravity", program: "agy" } },
-    { id: "browser", addable: { section: "connecteurs", label: "Navigateur" } },
+    { id: "brain-claude-cli", addable: { section: "brain", label: "Claude Code", program: "claude" } },
+    { id: "brain-codex-cli", addable: { section: "brain", label: "Codex", program: "codex" } },
+    { id: "brain-agy-cli", addable: { section: "brain", label: "Antigravity", program: "agy" } },
+    { id: "browser", addable: { section: "connectors", label: "Navigateur" } },
   ];
   const entries = [{ id: "claude", plugin: "brain-claude-cli" }, { id: "claude/llm/sonnet", plugin: "brain-claude-cli", fork: {} }];
   const settings = [{ key: "slot.brain.main", options: [{ value: "claude/sonnet", label: "Claude", cloud: true }] }] as unknown as SettingInfo[];
@@ -496,7 +496,7 @@ describe("Claude Code, Codex, Antigravity", () => {
     expect(plan.brain).toBe("add:brain-codex-cli");
     o.apply({ brain: plan.recommended.brain!, stt: V.parakeet });
     await until(o, "done");
-    expect(k.ops.find((x) => x.op === "add")).toEqual({ op: "add", provider: "apps-cerveau", kind: "brain-codex-cli", values: {} });
+    expect(k.ops.find((x) => x.op === "add")).toEqual({ op: "add", provider: "apps-brain", kind: "brain-codex-cli", values: {} });
     expect(k.changes).toContainEqual(["slot.brain.main", "codex/gpt"]);
     expect(tr(o.state.notes[0]!, "fr")).toBe("Codex est ajouté.");
   });
@@ -546,7 +546,7 @@ describe("programmes à installer (llama.cpp, audio.cpp)", () => {
     pv[1]!.missing = "audio.cpp n'est pas installé";
     pv[2]!.missing = "llama.cpp n'est pas installé";
     const prog = (id: string, backend: string, size: number): ItemInfo => ({ id, label: id, enabled: true, service: "program", backend, size });
-    pv.push(lib("voix-locale-program", "tts-local", [prog("audio-cuda", "cuda", 850e6), prog("audio-cpu", "cpu", 32e6)]));
+    pv.push(lib("local-voice-program", "tts-local", [prog("audio-cuda", "cuda", 850e6), prog("audio-cpu", "cpu", 32e6)]));
     pv.push(lib("llm-local-program", "llm", [prog("llama-cuda", "cuda", 600e6), prog("llama-cpu", "cpu", 25e6)]));
     return pv;
   }

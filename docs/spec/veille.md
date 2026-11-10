@@ -14,9 +14,9 @@ Tu affines **à la voix** : « le 3 ne m'intéresse pas », « plus d'articles s
 
 ```mermaid
 flowchart TB
-  C["1. Collecte<br/>flux RSS / Atom + recherches (slot veille.recherche)"] --> P
+  C["1. Collecte<br/>flux RSS / Atom + recherches (slot watch.search)"] --> P
   P["2. Pré-tri en code<br/>déjà vus · trop vieux · mots bannis · doublons · plafond 60"] --> L
-  L["3. Note du modèle par lots de 20<br/>(slot veille.tri) : note 0-10 + résumé"] --> S
+  L["3. Note du modèle par lots de 20<br/>(slot watch.triage) : note 0-10 + résumé"] --> S
   S["4. Garder note ≥ 6, les 8 meilleurs par sujet"] --> M
   M["5. Document assemblé en code<br/>numéros uniques"] --> R["Résultat de la tâche<br/>le noyau annonce et montre le document"]
 ```
@@ -30,8 +30,8 @@ flowchart TB
 
 | Choix | Slot | Exemples |
 |---|---|---|
-| Cerveau du tri | `veille.tri` (service `completion`) | Claude Sonnet (défaut), Claude Haiku, un modèle distant, **le modèle local du cerveau** |
-| Moteur de recherche | `veille.recherche` (service `search`) | SearXNG, Recherche Claude, aucun (RSS seulement) |
+| Cerveau du tri | `watch.triage` (service `completion`) | Claude Sonnet (défaut), Claude Haiku, un modèle distant, **le modèle local du cerveau** |
+| Moteur de recherche | `watch.search` (service `search`) | SearXNG, Recherche Claude, aucun (RSS seulement) |
 
 Le cerveau et le moteur sont **empruntés** (`ctx.borrow`) pendant le passage seulement : rien ne tourne entre deux veilles.
 
@@ -45,14 +45,16 @@ Un plugin de recherche sert deux fois : il donne un **outil** à Floppy (`cherch
 
 ## Préférences
 
-Fichier `<home>\veille\preferences.json`, lisible et modifiable à la main : par sujet et global, `aime`, `evite`, `bannis`, `exemples`.
+Fichier `<home>\veille\preferences.json`, lisible et modifiable à la main : par sujet (`interests.<id>`) et global (`global`), `likes`, `avoids`, `banned`, `examples` (chaque exemple : `title`, `feedback` `+` ou `-`, `date`). Les fichiers écrits avec les anciens noms (`aime`, `evite`, `bannis`, `exemples`, `interets`, `titre`, `avis`) sont convertis une fois par la migration du dossier (étape `watch-preferences`).
+
+Configuration (`floppy.yml`, `config:` du plugin) : `interests.<id>` avec `name`, `description`, `feeds`, `queries`, `max` ; `threshold`, `batch`, `maxToModel`, `windowDays`. Les éléments ajoutés dans les réglages (`items/<entrée>.json`) ont le type `interest` et les mêmes champs. Anciens noms (`interets`, `nom`, `flux`, `requetes`, `seuil`, `lot`, `maxVersModele`, `fenetreJours`, type `interet`) : étapes `config-yaml` et `items-fields`.
 
 | Tu dis | Outil `veille_avis` | Effet |
 |---|---|---|
 | « le 3 ne m'intéresse pas » | `article: 3, avis: moins` | exemple « pas aimé » pour ce sujet |
-| « plus d'articles sur llama.cpp » | `sujet, avis: plus` | dans `aime` |
-| « moins de levées de fonds » | `sujet, avis: moins` | dans `evite` (note plus basse) |
-| « plus jamais de crypto » | `sujet, avis: jamais` | dans `bannis` (retiré avant le modèle) |
+| « plus d'articles sur llama.cpp » | `sujet, avis: plus` | dans `likes` |
+| « moins de levées de fonds » | `sujet, avis: moins` | dans `avoids` (note plus basse) |
+| « plus jamais de crypto » | `sujet, avis: jamais` | dans `banned` (retiré avant le modèle) |
 | « en fait la crypto ça va » | `sujet, avis: oublier` | retiré des listes |
 
 Autres outils : `veille_interets` (liste ; donne aussi les titres numérotés du dernier digest), `veille_article` (détail d'un article par son numéro ou par des mots du sujet, « l'article sur le TTS » ; sans rien, la liste des titres ; pour l'ouvrir avec `ouvrir_url`), `veille_modifier_interet` (ajouter, modifier ou retirer un sujet, avec accord). « Modifier » ajoute ou retire des flux et des recherches, remplace la description ou renomme ; la demande d'accord dit ce qui change (« Modifier le centre d'intérêt « IA locale » (+ recherches : llama.cpp) »).

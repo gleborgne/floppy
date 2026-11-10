@@ -38,12 +38,12 @@ describe("logos", () => {
   it("élément Application : logo du manifeste, remplacé par ctx.items.logo (null = aucun), celui du manifeste une fois éteint", async () => {
     let given: Logo | null | undefined;
     const plugin = definePlugin({
-      manifest: { id: "contoso", version: "0.0.1", licence: "MIT", addable: { section: "connecteurs", label: "Contoso", logo: PNG } },
+      manifest: { id: "contoso", version: "0.0.1", licence: "MIT", addable: { section: "connectors", label: "Contoso", logo: PNG } },
       apply(ctx) { ctx.items.logo(given); },
     });
     const k = new Kernel({ logger: () => {}, home: mkdtempSync(join(tmpdir(), "logo-")), plugins: [plugin] });
     kernels.push(k);
-    const logo = async () => (await k.items.provider("apps-connecteurs")!.list())[0]?.logo;
+    const logo = async () => (await k.items.provider("apps-connectors")!.list())[0]?.logo;
 
     await k.applyConfig({ plugins: [{ id: "contoso", plugin: "contoso" }] });
     expect(await logo()).toBe(PNG);
@@ -56,7 +56,7 @@ describe("logos", () => {
     await k.applyConfig({ plugins: [{ id: "contoso", plugin: "contoso", config: { v: 2 } }] });
     expect(await logo()).toBeUndefined();
 
-    await k.items.run({ op: "enable", provider: "apps-connecteurs", id: "contoso", on: false }, "ui");
+    await k.items.run({ op: "enable", provider: "apps-connectors", id: "contoso", on: false }, "ui");
     expect(await logo()).toBe(PNG);
   });
 });

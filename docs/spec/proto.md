@@ -48,7 +48,7 @@ flowchart TB
 | body | `body/hub`, `body/electron`, `body/ws`, `body/reachy` | plusieurs corps, transports MessagePort et WebSocket, robot Reachy |
 | avatar | `avatar/tv`, `avatar/pixel` | les dessins de l'avatar, inscrits auprès de `body-electron` |
 | assistant | `assistant/coder` | l'assistant IA de la fenêtre des réglages (CLI Claude ou Codex) |
-| conversation | `conversation/default` | les tours ; réglage `ecoute_libre` |
+| conversation | `conversation/default` | les tours ; réglage `free_listen_s` |
 | dev | `dev/bench-api` | le cerveau en API OpenAI pour le banc |
 
 Services natifs : `services/obsidian-mcp/server.mjs`, serveur audio.cpp (voix). Plus de service Python depuis le 6 novembre 2026.

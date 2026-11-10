@@ -33,7 +33,7 @@ async function setup(entries: (url: string) => LibraryEntry[], url: string, extr
     apply(c) {
       ctx = c;
       modelLibrary(c, {
-        id: "lib", section: "ecoute", offers: "stt", label: "Modèles", entries: () => entries(url),
+        id: "lib", section: "listening", offers: "stt", label: "Modèles", entries: () => entries(url),
         installed: (e) => { if (!added.includes(e.id)) added.push(e.id); },
         has: (e) => added.includes(e.id),
         removed: (e) => { removed.push(e.id); },

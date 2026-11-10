@@ -21,6 +21,12 @@ export interface MigrationChange {
   keys: string[];
 }
 
+/** Deux noms d'une même chose présents ensemble : le nouveau est gardé (le fichier est quand même mis à niveau), seul le NOM de la clé est rapporté. */
+export interface MigrationConflict {
+  file: string;
+  key: string;
+}
+
 /** Un fichier laissé tel quel, et pourquoi. */
 export interface MigrationSkip {
   file: string;
@@ -39,6 +45,10 @@ export interface MigrationEnv {
   list(relDir: string, ext: string): string[];
   /** Un fichier est laissé tel quel (conflit entre deux clés, etc.). */
   skip(rel: string, why: MigrationSkip["why"]): void;
+  /** Deux clés pour la même chose : l'étape garde la nouvelle et le dit (nom de la clé seulement). */
+  conflict(rel: string, key: string): void;
+  /** Texte d'un fichier, en lecture seule (par ex. pour savoir quel plugin porte une entrée) ; absent ou illisible : undefined. */
+  read(rel: string): string | undefined;
 }
 
 export interface MigrationStep {
@@ -57,6 +67,8 @@ export interface MigrationReport {
   alreadyApplied: boolean;
   changes: MigrationChange[];
   skipped: MigrationSkip[];
+  /** Clés présentes sous leurs deux noms (présent seulement s'il y en a). */
+  conflicts?: MigrationConflict[];
   /** Échec de l'étape : signalé, retenté au prochain démarrage. */
   error?: string;
 }
@@ -91,7 +103,7 @@ function backup(file: string, stepId: string): void {
   }
 }
 
-function environment(home: string, step: MigrationStep, dryRun: boolean, out: { changes: MigrationChange[]; skipped: MigrationSkip[] }): MigrationEnv {
+function environment(home: string, step: MigrationStep, dryRun: boolean, out: { changes: MigrationChange[]; skipped: MigrationSkip[]; conflicts: MigrationConflict[] }): MigrationEnv {
   const abs = (r: string) => join(home, ...r.split("/"));
   return {
     home,
@@ -129,6 +141,10 @@ function environment(home: string, step: MigrationStep, dryRun: boolean, out: { 
       return names.filter((n) => n.endsWith(ext)).sort().map((n) => `${relDir}/${n}`);
     },
     skip(r, why) { out.skipped.push({ file: r, why }); },
+    conflict(r, key) { if (!out.conflicts.some((c) => c.file === r && c.key === key)) out.conflicts.push({ file: r, key }); },
+    read(r) {
+      try { return readFileSync(abs(r), "utf8"); } catch { return undefined; }
+    },
   };
 }
 
@@ -144,7 +160,7 @@ export function runHomeMigrations(home: string, steps: readonly MigrationStep[],
   let dirty = false;
   for (const step of [...steps].sort((a, b) => a.version - b.version)) {
     if (!opts.force && marker.applied[step.id]) { reports.push({ step: step.id, alreadyApplied: true, changes: [], skipped: [] }); continue; }
-    const out = { changes: [] as MigrationChange[], skipped: [] as MigrationSkip[] };
+    const out = { changes: [] as MigrationChange[], skipped: [] as MigrationSkip[], conflicts: [] as MigrationConflict[] };
     const report: MigrationReport = { step: step.id, alreadyApplied: false, changes: out.changes, skipped: out.skipped };
     try {
       step.run(environment(home, step, dryRun, out));
@@ -153,11 +169,13 @@ export function runHomeMigrations(home: string, steps: readonly MigrationStep[],
         marker.version = Math.max(marker.version, step.version);
         dirty = true;
         if (out.changes.length) log("info", `migration ${step.id} : ${out.changes.length} fichier(s) mis à niveau (${out.changes.map((c) => c.file).join(", ")})`);
+        for (const c of out.conflicts) log("warn", `migration ${step.id} : ${c.file} : la clé « ${c.key} » existe sous ses deux noms, le nouveau est gardé`);
       }
     } catch (e) {
       report.error = e instanceof Error ? e.message : String(e);
       log("warn", `migration ${step.id} échouée (sera retentée au prochain démarrage) : ${report.error}`);
     }
+    if (out.conflicts.length) report.conflicts = out.conflicts;
     reports.push(report);
   }
   if (dirty && !dryRun) {

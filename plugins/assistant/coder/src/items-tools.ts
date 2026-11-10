@@ -61,7 +61,7 @@ export function itemsTools(ctx: Context, ask: Ask, lang: () => string = () => "f
   return [
     {
       name: "types_elements",
-      description: "Ce qu'on peut ajouter (connecteurs MCP, commandes, modèles locaux ou distants, voix, corps…) : fournisseurs, types et champs de chaque formulaire. Appelle-le avant ajouter_element. rubrique : cerveau, voix, connecteurs, corps, avatars (facultatif).",
+      description: "Ce qu'on peut ajouter (connecteurs MCP, commandes, modèles locaux ou distants, voix, corps…) : fournisseurs, types et champs de chaque formulaire. Appelle-le avant ajouter_element. rubrique : brain, voice, connectors, body, avatars (facultatif).",
       inputSchema: { type: "object", properties: { rubrique: { type: "string" } } },
       handler: async (a) => ({ text: describeTypes(await ctx.items.snapshot(), typeof a.rubrique === "string" ? a.rubrique : undefined) }),
     },

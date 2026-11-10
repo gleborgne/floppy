@@ -539,8 +539,8 @@ describe("conversation (2 corps)", () => {
   });
 
   it("le profil joueur est le défaut et le choix discret réduit les expressions à chaud", async () => {
-    expect(k.settings.list().find(s => s.key === "expressivite")?.value).toBe("playful");
-    await k.settings.change("expressivite", "discreet", "ui");
+    expect(k.settings.list().find(s => s.key === "expressiveness")?.value).toBe("playful");
+    await k.settings.change("expressiveness", "discreet", "ui");
     chat.send({ type: "text", text: "raconte" });
     await vi.waitFor(() => expect(chat.of("reply.done")).toHaveLength(1));
     expect(avatar.of("emotion").find(e => e.emotion === "mischief")?.intensity).toBeCloseTo(1.25 * 0.45);
@@ -548,7 +548,7 @@ describe("conversation (2 corps)", () => {
 
   it("l'émotion Live annoncée par le modèle est un réglage expérimental, désactivé par défaut", async () => {
     const s = () => k.settings.list().find((x) => x.key === "emotion_live")!;
-    expect(s()).toMatchObject({ type: "boolean", section: "voix", risk: "free", value: false });
+    expect(s()).toMatchObject({ type: "boolean", section: "voice", risk: "free", value: false });
     expect(JSON.stringify(s().label)).toContain("xperiment"); // « expérimental » / « experimental »
     expect((await k.settings.change("emotion_live", true, "ui")).ok).toBe(true);
     expect(s().value).toBe(true);
@@ -566,7 +566,7 @@ describe("conversation (2 corps)", () => {
   });
 
   it.each([["playful", 1], ["discreet", 0.45]] as const)("annote expressions et gestes pour le corps synchronisé (%s)", async (profile, intensity) => {
-    await k.settings.change("expressivite", profile, "ui");
+    await k.settings.change("expressiveness", profile, "ui");
     const timed = new FakeBody("timed", ["voice", "emotion", "speech_timing"]);
     k.service<import("@floppy/contracts").BodyHub>("body")!.attach(timed.transport, { id: "timed" }); timed.hello();
     await vi.waitFor(() => expect(streams.has("timed")).toBe(true));
@@ -628,7 +628,7 @@ describe("conversation (2 corps)", () => {
   });
 
   it("le ton est un réglage de conversation, indépendant du cerveau", () => {
-    expect(k.settings.list().find((s) => s.key === "ton")).toMatchObject({ section: "voix", source: "conv" });
+    expect(k.settings.list().find((s) => s.key === "tone")).toMatchObject({ section: "voice", source: "conv" });
   });
 
   it("question tapée dans le corps texte : réponse en texte là-bas, rien n'est dit par l'avatar", async () => {
@@ -998,6 +998,24 @@ describe("voie rapide des réglages (sans LLM)", () => {
     expect(matchQuickSetting("passe sur qwen 9b", ["floppy"], settings)).toMatchObject({ key: "brain", value: "qwen9b" });
     expect(matchQuickSetting("prends la voix de femme", ["floppy"], settings)).toMatchObject({ key: "tts", value: "femme" });
     expect(matchQuickSetting("passe le cerveau sur claude", ["floppy"], settings)).toMatchObject({ key: "brain", value: "claude" });
+  });
+  it("les mots dits viennent du libellé et des alias, pas de la clé : clés et valeurs en anglais, mots français et anglais compris", () => {
+    const real = [
+      { key: "orca_notifications", label: { fr: "Annonces des agents Orca", en: "Orca agent announcements" }, type: "enum", options: [
+        { value: "all", label: { fr: "Tout dire", en: "Say everything" }, aliases: ["toutes", "tout", "chaque fin", "all", "every"] },
+        { value: "important", label: { fr: "Si un agent attend", en: "If an agent waits" }, aliases: ["importantes", "important", "quand il attend", "when waiting"] },
+        { value: "none", label: { fr: "Rien", en: "Nothing" }, aliases: ["aucune", "silence", "coupe les annonces", "none", "off"] },
+      ] },
+      { key: "expressiveness", label: { fr: "Expressivité", en: "Expressiveness" }, type: "enum", options: [
+        { value: "discreet", label: { fr: "Discret", en: "Discreet" }, aliases: ["discret", "discrete", "discreet"] },
+        { value: "playful", label: { fr: "Joueur", en: "Playful" }, aliases: ["joueur", "joueuse", "playful"] },
+      ] },
+    ];
+    expect(matchQuickSetting("mets les annonces Orca sur toutes", ["floppy"], real)).toMatchObject({ key: "orca_notifications", value: "all" });
+    expect(matchQuickSetting("mets les annonces Orca sur importantes", ["floppy"], real)).toMatchObject({ key: "orca_notifications", value: "important" });
+    expect(matchQuickSetting("passe les annonces orca sur aucune", ["floppy"], real)).toMatchObject({ key: "orca_notifications", value: "none" });
+    expect(matchQuickSetting("set orca announcements to when waiting", ["floppy"], real, "en")).toMatchObject({ key: "orca_notifications", value: "important" });
+    expect(matchQuickSetting("mets l'expressivité en discret", ["floppy"], real)).toMatchObject({ key: "expressiveness", value: "discreet" });
   });
   it("laisse le cerveau décider sinon", () => {
     expect(matchQuickSetting("change de voix", ["floppy"], settings)).toBeUndefined();          // pas de valeur

@@ -8,13 +8,13 @@ export default definePlugin({
   manifest: {
     id: "live-gemini", version: "0.1.0", licence: "MIT", provides: ["live"],
     description: "Conversation audio native Gemini Live.",
-    sections: [{ id: "cerveau", label: { fr: "Cerveau", en: "Brain" } }],
+    sections: [{ id: "brain", label: { fr: "Cerveau", en: "Brain" } }],
     permissions: { cloud: true, net: ["generativelanguage.googleapis.com"] },
-    addable: { section: "cerveau", label: "Gemini Live", cloud: true, single: true },
+    addable: { section: "brain", label: "Gemini Live", cloud: true, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
-    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "Gemini Live", section: "cerveau", capabilities: ["live"], offers: "live", fields: [
+    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "Gemini Live", section: "brain", capabilities: ["live"], offers: "live", fields: [
       { key: "model", label: T("Modèle Live", "Live model"), type: "text", required: true }, { key: "voice", label: T("Voix Gemini", "Gemini voice"), type: "text", required: true },
     ] });
     const sessions = new Set<LiveSession>();

@@ -82,7 +82,7 @@ describe("Réglages : texte et risque selon la valeur", () => {
       let ton = "cordial et chaleureux";
       let cloud = false;
       ctx.settings.declare([
-        { key: "ton", section: "general", label: "Ton", description: "", type: "text", group: "Voix et ton", risk: "free", maxLength: 50,
+        { key: "tone", section: "general", label: "Ton", description: "", type: "text", group: "Voix et ton", risk: "free", maxLength: 50,
           presets: [{ value: "un peu sarcastique", label: "sarcastique" }], get: () => ton, set: (v) => { ton = String(v); } },
         { key: "connecteur_x", section: "general", label: "Connecteur X", description: "", type: "boolean", group: "Connecteurs", risk: "free",
           riskFor: (v) => (v ? "ask" : "free"), get: () => cloud, set: (v) => { cloud = Boolean(v); } },
@@ -93,11 +93,11 @@ describe("Réglages : texte et risque selon la valeur", () => {
   it("texte libre, préréglage par son libellé, longueur maximale", async () => {
     const k = new Kernel({ logger: () => {}, plugins: [q], home: mkdtempSync(join(tmpdir(), "set-")) });
     await k.applyConfig({ plugins: [{ id: "q", plugin: "q" }] });
-    expect((await k.settings.change("ton", "sarcastique", "voice")).text).toBe("Ton : sarcastique.");
-    expect(k.settings.value("ton")).toBe("un peu sarcastique");
-    expect((await k.settings.change("ton", "très sarcastique, presque cynique", "voice")).ok).toBe(true);
-    expect((await k.settings.change("ton", "x".repeat(60), "voice")).ok).toBe(false);
-    expect(k.settings.list().find((s) => s.key === "ton")?.group).toBe("Voix et ton");
+    expect((await k.settings.change("tone", "sarcastique", "voice")).text).toBe("Ton : sarcastique.");
+    expect(k.settings.value("tone")).toBe("un peu sarcastique");
+    expect((await k.settings.change("tone", "très sarcastique, presque cynique", "voice")).ok).toBe(true);
+    expect((await k.settings.change("tone", "x".repeat(60), "voice")).ok).toBe(false);
+    expect(k.settings.list().find((s) => s.key === "tone")?.group).toBe("Voix et ton");
     await k.stopAll();
   });
 

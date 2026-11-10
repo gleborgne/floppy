@@ -47,6 +47,7 @@ describe("lecture et écriture d'une planification", () => {
     const p = parseSchedule("tomorrow");
     expect(!p.ok && p.error).toMatchObject({ en: expect.stringMatching(/^I don't understand "tomorrow"/) });
     expect(scheduleText({ at: "07:30", days: [1, 2, 3, 4, 5] })).toEqual({ fr: "07:30 lun-ven", en: "07:30 Mon-Fri" });
+    expect(scheduleText({ every: "30m" })).toEqual({ fr: "toutes les 30 min", en: "every 30 min" });
     expect(scheduleText(null)).toEqual({ fr: "jamais", en: "never" });
   });
 
@@ -56,12 +57,12 @@ describe("lecture et écriture d'une planification", () => {
 
   it("écrit comme on le dit, et relit ce qu'il écrit", () => {
     expect(formatSchedule({ at: "07:30" })).toBe("07:30");
-    expect(formatSchedule({ at: "07:30", days: [1, 2, 3, 4, 5] })).toBe("07:30 lun-ven");
-    expect(formatSchedule({ at: "07:30", days: [1, 4] })).toBe("07:30 lun,jeu");
-    expect(formatSchedule({ every: "3h" })).toBe("toutes les 3h");
-    expect(formatSchedule({ every: "30m" })).toBe("toutes les 30 min");
-    expect(formatSchedule(null)).toBe("jamais");
-    for (const s of ["07:30 lun-ven", "09:00 lun,jeu,sam,dim", "toutes les 3h", "toutes les 30 min", "jamais"]) {
+    expect(formatSchedule({ at: "07:30", days: [1, 2, 3, 4, 5] })).toBe("07:30 mon-fri");
+    expect(formatSchedule({ at: "07:30", days: [1, 4] })).toBe("07:30 mon,thu");
+    expect(formatSchedule({ every: "3h" })).toBe("every 3h");
+    expect(formatSchedule({ every: "30m" })).toBe("every 30 min");
+    expect(formatSchedule(null)).toBe("never");
+    for (const s of ["07:30 mon-fri", "09:00 mon,thu,sat,sun", "every 3h", "every 30 min", "never"]) {
       const p = parseSchedule(s);
       expect(p.ok && formatSchedule(p.schedule)).toBe(s);
     }
@@ -213,8 +214,8 @@ describe("planificateur dans le noyau", () => {
     vi.setSystemTime(L(11, 6, 6, 0));
     const runs: Date[] = [];
     const kk = await start(runs, homeWith(L(11, 5, 7, 31)));
-    const key = "taches.veille.quotidienne";
-    expect(kk.settings.list().find((s) => s.key === key)).toMatchObject({ value: "07:30", type: "text", risk: "free", section: "taches" });
+    const key = "tasks.veille.quotidienne";
+    expect(kk.settings.list().find((s) => s.key === key)).toMatchObject({ value: "07:30", type: "text", risk: "free", section: "tasks" });
 
     expect((await kk.settings.change(key, "jamais", "voice")).ok).toBe(true);
     await avance(120); // 08:00 : 07:30 est passée mais la tâche est coupée
@@ -235,15 +236,15 @@ describe("planificateur dans le noyau", () => {
     vi.setSystemTime(L(11, 6, 6, 0));
     const home = homeWith(L(11, 5, 7, 31));
     const kk = await start([], home);
-    await kk.settings.change("taches.veille.quotidienne", "à 8h30 lun-ven", "voice");
+    await kk.settings.change("tasks.veille.quotidienne", "à 8h30 lun-ven", "voice");
     await kk.stopAll();
     const kk2 = await start([], home);
-    expect(kk2.settings.list().find((s) => s.key === "taches.veille.quotidienne")!.value).toBe("08:30 lun-ven");
+    expect(kk2.settings.list().find((s) => s.key === "tasks.veille.quotidienne")!.value).toBe("08:30 mon-fri");
   });
 
   it("déclare la rubrique « Tâches »", async () => {
     vi.setSystemTime(L(11, 6, 6, 0));
     const kk = await start([], homeWith());
-    expect(kk.sections.list().find((s) => s.id === "taches")?.label).toEqual({ fr: "Tâches", en: "Tasks" });
+    expect(kk.sections.list().find((s) => s.id === "tasks")?.label).toEqual({ fr: "Tâches", en: "Tasks" });
   });
 });

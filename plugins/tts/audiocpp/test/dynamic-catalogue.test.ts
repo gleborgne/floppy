@@ -65,20 +65,20 @@ it("croise les fiches versionnées et les empreintes, écarte les familles/varia
 });
 
 it("OmniVoice clone à 24 kHz et ne reçoit pas l'option Qwen quand la transcription est vide", () => {
-  const v = clean({ famille: "omnivoice", model: omni, voix: "clone", refText: "Bonjour.\nComment vas-tu ?" });
+  const v = clean({ family: "omnivoice", model: omni, voice: "clone", refText: "Bonjour.\nComment vas-tu ?" });
   expect(clones(v)).toBe(true); expect(rateOf(v)).toBe(24000);
   expect(speechRequest(v, "Bonjour", "fr")).toMatchObject({ language: "fr", voice: "voix", stream_format: "sse" });
   expect(trialReference(v)).toEqual({ reference_text: "Bonjour. Comment vas-tu ?" });
   expect(trialReference({ ...v, refText: "" })).toEqual({});
-  expect(trialReference({ ...v, famille: "qwen3_tts", refText: "" })).toEqual({ options: { x_vector_only_mode: true } });
-  expect(voiceNeeds({ famille: "fish_audio", files: [{ url: "", path: "", size: 12e9 }] }).memory).toBeGreaterThan(12e9);
+  expect(trialReference({ ...v, family: "qwen3_tts", refText: "" })).toEqual({ options: { x_vector_only_mode: true } });
+  expect(voiceNeeds({ family: "fish_audio", files: [{ url: "", path: "", size: 12e9 }] }).memory).toBeGreaterThan(12e9);
 });
 
 async function boot(home: string, fetch: typeof globalThis.fetch, seeds?: KnownVoiceModel[]) {
   const k = new Kernel({ home, logger: () => {}, plugins: [makePlugin(seeds, [])], downloads: { fetch } });
   await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { models: {} } }] });
-  const provider = async (id = "voix-locale-library") => (await k.items.snapshot()).find(p => p.id === id)!;
-  const refresh = () => k.items.run({ op: "action", provider: "voix-locale-catalogue", id: "catalogue", action: "refresh" }, "ui");
+  const provider = async (id = "local-voice-library") => (await k.items.snapshot()).find(p => p.id === id)!;
+  const refresh = () => k.items.run({ op: "action", provider: "local-voice-catalogue", id: "catalogue", action: "refresh" }, "ui");
   return { k, provider, refresh };
 }
 
@@ -97,25 +97,25 @@ it("actualise à la demande, recherche hors ligne, installe OmniVoice puis garde
     id = omniItem.id;
     const voxtral = list.items.find(i => String(i.label).includes("voxtral_bf16"))!;
     expect(voxtral.tags).toContain("CC-BY-NC-4.0");
-    expect((await s.provider("voix-locale-catalogue")).items.find(i => i.id === "kokoro")!.actions?.map(a => a.id)).toEqual(["documentation"]);
+    expect((await s.provider("local-voice-catalogue")).items.find(i => i.id === "kokoro")!.actions?.map(a => a.id)).toEqual(["documentation"]);
     const count = list.items.length;
     await s.refresh(); expect((await s.provider()).items).toHaveLength(count);
     n.state.fail = true;
-    const search = await s.k.items.run({ op: "search", provider: "voix-locale-library", query: "omnivoice" }, "ui");
+    const search = await s.k.items.run({ op: "search", provider: "local-voice-library", query: "omnivoice" }, "ui");
     expect(search.items?.map(i => i.id)).toContain(id);
     expect((await s.refresh()).ok).toBe(false); expect((await s.provider()).items).toHaveLength(count);
     n.state.fail = false;
-    expect((await s.k.items.run({ op: "action", provider: "voix-locale-library", id, action: "download" }, "ui")).ok).toBe(true);
-    for (let i = 0; i < 100 && !(await s.provider("voix-locale")).items.length; i++) await new Promise(r => setTimeout(r, 10));
-    const voice = (await s.provider("voix-locale")).items[0]!;
-    expect(voice.values).toMatchObject({ famille: "omnivoice", voix: "clone" });
+    expect((await s.k.items.run({ op: "action", provider: "local-voice-library", id, action: "download" }, "ui")).ok).toBe(true);
+    for (let i = 0; i < 100 && !(await s.provider("local-voice")).items.length; i++) await new Promise(r => setTimeout(r, 10));
+    const voice = (await s.provider("local-voice")).items[0]!;
+    expect(voice.values).toMatchObject({ family: "omnivoice", voice: "clone" });
     model = String(voice.values!.model);
     const values = { label: "Voix Omni", model, sample: wavDataUrl(pcmWav(16000, new Int16Array(16000))), refText: "" };
-    expect((await s.k.items.run({ op: "update", provider: "voix-locale", id: voice.id, values }, "ui")).ok).toBe(true);
+    expect((await s.k.items.run({ op: "update", provider: "local-voice", id: voice.id, values }, "ui")).ok).toBe(true);
     n.state.revision = "b".repeat(40);
     await s.refresh();
     expect((await s.provider()).items.filter(i => String(i.label).includes("omnivoice_q8"))).toHaveLength(2);
-    expect((await s.provider("voix-locale")).items[0]!.values!.model).toBe(model);
+    expect((await s.provider("local-voice")).items[0]!.values!.model).toBe(model);
     expect(readFileSync(model, "utf8")).toBe(payload(omni, "a".repeat(40)).toString());
   } finally { await s.k.stopAll(); }
   n.state.fail = true; n.fetch.mockClear();
@@ -123,8 +123,8 @@ it("actualise à la demande, recherche hors ligne, installe OmniVoice puis garde
   try {
     expect((await again.provider()).items.map(i => i.id)).toContain(id);
     expect(n.fetch).not.toHaveBeenCalled();
-    expect((await again.k.items.run({ op: "action", provider: "voix-locale-library", id, action: "remove" }, "ui")).ok).toBe(true);
-    expect((await again.provider("voix-locale")).items).toHaveLength(0);
+    expect((await again.k.items.run({ op: "action", provider: "local-voice-library", id, action: "remove" }, "ui")).ok).toBe(true);
+    expect((await again.provider("local-voice")).items).toHaveLength(0);
   } finally { await again.k.stopAll(); }
 });
 
@@ -145,7 +145,7 @@ it("un cache JSON abîmé est mis de côté, le catalogue livré reste utilisabl
 
 it("ne duplique pas un paquet déjà livré lorsque le commit change mais que ses fichiers sont identiques", async () => {
   const n = network(); vi.stubGlobal("fetch", n.fetch);
-  const base = KNOWN_VOICE_MODELS.find(m => m.famille === "chatterbox")!;
+  const base = KNOWN_VOICE_MODELS.find(m => m.family === "chatterbox")!;
   const data = payload(chatter, n.state.revision);
   const seed = { ...base, model: chatter, files: [{ path: chatter, size: data.length, sha256: hash(data), url: "https://huggingface.co/existing/resolve/other/model.gguf" }] };
   const s = await boot(mkdtempSync(join(tmpdir(), "tts-registry-dedup-")), n.fetch, [seed]);

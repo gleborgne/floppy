@@ -283,8 +283,8 @@ function libRow(p: ItemProvider, it: ProviderItem): VNode {
     if (main) side.push(btn(main, main.id === "download" ? "download" : null));
   }
   const tags = (it.tags ?? []).map((x) => h("span", { class: "chip tag", text: tr(x) }));
-  // Note du modèle pour la langue de l'assistant (réglage « langue_assistant », déjà reçu avec la liste des réglages).
-  const lang = String(S.settings.list.find((x) => x.key === "langue_assistant")?.value ?? "");
+  // Note du modèle pour la langue de l'assistant (réglage « assistant_language », déjà reçu avec la liste des réglages).
+  const lang = String(S.settings.list.find((x) => x.key === "assistant_language")?.value ?? "");
   const note = lang ? itemLanguageNote(it.languages, lang, S.lang) : null;
   if (note) tags.push(h("span", { class: note.tone === "warn" ? "chip warn" : "chip tag", "data-language": lang, text: note.text }));
   return h("div", { class: "srow lrow", key: `${p.id}/${it.id}` },

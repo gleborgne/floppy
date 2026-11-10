@@ -41,16 +41,16 @@ describe("langues de l'interface et de l'assistant", () => {
   it("résultats des éléments : langue de l'interface pour un clic, de l'assistant pour la voix", async () => {
     const k = await kernel();
     expect((await k.items.run({ op: "action", provider: "prov", id: "x", action: "a" }, "ui")).text).toBe("Fichier introuvable");
-    await k.settings.change("langue_interface", "en", "ui");
+    await k.settings.change("ui_language", "en", "ui");
     expect((await k.items.run({ op: "action", provider: "prov", id: "x", action: "a" }, "ui")).text).toBe("File not found");
     expect((await k.items.run({ op: "enable", provider: "prov", id: "x", on: true }, "voice")).text).toBe("Activé.");
     await k.stopAll();
   });
 
-  it("réglages et outils suivent la langue de l'assistant (réglage langue_assistant)", async () => {
+  it("réglages et outils suivent la langue de l'assistant (réglage assistant_language)", async () => {
     const k = await kernel();
     expect((await k.settings.change("vitesse", "oui", "voice")).text).toBe("Vitesse : oui.");
-    expect((await k.settings.change("langue_assistant", "english", "ui")).ok).toBe(true);
+    expect((await k.settings.change("assistant_language", "english", "ui")).ok).toBe(true);
     await k.idle();
     expect(k.assistantSettings.language).toBe("en");
     expect((await k.settings.change("vitesse", "yes", "voice")).text).toBe("Speed: yes.");

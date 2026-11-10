@@ -49,7 +49,7 @@ Elle est éteinte par défaut.
 {
   "kind": "message", "app": "contoso-tracker",
   "text": { "fr": "Vous avez été ajouté sur la PR 1234.", "en": "You were added to PR 1234." },
-  "mode": "voix",
+  "mode": "voice",
   "key": "notif-981",
   "action": { "label": { "fr": "Ouvrir la PR 1234", "en": "Open PR 1234" }, "url": "contoso-tracker://pr?id=1234" }
 }
@@ -57,7 +57,7 @@ Elle est éteinte par défaut.
 
 - `text` : une chaîne, ou `{ fr, en }`. Floppy prend la langue de l'assistant. Il fait au plus 500 caractères, sur
   une seule ligne.
-- `mode` : `voix` (lu à voix haute et affiché) ou `info` (affiché seulement). Absent : `info`.
+- `mode` : `voice` (lu à voix haute et affiché) ou `info` (affiché seulement). Absent : `info`. L'ancienne valeur française `voix`, écrite par les applications déjà livrées, reste **acceptée en entrée** et vaut `voice` ; Floppy n'écrit jamais que `voice` (par exemple dans `inbox-apps.json` ou les journaux). Toute autre valeur est refusée (400).
 - `key` : facultatif, 200 caractères au plus. Le même `key` revenu dans les 10 minutes n'est pas répété. Un même
   texte revenu dans les 10 minutes ne l'est pas non plus, même avec un autre `key`.
 - `action` : facultatif. `label` fait au plus 120 caractères. `url` fait au plus 2048 caractères et utilise un
@@ -85,7 +85,7 @@ Elle est éteinte par défaut.
 - Le réglage a trois choix :
   - « Pas autorisée » : les messages sont refusés (403).
   - « Afficher seulement » : tout est affiché, rien n'est dit.
-  - « Comme l'app le demande » : l'app choisit `voix` ou `info`.
+  - « Comme l'app le demande » : l'app choisit `voice` ou `info`.
 - **Carte de confirmation.** Au premier `hello`, Floppy montre la carte des accords, dans le chat et sur les corps :
   « J'ai reçu un message de l'application « X ». Autoriser ses annonces ? Elle pourra faire ouvrir x:// et https. »
   - La carte passe par `ctx.approvals.check`, avec le niveau `write` et `override: "ask"`. Elle est donc toujours
@@ -117,7 +117,7 @@ Elle est éteinte par défaut.
 
 - Un message accepté devient une initiative (`source: "inbox:<app>"`, `key: "inbox:<app>:<key>"`).
   - En mode Live, l'annonce est passée au modèle comme une information à lire, jamais comme une consigne.
-  - Le mode `voix`, avec le réglage « Comme l'app le demande », donne `important` : le message est dit dès que Floppy
+  - Le mode `voice`, avec le réglage « Comme l'app le demande », donne `important` : le message est dit dès que Floppy
     est libre.
   - Le mode `info` donne `normal` : le message est seulement affiché.
 - Les 20 derniers messages avec action sont gardés en mémoire, pas sur disque.

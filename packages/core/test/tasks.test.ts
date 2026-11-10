@@ -196,14 +196,14 @@ describe("ctx.borrow", () => {
     const j: string[] = [];
     let ctxRef: Context | undefined;
     const user = definePlugin({
-      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "veille.tri", service: "completion", section: "veille", label: "Tri", none: "Aucun" }] },
+      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "watch.triage", service: "completion", section: "watch", label: "Tri", none: "Aucun" }] },
       apply(ctx) { ctxRef = ctx; },
     });
     k = new Kernel({ logger: quiet, plugins: [models(j), user] });
-    await k.applyConfig({ plugins: [{ id: "m", plugin: "models" }, { id: "u", plugin: "user" }], slots: { "veille.tri": "m/sonnet" } });
+    await k.applyConfig({ plugins: [{ id: "m", plugin: "models" }, { id: "u", plugin: "user" }], slots: { "watch.triage": "m/sonnet" } });
     expect(j).toEqual([]); // le slot n'est pas lu pendant apply : rien ne tourne
 
-    const b = await ctxRef!.borrow<{ complete(r: { system: string; prompt: string }): Promise<{ text: string }> }>("veille.tri");
+    const b = await ctxRef!.borrow<{ complete(r: { system: string; prompt: string }): Promise<{ text: string }> }>("watch.triage");
     expect(j).toEqual(["spawn sonnet"]);
     expect((await b!.service.complete({ system: "", prompt: "x" })).text).toBe("ok:x");
     b!.release();
@@ -215,12 +215,12 @@ describe("ctx.borrow", () => {
   it("rend undefined pour « aucun », et refuse un slot d'un autre plugin", async () => {
     let ctxRef: Context | undefined;
     const user = definePlugin({
-      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "veille.tri", service: "completion", section: "veille", label: "Tri", none: "Aucun" }] },
+      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "watch.triage", service: "completion", section: "watch", label: "Tri", none: "Aucun" }] },
       apply(ctx) { ctxRef = ctx; },
     });
     k = new Kernel({ logger: quiet, plugins: [models([]), user] });
-    await k.applyConfig({ plugins: [{ id: "m", plugin: "models" }, { id: "u", plugin: "user" }], slots: { "veille.tri": "@none" } });
-    expect(await ctxRef!.borrow("veille.tri")).toBeUndefined();
+    await k.applyConfig({ plugins: [{ id: "m", plugin: "models" }, { id: "u", plugin: "user" }], slots: { "watch.triage": "@none" } });
+    expect(await ctxRef!.borrow("watch.triage")).toBeUndefined();
     expect(() => ctxRef!.borrow("brain.main")).toThrow(/non déclaré/);
   });
 });

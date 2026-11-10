@@ -132,17 +132,17 @@ describe("réglage « répertoire de travail »", () => {
     const home = floppyHome(env);
     const k = new Kernel({ logger: () => {}, home });
     await k.applyConfig({ plugins: [] });
-    const info = k.settings.list().find((s) => s.key === "dossier_floppy");
+    const info = k.settings.list().find((s) => s.key === "home_folder");
     expect(info).toMatchObject({ value: home, folder: true, risk: "cli" });
     const restart = new Promise((r) => k.bus.on("floppy.restart", r));
-    const r = await k.settings.change("dossier_floppy", join(root, "nouveau"), "ui");
+    const r = await k.settings.change("home_folder", join(root, "nouveau"), "ui");
     expect(r.ok).toBe(true);
     await restart;
     // Noté, puis fait au prochain démarrage : d'ici là, les données restent dans l'ancien dossier.
     expect(floppyHome(env)).toBe(home);
     applyPendingMove(() => {}, env);
     expect(floppyHome(env)).toBe(join(root, "nouveau"));
-    const bad = await k.settings.change("dossier_floppy", "relatif", "ui");
+    const bad = await k.settings.change("home_folder", "relatif", "ui");
     expect(bad.ok).toBe(false);
     expect(tr(errorText(bad.text), "fr")).toMatch(/chemin complet/);
     await k.stopAll();

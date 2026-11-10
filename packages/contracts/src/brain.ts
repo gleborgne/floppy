@@ -96,7 +96,7 @@ export interface CompletionRequest {
 
 /**
  * Un appel au modèle hors conversation : pas d'outils, pas de mémoire, pas d'émotions. Pour trier, noter, résumer.
- * Offert élément par élément (ex. « Claude Sonnet »), choisi par le slot du plugin qui s'en sert (ex. veille.tri).
+ * Offert élément par élément (ex. « Claude Sonnet »), choisi par le slot du plugin qui s'en sert (ex. watch.triage).
  */
 export interface CompletionService {
   label?: string;

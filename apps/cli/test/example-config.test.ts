@@ -43,6 +43,15 @@ describe.each(files)("%s", (file) => {
     }
   });
 
+  it("ne garde que des clés connues : un ancien nom de clé ne passe pas inaperçu (les schémas des plugins ignorent les clés inconnues)", () => {
+    const cfg = loadConfigFile(file);
+    for (const entry of cfg.plugins) {
+      const schema = catalog.find((p) => p.manifest.id === entry.plugin)?.config as { strict?: () => { safeParse(x: unknown): { success: boolean; error?: { issues: unknown } } } } | undefined;
+      const r = schema?.strict?.().safeParse(entry.config ?? {});
+      if (file.endsWith("floppy.example.yml")) expect(r?.success ?? true, `${entry.id} : ${JSON.stringify(r?.error?.issues)}`).toBe(true);
+    }
+  });
+
   it("ne contient aucun chemin ni nom propre à un PC", () => {
     const text = readFileSync(file, "utf8");
     expect(text).not.toMatch(/[A-Z]:[\/](Users|projects|AIModels)/i);

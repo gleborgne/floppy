@@ -147,13 +147,13 @@ export function createM365Plugin(fetchImpl?: (url: string | URL, init?: RequestI
       version: "0.1.0",
       licence: "MIT",
       sections: [
-        { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
+        { id: "connectors", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Microsoft 365 (mails, agenda, personnes, fichiers, Teams) par Microsoft Graph : lecture, ajout dans l'agenda, envoi de messages Teams.",
       // Connexion par code d'appareil (login.microsoftonline.com) puis Microsoft Graph.
       permissions: { net: ["login.microsoftonline.com", "graph.microsoft.com"] },
       addable: {
-        section: "connecteurs",
+        section: "connectors",
         single: true,
         cloud: true,
         logo: MICROSOFT,

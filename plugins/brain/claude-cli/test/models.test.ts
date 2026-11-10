@@ -10,8 +10,8 @@ import claude from "../src/index.ts";
 it("Claude découvre ses modèles sans prompt et applique les deux choix au prochain tour", async () => {
   let main: LlmService | undefined, delegate: BrainService | undefined;
   const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", slots: [
-    { id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" },
-    { id: "brain.delegate", service: "delegate", section: "cerveau", label: "Délégation" },
+    { id: "brain.main", service: "llm", section: "brain", label: "Cerveau" },
+    { id: "brain.delegate", service: "delegate", section: "brain", label: "Délégation" },
   ] }, async apply(ctx) { main = await ctx.slot<LlmService>("brain.main"); delegate = await ctx.slot<BrainService>("brain.delegate"); } });
   const mcp = definePlugin({ manifest: { id: "mcp", version: "0", licence: "MIT", provides: ["mcp"] }, apply(ctx) {
     ctx.provide("mcp", { url: "http://127.0.0.1:1/mcp", token: "t", scoped: () => ({ url: "", token: "", close() {} }) });

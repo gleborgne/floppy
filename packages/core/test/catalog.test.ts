@@ -13,7 +13,7 @@ function plugin() {
     manifest: { id: "fake-items", version: "0.0.1", licence: "MIT" },
     apply(ctx) {
       ctx.items.declare({
-        id: "fake", section: "cerveau", label: "Faux",
+        id: "fake", section: "brain", label: "Faux",
         kinds: [{ id: "k", label: "Type", fields: [{ key: "name", label: "Nom", type: "text", required: true }] }],
         list: () => Object.values(items),
         add: async (_k, v) => { const id = String(v.name); items[id] = { id, label: id, enabled: true }; return { ok: true, text: "ok", id }; },
@@ -59,12 +59,12 @@ describe("catalogue des éléments", () => {
       manifest: { id: "looks", version: "0.0.1", licence: "MIT" },
       apply(ctx) {
         ctx.items.declare({
-          id: "avatars", section: "corps", label: "Avatars",
+          id: "avatars", section: "body", label: "Avatars",
           list: () => looks.map((l) => ({ ...l, enabled: true, active: l.id === current, actions: l.id === current ? [] : [{ id: "use", label: "Utiliser", voice: true }] })),
           action: async (id) => { current = id; used.push(id); return { ok: true, text: "ok" }; },
         });
         ctx.items.declare({
-          id: "models", section: "cerveau", label: "Modèles",
+          id: "models", section: "brain", label: "Modèles",
           list: () => [{ id: "qwen", label: "Qwen", enabled: true, actions: [{ id: "use", label: "Ajouter à la liste" }] }],
           action: async (id) => { used.push(id); return { ok: true, text: "ok" }; },
         });
@@ -87,7 +87,7 @@ describe("catalogue des éléments", () => {
       manifest: { id: "sons", version: "0.0.1", licence: "MIT" },
       apply(ctx) {
         ctx.items.declare({
-          id: "sons", section: "voix", label: "Sons",
+          id: "sons", section: "voice", label: "Sons",
           list: () => [{ id: "v", label: "Voix", enabled: true, actions: [{ id: "listen", label: "Écouter", play: true }, { id: "use", label: "Utiliser" }] }],
           action: async (_id, a) => (a === "listen" ? { ok: true, text: "", audio: "data:audio/wav;base64,AA==" } : { ok: true, text: "ok" }),
         });
@@ -128,12 +128,12 @@ describe("catalogue des éléments", () => {
 describe("catalogue des applications", () => {
   it("chaque fiche dit les services du plugin : le catalogue ouvert depuis un rôle filtre avec", async () => {
     const addable = (id: string, provides?: ServiceName[]) => definePlugin({
-      manifest: { id, version: "0.0.1", licence: "MIT", ...(provides ? { provides } : {}), addable: { section: "ecoute", label: id } },
+      manifest: { id, version: "0.0.1", licence: "MIT", ...(provides ? { provides } : {}), addable: { section: "listening", label: id } },
       apply() {},
     });
     const k = new Kernel({ logger: () => {}, plugins: [addable("wakeword-x", ["wakeword"]), addable("stt-x", ["vad", "stt"]), addable("rien")], home: mkdtempSync(join(tmpdir(), "apps-")) });
     await k.applyConfig({ plugins: [] });
-    const kinds = k.items.provider("apps-ecoute")!.kinds!;
+    const kinds = k.items.provider("apps-listening")!.kinds!;
     expect(kinds.find((x) => x.id === "wakeword-x")?.provides).toEqual(["wakeword"]);
     expect(kinds.find((x) => x.id === "stt-x")?.provides).toEqual(["vad", "stt"]);
     expect(kinds.find((x) => x.id === "rien")?.provides).toBeUndefined();
@@ -141,7 +141,7 @@ describe("catalogue des applications", () => {
 
   it("« installe Orca » à la voix : listée à ajouter, accord demandé, valeurs par défaut, une seule fois", async () => {
     const app = (id: string, addable: Record<string, unknown>) => definePlugin({
-      manifest: { id, version: "0.0.1", licence: "MIT", addable: { section: "connecteurs", ...addable } as never },
+      manifest: { id, version: "0.0.1", licence: "MIT", addable: { section: "connectors", ...addable } as never },
       apply(ctx) { ctx.tools.register([{ name: `${id}_outil`, description: "x", inputSchema: { type: "object" }, level: "read", handler: async () => ({ status: "done", text: "ok" }) }]); },
     });
     const k = new Kernel({
@@ -157,17 +157,17 @@ describe("catalogue des applications", () => {
     k.bus.on("approval.request", (r) => { asked.push(String(r.summary)); k.approvals.respond(r.id, answer, "test"); });
 
     // « Tu sais te connecter à Orca ? » : Floppy la voit parmi ce qu'il peut ajouter.
-    expect((await k.tools.call("lister_elements", {})).text).toMatch(/À ajouter \(connecteurs[\s\S]*- Orca/);
+    expect((await k.tools.call("lister_elements", {})).text).toMatch(/À ajouter \(connectors[\s\S]*- Orca/);
 
     // Refusé : rien n'est ajouté.
     expect((await k.tools.call("ajouter_application", { nom: "orque" })).status).toBe("refused");
     expect(asked).toEqual(["Ajouter Orca"]);
-    expect(await k.items.provider("apps-connecteurs")!.list()).toEqual([]);
+    expect(await k.items.provider("apps-connectors")!.list()).toEqual([]);
 
     // Accepté : ajouté avec les valeurs par défaut, ses outils arrivent.
     answer = true;
     expect((await k.tools.call("ajouter_application", { nom: "Orca" })).status).toBe("done");
-    const items = await k.items.provider("apps-connecteurs")!.list();
+    const items = await k.items.provider("apps-connectors")!.list();
     expect(items.map((i) => [i.kind, i.values])).toEqual([["orca-x", { pollSeconds: 15 }]]);
     expect(k.tools.list().some((t) => t.name === "orca-x_outil")).toBe(true);
     expect((await k.tools.call("lister_elements", {})).text).not.toMatch(/- Orca :/);

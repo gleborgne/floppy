@@ -12,7 +12,7 @@ describe("manifeste : champs inconnus refusés", () => {
     expect(manifestError({
       ...base, description: { fr: "d", en: "d" }, provides: ["task", "llm"], inject: ["a"], optional: ["b"], lazy: true, startTimeout_s: 30,
       slots: [{ id: "a.b", service: "llm", section: "s", label: "L", description: "D", none: "N", defaultFirst: true, display: "tabs", step: 1 }],
-      tasks: [{ id: "t", label: "T", description: "D", schedule: { at: "07:30", days: [1, 2] }, timeout_s: 60, configure: "veille" }],
+      tasks: [{ id: "t", label: "T", description: "D", schedule: { at: "07:30", days: [1, 2] }, timeout_s: 60, configure: "watch" }],
       permissions: { "fs.read": ["~/x"], "fs.write": ["~/y"], net: ["a.com"], exec: ["git"], cloud: true, approvals: "respond" },
       sections: [{ id: "s", label: "S", description: "D", order: 3, icon: "mic", parent: "p", merge: true, view: "v" }],
       addable: {
@@ -41,7 +41,7 @@ describe("manifeste : champs inconnus refusés", () => {
       const st = k.status().find((s) => s.id === "e")!;
       expect(st.state).toBe("error");
       expect(st.error).toBe("manifeste invalide : optionnal : champ inconnu (voulais-tu « optional » ?)");
-      return k.settings.change("langue_interface", "en", "ui").then(() => {
+      return k.settings.change("ui_language", "en", "ui").then(() => {
         expect(k.status().find((s) => s.id === "e")!.error).toBe("invalid manifest: optionnal : unknown field (did you mean \"optional\"?)");
       });
     });

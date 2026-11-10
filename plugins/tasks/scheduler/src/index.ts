@@ -2,10 +2,10 @@
 //
 // - Il lit les tâches du noyau (ctx.tasks.list) et lance celles qui sont « dues » (ctx.tasks.run(clé, "clock")).
 // - La planification de l'utilisateur gagne sur celle du manifeste. Elle est un réglage texte par tâche, changeable
-//   à la voix : « Floppy, fais ma veille à 8 h » → "08:00" ; « …du lundi au vendredi » → "08:00 lun-ven" ;
-//   « toutes les 3 heures » → "toutes les 3h" ; "jamais". « 8h » tout seul est une HEURE (08:00), jamais une période.
+//   à la voix : « Floppy, fais ma veille à 8 h » → "08:00" ; « …du lundi au vendredi » → "08:00 mon-fri" ;
+//   « toutes les 3 heures » → "every 3h" ; "never". « 8h » tout seul est une HEURE (08:00), jamais une période.
 //   Les mêmes phrases en anglais sont comprises (« at 8am », « 7:30 mon-fri », « every 3 hours », « never ») ;
-//   la valeur gardée reste en français (« 07:30 lun-ven », « jamais »), montrée traduite dans les fiches.
+//   la valeur gardée est écrite en anglais (« 07:30 mon-fri », « every 3h », « never »), montrée traduite dans les fiches.
 // - Rubrique Tâches : une fiche par tâche (prochain et dernier passage, planification, « Lancer maintenant »).
 // - On compare l'heure du mur (Date.now) à la dernière réussite : ça marche aussi après la mise en veille du PC.
 //   Un passage manqué (PC éteint) est donc rattrapé une fois, après un délai au démarrage (le temps de charger les modèles).
@@ -19,7 +19,7 @@ const t = T;
 
 export const Config = z.object({
   /** Attente avant la première vérification (secondes) : laisse les modèles se charger. */
-  delaiDemarrageS: z.number().min(0).max(3600).default(120),
+  startupDelay_s: z.number().min(0).max(3600).default(120),
 });
 type Config = z.infer<typeof Config>;
 
@@ -32,6 +32,8 @@ const RETRY_APRES_ECHEC_MS = 30 * MINUTE;
 const NOMS_JOURS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"] as const;
 const NOMS_LONGS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 const DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+/** Jours tels qu'ils sont gardés dans le réglage. */
+const DAY_IDS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAYS_LONG = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
 function norm(s: string): string {
@@ -125,26 +127,40 @@ export function parseSchedule(input: string): ParsedSchedule {
   return { ok: true, schedule: days.length === 7 ? { at: heure } : { at: heure, days } };
 }
 
-/** Écrit une planification comme on la dit : "07:30", "07:30 lun-ven", "3h", "jamais". */
+/** Écrit une planification comme elle est gardée dans le réglage : "07:30", "07:30 mon-fri", "every 3h", "never". */
 export function formatSchedule(schedule: TaskSchedule | null | undefined): string {
-  if (!schedule) return "jamais";
-  if ("every" in schedule) return `toutes les ${schedule.every.endsWith("m") ? `${schedule.every.slice(0, -1)} min` : schedule.every}`;
+  if (!schedule) return "never";
+  if ("every" in schedule) return `every ${schedule.every.endsWith("m") ? `${schedule.every.slice(0, -1)} min` : schedule.every}`;
   const days = [...new Set(schedule.days ?? [])].sort((a, b) => a - b);
   if (!days.length || days.length === 7) return schedule.at;
+  return `${schedule.at} ${dayRanges(days, DAY_IDS)}`;
+}
+
+/** Jours triés, en plages de trois jours ou plus (« mon-fri ») et en jours isolés (« mon,thu »). */
+function dayRanges(days: number[], names: readonly string[]): string {
   const parts: string[] = [];
   for (let i = 0; i < days.length;) {
     let j = i;
     while (j + 1 < days.length && days[j + 1] === days[j]! + 1) j++;
-    if (j - i >= 2) parts.push(`${NOMS_JOURS[days[i]! - 1]}-${NOMS_JOURS[days[j]! - 1]}`);
-    else for (let k = i; k <= j; k++) parts.push(NOMS_JOURS[days[k]! - 1]!);
+    if (j - i >= 2) parts.push(`${names[days[i]! - 1]}-${names[days[j]! - 1]}`);
+    else for (let k = i; k <= j; k++) parts.push(names[days[k]! - 1]!);
     i = j + 1;
   }
-  return `${schedule.at} ${parts.join(",")}`;
+  return parts.join(",");
+}
+
+/** La même planification, écrite en français pour l'affichage. */
+function formatScheduleFr(schedule: TaskSchedule | null | undefined): string {
+  if (!schedule) return "jamais";
+  if ("every" in schedule) return `toutes les ${schedule.every.endsWith("m") ? `${schedule.every.slice(0, -1)} min` : schedule.every}`;
+  const days = [...new Set(schedule.days ?? [])].sort((a, b) => a - b);
+  if (!days.length || days.length === 7) return schedule.at;
+  return `${schedule.at} ${dayRanges(days, NOMS_JOURS)}`;
 }
 
 /** Une planification à lire, en français (comme on la garde) et en anglais. */
 export function scheduleText(schedule: TaskSchedule | null | undefined): Text {
-  const fr = formatSchedule(schedule);
+  const fr = formatScheduleFr(schedule);
   if (!schedule) return t(fr, "never");
   if ("every" in schedule) return t(fr, `every ${schedule.every.endsWith("m") ? `${schedule.every.slice(0, -1)} min` : schedule.every}`);
   const days = [...new Set(schedule.days ?? [])].sort((a, b) => a - b);
@@ -229,7 +245,7 @@ export function createSchedulerPlugin() {
       licence: "MIT",
       description: "Les tâches : quand elles tournent (horloge) et où envoyer leur résultat (Telegram, mail…).",
       sections: [
-        { id: "taches", label: t("Tâches", "Tasks"), description: t("Quand Floppy lance ses tâches tout seul (veille du jour…), et où il envoie le résultat.", "When Floppy runs its tasks by itself, and where it sends the result.") },
+        { id: "tasks", label: t("Tâches", "Tasks"), description: t("Quand Floppy lance ses tâches tout seul (veille du jour…), et où il envoie le résultat.", "When Floppy runs its tasks by itself, and where it sends the result.") },
       ],
       // notify : les canaux d'envoi (offerts par les plugins Telegram, mail…) ; documents : le contenu à envoyer.
       optional: ["notify", "documents"],
@@ -386,7 +402,7 @@ export function createSchedulerPlugin() {
       /** Un tour d'horloge : lance, l'une après l'autre, les tâches dues. Ne lève jamais. */
       const check = async (): Promise<void> => {
         if (!ctx.alive || checking) return;
-        if (Date.now() - startedAt < cfg.delaiDemarrageS * 1000) return;
+        if (Date.now() - startedAt < cfg.startupDelay_s * 1000) return;
         checking = true;
         try {
           for (const info of ctx.tasks.list()) {
@@ -417,8 +433,8 @@ export function createSchedulerPlugin() {
       };
 
       // ---- Rubrique Tâches : une fiche par tâche. Sa planification (réglage) est montrée DANS la fiche.
-      const keyOf = (info: TaskInfo) => `taches.${info.key.replace("/", ".")}`;
-      const envoiKey = (info: TaskInfo) => `${keyOf(info)}.envoi`;
+      const keyOf = (info: TaskInfo) => `tasks.${info.key.replace("/", ".")}`;
+      const sendKey = (info: TaskInfo) => `${keyOf(info)}.send`;
       const itemId = (info: TaskInfo) => info.key.replace("/", ".");
       const byItem = (id: string) => ctx.tasks.list().find((x) => itemId(x) === id);
       const when = (d: Date, now: Date, l: "fr" | "en" = "fr"): string => {
@@ -464,19 +480,19 @@ export function createSchedulerPlugin() {
           statusText: t(parts("fr"), parts("en")),
           toggleable: true, editable: false, removable: false,
           actions: info.running ? [] : [{ id: "run", label: t("Lancer maintenant", "Run now") }],
-          settings: [keyOf(info), envoiKey(info)],
+          settings: [keyOf(info), sendKey(info)],
           ...(info.configure ? { section: info.configure } : {}),
         };
       };
       ctx.items.declare({
-        id: "taches", section: "taches", order: 10,
+        id: "tasks", section: "tasks", order: 10,
         label: t("Tâches des plugins", "Plugin tasks"),
         description: t("Chaque plugin apporte ses tâches. Choisis quand elles tournent, ou lance-les tout de suite.", "Each plugin brings its tasks. Choose when they run, or run them right now."),
         list: () => ctx.tasks.list().map(taskInfo),
         setEnabled: async (id, on): Promise<OpResult> => {
           const info = byItem(id);
           if (!info) return { ok: false, text: t(`Tâche inconnue : ${id}`, `Unknown task: ${id}`) };
-          const r = await ctx.settings.change(keyOf(info), on ? formatSchedule(info.schedule ?? { at: "07:30" }) : "jamais");
+          const r = await ctx.settings.change(keyOf(info), on ? formatSchedule(info.schedule ?? { at: "07:30" }) : "never");
           const fr = tr(info.label, "fr"), en = tr(info.label, "en");
           return { ok: r.ok, text: r.ok ? (on ? t(`« ${fr} » se lancera toute seule.`, `"${en}" will run by itself.`) : t(`« ${fr} » ne se lancera plus toute seule (tu peux toujours la lancer).`, `"${en}" will no longer run by itself (you can still run it).`)) : r.text };
         },
@@ -505,18 +521,18 @@ export function createSchedulerPlugin() {
             label: t(`Quand lancer « ${name} »`, `When to run "${nameEn}"`),
             description: t(
               "Une heure (07:30), avec des jours (07:30 lun-ven, 09:00 week-end), une période (toutes les 3h, toutes les 30 min), ou jamais.",
-              "A time (07:30, 8am), with days (07:30 mon-fri, 09:00 weekends), a period (every 3 hours, every 30 min), or never. Saved in French (« 07:30 lun-ven », « jamais »).",
+              "A time (07:30, 8am), with days (07:30 mon-fri, 09:00 weekends), a period (every 3 hours, every 30 min), or never. Saved as “07:30 mon-fri”, “every 3h” or “never”.",
             ),
             type: "text",
-            section: "taches",
+            section: "tasks",
             maxLength: 60,
             presets: [
               { value: "07:00", label: t("07:00", "07:00") },
               { value: "07:30", label: t("07:30", "07:30") },
               { value: "08:00", label: t("08:00", "08:00") },
-              { value: "07:30 lun-ven", label: t("07:30 en semaine", "07:30 weekdays") },
-              { value: "toutes les 3h", label: t("toutes les 3 h", "every 3 h") },
-              { value: "jamais", label: t("jamais", "never") },
+              { value: "07:30 mon-fri", label: t("07:30 en semaine", "07:30 weekdays") },
+              { value: "every 3h", label: t("toutes les 3 h", "every 3 h") },
+              { value: "never", label: t("jamais", "never") },
             ],
             risk: "free",
             get: () => choices.get(info.key) ?? formatSchedule(ctx.tasks.list().find((x) => x.key === info.key)?.schedule),
@@ -529,24 +545,24 @@ export function createSchedulerPlugin() {
               ctx.items.changed();
             },
           }, {
-            key: envoiKey(info),
+            key: sendKey(info),
             label: t(`Envoyer « ${name} » à`, `Send "${nameEn}" to`),
             description: t(
               "Après chaque passage réussi, le résultat part aussi sur ces canaux (Telegram, mail… : rubrique Notifications). Plusieurs : séparés par une virgule. « nulle part » : rien n'est envoyé.",
-              "After each successful run, the result is also sent to these channels (Telegram, mail…: Notifications section). Several: comma-separated. “nowhere” (saved as « nulle part »): nothing is sent.",
+              "After each successful run, the result is also sent to these channels (Telegram, mail…: Notifications section). Several: comma-separated. “nowhere”: nothing is sent.",
             ),
             type: "text",
-            section: "taches",
+            section: "tasks",
             maxLength: 200,
             // Les canaux du moment (ils changent quand on en ajoute un) : relus à chaque affichage.
             get presets() {
               const opts = channels().map((o) => ({ value: tr(o.label), label: o.label }));
-              return [...opts, ...(opts.length > 1 ? [{ value: opts.map((o) => o.value).join(", "), label: t("tous", "all") }] : []), { value: "nulle part", label: t("nulle part", "nowhere") }];
+              return [...opts, ...(opts.length > 1 ? [{ value: opts.map((o) => o.value).join(", "), label: t("tous", "all") }] : []), { value: "nowhere", label: t("nulle part", "nowhere") }];
             },
             // Envoyer hors de chez l'utilisateur : à la voix, l'accord est demandé ; arrêter d'envoyer est libre.
             risk: "ask",
             riskFor: (v) => (resolve(String(v)).found.length ? "ask" : "free"),
-            get: () => destinations.get(info.key) || "nulle part",
+            get: () => destinations.get(info.key) || "nowhere",
             set: (value) => {
               const text = String(value).trim();
               const { found, unknown } = resolve(text);
@@ -562,7 +578,7 @@ export function createSchedulerPlugin() {
               ctx.items.changed();
             },
           }]);
-          const savedTo = ctx.settings.saved<string>(envoiKey(info));
+          const savedTo = ctx.settings.saved<string>(sendKey(info));
           if (typeof savedTo === "string" && savedTo.trim() && !NULLE_PART.test(norm(savedTo))) destinations.set(info.key, savedTo.trim());
         }
       };
@@ -570,7 +586,7 @@ export function createSchedulerPlugin() {
       declareNew();
       ctx.tasks.onChange(() => { try { declareNew(); updateStatus(); ctx.items.changed(); } catch (e) { ctx.log("warn", `tâches : ${String(e)}`); } });
       updateStatus();
-      ctx.timeout(() => { void check(); }, cfg.delaiDemarrageS * 1000);
+      ctx.timeout(() => { void check(); }, cfg.startupDelay_s * 1000);
       ctx.interval(() => { void check(); }, MINUTE);
     },
   });

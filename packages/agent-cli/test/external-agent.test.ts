@@ -31,8 +31,8 @@ async function boot(protocol: AgentProtocol, timeout_s = 5, bindScoped = true) {
   const plugin = createExternalAgent({ id: protocol, label: protocol, program: "node", protocol, aliases: [protocol], args: (p, m) => [...(m ? ["--model", m] : []), p] });
   let brain: LlmService | undefined, delegate: BrainService | undefined, consumer: Context | undefined;
   const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", optional: ["agent"], slots: [
-    { id: "test.main", service: "llm", section: "cerveau", label: "Principal" },
-    { id: "test.delegate", service: "delegate", section: "cerveau", label: "Délégué" },
+    { id: "test.main", service: "llm", section: "brain", label: "Principal" },
+    { id: "test.delegate", service: "delegate", section: "brain", label: "Délégué" },
   ] }, async apply(ctx) { consumer = ctx; brain = await ctx.slot("test.main"); delegate = await ctx.slot("test.delegate"); } });
   const k = new Kernel({ home, logger: () => {}, audit, secrets, plugins: [mcp, plugin, probe] }); kernels.push(k);
   k.tools.register("test", ["agenda", "lancer_travail_agent", "ouvrir_session_agent"].map((name) => ({ name, description: name,

@@ -34,7 +34,7 @@ export function emotionContract(o: EmotionContractOptions) {
       ctx.provide("mcp", { url: "http://127.0.0.1:1/mcp", token: "t", scoped: () => ({ url: "", token: "", close() {} }) });
     } });
     const probe = definePlugin({
-      manifest: { id: "probe", version: "0", licence: "MIT", optional: ["agent"], slots: [{ id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" }] },
+      manifest: { id: "probe", version: "0", licence: "MIT", optional: ["agent"], slots: [{ id: "brain.main", service: "llm", section: "brain", label: "Cerveau" }] },
       async apply(ctx) { consumer = ctx; main = await ctx.slot<LlmService>("brain.main"); },
     });
     const k = new Kernel({ home: mkdtempSync(join(tmpdir(), "emotion-cli-")), logger: () => {}, plugins: [tested, mcp, probe] });

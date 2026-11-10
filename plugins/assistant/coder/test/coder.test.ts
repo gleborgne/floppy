@@ -70,7 +70,7 @@ describe("coder : Claude", () => {
     expect(k.status().find((s) => s.id === "coder")?.state).toBe("active");
     expect((await coderSvc.agents()).map((a) => [a.id, a.available])).toEqual([["claude", true], ["codex", true]]);
     const keys = k.settings.list().filter((s) => s.section === "assistant").map((s) => s.key);
-    expect(keys).toEqual(["assistant_agent", "assistant_modele_claude", "assistant_web"]);
+    expect(keys).toEqual(["assistant_agent", "assistant_claude_model", "assistant_web"]);
   });
 
   it("traduit les événements : texte, outils, fin", async () => {

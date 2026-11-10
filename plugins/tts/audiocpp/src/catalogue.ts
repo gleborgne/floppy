@@ -28,18 +28,18 @@ const Spec = z.object({ family: z.string(), tasks: z.array(z.string()), modes: z
 /** Les poids d'un autre modèle/fine-tune ne doivent pas hériter de la licence ou des voix du modèle de base. */
 function profile(family: string, model: string): Omit<KnownVoiceModel, "files" | "model" | "id" | "label"> | undefined {
   if (family === "omnivoice" && /^OmniVoice-GGUF\/omnivoice-[\w.-]+\.gguf$/.test(model)) return {
-    famille: "omnivoice", langue: "", clone: true, voices: [],
+    family: "omnivoice", language: "", clone: true, voices: [],
     licence: { name: "Apache-2.0", url: "https://github.com/k2-fsa/OmniVoice/blob/master/LICENSE" },
     description: T("Français et clonage. Enregistre ou importe une voix après téléchargement. Génère l'audio par morceaux de texte ; qualité à évaluer.", "French and voice cloning. Record or import a voice after downloading. Generates audio in text chunks; quality to evaluate."),
     tags: [T("français", "French"), T("voix à créer", "create a voice"), T("carte graphique", "graphics card")],
   };
   if (family === "qwen3_tts" && /^Qwen3-TTS-12Hz-(?:0\.6|1\.7)B-Base-GGUF\/qwen3-tts-12hz-(?:0\.6|1\.7)b-base-[\w.-]+\.gguf$/.test(model)) return {
-    famille: "qwen3_tts", langue: "", clone: true, voices: [],
+    family: "qwen3_tts", language: "", clone: true, voices: [],
     licence: { name: "Apache-2.0", url: "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base" },
     description: T("Clonage de voix, dont le français. Enregistre ou importe une voix après téléchargement ; qualité à évaluer.", "Voice cloning, including French. Record or import a voice after downloading; quality to evaluate."),
     tags: [T("français", "French"), T("voix à créer", "create a voice"), T("carte graphique", "graphics card")],
   };
-  const seed = KNOWN_VOICE_MODELS.find(k => k.famille === family && k.model.slice(0, k.model.lastIndexOf("/")) === model.slice(0, model.lastIndexOf("/"))
+  const seed = KNOWN_VOICE_MODELS.find(k => k.family === family && k.model.slice(0, k.model.lastIndexOf("/")) === model.slice(0, model.lastIndexOf("/"))
     && k.model.replace(/-(?:q8_0|bf16|f16|orig)(?:_v\d+)?\.gguf$/, "") === model.replace(/-(?:q8_0|bf16|f16|orig)(?:_v\d+)?\.gguf$/, ""));
   if (!seed) return undefined;
   // Le port VoxCPM2 signale une dérive sonore du Q8 : garder les poids BF16/originaux.
@@ -93,7 +93,7 @@ export async function fetchCatalogue(fetchFn: typeof fetch, signal: AbortSignal)
       const p = profile(spec.family, model);
       if (!p || (p.mode && p.mode !== mode)) continue;
       // Pocket : la fiche amont ne prend qu'une voix ; Floppy garde toutes les empreintes de son profil.
-      const seed = KNOWN_VOICE_MODELS.find(k => k.famille === "pocket_tts" && k.langue === p.langue);
+      const seed = KNOWN_VOICE_MODELS.find(k => k.family === "pocket_tts" && k.language === p.language);
       const files = [...new Set([...pkg.files, ...(spec.family === "pocket_tts" ? seed?.files.filter(f => !f.path.endsWith(".gguf")).map(f => f.path) ?? [] : [])])];
       candidates.push({ family: spec.family as Record["family"], id: pkg.id, name: pkg.display_name, revision: sha, mode });
       paths.push(files);
@@ -154,7 +154,7 @@ export function dynamicCatalogue(ctx: Context, seeds: KnownVoiceModel[]): () => 
     return pending;
   };
   ctx.items.declare({
-    id: "voix-locale-catalogue", section: "voix", layout: "library", offers: "tts", order: 19,
+    id: "local-voice-catalogue", section: "voice", layout: "library", offers: "tts", order: 19,
     label: T("Catalogue en ligne", "Online catalogue"), description: T("audio.cpp et Hugging Face", "audio.cpp and Hugging Face"),
     list: () => [{ id: "catalogue", label: T("Découvrir les modèles et variantes", "Discover models and variants"), enabled: true,
       detail: T("Actualise la liste sans télécharger de modèle. Elle reste consultable hors connexion.", "Refresh the list without downloading models. It remains available offline."),

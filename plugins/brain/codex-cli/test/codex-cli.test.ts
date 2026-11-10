@@ -47,8 +47,8 @@ describe("brain codex-cli", () => {
     let main: LlmService | undefined;
     const probe = definePlugin({
       manifest: { id: "probe", version: "0", licence: "MIT", slots: [
-        { id: "brain.delegate", service: "delegate", section: "cerveau", label: "Délégation", none: "Aucune" },
-        { id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" },
+        { id: "brain.delegate", service: "delegate", section: "brain", label: "Délégation", none: "Aucune" },
+        { id: "brain.main", service: "llm", section: "brain", label: "Cerveau" },
       ] },
       async apply(ctx) { dlg = await ctx.slot<BrainService>("brain.delegate"); main = await ctx.slot<LlmService>("brain.main"); },
     });

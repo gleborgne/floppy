@@ -14,7 +14,7 @@ async function fixture(legacy?: string, voiceEnabled = true) {
   // Consommateur du slot listen.wakeword (comme la conversation).
   const held: { svc?: WakewordService } = {};
   const probe = definePlugin({
-    manifest: { id: "wake-probe", version: "0", licence: "MIT", slots: [{ id: "listen.wakeword", service: "wakeword", section: "ecoute", label: "Mot d'activation", none: "Aucun" }] },
+    manifest: { id: "wake-probe", version: "0", licence: "MIT", slots: [{ id: "listen.wakeword", service: "wakeword", section: "listening", label: "Mot d'activation", none: "Aucun" }] },
     async apply(ctx) { held.svc = await ctx.slot<WakewordService>("listen.wakeword"); },
   });
   const k = new Kernel({ home, logger: () => {}, plugins: [stt, voice, probe] });

@@ -26,7 +26,7 @@ describe("recherche web", () => {
     expect(r.text).toContain("https://meteo.example/paris");
     expect(asked).toEqual(["météo Paris demain"]);
     // Application de la rubrique Connecteurs, cloud.
-    expect(k.items.provider("apps-connecteurs")!.kinds!.find((x) => x.id === "websearch")?.cloud).toBe(true);
+    expect(k.items.provider("apps-connectors")!.kinds!.find((x) => x.id === "websearch")?.cloud).toBe(true);
   });
 
   it("panne du CLI : échec propre", async () => {
@@ -69,15 +69,15 @@ describe("service search (slot)", () => {
     ] };
     let ctxRef: Context | undefined;
     const user = definePlugin({
-      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "veille.recherche", service: "search", section: "veille", label: "Recherche", none: "Aucune" }] },
+      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "watch.search", service: "search", section: "watch", label: "Recherche", none: "Aucune" }] },
       apply(ctx) { ctxRef = ctx; },
     });
     const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async (q) => { asked.push(q); return many; }), user] });
     kernels.push(k);
-    await k.applyConfig({ slots: { "veille.recherche": "websearch/claude" }, plugins: [{ id: "websearch", plugin: "websearch" }, { id: "u", plugin: "user" }] });
+    await k.applyConfig({ slots: { "watch.search": "websearch/claude" }, plugins: [{ id: "websearch", plugin: "websearch" }, { id: "u", plugin: "user" }] });
     // L'outil du cerveau est toujours là.
     expect(k.tools.list().some((t) => t.name === "chercher_web")).toBe(true);
-    const b = await ctxRef!.borrow<SearchService>("veille.recherche");
+    const b = await ctxRef!.borrow<SearchService>("watch.search");
     expect(b!.service.cloud).toBe(true);
     expect(await b!.service.search("ia")).toEqual([
       { title: "A", url: "https://a.test/", summary: "ra", source: "A.test", date: "2026-11-05T00:00:00.000Z" },
@@ -99,7 +99,7 @@ describe("recherche web en anglais", () => {
     const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async (_q, _c, _w, _s, lang) => { langs.push(lang); return RES; })] });
     kernels.push(k);
     await k.applyConfig({ plugins: [{ id: "websearch", plugin: "websearch" }] });
-    await k.settings.change("langue_assistant", "en", "ui");
+    await k.settings.change("assistant_language", "en", "ui");
     await k.idle();
     expect(k.tools.list().find((t) => t.name === "chercher_web")!.waitPhrase).toBe("Let me look that up online, one moment.");
     await k.tools.call("chercher_web", { question: "weather" });
@@ -111,7 +111,7 @@ describe("recherche web en anglais", () => {
       const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async () => RES)] });
       kernels.push(k);
       await k.applyConfig({ plugins: [{ id: "websearch", plugin: "websearch", config: { engine } }] });
-      return (await k.items.provider("apps-connecteurs")!.list())[0]?.logo;
+      return (await k.items.provider("apps-connectors")!.list())[0]?.logo;
     };
     expect(String(await logo("claude"))).toMatch(/^data:image\/svg\+xml;base64,/);
     expect(await logo("codex")).toBeUndefined();

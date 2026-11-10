@@ -46,14 +46,14 @@ export function createBrowserPlugin(opener: Opener = defaultOpener) {
       version: "0.1.0",
       licence: "MIT",
       sections: [
-        { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
+        { id: "connectors", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Ouvre une adresse web dans le navigateur.",
       // Navigateur par défaut seulement ; un programme choisi dans le formulaire demanderait "*" (spawn brut, non contrôlé).
       // Le navigateur par défaut, ou le programme que l'utilisateur a choisi dans la config (n'importe lequel).
       permissions: { exec: ["*"] },
       addable: {
-        section: "connecteurs",
+        section: "connectors",
         single: true,
         // Logo du navigateur par défaut (lu par l'app : programme qui ouvre les adresses https).
         logo: { handler: "https" },

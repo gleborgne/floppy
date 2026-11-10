@@ -89,7 +89,7 @@ describe("Microsoft 365 (Graph)", () => {
     expect(before.status).toBe("failed");
     expect(before.text).toMatch(/Se connecter/);
 
-    const P = "apps-connecteurs";
+    const P = "apps-connectors";
     const item = (await k.items.provider(P)!.list()).find((i) => i.kind === "m365")!;
     expect(item.actions!.map((a) => a.id)).toEqual(["login", "channels", "logout"]);
     const r = await k.items.run({ op: "action", provider: P, id: "m365", action: "login" }, "ui");
@@ -235,7 +235,7 @@ describe("Microsoft 365 (Graph)", () => {
     expect(send.status).toBe("failed");
     expect(send.text).toContain("ChatMessage.Send");
     expect(ms.sent).toEqual([]);
-    const item = async () => (await k.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "m365")!;
+    const item = async () => (await k.items.provider("apps-connectors")!.list()).find((i) => i.kind === "m365")!;
     await vi.waitFor(async () => expect(JSON.stringify((await item()).statusText)).toContain("reconnecte-toi"));
   });
 
@@ -243,7 +243,7 @@ describe("Microsoft 365 (Graph)", () => {
     const k = new Kernel({ logger: () => {}, plugins: [createM365Plugin(fakeMs().f)], secrets: new MemorySecrets() });
     kernels.push(k);
     await k.applyConfig({ plugins: [{ id: "m365", plugin: "m365" }] });
-    expect((await k.items.run({ op: "action", provider: "apps-connecteurs", id: "m365", action: "login" }, "voice")).ok).toBe(false);
+    expect((await k.items.run({ op: "action", provider: "apps-connectors", id: "m365", action: "login" }, "voice")).ok).toBe(false);
   });
 
   it("texte d'un mail HTML et dates locales", () => {

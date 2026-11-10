@@ -82,6 +82,14 @@ describe("moteur de migration", () => {
     expect(JSON.parse(read("data.json.bak-rename-color"))).toEqual({ color: "rouge" });
   });
 
+  it("les versions peuvent avoir des trous : l'ordre suit la version, le marqueur garde la plus haute", () => {
+    const seen: string[] = [];
+    const at = (id: string, version: number): MigrationStep => ({ id, version, label: id, run() { seen.push(id); } });
+    runHomeMigrations(home, [at("c", 15), at("a", 3), at("b", 10)]);
+    expect(seen).toEqual(["a", "b", "c"]);
+    expect(readMigrationMarker(home).version).toBe(15);
+  });
+
   it("une étape qui échoue ne lève pas, n'entre pas dans le marqueur et repart au passage suivant ; les autres tournent", () => {
     const logs: string[] = [];
     let broken = true;
@@ -96,6 +104,24 @@ describe("moteur de migration", () => {
     const second = runHomeMigrations(home, [flaky, later]);
     expect(second.map((r) => [r.step, r.alreadyApplied, r.error ?? null])).toEqual([["flaky", false, null], ["later", true, null]]);
     expect(Object.keys(readMigrationMarker(home).applied).sort()).toEqual(["flaky", "later"]);
+  });
+
+  it("conflit : le nom de la clé est rapporté (jamais la valeur), une seule fois, et le fichier est quand même mis à niveau ; read : lecture seule", () => {
+    const logs: string[] = [];
+    const both: MigrationStep = {
+      id: "both", version: 1, label: "deux noms",
+      run(env) {
+        expect(env.read("data.json")).toContain("secret");
+        env.editJson("data.json", (d) => { env.conflict("data.json", "color"); env.conflict("data.json", "color"); delete d.color; return ["color"]; });
+        expect(env.read("absent.json")).toBeUndefined();
+      },
+    };
+    write("data.json", JSON.stringify({ color: "secret", colour: "x" }));
+    const r = runHomeMigrations(home, [both], { log: (l, m) => logs.push(`${l}: ${m}`) });
+    expect(r[0]!.conflicts).toEqual([{ file: "data.json", key: "color" }]);
+    expect(JSON.stringify(r)).not.toContain("secret");
+    expect(JSON.parse(read("data.json"))).toEqual({ colour: "x" });
+    expect(logs.filter((l) => l.startsWith("warn:") && l.includes("color"))).toHaveLength(1);
   });
 
   it("marqueur abîmé : les étapes (idempotentes) sont rejouées et le marqueur réécrit", () => {

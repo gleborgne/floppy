@@ -28,8 +28,8 @@ export function comparisonModel(values: { model?: string; family?: string; voice
   if (!Number.isSafeInteger(seed) || seed < 0) throw new Error("La graine doit être un entier positif ou nul.");
   const refText = values.transcript ? readFileSync(resolve(values.transcript), "utf8").trim() : "";
   if (family === "fish_audio" && !refText) throw new Error("La transcription Fish est vide.");
-  return clean({ label: "Essai expressivité", model: resolve(values.model), famille: family, langue: "fr", seed,
-    voix: family !== "qwen3_tts" ? "clone" : "integree", speaker: values.voice ?? "ono_anna",
+  return clean({ label: "Essai expressivité", model: resolve(values.model), family, language: "fr", seed,
+    voice: family !== "qwen3_tts" ? "clone" : "builtin", speaker: values.voice ?? "ono_anna",
     refWav: values.reference ? resolve(values.reference) : "", refText });
 }
 
@@ -64,7 +64,7 @@ async function main() {
   const model = comparisonModel(values);
   const output = resolve(values.output); mkdirSync(output, { recursive: true });
   let voice: TtsService | undefined;
-  const consumer = definePlugin({ manifest: { id: "voice-bench", version: "0", licence: "MIT", slots: [{ id: "bench.voice", service: "tts", section: "voix", label: "Voix" }] },
+  const consumer = definePlugin({ manifest: { id: "voice-bench", version: "0", licence: "MIT", slots: [{ id: "bench.voice", service: "tts", section: "voice", label: "Voix" }] },
     async apply(c) { voice = await c.slot<TtsService>("bench.voice"); } });
   const k = new Kernel({ home: join(output, "runtime"), logger: () => {}, plugins: [audiocpp, consumer] });
   const results: object[] = [];
@@ -82,7 +82,7 @@ async function main() {
       const { wav, ...metrics } = await sample(voice, scene.text, delivery);
       writeFileAtomic(join(output, file), wav);
       results.push({ file, text: scene.text, expressive, delivery, ...metrics });
-      writeJsonAtomic(join(output, "results.json"), { model: values.model, voice: model.voix === "clone" ? "reference" : model.speaker, seed: model.seed, results });
+      writeJsonAtomic(join(output, "results.json"), { model: values.model, voice: model.voice === "clone" ? "reference" : model.speaker, seed: model.seed, results });
       console.log(JSON.stringify({ file, ...metrics }));
     }
   } finally { await k.stopAll(); }

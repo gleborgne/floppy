@@ -178,14 +178,14 @@ describe("secrets", () => {
 describe("connecteurs : langue anglaise", () => {
   it("messages de la fenêtre et erreurs de formulaire en anglais si l'interface est en anglais", async () => {
     const s = await start();
-    await s.k.settings.change("langue_interface", "en", "ui");
+    await s.k.settings.change("ui_language", "en", "ui");
     expect((await s.run({ op: "enable", id: "nope", on: true })).text).toBe("Unknown connector.");
     expect((await s.run({ op: "add", kind: "mcp-local", values: localForm({ levels: { ask: "bad" } }) })).text)
       .toBe("Unknown level for “ask”: “bad”. Choose read, write, send, delete, physical or never.");
     const r = await s.run({ op: "add", kind: "mcp-local", values: localForm() });
     expect(r.text).toBe("“Notes” is added and turned on.");
     // En français, rien ne change.
-    await s.k.settings.change("langue_interface", "fr", "ui");
+    await s.k.settings.change("ui_language", "fr", "ui");
     expect((await s.run({ op: "enable", id: "nope", on: true })).text).toBe("Connecteur inconnu.");
   });
 });

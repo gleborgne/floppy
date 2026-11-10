@@ -14,13 +14,13 @@ export default definePlugin({
   manifest: {
     id: "tts-elevenlabs", version: "0.1.0", licence: "MIT", provides: ["tts"],
     description: "Synthèse vocale ElevenLabs en streaming.",
-    sections: [{ id: "voix", label: { fr: "Voix", en: "Voice" } }],
+    sections: [{ id: "voice", label: { fr: "Voix", en: "Voice" } }],
     permissions: { cloud: true, net: ["api.elevenlabs.io"] },
-    addable: { section: "voix", label: "ElevenLabs TTS", cloud: true, single: true },
+    addable: { section: "voice", label: "ElevenLabs TTS", cloud: true, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
-    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "ElevenLabs TTS", section: "voix", offers: "tts", validate: (v) => v.voice ? undefined : T("Identifiant de voix ElevenLabs manquant.", "ElevenLabs voice ID missing."), fields: [
+    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "ElevenLabs TTS", section: "voice", offers: "tts", validate: (v) => v.voice ? undefined : T("Identifiant de voix ElevenLabs manquant.", "ElevenLabs voice ID missing."), fields: [
       { key: "model", label: T("Modèle", "Model"), type: "text", required: true },
       { key: "voice", label: T("Identifiant de voix ElevenLabs", "ElevenLabs voice ID"), type: "text", required: true },
       { key: "language", label: T("Langue", "Language"), type: "text",

@@ -45,10 +45,10 @@ export default definePlugin<Config>({
   manifest: {
     id: "tts-system", version: "0.1.0", licence: "MIT", provides: ["tts"],
     description: T("Voix déjà installées sur l'ordinateur, par le programme de synthèse vocale du système.", "Voices already installed on the computer, through the system's speech program."),
-    sections: [{ id: "voix", label: { fr: "Voix", en: "Voice" } }],
+    sections: [{ id: "voice", label: { fr: "Voix", en: "Voice" } }],
     permissions: { exec: ["powershell", "say", "espeak-ng"] },
     addable: {
-      section: "voix", label: T("Voix du système", "System voices"), single: true,
+      section: "voice", label: T("Voix du système", "System voices"), single: true,
       description: T("Les voix déjà installées sur cet ordinateur. Gratuit et hors ligne, mais moins naturel.", "Voices already installed on this computer. Free and offline, but less natural."),
     },
   },

@@ -19,7 +19,7 @@ const t = (fr: string, en: string): Text => ({ fr, en });
 
 export const Config = z.object({
   /** Dossier où chaque session sans dossier précis reçoit son propre sous-dossier. Défaut : l'espace de travail du plugin. */
-  dossier: z.string().optional(),
+  folder: z.string().optional(),
   /** Programmes (défaut : cherchés dans le PATH). */
   claudeExe: z.string().optional(),
   codexExe: z.string().optional(),
@@ -86,14 +86,14 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
       description: "Ouvre une session Claude Code, Codex ou Antigravity dans un terminal, sur une consigne dictée.",
       permissions: { exec: ["wt", "cmd", "osascript", "x-terminal-emulator"], "fs.write": ["workspaces/agent-sessions", "sessions"] },
       addable: {
-        section: "cerveau",
+        section: "brain",
         label: t("Sessions d'agent", "Agent sessions"),
         description: t("Ouvre l'un des agents ajoutés à Floppy dans un terminal, avec ses propres outils et droits.",
           "Open one of the agents added to Floppy in a terminal, with its own tools and permissions."),
         single: true,
         aliases: ["sessions", "claude code", "codex", "antigravity", "terminal"],
         fields: [{
-          key: "dossier", label: t("Dossier des sessions", "Sessions folder"), type: "path", directory: true,
+          key: "folder", label: t("Dossier des sessions", "Sessions folder"), type: "path", directory: true,
           hint: t("Chaque session sans dossier précis y reçoit son sous-dossier.", "Each session without a given folder gets its own subfolder here."),
         }],
       },
@@ -153,7 +153,7 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
             dir = String(a.dossier);
             if (!isAbsolute(dir) || !existsSync(dir) || !statSync(dir).isDirectory()) return { status: "failed", text: t(`Dossier introuvable : ${dir}.`, `Folder not found: ${dir}.`) };
           } else {
-            dir = join(cfg.dossier ?? ctx.workspace(), `${sessionFolderName(consigne)}-${randomUUID().slice(0, 8)}`);
+            dir = join(cfg.folder ?? ctx.workspace(), `${sessionFolderName(consigne)}-${randomUUID().slice(0, 8)}`);
             mkdirSync(dir, { recursive: true });
           }
           // La consigne vit dans un fichier, hors du dossier de travail (on ne salit pas un dépôt de l'utilisateur).

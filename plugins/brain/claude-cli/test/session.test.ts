@@ -10,7 +10,7 @@ import claude from "../src/index.ts";
 async function boot(timeout = 5) {
   let brain: BrainService;
   const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", slots: [
-    { id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" },
+    { id: "brain.main", service: "llm", section: "brain", label: "Cerveau" },
   ] }, async apply(ctx) { brain = (await ctx.slot<LlmService>("brain.main"))!.agent!; } });
   const mcp = definePlugin({ manifest: { id: "mcp", version: "0", licence: "MIT", provides: ["mcp"] }, apply(ctx) {
     ctx.provide("mcp", { url: "http://127.0.0.1:1/mcp", token: "t", scoped: () => ({ url: "", token: "", close() {} }) });

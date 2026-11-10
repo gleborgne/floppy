@@ -274,7 +274,7 @@ export class Kernel {
     this.downloads = new DownloadManager(opts.downloads);
     this.machineOpts = opts.machine ?? {};
     this.modelsDir = join(this.home, "models");
-    this.uiLang = this.settings.savedValue<string>("langue_interface") ?? "fr";
+    this.uiLang = this.settings.savedValue<string>("ui_language") ?? "fr";
     // Langue de l'interface, langue de l'assistant, dossiers : réglages du noyau (core-settings.ts).
     declareCoreSettings(this as unknown as KernelInternals);
     for (const p of opts.plugins ?? []) this.register(p);
@@ -494,7 +494,7 @@ export class Kernel {
   machine(fresh = false): Promise<MachineInfo> {
     const now = Date.now();
     if (!fresh && this.machineCache && now - this.machineCache.at < 60_000) return this.machineCache.info;
-    const llamaExe = this.settings.savedValue<string>("llm_local_programme") || findExe("llama-server");
+    const llamaExe = this.settings.savedValue<string>("llm_local_program") || findExe("llama-server");
     const info = probeMachine({
       diskDir: existsSync(this.modelsDir) ? this.modelsDir : this.home,
       ...(llamaExe ? { llamaExe } : {}), ...(this.machineHint ? { hint: this.machineHint } : {}), ...this.machineOpts,

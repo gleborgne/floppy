@@ -14,8 +14,8 @@ export default definePlugin({
   manifest: {
     id: "wakeword-stt", version: "0.1.0", licence: "MIT", provides: ["wakeword"], optional: ["voice"],
     description: "Détection des mots d'activation dans les transcriptions du STT déjà actif, sans charger un autre modèle.",
-    sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
-    addable: { section: "ecoute", label: DEFAULT_NAME, description: T("Cherche les mots d'activation dans chaque phrase transcrite, sans charger d'autre modèle.", "Looks for the wake words in each transcribed sentence, without loading another model.") },
+    sections: [{ id: "listening", label: { fr: "Écoute", en: "Listening" } }],
+    addable: { section: "listening", label: DEFAULT_NAME, description: T("Cherche les mots d'activation dans chaque phrase transcrite, sans charger d'autre modèle.", "Looks for the wake words in each transcribed sentence, without loading another model.") },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -27,7 +27,7 @@ export default definePlugin({
     const legacy = ctx.settings.saved<string>("mot_activation");
     const base = { ...cfg, words: cfg.words ?? (legacy ? legacy.split(/[,;]/).map(w => w.trim()).filter(Boolean) : [...ctx.assistant.wake_words]) };
     const account = providerConfig(ctx, {
-      schema: Config.extend({ words: Words }), base, label: T("Mots d'activation", "Wake words"), section: "ecoute", offers: "wakeword", secret: false,
+      schema: Config.extend({ words: Words }), base, label: T("Mots d'activation", "Wake words"), section: "listening", offers: "wakeword", secret: false,
       fields: [
         { key: "words", label: T("Floppy se réveille s'il entend un de ces mots", "Floppy wakes up when it hears one of these words"), type: "list", required: true, hint: T("Ajoute les façons dont la transcription écrit mal le nom (ex. flopy, floppie). Un mot d'au moins 3 lettres.", "Add the ways the transcription misspells the name (e.g. flopy, floppie). One word of at least 3 letters.") },
         { key: "name", label: T("Nom dans la liste des plugins", "Name in the plugin list"), type: "text", advanced: true, placeholder: DEFAULT_NAME },

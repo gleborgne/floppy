@@ -122,12 +122,12 @@ describe("bouton dans les réglages", () => {
     const o = fakeOrca();
     k = new Kernel({ logger: () => {}, home: h, plugins: [createOrcaPlugin({ run: async () => [], cli: async () => ({}), pluginCli: o.cli, bridge: false, phrase: async () => undefined })] });
     await k.applyConfig({ plugins: [{ id: "orca", plugin: "orca", config: {} }] });
-    const entry = async () => (await k!.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!;
+    const entry = async () => (await k!.items.provider("apps-connectors")!.list()).find((i) => i.kind === "orca")!;
     expect(JSON.stringify((await entry()).actions)).toContain("Installer dans Orca");
     expect(JSON.stringify((await entry()).statusText)).toContain("installe le plugin Orca");
-    expect((await k.items.run({ op: "action", provider: "apps-connecteurs", id: "orca", action: "orca-plugin" }, "voice")).ok).toBe(false);
+    expect((await k.items.run({ op: "action", provider: "apps-connectors", id: "orca", action: "orca-plugin" }, "voice")).ok).toBe(false);
     expect(o.calls).toHaveLength(0);
-    const r = await k.items.run({ op: "action", provider: "apps-connecteurs", id: "orca", action: "orca-plugin" }, "ui");
+    const r = await k.items.run({ op: "action", provider: "apps-connectors", id: "orca", action: "orca-plugin" }, "ui");
     expect(r.ok).toBe(true);
     expect(JSON.stringify((await entry()).actions)).toContain("Réinstaller dans Orca");
     expect(JSON.stringify((await entry()).statusText)).not.toContain("installe le plugin");

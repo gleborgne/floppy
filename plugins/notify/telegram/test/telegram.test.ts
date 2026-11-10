@@ -173,8 +173,8 @@ describe("plugin notify-telegram", () => {
 
   it("en anglais : message de test dans la langue de l'assistant, erreurs et réponses dans celle de l'interface", async () => {
     const s = await setup((c) => (c.body?.chat_id === "@absent" ? { status: 400, json: { ok: false, description: "Bad Request: chat not found" } } : { json: { ok: true } }));
-    await k!.settings.change("langue_assistant", "en", "ui");
-    await k!.settings.change("langue_interface", "en", "ui");
+    await k!.settings.change("assistant_language", "en", "ui");
+    await k!.settings.change("ui_language", "en", "ui");
     await k!.idle();
     const r = await k!.items.run({ op: "test", provider: "notify-telegram", kind: "telegram", values: { label: "x", token: TOKEN, chat: "-100" } }, "ui");
     expect(r.text).toBe("It works: the test message was sent.");

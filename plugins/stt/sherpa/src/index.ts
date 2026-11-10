@@ -75,9 +75,9 @@ export function makePlugin(native: Native, known: KnownModel[] = KNOWN_MODELS): 
       // Téléchargement des modèles connus (voir known-models.ts).
       permissions: { net: ["github.com", "huggingface.co"] },
       description: "Lecteur sherpa-onnx : détecteur de parole Silero et transcription (Parakeet TDT…), modèles ONNX sur le processeur.",
-      sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
+      sections: [{ id: "listening", label: { fr: "Écoute", en: "Listening" } }],
       addable: {
-        section: "ecoute", label: "sherpa-onnx", single: true,
+        section: "listening", label: "sherpa-onnx", single: true,
         description: T("Modèles ONNX sur cet ordinateur (détecteur de parole, transcription), sans carte graphique.", "ONNX models on this computer (speech detector, transcription), no graphics card needed."),
       },
     },
@@ -167,7 +167,7 @@ export function makePlugin(native: Native, known: KnownModel[] = KNOWN_MODELS): 
         ? { ok: false, text: T(`${label} sert en ce moment : choisis d'abord un autre modèle.`, `${label} is in use right now: choose another model first.`) }
         : undefined;
       ctx.items.declare({
-        id: "sherpa", section: "ecoute", order: 40, offers: ["vad", "stt"],
+        id: "sherpa", section: "listening", order: 40, offers: ["vad", "stt"],
         label: "sherpa-onnx",
         description: T("Modèles ONNX lancés dans Floppy, sur le processeur, seulement quand ils servent.", "ONNX models run inside Floppy, on the CPU, only while in use."),
         addLabel: T("Ajouter un modèle", "Add a model"),
@@ -224,7 +224,7 @@ export function makePlugin(native: Native, known: KnownModel[] = KNOWN_MODELS): 
       const targetOf = (e: KnownModel) => resolve(ctx.downloads.dir, e.target);
       const mine = (e: KnownModel) => all().filter((m) => samePath(m.path, targetOf(e)));
       modelLibrary(ctx, {
-        id: "sherpa-library", section: "ecoute", order: 41, offers: ["vad", "stt"],
+        id: "sherpa-library", section: "listening", order: 41, offers: ["vad", "stt"],
         label: T("Modèles sherpa-onnx", "sherpa-onnx models"),
         entries: () => known,
         has: (e) => mine(e as KnownModel).length > 0,

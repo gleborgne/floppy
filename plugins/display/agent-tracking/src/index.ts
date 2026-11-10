@@ -7,7 +7,7 @@ export default definePlugin({
     id: "display-agent-tracking", version: "0.1.0", licence: "MIT",
     description: "Affiche les faits du service de suivi des agents dans une vue de bureau.",
     optional: ["agentTracking"],
-    addable: { section: "corps", label: T("Suivi des agents", "Agent tracking"), description: T("Une fenêtre pour suivre les agents.", "A window to track agents."), single: true },
+    addable: { section: "body", label: T("Suivi des agents", "Agent tracking"), description: T("Une fenêtre pour suivre les agents.", "A window to track agents."), single: true },
   },
   apply(ctx) {
     if (!ctx.host) { ctx.items.status(T("inactif : pas d'affichage", "inactive: no display"), "warn"); return; }

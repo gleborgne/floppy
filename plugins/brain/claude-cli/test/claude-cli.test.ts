@@ -38,8 +38,8 @@ describe("brain claude-cli", () => {
     // Le délégué et le modèle-agent sont offerts : un consommateur les reçoit par ses slots.
     const probe = definePlugin({
       manifest: { id: "probe", version: "0", licence: "MIT", slots: [
-        { id: "brain.delegate", service: "delegate", section: "cerveau", label: "Délégation", none: "Aucune" },
-        { id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" },
+        { id: "brain.delegate", service: "delegate", section: "brain", label: "Délégation", none: "Aucune" },
+        { id: "brain.main", service: "llm", section: "brain", label: "Cerveau" },
       ] },
       async apply(ctx) { got = await ctx.slot<BrainService>("brain.delegate"); model = await ctx.slot<LlmService>("brain.main"); },
     });
@@ -87,14 +87,14 @@ describe("completion claude-cli", () => {
   let k: Kernel | undefined;
   afterEach(async () => { await k?.stopAll(); k = undefined; });
 
-  /** Consommateur : un slot « veille.tri » (service completion) emprunté le temps d'un appel. */
+  /** Consommateur : un slot « watch.triage » (service completion) emprunté le temps d'un appel. */
   async function boot(item = "sonnet") {
     const dir = mkdtempSync(join(tmpdir(), "claude-compl-"));
     const fakeExe = join(dir, process.platform === "win32" ? "claude.exe" : "claude");
     copyFileSync(process.execPath, fakeExe);
     let ctxRef: Context | undefined;
     const user = definePlugin({
-      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "veille.tri", service: "completion", section: "veille", label: "Tri", none: "Aucun" }] },
+      manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "watch.triage", service: "completion", section: "watch", label: "Tri", none: "Aucun" }] },
       apply(ctx) { ctxRef = ctx; },
     });
     const mcp = definePlugin({
@@ -102,14 +102,14 @@ describe("completion claude-cli", () => {
       apply(ctx) { ctx.provide("mcp", { url: "http://127.0.0.1:1/mcp", token: "t", scoped: () => ({ url: "", token: "", close() {} }) }); },
     });
     k = new Kernel({ logger: () => {}, home: join(dir, "home"), plugins: [claude, user, mcp] });
-    await k.applyConfig({ slots: { "veille.tri": `c/${item}` }, plugins: [
+    await k.applyConfig({ slots: { "watch.triage": `c/${item}` }, plugins: [
       { id: "mcp", plugin: "fakemcp" },
       { id: "c", plugin: "brain-claude-cli", config: { exe: fakeExe, exeArgs: [fixture], timeout_s: 5 } },
       { id: "u", plugin: "user" },
     ] });
     return ctxRef!;
   }
-  const borrow = async (ctx: Context) => (await ctx.borrow<Svc>("veille.tri"))!;
+  const borrow = async (ctx: Context) => (await ctx.borrow<Svc>("watch.triage"))!;
 
   it("slot : modèle choisi, sans outil ni MCP, prompt par l'entrée standard", async () => {
     const ctx = await boot("haiku");

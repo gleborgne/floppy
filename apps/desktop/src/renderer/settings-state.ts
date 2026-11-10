@@ -174,7 +174,7 @@ export async function setValue(key: string, value: unknown): Promise<void> {
     if (s) s.value = value;
     const slot = (S.settings.slots ?? []).find((x) => `slot.${x.id}` === key);
     if (slot) { slot.value = String(value); slot.state = value === "@none" ? "none" : "active"; }
-    if (key === "langue_interface") setLang(String(value));
+    if (key === "ui_language") setLang(String(value));
     render();
     toast(`${t("demoNote")}${key} = ${value}`);
     return;

@@ -13,15 +13,15 @@ export default definePlugin({
   manifest: {
     id: "voice-listen", version: "0.1.0", licence: "MIT", provides: ["voice"],
     description: "Écoute assemblée : détecteur de parole (vad) + transcription (stt), choisis dans des slots ; règles d'écoute en TypeScript.",
-    sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
+    sections: [{ id: "listening", label: { fr: "Écoute", en: "Listening" } }],
     slots: [
-      { id: "listen.vad", service: "vad", section: "ecoute", label: T("Détecteur de parole", "Speech detector"), step: 1,
+      { id: "listen.vad", service: "vad", section: "listening", label: T("Détecteur de parole", "Speech detector"), step: 1,
         description: T("Repère quand tu commences et quand tu finis de parler.", "Notices when you start and stop speaking.") },
-      { id: "listen.stt", service: "stt", section: "ecoute", label: T("Transcription", "Transcription"), step: 2,
+      { id: "listen.stt", service: "stt", section: "listening", label: T("Transcription", "Transcription"), step: 2,
         description: T("Transforme ce que tu dis en texte.", "Turns what you say into text.") },
     ],
     addable: {
-      section: "ecoute", label: T("Écoute", "Listening"), single: true,
+      section: "listening", label: T("Écoute", "Listening"), single: true,
       description: T("Détecteur de parole et transcription au choix, sur cet ordinateur.", "Your choice of speech detector and transcription, on this computer."),
     },
   },

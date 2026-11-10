@@ -121,7 +121,7 @@ describe("body-reachy", () => {
   });
 
   it("en anglais : réponses des outils du robot dans la langue de l'assistant", async () => {
-    await k.settings.change("langue_assistant", "en", "ui");
+    await k.settings.change("assistant_language", "en", "ui");
     await k.idle();
     hub = k.service<BodyHub>("body")!;
     await add();

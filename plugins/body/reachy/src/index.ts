@@ -98,7 +98,7 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "corps", label: { fr: "Corps et affichage", en: "Bodies and display" } },
+      { id: "body", label: { fr: "Corps et affichage", en: "Bodies and display" } },
     ],
     description: "Corps Reachy Mini : émotions et gestes de la tête et des antennes, via le daemon HTTP du robot ou du simulateur.",
     inject: ["body"],
@@ -181,7 +181,7 @@ export default definePlugin<Config>({
 
     ctx.items.declare({
       id: "reachy",
-      section: "corps",
+      section: "body",
       label: "Reachy Mini",
       description: { fr: "Robots Reachy Mini (ou simulateur) branchés comme corps.", en: "Reachy Mini robots (or simulator) plugged in as bodies." },
       order: 20,

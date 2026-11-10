@@ -77,7 +77,7 @@ it("garde les réglages communs au-dessus des onglets des moteurs", () => {
 
 it("garde Général au-dessus des onglets de page quand on change d'onglet", async () => {
   const settings: Any = structuredClone(DEMO.settings);
-  const tone = settings.list.find((s: Any) => s.key === "ton");
+  const tone = settings.list.find((s: Any) => s.key === "tone");
   tone.group = { fr: "Général", en: "General" };
   settings.list.push(...Array.from({ length: 3 }, (_, i) => ({
     ...tone, key: `test-voix-${i}`, label: `Réglage ${i}`, group: "Autres réglages",

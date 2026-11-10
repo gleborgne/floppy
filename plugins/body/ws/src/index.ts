@@ -58,7 +58,7 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "corps", label: { fr: "Corps et affichage", en: "Bodies and display" } },
+      { id: "body", label: { fr: "Corps et affichage", en: "Bodies and display" } },
     ],
     description: "Transport WebSocket des corps (127.0.0.1 + jeton).",
     inject: ["body"],
@@ -110,7 +110,7 @@ export default definePlugin<Config>({
       hub.attach(wsTransport(ws), { id: dev ?? `ws-${++anon}`, ...(devName ? { name: devName } : {}), managed: !!dev });
     });
     ctx.items.declare({
-      id: "ws-devices", section: "corps", order: 50,
+      id: "ws-devices", section: "body", order: 50,
       label: { fr: "Autres appareils", en: "Other devices" },
       description: { fr: "Un jeton par appareil qui se connecte à Floppy en WebSocket (cet ordinateur seulement).", en: "One token per device connecting to Floppy over WebSocket (this computer only)." },
       addLabel: { fr: "Ajouter un appareil", en: "Add a device" },

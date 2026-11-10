@@ -1,7 +1,7 @@
 // Applications : des plugins que l'utilisateur ajoute ou retire lui-même depuis la fenêtre des réglages
 // (Orca, ouvrir le navigateur…). Un plugin le devient en déclarant `manifest.addable` :
 //
-//   addable: { section: "connecteurs", label: { fr: "Navigateur", en: "Browser" }, fields: [...] }
+//   addable: { section: "connectors", label: { fr: "Navigateur", en: "Browser" }, fields: [...] }
 //
 // Pour chaque rubrique qui a de tels plugins, le noyau montre un fournisseur « Applications » :
 // - ses types d'ajout = les plugins installables de la rubrique (formulaire tiré de `fields` = config de l'entrée) ;

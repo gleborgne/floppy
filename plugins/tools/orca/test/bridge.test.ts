@@ -41,7 +41,7 @@ function orcaWorker(info: BridgeInfo, fetchImpl: typeof fetch = fetch) {
   return { emit, logs };
 }
 
-const statusOf = async (k: Kernel) => (await k.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!;
+const statusOf = async (k: Kernel) => (await k.items.provider("apps-connectors")!.list()).find((i) => i.kind === "orca")!;
 
 describe("pont Orca → Floppy", () => {
   it.each([

@@ -69,7 +69,7 @@ describe("digest Markdown", () => {
   it.each(["fr", "en"])("affiche la date complète de publication ou son absence (%s)", (lang) => {
     const r: PipelineResult = {
       sections: [{
-        interet: { id: "ia", nom: "IA", description: "", flux: [], requetes: [], max: 5 },
+        interet: { id: "ia", name: "IA", description: "", feeds: [], queries: [], max: 5 },
         articles: ["2026-11-05T12:00:00Z", undefined, "illisible"].map((date, i) => ({
           titre: `Article ${i}`, url: `https://example.com/${i}`, source: "Example", extrait: "", interet: "ia", score: 8, resume: "Résumé.", ...(date ? { date } : {}),
         })),
@@ -83,8 +83,8 @@ describe("digest Markdown", () => {
   });
 
   it("numérote dans tout le document et échappe les titres", () => {
-    const it1 = { id: "ia", nom: "IA locale", description: "", flux: [], requetes: [], max: 5 };
-    const it2 = { id: "bzh", nom: "Bretagne", description: "", flux: [], requetes: [], max: 5 };
+    const it1 = { id: "ia", name: "IA locale", description: "", feeds: [], queries: [], max: 5 };
+    const it2 = { id: "bzh", name: "Bretagne", description: "", feeds: [], queries: [], max: 5 };
     const r: PipelineResult = {
       sections: [
         { interet: it1, articles: [{ titre: "A *gras*", url: "https://a.com/x_(y)", source: "a.com", extrait: "", interet: "ia", score: 9, resume: "Résumé A." }] },
@@ -101,7 +101,7 @@ describe("digest Markdown", () => {
   });
 
   it("en anglais : titre, liens et consignes dans la langue de l'assistant", () => {
-    const it1 = { id: "ia", nom: "Local AI", description: "", flux: [], requetes: [], max: 5 };
+    const it1 = { id: "ia", name: "Local AI", description: "", feeds: [], queries: [], max: 5 };
     const r: PipelineResult = {
       sections: [{ interet: it1, articles: [{ titre: "A", url: "https://a.com", source: "a.com", extrait: "", interet: "ia", score: 8, resume: "Sum." }] }],
       vus: [], stats: { collectes: 1, versModele: 1, gardes: 1, erreurs: [], retires: {} },
@@ -110,15 +110,15 @@ describe("digest Markdown", () => {
     expect(d.titre).toBe("News watch, November 6, 2026");
     expect(d.markdown).toContain("1 article on 1 topic.");
     expect(d.markdown).toContain("[Read the article](https://a.com)");
-    const p = { ...emptyPrefs(), exemples: [{ titre: "Bad one", avis: "-" as const, date: "" }] };
+    const p = { ...emptyPrefs(), examples: [{ title: "Bad one", feedback: "-" as const, date: "" }] };
     const s = triSystem(it1, p, "en");
     expect(s).toContain("summary in English");
     expect(s).toContain("[disliked] Bad one");
   });
 
   it("met les préférences dans les consignes du tri", () => {
-    const p = { ...emptyPrefs(), evite: ["levées de fonds"], exemples: [{ titre: "Un article nul", avis: "-" as const, date: "" }] };
-    const s = triSystem({ id: "ia", nom: "IA", description: "modèles locaux", flux: [], requetes: [], max: 5 }, p);
+    const p = { ...emptyPrefs(), avoids: ["levées de fonds"], examples: [{ title: "Un article nul", feedback: "-" as const, date: "" }] };
+    const s = triSystem({ id: "ia", name: "IA", description: "modèles locaux", feeds: [], queries: [], max: 5 }, p);
     expect(s).toContain("levées de fonds");
     expect(s).toContain("[pas aimé] Un article nul");
   });
@@ -194,9 +194,9 @@ describe("plugin veille (avec le noyau)", () => {
     await k.applyConfig({
       plugins: [
         { id: "llm", plugin: "fake-llm" }, { id: "docs", plugin: "fake-docs" },
-        { id: "veille", plugin: "veille", config: { interets: { ia: { nom: "IA locale", description: "les modèles locaux", flux: ["https://blog.ai/rss"] } } } },
+        { id: "veille", plugin: "veille", config: { interests: { ia: { name: "IA locale", description: "les modèles locaux", feeds: ["https://blog.ai/rss"] } } } },
       ],
-      slots: { "veille.tri": "llm/sonnet" },
+      slots: { "watch.triage": "llm/sonnet" },
     });
     expect(k.tasks.list().map((t) => t.key)).toEqual(["veille/quotidienne"]);
 
@@ -252,7 +252,7 @@ describe("plugin veille (avec le noyau)", () => {
     expect(r3.text).toMatch(/Rien de nouveau/);
 
     // Assistant en anglais : annonce, avis et outils en anglais.
-    await k.settings.change("langue_assistant", "en", "ui");
+    await k.settings.change("assistant_language", "en", "ui");
     await k.idle();
     expect((await k.tasks.run("veille/quotidienne", "manual")).text).toMatch(/^Nothing new/);
     expect((await k.tools.call("veille_avis", { sujet: "bitcoin", avis: "jamais" })).text).toMatch(/^Got it: never again “bitcoin”/);
@@ -274,13 +274,13 @@ describe("plugin veille (avec le noyau)", () => {
     const kn = new Kernel({ logger: () => {}, plugins: [createVeillePlugin()] });
     k = kn;
     await kn.applyConfig({ plugins: [{ id: "veille", plugin: "veille" }], approvals: { write: "always" } });
-    const list = async () => (await kn.items.snapshot()).find((p) => p.id === "veille-interets")!.items.map((i) => ({ nom: i.label, ...(i.values as object) }));
+    const list = async () => (await kn.items.snapshot()).find((p) => p.id === "watch-interests")!.items.map((i) => ({ name: i.label, ...(i.values as object) }));
 
     // « Ajoute un centre d'intérêt sur l'IA locale » : pas de source → le nom devient la recherche.
     const add = await kn.tools.call("veille_modifier_interet", { action: "ajouter", nom: "IA locale" });
     expect(add.status).toBe("done");
     expect(add.text).toMatch(/je cherch.* « IA locale » sur le web/);
-    expect(await list()).toMatchObject([{ nom: "IA locale", flux: [], requetes: ["IA locale"] }]);
+    expect(await list()).toMatchObject([{ name: "IA locale", feeds: [], queries: ["IA locale"] }]);
 
     // Modifier : ajoute une recherche et un flux, change la description ; l'accord dit ce qui change.
     const asked: string[] = [];
@@ -289,16 +289,16 @@ describe("plugin veille (avec le noyau)", () => {
       action: "modifier", nom: "ia locale", requetes: ["llama.cpp"], flux: ["https://www.reddit.com/r/LocalLLaMA/.rss"], description: "modèles open weights",
     });
     expect(mod.status).toBe("done");
-    expect(await list()).toMatchObject([{ nom: "IA locale", description: "modèles open weights", flux: ["https://www.reddit.com/r/LocalLLaMA/.rss"], requetes: ["IA locale", "llama.cpp"] }]);
+    expect(await list()).toMatchObject([{ name: "IA locale", description: "modèles open weights", feeds: ["https://www.reddit.com/r/LocalLLaMA/.rss"], queries: ["IA locale", "llama.cpp"] }]);
 
     // Retire le flux (morceau d'adresse) et une recherche, renomme.
     await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "IA locale", retirer_flux: ["reddit"], retirer_requetes: ["ia locale"], nouveau_nom: "LLM locaux" });
-    expect(await list()).toMatchObject([{ nom: "LLM locaux", flux: [], requetes: ["llama.cpp"] }]);
+    expect(await list()).toMatchObject([{ name: "LLM locaux", feeds: [], queries: ["llama.cpp"] }]);
 
     // Tout retirer : le centre d'intérêt ne devient pas vide, son nom redevient la recherche.
     const vide = await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "LLM locaux", retirer_requetes: ["llama.cpp"] });
     expect(vide.text).toMatch(/« LLM locaux » sur le web/);
-    expect(await list()).toMatchObject([{ requetes: ["LLM locaux"] }]);
+    expect(await list()).toMatchObject([{ queries: ["LLM locaux"] }]);
 
     expect((await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "Bretagne" })).status).toBe("failed");
 
@@ -322,17 +322,17 @@ describe("réglages de la veille", () => {
     }) as unknown as typeof fetch;
     k = new Kernel({ logger: () => {}, plugins: [fakeCompletion([]), createVeillePlugin({ fetch: fetchFake })] });
     await k.applyConfig({
-      plugins: [{ id: "llm", plugin: "fake-llm" }, { id: "veille", plugin: "veille", config: { interets: { ia: { nom: "IA", flux: ["https://a.com/rss", "https://b.com/rss"] } } } }],
-      slots: { "veille.tri": "llm/sonnet" },
+      plugins: [{ id: "llm", plugin: "fake-llm" }, { id: "veille", plugin: "veille", config: { interests: { ia: { name: "IA", feeds: ["https://a.com/rss", "https://b.com/rss"] } } } }],
+      slots: { "watch.triage": "llm/sonnet" },
     });
-    const prov = (await k.items.snapshot()).find((p) => p.id === "veille-interets")!;
+    const prov = (await k.items.snapshot()).find((p) => p.id === "watch-interests")!;
     const item = prov.items[0]!;
     expect(item.children?.map((c) => [c.label, c.enabled])).toEqual([["a.com/rss", true], ["b.com/rss", true]]);
-    expect((await k.items.run({ op: "child", provider: "veille-interets", id: "ia", child: "f:https://b.com/rss", on: false }, "ui")).ok).toBe(true);
+    expect((await k.items.run({ op: "child", provider: "watch-interests", id: "ia", child: "f:https://b.com/rss", on: false }, "ui")).ok).toBe(true);
     await k.tasks.run("veille/quotidienne", "manual");
     expect(asked).toEqual(["https://a.com/rss"]);
 
-    const r = await k.items.run({ op: "test", provider: "veille-interets", kind: "interet", values: { nom: "T", flux: ["https://a.com/rss", "https://casse.invalid/rss"] } }, "ui");
+    const r = await k.items.run({ op: "test", provider: "watch-interests", kind: "interest", values: { name: "T", feeds: ["https://a.com/rss", "https://casse.invalid/rss"] } }, "ui");
     expect(r.ok).toBe(false);
     expect(r.text).toBe("1 flux ne répond pas sur 2.");
     expect(r.children?.map((c) => tr(c.detail, "fr"))).toEqual([expect.stringContaining("1 articles"), "site introuvable (adresse fausse ou pas d'internet)"]);

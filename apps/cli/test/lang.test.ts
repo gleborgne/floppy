@@ -6,12 +6,12 @@ import { cliLang, sayer } from "../src/lang.ts";
 import { parseAnswer } from "../src/chat.ts";
 
 describe("langue de la CLI", () => {
-  it("lit langue_interface dans settings.json, sinon le français", () => {
+  it("lit ui_language dans settings.json, sinon le français", () => {
     const home = mkdtempSync(join(tmpdir(), "floppy-cli-lang-"));
     expect(cliLang(home)).toBe("fr");
-    writeFileSync(join(home, "settings.json"), JSON.stringify({ langue_interface: "en" }));
+    writeFileSync(join(home, "settings.json"), JSON.stringify({ ui_language: "en" }));
     expect(cliLang(home)).toBe("en");
-    writeFileSync(join(home, "settings.json"), JSON.stringify({ langue_interface: "klingon" }));
+    writeFileSync(join(home, "settings.json"), JSON.stringify({ ui_language: "klingon" }));
     expect(cliLang(home)).toBe("fr");
     writeFileSync(join(home, "settings.json"), "pas du json");
     expect(cliLang(home)).toBe("fr");

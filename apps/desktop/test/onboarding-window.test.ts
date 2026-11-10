@@ -35,7 +35,7 @@ const makePlan = (language: "fr" | "en", state: Any = { phase: "idle", rows: [],
 });
 const extras = {
   ways: { wake: { on: true, value: "wakeword-stt/account", fallback: "wakeword-stt/account" }, talk: { keys: "Ctrl+Alt+F", fallback: "Ctrl+Alt+F" } },
-  tools: { provider: "apps-connecteurs", items: [{ id: "web", label: "Chercher sur internet", detail: "Il fait quel temps ?", enabled: true, toggleable: true }, { id: "mail", label: "Courrier", enabled: false, toggleable: true }] },
+  tools: { provider: "apps-connectors", items: [{ id: "web", label: "Chercher sur internet", detail: "Il fait quel temps ?", enabled: true, toggleable: true }, { id: "mail", label: "Courrier", enabled: false, toggleable: true }] },
 };
 
 const apply = vi.fn(async (_selection: Any) => ({ ok: true }));

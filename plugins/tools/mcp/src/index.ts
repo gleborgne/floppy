@@ -57,7 +57,7 @@ export default definePlugin<Config>({
     version: "0.2.0",
     licence: "MIT",
     sections: [
-      { id: "connecteurs", order: 40, merge: true, label: { fr: "Connecteurs", en: "Connectors" }, description: { fr: "Ce que Floppy peut utiliser : serveurs MCP, commandes, applications.", en: "What Floppy can use: MCP servers, commands, applications." } },
+      { id: "connectors", order: 40, merge: true, label: { fr: "Connecteurs", en: "Connectors" }, description: { fr: "Ce que Floppy peut utiliser : serveurs MCP, commandes, applications.", en: "What Floppy can use: MCP servers, commands, applications." } },
     ],
     description: "Passerelle MCP : connecteurs de l'utilisateur (locaux ou distants) + serveur MCP Floppy pour les cerveaux CLI.",
     provides: ["mcp"],

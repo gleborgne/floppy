@@ -19,7 +19,8 @@ export function forbiddenScheme(s: string): boolean {
 }
 
 export interface Hello { app: string; name: string; schemes: string[] }
-export type Mode = "voix" | "info";
+/** `voice` : lu à voix haute et affiché ; `info` : affiché seulement. */
+export type Mode = "voice" | "info";
 export interface Message {
   app: string;
   text: Text;
@@ -98,8 +99,9 @@ export function parseMessage(x: unknown, schemes: readonly string[]): Message | 
   if (typeof o.app !== "string" || !APP_ID.test(o.app)) return "app invalide";
   const text = cleanText(o.text, MAX_TEXT);
   if (!text) return "text invalide";
-  if (o.mode !== undefined && o.mode !== "voix" && o.mode !== "info") return "mode invalide";
-  const mode: Mode = o.mode === "voix" ? "voix" : "info";
+  // Entrée venue d'applications extérieures : l'ancienne valeur française « voix » reste acceptée, et devient `voice`.
+  if (o.mode !== undefined && o.mode !== "voice" && o.mode !== "voix" && o.mode !== "info") return "mode invalide";
+  const mode: Mode = o.mode === "voice" || o.mode === "voix" ? "voice" : "info";
   let key: string | undefined;
   if (o.key !== undefined) {
     if (typeof o.key !== "string" || !o.key || o.key.length > MAX_KEY) return "key invalide";

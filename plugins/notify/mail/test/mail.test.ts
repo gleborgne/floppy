@@ -76,7 +76,7 @@ function setup(fail?: { code?: string; message?: string }) {
   return { sent, opts, offers: () => notify, send: () => send!(), kernel: k };
 }
 
-const GMAIL = { label: "Gmail perso", fournisseur: "gmail", adresse: "moi@gmail.com", motdepasse: "abcd efgh ijkl mnop", destinataire: "" };
+const GMAIL = { label: "Gmail perso", provider: "gmail", address: "moi@gmail.com", password: "abcd efgh ijkl mnop", recipient: "" };
 
 describe("notify-mail (noyau)", () => {
   it("ajoute une boîte Gmail et envoie par un consommateur notify", async () => {
@@ -96,7 +96,7 @@ describe("notify-mail (noyau)", () => {
   it("serveur « autre » et destinataire différent", async () => {
     const s = setup();
     await s.kernel.applyConfig({ plugins: [{ id: "consumer", plugin: "consumer" }, { id: "mail", plugin: "notify-mail" }] });
-    await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: { ...GMAIL, fournisseur: "autre", serveur: "smtp.x.fr", port: 587, securite: "starttls", destinataire: "toi@x.fr" } }, "ui");
+    await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: { ...GMAIL, provider: "other", server: "smtp.x.fr", port: 587, security: "starttls", recipient: "toi@x.fr" } }, "ui");
     await s.send();
     expect(s.opts[0]).toMatchObject({ host: "smtp.x.fr", port: 587, secure: false });
     expect(s.sent[0]!.to).toBe("toi@x.fr");
@@ -108,7 +108,7 @@ describe("notify-mail (noyau)", () => {
     await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: GMAIL }, "ui");
     const p = (await s.kernel.items.snapshot()).find((x) => x.id === "notify-mail")!;
     expect(p.items).toHaveLength(1);
-    expect(p.items[0]!.values).toMatchObject({ motdepasse: SECRET_SET });
+    expect(p.items[0]!.values).toMatchObject({ password: SECRET_SET });
     expect(p.items[0]!.detail).toBe("Gmail · moi@gmail.com → moi@gmail.com");
     expect(p.items[0]!.status).toBe("ok");
     expect(JSON.stringify(p)).not.toContain("abcd efgh");
@@ -117,8 +117,8 @@ describe("notify-mail (noyau)", () => {
   it("sans mot de passe : avertissement ; refuse une adresse invalide", async () => {
     const s = setup();
     await s.kernel.applyConfig({ plugins: [{ id: "mail", plugin: "notify-mail" }] });
-    expect((await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: { ...GMAIL, adresse: "nimporte" } }, "ui")).ok).toBe(false);
-    await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: { ...GMAIL, motdepasse: "" } }, "ui");
+    expect((await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: { ...GMAIL, address: "nimporte" } }, "ui")).ok).toBe(false);
+    await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: { ...GMAIL, password: "" } }, "ui");
     const p = (await s.kernel.items.snapshot()).find((x) => x.id === "notify-mail")!;
     expect(p.items[0]!.status).toBe("warn");
   });
@@ -152,8 +152,8 @@ describe("notify-mail (noyau)", () => {
   it("en anglais : mail de test et pied de page dans la langue de l'assistant", async () => {
     const s = setup();
     await s.kernel.applyConfig({ plugins: [{ id: "mail", plugin: "notify-mail" }] });
-    await s.kernel.settings.change("langue_assistant", "en", "ui");
-    await s.kernel.settings.change("langue_interface", "en", "ui");
+    await s.kernel.settings.change("assistant_language", "en", "ui");
+    await s.kernel.settings.change("ui_language", "en", "ui");
     await s.kernel.idle();
     const add = await s.kernel.items.run({ op: "add", provider: "notify-mail", kind: "smtp", values: GMAIL }, "ui");
     expect(add.text).toBe("Gmail perso added.");

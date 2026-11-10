@@ -67,10 +67,10 @@ describe("envoi des résultats", () => {
   it("le réglage « Envoyer à » fait partir le document sur les canaux choisis après chaque passage", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     await setup(sent);
-    const key = "taches.veille.quotidienne.envoi";
+    const key = "tasks.veille.quotidienne.send";
     const info = k!.settings.list().find((s) => s.key === key)!;
-    expect(info.value).toBe("nulle part");
-    expect(info.presets?.map((p) => p.value)).toEqual(["Mon canal", "Gmail perso", "Mon canal, Gmail perso", "nulle part"]);
+    expect(info.value).toBe("nowhere");
+    expect(info.presets?.map((p) => p.value)).toEqual(["Mon canal", "Gmail perso", "Mon canal, Gmail perso", "nowhere"]);
 
     // Rien de choisi : rien ne part.
     await k!.tasks.run("veille/quotidienne", "manual");
@@ -90,7 +90,7 @@ describe("envoi des résultats", () => {
   it("un canal inconnu est refusé ; un envoi raté est signalé", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     const initiatives = await setup(sent, { failMail: true });
-    const key = "taches.veille.quotidienne.envoi";
+    const key = "tasks.veille.quotidienne.send";
     const bad = await k!.settings.change(key, "whatsapp", "ui");
     expect(bad.ok).toBe(false);
     expect(bad.text).toMatch(/Je ne connais pas « whatsapp »/);
@@ -115,12 +115,12 @@ describe("envoi des résultats", () => {
   it("en anglais : canaux dits en anglais, échec annoncé en anglais", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     const initiatives = await setup(sent, { failMail: true });
-    await k!.settings.change("langue_assistant", "en", "ui");
+    await k!.settings.change("assistant_language", "en", "ui");
     await k!.idle();
-    const key = "taches.veille.quotidienne.envoi";
+    const key = "tasks.veille.quotidienne.send";
     expect((await k!.settings.change(key, "to my canal and gmail", "ui")).ok).toBe(true);
     expect((await k!.settings.change(key, "nowhere", "ui")).ok).toBe(true);
-    expect(k!.settings.list().find((s) => s.key === key)!.value).toBe("nulle part");
+    expect(k!.settings.list().find((s) => s.key === key)!.value).toBe("nowhere");
     await k!.settings.change(key, "Gmail perso", "ui");
     await k!.tasks.run("veille/quotidienne", "manual");
     await wait();

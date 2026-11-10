@@ -85,10 +85,10 @@ describe("réglages d'affichage", () => {
     });
     const first = sent.find((m) => m.type === "display");
     expect(first?.settings).toMatchObject({ avatar_visible: true, hide_after: 0, bubble: true, always_on_top: true, autostart: false, avatar: "" });
-    const keys = k.settings.list().filter((s) => s.section === "corps").map((s) => s.key);
-    expect(keys.sort()).toEqual(["avatar_visible", "bulle", "masquer_apres", "toujours_devant"]);
-    expect(k.settings.list().find((s) => s.key === "demarrage_windows")?.section).toBe("systeme");
-    const r = await k.settings.change("masquer_apres", 15, "ui");
+    const keys = k.settings.list().filter((s) => s.section === "body").map((s) => s.key);
+    expect(keys.sort()).toEqual(["always_on_top", "avatar_visible", "bubble", "hide_after"]);
+    expect(k.settings.list().find((s) => s.key === "autostart")?.section).toBe("system");
+    const r = await k.settings.change("hide_after", 15, "ui");
     expect(r.ok).toBe(true);
     const r2 = await k.settings.change("avatar_visible", false, "ui");
     expect(r2.ok).toBe(true);

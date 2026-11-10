@@ -7,7 +7,7 @@ import type { Bilingual } from "./placement.ts";
 export const SHORTCUT_DEFAULTS: Record<string, string> = { talk: "Ctrl+Alt+F", write: "Ctrl+Alt+T", dictate: "Ctrl+Alt+D", sleep: "Ctrl+Alt+M", avatar: "Ctrl+Alt+H" };
 
 export interface Texts {
-  /** Langue de l'interface (réglage « langue_interface » du noyau). */
+  /** Langue de l'interface (réglage « ui_language » du noyau). */
   lang(): Lang;
   /** Change la langue ; faux si elle n'est pas reconnue ou ne change pas (rien à propager). */
   setLangValue(l: unknown): boolean;
@@ -22,7 +22,7 @@ export interface Texts {
 }
 
 export function createTexts(): Texts {
-  let lang: Lang = "fr";                // langue de l'interface (réglage « langue_interface » du noyau)
+  let lang: Lang = "fr";                // langue de l'interface (réglage « ui_language » du noyau)
   const shortcuts: Record<string, string> = { ...SHORTCUT_DEFAULTS };
   /** Remplace « (Ctrl+Alt+F) » des textes par le raccourci choisi pour cette action ; rien s'il est désactivé. */
   const withKeys = (s: string): string => Object.entries(SHORTCUT_DEFAULTS)

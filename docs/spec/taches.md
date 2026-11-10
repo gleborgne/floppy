@@ -58,7 +58,7 @@ Une tâche a souvent besoin d'un élément choisi dans un slot (le cerveau du tr
 ## Le Planificateur
 
 - Rubrique **Tâches** : une fiche par tâche (prochain et dernier passage, résultat ou erreur du dernier essai, interrupteur, **Lancer maintenant**). La planification est dans la fiche, avec des choix tout prêts (07:00, 07:30, 08:00, 07:30 en semaine, toutes les 3 h, jamais).
-- La planification est un réglage (clé `taches.<entrée>.<tâche>`), modifiable à la voix : « Floppy, fais ma veille à 8 h ». Formes : `07:30`, `8h` ou `à 8h` (une **heure**), `07:30 lun-ven`, `09:00 week-end`, `toutes les 3h`, `toutes les 30 min`, `jamais`. Une période commence toujours par « toutes les ».
+- La planification est un réglage (clé `tasks.<entrée>.<tâche>`, et `tasks.<entrée>.<tâche>.send` pour les canaux d'envoi), modifiable à la voix : « Floppy, fais ma veille à 8 h ». Formes : `07:30`, `8h` ou `à 8h` (une **heure**), `07:30 lun-ven`, `09:00 week-end`, `toutes les 3h`, `toutes les 30 min`, `jamais`. La valeur gardée est écrite en anglais (`07:30`, `07:30 mon-fri`, `every 3h`, `every 30 min`, `never` ; envoi : `nowhere`) ; les formes françaises restent comprises quand on les dit ou les tape. Une période commence toujours par « toutes les ».
 - Une horloge vérifie chaque minute, en heure murale : elle marche après une mise en veille du PC.
 - **Rattrapage** : un passage manqué (PC éteint à 7 h 30) tourne une fois, 2 minutes après le démarrage.
 - Changer l'heure ne déclenche pas de rattrapage immédiat. Une tâche en échec est réessayée 30 minutes plus tard, pas chaque minute.

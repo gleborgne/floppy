@@ -14,7 +14,7 @@ it("la note d'un élément offert est dans les options du slot, relue à chaque 
     },
   });
   const user = definePlugin({
-    manifest: { id: "u", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "llm", section: "voix", label: "Voix" }] },
+    manifest: { id: "u", version: "0", licence: "MIT", slots: [{ id: "voice.tts", service: "llm", section: "voice", label: "Voix" }] },
     async apply(ctx) { await ctx.slot("voice.tts"); },
   });
   const k = new Kernel({ logger: () => {}, plugins: [provider, user] });

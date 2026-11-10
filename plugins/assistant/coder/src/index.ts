@@ -271,7 +271,7 @@ export default definePlugin<Config>({
   async apply(ctx, cfg) {
     const exes = { claude: !!(cfg.claudeExe ?? findExe("claude")), codex: !!(cfg.codexExe ?? findExe("codex")) };
     let agent: CoderAgent = ctx.settings.saved<CoderAgent>("assistant_agent") ?? (exes.claude ? "claude" : "codex");
-    let model = ctx.settings.saved<string>("assistant_modele_claude") ?? "sonnet";
+    let model = ctx.settings.saved<string>("assistant_claude_model") ?? "sonnet";
     let web = ctx.settings.saved<boolean>("assistant_web") ?? true;
     ctx.settings.declare([
       {
@@ -282,7 +282,7 @@ export default definePlugin<Config>({
         get: () => agent, set: (v) => { agent = v as CoderAgent; },
       },
       {
-        key: "assistant_modele_claude", label: { fr: "Modèle Claude de l'assistant IA", en: "AI assistant Claude model" },
+        key: "assistant_claude_model", label: { fr: "Modèle Claude de l'assistant IA", en: "AI assistant Claude model" },
         description: { fr: "Le modèle de Claude Code pour l'assistant IA des réglages.", en: "The Claude Code model for the settings AI assistant." },
         type: "enum", section: "assistant", group: { fr: "Assistant IA", en: "AI assistant" }, risk: "free",
         options: [{ value: "sonnet", label: "Sonnet" }, { value: "opus", label: "Opus" }, { value: "haiku", label: "Haiku" }],

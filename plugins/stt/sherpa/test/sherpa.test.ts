@@ -58,8 +58,8 @@ describe("cycle de vie dans le noyau (faux natif)", () => {
     let vad: VadService | undefined, stt: SttService | undefined;
     const consumer = definePlugin({
       manifest: { id: "consumer", version: "0", licence: "MIT", slots: [
-        { id: "listen.vad", service: "vad", section: "ecoute", label: "VAD" },
-        { id: "listen.stt", service: "stt", section: "ecoute", label: "STT" }] },
+        { id: "listen.vad", service: "vad", section: "listening", label: "VAD" },
+        { id: "listen.stt", service: "stt", section: "listening", label: "STT" }] },
       async apply(c) { vad = await c.slot<VadService>("listen.vad"); stt = await c.slot<SttService>("listen.stt"); },
     });
     const k = new Kernel({ logger: () => {}, home: mkdtempSync(join(tmpdir(), "sherpa-home-")), plugins: [makePlugin(native), consumer] });

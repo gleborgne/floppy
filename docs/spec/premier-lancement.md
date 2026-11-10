@@ -41,7 +41,7 @@ dans les Réglages. Les textes sont dans `renderer/onboarding-i18n.ts` (fr / en)
 3. **Oreilles** : le modèle de transcription choisi (« Changer de modèle » ouvre la même liste que les autres écrans), puis les
    **façons d'appeler** Floppy, branchées sur de vrais réglages par le chemin des Réglages : « En disant mon nom » (slot
    `listen.wakeword` : `@none` = éteint ; l'allumer remet l'entrée active ou la première offerte) et « Avec un raccourci du
-   clavier » (réglage `raccourci_parler`, vide = désactivé ; écrit `Ctrl+Alt+…`, `⌃⌥…` sur Mac). Un réglage absent : la ligne
+   clavier » (réglage `shortcut_talk`, vide = désactivé ; écrit `Ctrl+Alt+…`, `⌃⌥…` sur Mac). Un réglage absent : la ligne
    n'est pas montrée. **Essai du micro** : des barres de niveau mesurées dans la fenêtre (`getUserMedia` et `AnalyserNode`),
    sans rien enregistrer ni envoyer ; le flux est arrêté en quittant l'écran ; avec « mouvement réduit », quelques mises à
    jour par seconde et pas de fondu. Pas de transcription dans cette version : le texte dit que le micro marche. Tant que
@@ -49,7 +49,7 @@ dans les Réglages. Les textes sont dans `renderer/onboarding-i18n.ts` (fr / en)
 4. **Voix** : la liste des modèles de voix, un bouton rond « écouter » seulement si le choix a un `sample` (un seul son à la
    fois, joué dans la fenêtre : la CSP n'autorise `media-src` qu'en http(s)), l'étiquette de langue, « Pas de voix (réponses
    écrites) » en dernier.
-5. **Outils** : les connecteurs déjà ajoutés à Floppy (fournisseur `apps-connecteurs`), chacun avec un interrupteur qui
+5. **Outils** : les connecteurs déjà ajoutés à Floppy (fournisseur `apps-connectors`), chacun avec un interrupteur qui
    fait l'opération `enable` du catalogue, comme les Réglages ; sans connecteur : un mot et « Ouvrir les réglages ». Un
    encadré rappelle que Floppy demande toujours avant d'envoyer, de modifier ou de supprimer. « Terminer » envoie la
    sélection (`apply({ brain, stt, tts })`).
@@ -231,7 +231,7 @@ qui tiennent passent avant les autres, le conseillé en tête.
   graphique partage la mémoire des modèles avec le cerveau local. La voix conseillée est la mieux classée qui laisse
   encore un cerveau ; sinon, la mieux classée seule. Les trois conseillés tiennent donc ensemble.
 
-Changer la langue (`Onboarding.setLanguage`) passe par le réglage `langue_assistant`, comme dans les Réglages (les plugins
+Changer la langue (`Onboarding.setLanguage`) passe par le réglage `assistant_language`, comme dans les Réglages (les plugins
 redémarrent), puis recalcule le plan.
 
 - **Voix déjà offertes** (`offeredVoices`) : les voix du slot `voice.tts` hors cloud (ex. voix du système), sans

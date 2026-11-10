@@ -71,7 +71,7 @@ Les commentaires sont retirés avant la recherche des motifs (les chaînes reste
 `apps/cli/src/plugins/review.ts` et `plugins/assistant/coder/src/review.ts`.
 
 - **Obligatoire.** Sans agent de code (Claude Code, Codex ou Antigravity), `installer_plugin` échoue. Rien n'est mis en attente.
-- Le relecteur est le service `coder`, méthode `review`. Le réglage `plugins_tiers_relecteur` (`auto`, `claude`, `codex`, `agy`, risque cli) choisit l'agent.
+- Le relecteur est le service `coder`, méthode `review`. Le réglage `third_party_plugins_reviewer` (`auto`, `claude`, `codex`, `agy`, risque cli) choisit l'agent.
 - **Un tour, sans outil.** Le code est dans le message, entre deux bornes aléatoires (`FLOPPY-<24 hex>`) : il ne peut pas « fermer » le bloc. Le dossier de travail est vide et temporaire.
   - Claude : `-p --tools "" --strict-mcp-config --permission-mode dontAsk`.
   - Codex : `exec --sandbox read-only`, réponse lue dans le fichier `-o`.

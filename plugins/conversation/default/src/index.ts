@@ -43,21 +43,21 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "voix", order: 20, label: { fr: "Voix", en: "Voice" } },
-      { id: "ecoute", order: 30, label: { fr: "Écoute", en: "Listening" }, description: { fr: "Comment Floppy t'entend et quand il écoute.", en: "How Floppy hears you and when it listens." } },
+      { id: "voice", order: 20, label: { fr: "Voix", en: "Voice" } },
+      { id: "listening", order: 30, label: { fr: "Écoute", en: "Listening" }, description: { fr: "Comment Floppy t'entend et quand il écoute.", en: "How Floppy hears you and when it listens." } },
     ],
     description: { fr: "Orchestre les tours : mot d'activation, écoute libre, voix ou texte selon le corps, interruptions, émotions.", en: "Runs conversation turns: wake word, open listening, voice or text depending on the body, interruptions, emotions." },
     inject: ["body"],
     // brain : demandé (ctx.use) seulement quand le mode en a besoin. Le noyau fait tourner le reste à la demande.
     optional: ["brain", "voice", "memory", "vocabulary", "mcp"],
     slots: [
-      { id: "conversation.live", service: "live", section: "cerveau", label: { fr: "Mode de conversation", en: "Conversation mode" },
+      { id: "conversation.live", service: "live", section: "brain", label: { fr: "Mode de conversation", en: "Conversation mode" },
         none: { fr: "Local", en: "Local" }, display: "mode",
         description: { fr: "Local : un cerveau et une voix, choisis à part. Live : un seul modèle cloud qui écoute et parle (la délégation reste).", en: "Local: a brain and a voice, chosen separately. Live: one cloud model that listens and speaks (delegation stays)." } },
-      { id: "voice.tts", service: "tts", section: "voix", label: { fr: "Voix", en: "Voice" }, display: "tabs",
+      { id: "voice.tts", service: "tts", section: "voice", label: { fr: "Voix", en: "Voice" }, display: "tabs",
         none: { fr: "Aucune (réponses écrites)", en: "None (written replies)" }, defaultFirst: true,
         description: { fr: "Le moteur et la voix de Floppy en mode Local. En Live, c'est le moteur Live qui parle.", en: "Floppy's engine and voice in Local mode. In Live mode, the Live engine speaks." } },
-      { id: "listen.wakeword", service: "wakeword", section: "ecoute", label: { fr: "Mot d'activation", en: "Wake word" }, display: "tabs", step: 3,
+      { id: "listen.wakeword", service: "wakeword", section: "listening", label: { fr: "Mot d'activation", en: "Wake word" }, display: "tabs", step: 3,
         none: { fr: "Aucun (bouton seulement)", en: "None (button only)" },
         description: { fr: "Le plugin qui reconnaît « Floppy ». Le bouton parler marche toujours.", en: "The plugin that recognizes “Floppy”. The talk button always works." } },
     ],
@@ -91,11 +91,11 @@ export default definePlugin<Config>({
     const ttsSetting = ctx.settings.list().find((x) => x.key === "slot.voice.tts");
     const mute = separate && !tts && ttsSetting?.value === "@none" && (ttsSetting.options ?? []).some((o) => o.value !== "@none");
     const ttsUnavailable = separate && !tts && !mute;
-    let tone = ctx.settings.saved<string>("ton") ?? tr(PHRASES.tone, lang);
-    const savedProfile = ctx.settings.saved<string>("expressivite");
+    let tone = ctx.settings.saved<string>("tone") ?? tr(PHRASES.tone, lang);
+    const savedProfile = ctx.settings.saved<string>("expressiveness");
     let profile: SpeechDelivery["profile"] = savedProfile === "discreet" || savedProfile === "natural" || savedProfile === "playful" ? savedProfile : cfg.expressiveness;
     ctx.settings.declare([{
-      key: "expressivite", section: "voix", type: "enum", risk: "free",
+      key: "expressiveness", section: "voice", type: "enum", risk: "free",
       label: T("Expressivité", "Expressiveness"), description: T("Intensité des expressions. Seules les voix compatibles jouent les émotions : la liste des voix l'indique.", "Expression intensity. Only compatible voices play emotions: the voice list shows which."),
       options: [{ value: "discreet", label: T("Discret", "Discreet"), aliases: ["discret", "discrete", "discreet"] },
         { value: "natural", label: T("Naturel", "Natural"), aliases: ["naturel", "naturelle", "natural"] },
@@ -105,17 +105,17 @@ export default definePlugin<Config>({
     // Expérimental (non essayé sur un vrai compte) : s'applique à la prochaine session Live, pas à celle qui est ouverte.
     let liveEmotionTool = ctx.settings.saved<boolean>("emotion_live") ?? cfg.live_emotion_tool;
     ctx.settings.declare([{
-      key: "emotion_live", section: "voix", type: "boolean", risk: "free",
+      key: "emotion_live", section: "voice", type: "boolean", risk: "free",
       label: T("Émotion annoncée par le modèle Live (expérimental)", "Emotion reported by the Live model (experimental)"),
       description: T("En mode Live, le modèle dit son émotion par un outil silencieux pour le visage et les gestes, au lieu de la deviner dans ses mots. Seulement pour un moteur Live qui appelle des outils. S'applique à la prochaine session Live.",
         "In Live mode, the model reports its emotion through a silent tool for the face and gestures, instead of guessing it from its words. Only for a Live engine that calls tools. Applies from the next Live session."),
       get: () => liveEmotionTool, set: (v) => { liveEmotionTool = Boolean(v); },
     }]);
-    ctx.settings.declare([{ key: "ton", section: "voix", label: { fr: "Ton", en: "Tone" }, description: { fr: "La manière de parler, commune à tous les modes.", en: "Speaking style shared by all conversation modes." }, type: "text", maxLength: 300, risk: "free", get: () => tone, set: (v) => { tone = String(v); for (const b of bodies.values()) b.live?.updateTone(); } }]);
+    ctx.settings.declare([{ key: "tone", section: "voice", label: { fr: "Ton", en: "Tone" }, description: { fr: "La manière de parler, commune à tous les modes.", en: "Speaking style shared by all conversation modes." }, type: "text", maxLength: 300, risk: "free", get: () => tone, set: (v) => { tone = String(v); for (const b of bodies.values()) b.live?.updateTone(); } }]);
     const wake = wakeword?.words?.() ?? [...ctx.assistant.wake_words];
-    let freeListen = ctx.settings.saved<number>("ecoute_libre") ?? cfg.free_listen_s;
+    let freeListen = ctx.settings.saved<number>("free_listen_s") ?? cfg.free_listen_s;
     ctx.settings.declare([{
-      key: "ecoute_libre", section: "ecoute", type: "number", min: 0, max: 30, risk: "free",
+      key: "free_listen_s", section: "listening", type: "number", min: 0, max: 30, risk: "free",
       label: { fr: "Écoute libre", en: "Open listening" }, group: { fr: "Écoute", en: "Listening" },
       description: { fr: "Secondes pendant lesquelles on peut enchaîner sans redire le mot d'activation, après une réponse (« Je t'écoute… » reste affiché). 0 : il faut toujours redire son nom.", en: "Seconds during which you can carry on without repeating the wake word after a reply (\"Listening…\" stays on screen). 0: always say the wake word." },
       get: () => freeListen, set: (v) => { freeListen = Number(v); },

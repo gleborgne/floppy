@@ -25,7 +25,7 @@ const Config = z.object({
   command: z.string().default("orca"),
   pollSeconds: z.number().min(0.01).default(15),
   surveillance: z.boolean().default(true),
-  notifications: z.enum(["toutes", "importantes", "aucune"]).default("importantes"),
+  notifications: z.enum(["all", "important", "none"]).default("important"),
 });
 type Config = z.infer<typeof Config>;
 
@@ -302,15 +302,15 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       version: "0.1.0",
       licence: "MIT",
       sections: [
-        { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
+        { id: "connectors", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Outils Orca (agents, worktrees) et notification quand un job d'agent se termine.",
       // orca, et cmd pour lancer son script .cmd sous Windows (arguments fixes, voir spawnSpec).
       permissions: { exec: ["orca", "cmd"] },
-      slots: [{ id: "orca.summary", service: "completion", section: "connecteurs", label: T("Synthèse des agents Orca", "Orca agent summaries"), description: T("Résume le travail effectué et la prochaine réponse attendue, en deux phrases au plus.", "Summarizes the work done and any next answer needed, in at most two sentences.") }],
+      slots: [{ id: "orca.summary", service: "completion", section: "connectors", label: T("Synthèse des agents Orca", "Orca agent summaries"), description: T("Résume le travail effectué et la prochaine réponse attendue, en deux phrases au plus.", "Summarizes the work done and any next answer needed, in at most two sentences.") }],
       provides: ["agentTracking"],
       addable: {
-        section: "connecteurs",
+        section: "connectors",
         single: true,
         label: "Orca",
         description: { fr: "Application : état des agents de code et notification à la fin d'un job.", en: "Application: code agents status and a notification when a job ends." },
@@ -329,7 +329,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const t = T;
       let notifications = ctx.settings.saved<Config["notifications"]>("orca_notifications") ?? cfg.notifications;
       // L'ancien « aucune » coupe désormais les annonces seulement ; la collecte reste utile aux questions.
-      if (ctx.settings.saved("orca_notifications") === undefined && !(ctx.settings.saved<boolean>("orca_surveillance") ?? cfg.surveillance)) notifications = "aucune";
+      if (ctx.settings.saved("orca_notifications") === undefined && !(ctx.settings.saved<boolean>("orca_surveillance") ?? cfg.surveillance)) notifications = "none";
       const announced = new Map<string, number>();
       let pendingAnnouncements = 0;
       let deliveryAnnouncement = 0;
@@ -346,7 +346,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
           if (announced.has(key)) { runtime.diagnostics.record("announcement.deduped", { eventId: event.eventId, agentId: event.id, reason: "same_turn" }); continue; }
           announced.set(key, now());
           while (announced.size > 300) announced.delete(announced.keys().next().value!);
-          if (notifications === "aucune") { runtime.diagnostics.record("announcement.silent", { eventId: event.eventId, agentId: event.id, reason: "setting" }); continue; }
+          if (notifications === "none") { runtime.diagnostics.record("announcement.silent", { eventId: event.eventId, agentId: event.id, reason: "setting" }); continue; }
           if (pendingAnnouncements >= 16) { runtime.diagnostics.record("announcement.dropped", { eventId: event.eventId, reason: "queue_capacity" }); continue; }
           pendingAnnouncements++;
           void (async () => {
@@ -367,7 +367,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
             }
             const lang = ctx.assistant.language === "en" ? "en" : "fr";
             const f = { ...facts(enriched.w, enriched.a, event.activity === "waiting" ? "en_attente" : event.outcome === "interruption" ? "interrompu" : "termines", lang), label: event.label, outcome: event.outcome };
-            if (!ctx.alive || (notifications as Config["notifications"]) === "aucune") return;
+            if (!ctx.alive || (notifications as Config["notifications"]) === "none") return;
             const ref = runtime.currentReferences().find((r) => r.identity === event.id) ?? { identity: event.id, label: event.label, project: event.project };
             const named = { ...f, label: ref.label };
             const text = await summarizeAnnouncement(ctx, named, {
@@ -380,9 +380,9 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
                 return screenText(read?.terminal?.tail ?? []);
               } } : {}),
             });
-            if (!ctx.alive || (notifications as Config["notifications"]) === "aucune") return;
+            if (!ctx.alive || (notifications as Config["notifications"]) === "none") return;
             runtime.rememberAnnouncement(key, [ref]);
-            ctx.emit("initiative", { source: "orca", text, importance: notifications === "toutes" || event.activity === "waiting" ? "important" : "normal", key });
+            ctx.emit("initiative", { source: "orca", text, importance: notifications === "all" || event.activity === "waiting" ? "important" : "normal", key });
             runtime.diagnostics.record("announcement.emitted", { eventId: event.eventId, agentId: event.id, queueLength: pendingAnnouncements });
           })().catch(() => { runtime.diagnostics.record("announcement.failed", { eventId: event.eventId, agentId: event.id, reason: "enrichment_or_phrase" }); }).finally(() => { pendingAnnouncements--; });
         }
@@ -401,7 +401,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const tools: ToolDef[] = [
         sendTool({ ctx, cli, run: runtime.sync, direct, target: runtime.resolveTarget, onDelivery: delivery, label: recipientLabel }),
         ...groupSendTools({ ctx, cli, run: runtime.sync, direct, now, onDelivery: delivery, label: recipientLabel, persistenceDiagnostic: (event) => runtime.diagnostics.record("delivery.persistence", { reason: event.reason }), announce: (text) => {
-          if (ctx.alive && notifications !== "aucune") ctx.emit("initiative", { source: "orca-delivery", key: `orca-delivery:${now()}:${++deliveryAnnouncement}`, text: tr(text, ctx.assistant.language), importance: notifications === "toutes" ? "important" : "normal" });
+          if (ctx.alive && notifications !== "none") ctx.emit("initiative", { source: "orca-delivery", key: `orca-delivery:${now()}:${++deliveryAnnouncement}`, text: tr(text, ctx.assistant.language), importance: notifications === "all" ? "important" : "normal" });
         }, select: (wts, args, meta) => {
           const result = runtime.resolve(String(args.nom ?? "eux"), meta, true);
           if (!result.ok) return referenceFailure(result.reason, result.candidates);
@@ -477,18 +477,18 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const showStatus = () => {
         const snapshot = runtime.snapshot();
         if (snapshot.connection.state === "offline") ctx.items.status(t("Orca ne répond pas", "Orca is not responding"), "warn");
-        else if (notifications === "aucune") ctx.items.status(t("annonces coupées · suivi actif", "announcements off · tracking active"));
+        else if (notifications === "none") ctx.items.status(t("annonces coupées · suivi actif", "announcements off · tracking active"));
         else if (runtime.bridgeLive()) ctx.items.status(t("prévenu tout de suite (plugin Orca actif)", "told at once (Orca plugin active)"));
         else ctx.items.status(copyState(ctx.home, pluginSrc) === "absent" ? t(`vérifie toutes les ${Math.round(cfg.pollSeconds)} s · installe le plugin Orca pour être prévenu tout de suite`, `checks every ${Math.round(cfg.pollSeconds)} s · install the Orca plugin to be told at once`) : t(`vérifie toutes les ${Math.round(cfg.pollSeconds)} s`, `checks every ${Math.round(cfg.pollSeconds)} s`));
       };
       ctx.effect(runtime.subscribe(showStatus));
       ctx.settings.declare([{
-        key: "orca_notifications", label: t("Annonces des agents Orca", "Orca agent announcements"), group: t("Orca", "Orca"), section: "connecteurs", type: "enum", risk: "free",
+        key: "orca_notifications", label: t("Annonces des agents Orca", "Orca agent announcements"), group: t("Orca", "Orca"), section: "connectors", type: "enum", risk: "free",
         description: t("Tout dire : annonce chaque fin. Si un agent attend : seules les demandes sont dites. Rien : aucune annonce, le suivi reste actif ; éteins Orca pour arrêter aussi le suivi.", "Say everything: announce every finish. If an agent waits: only requests are spoken. Nothing: no announcements, tracking stays active; disable Orca to stop tracking too."),
         options: [
-          { value: "toutes", label: t("Tout dire", "Say everything"), aliases: ["toutes", "tout", "chaque fin", "all", "every"] },
-          { value: "importantes", label: t("Si un agent attend", "If an agent waits"), aliases: ["importantes", "important", "quand il attend", "when waiting"] },
-          { value: "aucune", label: t("Rien", "Nothing"), aliases: ["aucune", "silence", "coupe les annonces", "none", "off"] },
+          { value: "all", label: t("Tout dire", "Say everything"), aliases: ["toutes", "tout", "chaque fin", "all", "every"] },
+          { value: "important", label: t("Si un agent attend", "If an agent waits"), aliases: ["importantes", "important", "quand il attend", "when waiting"] },
+          { value: "none", label: t("Rien", "Nothing"), aliases: ["aucune", "silence", "coupe les annonces", "none", "off"] },
         ], get: () => notifications, set: (value) => { notifications = value as Config["notifications"]; showStatus(); },
       }]);
       showStatus();

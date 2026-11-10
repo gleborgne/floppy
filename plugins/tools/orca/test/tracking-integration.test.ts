@@ -385,7 +385,7 @@ describe("suivi Orca intégré au noyau", () => {
   });
 
   it("un groupe présenté disparu échoue avant accord, sans agrandir la sélection", async () => {
-    const f = await start({ config: { notifications: "aucune" } });
+    const f = await start({ config: { notifications: "none" } });
     for (const a of f.state.envelope.worktrees![0]!.agents!) a.state = "done";
     await f.k.tools.call("orca_agents", {}, meta());
     f.advance(); f.state.envelope.worktrees![0]!.agents!.shift();
@@ -421,7 +421,7 @@ describe("suivi Orca intégré au noyau", () => {
   });
 
   it("rien coupe les annonces, conserve la collecte et éteindre retire le service", async () => {
-    const f = await start({ config: { notifications: "aucune", pollSeconds: 0.02 } });
+    const f = await start({ config: { notifications: "none", pollSeconds: 0.02 } });
     const seen = vi.fn(); const off = f.tracking.subscribe(seen);
     const before = f.calls.length;
     f.advance(); f.state.envelope.worktrees![0]!.agents![0]!.state = "done";

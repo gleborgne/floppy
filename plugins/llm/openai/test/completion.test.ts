@@ -35,12 +35,12 @@ beforeAll(async () => {
   const secrets = new MemorySecrets();
   secrets.set("llm-openai/mistral/apiKey", KEY);
   const user = definePlugin({
-    manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "veille.tri", service: "completion", section: "veille", label: "Tri", none: "Aucun" }] },
+    manifest: { id: "user", version: "0", licence: "MIT", slots: [{ id: "watch.triage", service: "completion", section: "watch", label: "Tri", none: "Aucun" }] },
     apply(ctx) { ctxRef = ctx; },
   });
   k = new Kernel({ logger: () => {}, home: mkdtempSync(join(tmpdir(), "llm-compl-")), secrets, plugins: [openai, user] });
   await k.applyConfig({
-    slots: { "veille.tri": "llmremote/mistral" },
+    slots: { "watch.triage": "llmremote/mistral" },
     plugins: [
       { id: "llmremote", plugin: "llm-openai", config: { models: { mistral: { label: "Mistral", baseURL: base, model: "mistral-small", cloud: true } } } },
       { id: "u", plugin: "user" },
@@ -49,7 +49,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await k.stopAll(); fake.closeAllConnections(); await new Promise((r) => fake.close(r)); });
 
-const borrow = async () => (await ctxRef.borrow<Svc>("veille.tri"))!;
+const borrow = async () => (await ctxRef.borrow<Svc>("watch.triage"))!;
 
 describe("completion llm-openai", () => {
   it("slot : appel au modèle choisi avec la clé du coffre", async () => {

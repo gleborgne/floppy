@@ -554,11 +554,11 @@ export function initAssistant() {
     addText(en
       ? "I'm looking at your settings. To be more **discreet**, I suggest:\n\n- lowering free listening to `5` seconds\n- hiding the avatar after `2` minutes\n\nI'm changing the `floppy.yml` file right away."
       : "Je regarde tes réglages. Pour être plus **discret**, je propose :\n\n- baisser l'écoute libre à `5` secondes\n- masquer l'avatar après `2` minutes\n\nJe change tout de suite le fichier `floppy.yml`.");
-    upsertTool({ type: "tool", id: "t1", name: "Read", input: { file_path: "floppy.yml" }, status: "done", output: "settings:\n  ecoute_libre: 12\n  masquer_apres: 15" });
-    upsertTool({ type: "tool", id: "t2", name: "Grep", input: { pattern: "masquer_apres" }, status: "running" });
+    upsertTool({ type: "tool", id: "t1", name: "Read", input: { file_path: "floppy.yml" }, status: "done", output: "settings:\n  free_listen_s: 12\n  hide_after: 15" });
+    upsertTool({ type: "tool", id: "t2", name: "Grep", input: { pattern: "hide_after" }, status: "running" });
     addPermission({
       type: "permission", id: "p1", tool: "Edit", description: en ? "Edit floppy.yml" : "Modifier floppy.yml",
-      diff: { path: "floppy.yml", before: "settings:\n  voix: femme\n  ecoute_libre: 12\n  masquer_apres: 15\n  avatar_visible: true", after: "settings:\n  voix: femme\n  ecoute_libre: 5\n  masquer_apres: 2\n  avatar_visible: true" },
+      diff: { path: "floppy.yml", before: "settings:\n  voix: femme\n  free_listen_s: 12\n  hide_after: 15\n  avatar_visible: true", after: "settings:\n  voix: femme\n  free_listen_s: 5\n  hide_after: 2\n  avatar_visible: true" },
     }, () => {}, false);
     refresh();
   }

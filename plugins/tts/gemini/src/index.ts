@@ -12,13 +12,13 @@ export default definePlugin({
   manifest: {
     id: "tts-gemini", version: "0.1.0", licence: "MIT", provides: ["tts"],
     description: "Synthèse vocale Gemini en streaming (modèles TTS 3.1 et suivants).",
-    sections: [{ id: "voix", label: { fr: "Voix", en: "Voice" } }],
+    sections: [{ id: "voice", label: { fr: "Voix", en: "Voice" } }],
     permissions: { cloud: true, net: ["generativelanguage.googleapis.com"] },
-    addable: { section: "voix", label: "Gemini TTS", cloud: true, single: true },
+    addable: { section: "voice", label: "Gemini TTS", cloud: true, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
-    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "Gemini TTS", section: "voix", offers: "tts", fields: [
+    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "Gemini TTS", section: "voice", offers: "tts", fields: [
       { key: "model", label: T("Modèle TTS (3.1 ou suivant)", "TTS model (3.1 or later)"), type: "text", required: true },
       { key: "voice", label: T("Voix Gemini", "Gemini voice"), type: "text", required: true },
     ] });

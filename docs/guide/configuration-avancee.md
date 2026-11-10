@@ -29,8 +29,8 @@ Tout tourne sur le processeur (mesures du 6 novembre 2026, 4 fils) :
 | Cerveau | Claude Code ou Codex (montage B), ou une API | le modèle local du montage A demande une carte graphique |
 
 Pocket TTS : `PocketTTS-GGUF/french/pocket-tts-french-q8_0.gguf` du dépôt Hugging Face `audio-cpp/audio.cpp-gguf` (128 Mo),
-famille `pocket_tts`, voix clonée depuis `plugins/tts/audiocpp/voices/ref_fr_siwis.wav`.
-Autre voix possible : **Supertonic 3** (famille `supertonic`, voix intégrées F1…F5, M1…M5) : correcte, mais elle attend la
+`family: pocket_tts`, voix clonée depuis `plugins/tts/audiocpp/voices/ref_fr_siwis.wav`.
+Autre voix possible : **Supertonic 3** (`family: supertonic`, voix intégrées F1…F5, M1…M5) : correcte, mais elle attend la
 phrase entière (~1,3 s avant le premier son). Kokoro n'est pas retenu : en français, il a besoin d'eSpeak-ng (licence GPL),
 que ni audio.cpp ni sherpa-onnx 2 ne fournissent.
 

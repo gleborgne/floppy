@@ -193,13 +193,13 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "cerveau", label: { fr: "Cerveau", en: "Brain" } },
+      { id: "brain", label: { fr: "Cerveau", en: "Brain" } },
     ],
     description: "Antigravity (CLI agy de Google) comme cerveau ou pour la délégation, branché seulement sur le serveur MCP Floppy.",
     provides: ["delegate", "llm", "agent"],
     inject: ["mcp"],
     permissions: { exec: ["agy"], "fs.write": ["agy-home", "workspaces/brain-agy-cli"], cloud: true },
-    addable: { section: "cerveau", label: "Antigravity", description: { fr: "Ton compte Google, par le CLI Antigravity (Gemini). Cerveau ou délégué. Conditions de Google peu claires pour un outil tiers.", en: "Your Google account, through the Antigravity CLI (Gemini). Brain or delegate. Google's terms are unclear for third-party tools." }, cloud: true, single: true, program: "agy", aliases: ["antigravity", "agy", "gemini"] },
+    addable: { section: "brain", label: "Antigravity", description: { fr: "Ton compte Google, par le CLI Antigravity (Gemini). Cerveau ou délégué. Conditions de Google peu claires pour un outil tiers.", en: "Your Google account, through the Antigravity CLI (Gemini). Brain or delegate. Google's terms are unclear for third-party tools." }, cloud: true, single: true, program: "agy", aliases: ["antigravity", "agy", "gemini"] },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -235,7 +235,7 @@ export default definePlugin<Config>({
     const brains = new Set<{ renew(): void }>();
     const name = T("Antigravity", "Antigravity");
     ctx.items.declare({
-      id: "agy-cli", section: "cerveau", order: 32, offers: ["llm", "delegate"],
+      id: "agy-cli", section: "brain", order: 32, offers: ["llm", "delegate"],
       label: name,
       description: T("Ton compte Google, par le CLI Antigravity (Gemini). Aucune clé d'API.", "Your Google account, through the Antigravity CLI (Gemini). No API key."),
       badge: T("cloud", "cloud"),

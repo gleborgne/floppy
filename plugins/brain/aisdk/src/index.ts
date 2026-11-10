@@ -136,7 +136,7 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "cerveau", order: 10, label: { fr: "Cerveau", en: "Brain" }, description: { fr: "Qui réfléchit et répond. Active un modèle, ou ajoute le tien.", en: "Who thinks and answers. Activate a model, or add your own." } },
+      { id: "brain", order: 10, label: { fr: "Cerveau", en: "Brain" }, description: { fr: "Qui réfléchit et répond. Active un modèle, ou ajoute le tien.", en: "Who thinks and answers. Activate a model, or add your own." } },
     ],
     description: "Cerveau : agent Vercel AI SDK. Son modèle et son délégué sont des slots (choisis dans les réglages ou à la voix).",
     provides: ["brain"],
@@ -146,9 +146,9 @@ export default definePlugin<Config>({
     lazy: true,
     optional: ["memory", "vocabulary", "mcp"],
     slots: [
-      { id: "brain.main", service: "llm", section: "cerveau", label: { fr: "Cerveau principal", en: "Main brain" },
+      { id: "brain.main", service: "llm", section: "brain", label: { fr: "Cerveau principal", en: "Main brain" },
         description: { fr: "Le modèle qui réfléchit et répond. Un modèle local se charge en 10 à 60 s.", en: "The model that thinks and answers. A local model loads in 10 to 60 s." } },
-      { id: "brain.delegate", service: "delegate", section: "cerveau", label: { fr: "Délégation", en: "Delegation" },
+      { id: "brain.delegate", service: "delegate", section: "brain", label: { fr: "Délégation", en: "Delegation" },
         none: { fr: "Pas de délégation", en: "No delegation" },
         description: { fr: "Le grand modèle à qui confier les demandes difficiles (cloud).", en: "The big model for difficult requests (cloud)." } },
     ],
@@ -269,7 +269,7 @@ export default definePlugin<Config>({
         const session = s;
         const system = buildPrompt({
           name: ctx.assistant.name, today: cfg.today ? new Date(cfg.today) : new Date(), mode: input.mode,
-          emotions: cfg.emotions, ton: input.tone, ...(remembered ? { memory: { user: "", memory: memoryContextMessage(remembered, lang) } } : {}),
+          emotions: cfg.emotions, tone: input.tone, ...(remembered ? { memory: { user: "", memory: memoryContextMessage(remembered, lang) } } : {}),
           ...(dlg && delegationOn ? { delegateTool: cfg.delegateTool } : {}),
           tools: ctx.tools.list(), lang,
         });

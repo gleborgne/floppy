@@ -16,7 +16,7 @@ const hello = { kind: "hello", app: APP, name: "Differendum", schemes: ["inwink-
 const msg = (extra: Record<string, unknown> = {}) => ({
   kind: "message", app: APP,
   text: { fr: "Vous avez été ajouté comme relecteur sur la PR 1234, Fix login.", en: "You were added as a reviewer on PR 1234, Fix login." },
-  mode: "voix", key: "n-1",
+  mode: "voice", key: "n-1",
   action: { label: { fr: "Ouvrir la PR 1234", en: "Open PR 1234" }, url: "inwink-differendum://pr?url=https%3A%2F%2Fdev.azure.com%2Fc%2Fp%2F_git%2Fr%2Fpullrequest%2F1234" },
   ...extra,
 });
@@ -43,7 +43,7 @@ describe("boîte aux lettres", () => {
     expect(await post(hello)).toBe(403);
     expect(await post(msg())).toBe(403);
     expect(got).toHaveLength(0);
-    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non");
+    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("denied");
 
     expect((await k.settings.change(KEY, "app", "ui")).ok).toBe(true);
     expect(await post(hello)).toBe(204);
@@ -79,7 +79,7 @@ describe("boîte aux lettres", () => {
     k.bus.on("approval.request", (r) => { n++; k.approvals.respond(r.id, true, "conv:voix"); });
     await post(hello);
     await vi.waitFor(() => expect(got.some((g) => g.key === `inbox:clic:${APP}`)).toBe(true));
-    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non");
+    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("denied");
     expect(await post(hello)).toBe(403);
     await new Promise((r) => setTimeout(r, 50));
     expect(n).toBe(1);
@@ -124,7 +124,7 @@ describe("boîte aux lettres", () => {
     await post(hello);
     await k.settings.change(KEY, "app", "ui");
     expect(await post({ ...hello, schemes: ["inwink-differendum", "autre-app"] })).toBe(403);
-    await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non"));
+    await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("denied"));
     expect(await post(msg())).toBe(403);
   });
 
@@ -150,7 +150,7 @@ describe("boîte aux lettres", () => {
     k.approvals.respond(reqs[0]!.id, true, "hub:fenetre");
     await vi.waitFor(() => expect(reqs).toHaveLength(2));
     expect(reqs[1]!.summary).toContain("rdp-app://");
-    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("non");
+    expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("denied");
     k.approvals.respond(reqs[1]!.id, true, "hub:fenetre");
     await vi.waitFor(() => expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("app"));
   });
@@ -235,5 +235,12 @@ describe("protocole", () => {
     expect(cleanText({ en: "hello" }, 50)).toEqual({ fr: "hello", en: "hello" });
     expect(cleanText("x".repeat(51), 50)).toBeUndefined();
     expect(parseMessage({ app: APP, text: "salut" }, [])).toEqual({ app: APP, text: "salut", mode: "info" });
+  });
+
+  it("mode : `voice` ; l'ancienne valeur `voix` des applications déjà écrites reste acceptée et devient `voice` ; le reste est refusé", () => {
+    expect(parseMessage({ app: APP, text: "salut", mode: "voice" }, [])).toMatchObject({ mode: "voice" });
+    expect(parseMessage({ app: APP, text: "salut", mode: "voix" }, [])).toMatchObject({ mode: "voice" });
+    expect(parseMessage({ app: APP, text: "salut", mode: "info" }, [])).toMatchObject({ mode: "info" });
+    expect(parseMessage({ app: APP, text: "salut", mode: "fort" }, [])).toBe("mode invalide");
   });
 });

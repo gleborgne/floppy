@@ -61,7 +61,7 @@ describe("programLibrary dans le noyau", () => {
     const plugin = definePlugin({
       manifest: { id: "runner", version: "0", licence: "MIT", permissions: { net: ["github.com"] } },
       apply(ctx) {
-        lib = programLibrary(ctx, { id: "runner-program", section: "cerveau", offers: "llm", label: "llama.cpp", program: "llama-server", version: "v1", builds: BUILDS, changed });
+        lib = programLibrary(ctx, { id: "runner-program", section: "brain", offers: "llm", label: "llama.cpp", program: "llama-server", version: "v1", builds: BUILDS, changed });
       },
     });
     const extracted: string[] = [];
@@ -132,7 +132,7 @@ describe("réparer, mettre à jour, monter en version, se replier", () => {
     const plugin = definePlugin({
       manifest: { id: "runner", version: "0", licence: "MIT", permissions: { net: ["github.com"], exec: ["llama-server"] } },
       apply(ctx) {
-        lib = programLibrary(ctx, { id: "runner-program", section: "cerveau", offers: "llm", label: "llama.cpp", program: "llama-server", version: opts.version ?? "v2", builds, changed: (w) => changes.push(w) });
+        lib = programLibrary(ctx, { id: "runner-program", section: "brain", offers: "llm", label: "llama.cpp", program: "llama-server", version: opts.version ?? "v2", builds, changed: (w) => changes.push(w) });
       },
     });
     const home = opts.home ?? mkdtempSync(join(tmpdir(), "prog-home-"));

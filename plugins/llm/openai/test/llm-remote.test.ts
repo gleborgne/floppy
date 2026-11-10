@@ -20,7 +20,7 @@ const secrets = new MemorySecrets();
 // Consommateur d'un slot llm, comme le cerveau : reçoit le modèle distant choisi (fork sans processus).
 let svc: LlmService | undefined;
 const probe = definePlugin({
-  manifest: { id: "probe", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" }] },
+  manifest: { id: "probe", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "brain", label: "Cerveau" }] },
   async apply(ctx) { svc = await ctx.slot<LlmService>("brain.main"); },
 });
 /** Modèles offerts (actifs seulement), tels que le slot les propose. */
@@ -53,7 +53,7 @@ const values = (extra: Record<string, unknown> = {}) => ({ label: "Mistral Large
 describe("llm-remote", () => {
   it("déclare le fournisseur (cerveau, kind openai) ; vide au départ", async () => {
     const p = await provider();
-    expect(p).toMatchObject({ section: "cerveau", label: { fr: "API compatible OpenAI", en: "OpenAI-compatible API" } });
+    expect(p).toMatchObject({ section: "brain", label: { fr: "API compatible OpenAI", en: "OpenAI-compatible API" } });
     expect(p.kinds.map((x) => x.id)).toEqual(["openai"]);
     expect(p.kinds[0]!.fields.find((f) => f.key === "apiKey")!.type).toBe("secret");
     expect(p.items).toEqual([]);

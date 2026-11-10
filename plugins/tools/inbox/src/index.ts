@@ -7,7 +7,7 @@
 //   Autoriser ses annonces ? »). Elle reste « pas autorisée » tant que l'utilisateur n'a pas cliqué Oui sur la carte
 //   ou choisi dans les Réglages (jamais à la voix). Avant, ses messages sont refusés (403). Un nouveau nom ou de
 //   nouveaux liens demandent un nouvel accord.
-// - Mode : l'app choisit `voix` (lu à voix haute) ou `info` (affiché) ; l'utilisateur garde le dernier mot.
+// - Mode : l'app choisit `voice` (lu à voix haute ; l'ancienne valeur `voix` est encore acceptée) ou `info` (affiché) ; l'utilisateur garde le dernier mot.
 // - Outils : annonces_recentes (lecture), ouvrir_annonce (write : accord avant d'ouvrir le lien).
 // - Les liens s'ouvrent sans shell, et seulement avec un schéma déclaré par l'app (vu par l'utilisateur) ou https.
 import { join } from "node:path";
@@ -20,7 +20,7 @@ const Config = z.object({});
 type Config = z.infer<typeof Config>;
 
 /** Choix de l'utilisateur pour une app. */
-export type Trust = "non" | "info" | "app";
+export type Trust = "denied" | "info" | "app";
 /** `trust` : choix de l'utilisateur (gardé ici, la carte d'accord ne passe pas par les réglages) ; `asked` : carte déjà montrée. */
 export interface KnownApp { name: string; schemes: string[]; seen: string; trust?: Trust; asked?: boolean }
 interface AppsFile { apps: Record<string, KnownApp> }
@@ -63,12 +63,12 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
       version: "0.1.0",
       licence: "MIT",
       sections: [
-        { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
+        { id: "connectors", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Boîte aux lettres : les applications de l'ordinateur envoient des annonces à Floppy.",
       permissions: { exec: ["rundll32", "open", "xdg-open"] },
       addable: {
-        section: "connecteurs",
+        section: "connectors",
         single: true,
         label: T("Annonces des applications", "App announcements"),
         description: T(
@@ -85,7 +85,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
       const recent: Recent[] = [];
       const save = (): void => writeJsonAtomic(file, { apps: known } satisfies AppsFile);
       const group = T("Annonces des applications", "App announcements");
-      const trustOf = (id: string): Trust => trust.get(id) ?? "non";
+      const trustOf = (id: string): Trust => trust.get(id) ?? "denied";
 
       /** Floppy seul écrit ce fichier, mais on ne le croit pas sur parole : une entrée invalide est écartée. */
       const load = (): Record<string, KnownApp> => {
@@ -101,7 +101,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
           }
           out[id] = {
             name: h.name, schemes: h.schemes, seen: typeof e.seen === "string" ? e.seen : new Date(now()).toISOString(),
-            ...(e.trust === "non" || e.trust === "info" || e.trust === "app" ? { trust: e.trust } : {}),
+            ...(e.trust === "denied" || e.trust === "info" || e.trust === "app" ? { trust: e.trust } : {}),
             ...(e.asked === true ? { asked: true } : {}),
           };
         }
@@ -110,7 +110,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
       const known = load();
 
       const options = [
-        { value: "non", label: T("Pas autorisée", "Not allowed"), aliases: ["non", "refuser", "bloquer", "no", "block", "deny"] },
+        { value: "denied", label: T("Pas autorisée", "Not allowed"), aliases: ["non", "refuser", "bloquer", "no", "block", "deny"] },
         { value: "info", label: T("Afficher seulement", "Show only"), aliases: ["info", "afficher", "jamais à voix haute", "show", "never aloud"] },
         { value: "app", label: T("Comme l'app le demande", "As the app asks"), aliases: ["comme l'app", "autoriser", "as the app asks", "allow"] },
       ];
@@ -121,19 +121,19 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
         const a = known[id]!;
         const key = settingKey(id);
         const saved = a.trust ?? ctx.settings.saved<Trust>(key);
-        trust.set(id, saved === "info" || saved === "app" ? saved : "non");
+        trust.set(id, saved === "info" || saved === "app" ? saved : "denied");
         const links = a.schemes.length ? a.schemes.map((s) => `${s}://`).join(", ") : "";
         const def: SettingDef = {
           // Libellé préfixé : une app nommée « Volume » ne prend pas la place d'un réglage cherché par son nom.
-          key, label: T(`Application : ${a.name}`, `App: ${a.name}`), group, section: "connecteurs", type: "enum",
+          key, label: T(`Application : ${a.name}`, `App: ${a.name}`), group, section: "connectors", type: "enum",
           // Autoriser une app ne se fait jamais à la voix ; la couper, si.
-          risk: "cli", riskFor: (v) => (v === "non" ? "free" : "cli"),
+          risk: "cli", riskFor: (v) => (v === "denied" ? "free" : "cli"),
           description: T(
             `« ${a.name} » (${id}) peut envoyer des annonces à Floppy.${links ? ` Liens qu'elle peut faire ouvrir : ${links} et https.` : ""} Comme l'app le demande : elle choisit ce qui est dit à voix haute. Afficher seulement : rien n'est dit. Pas autorisée : ses messages sont ignorés.`,
             `“${a.name}” (${id}) can send announcements to Floppy.${links ? ` Links it can open: ${links} and https.` : ""} As the app asks: it chooses what is said aloud. Show only: nothing is said. Not allowed: its messages are ignored.`),
           options,
           get: () => trustOf(id),
-          set: (v) => setTrust(id, v === "info" || v === "app" ? v : "non"),
+          set: (v) => setTrust(id, v === "info" || v === "app" ? v : "denied"),
         };
         declared.set(id, ctx.settings.declare([def]));
       };
@@ -169,7 +169,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
       };
       const askOne = async (id: string): Promise<void> => {
         const a = known[id];
-        if (!a || a.asked || trustOf(id) !== "non") return;
+        if (!a || a.asked || trustOf(id) !== "denied") return;
         // Ce que l'utilisateur voit sur la carte : l'accord ne vaut que pour ce nom et ces liens.
         const shown = { name: a.name, schemes: [...a.schemes] };
         const links = shown.schemes.map((s) => `${s}://`).join(", ");
@@ -215,7 +215,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
 
       const showStatus = (): void => {
         const ids = Object.keys(known);
-        const waiting = ids.filter((id) => trustOf(id) === "non").map((id) => known[id]!.name);
+        const waiting = ids.filter((id) => trustOf(id) === "denied").map((id) => known[id]!.name);
         const allowed = ids.length - waiting.length;
         if (waiting.length && !allowed) ctx.items.status(T(`${waiting.join(", ")} attend ton accord (réglages ci-dessous)`, `${waiting.join(", ")} waits for your approval (settings below)`), "warn");
         else if (!ids.length) ctx.items.status(T("ouverte · aucune application ne s'est encore présentée", "open · no app has introduced itself yet"));
@@ -232,7 +232,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
         if (!cur) {
           if (Object.keys(known).length >= MAX_APPS) {
             // Liste pleine : on oublie la plus ancienne app jamais autorisée. Une app autorisée n'est jamais oubliée.
-            const old = Object.entries(known).filter(([id]) => trustOf(id) === "non").sort((x, y) => x[1].seen.localeCompare(y[1].seen))[0];
+            const old = Object.entries(known).filter(([id]) => trustOf(id) === "denied").sort((x, y) => x[1].seen.localeCompare(y[1].seen))[0];
             if (!old) { ctx.log("warn", "Boîte aux lettres : trop d'applications autorisées, présentation ignorée.", { app: h.app }); return 403; }
             ctx.log("info", "Boîte aux lettres : liste pleine, application jamais autorisée oubliée.", { app: old[0] });
             forget(old[0]);
@@ -251,21 +251,21 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
           cur.schemes = h.schemes;
           cur.asked = false;
           if (current?.id === h.app) current.stop.abort();
-          setTrust(h.app, "non");
+          setTrust(h.app, "denied");
           save();
           declareApp(h.app);
           showStatus();
           ctx.log("warn", "Boîte aux lettres : l'application a changé de nom ou de liens, accord à redonner.", { app: h.app, nom: h.name, schemas: h.schemes });
           ask(h.app);
         }
-        return trustOf(h.app) === "non" ? 403 : 204;
+        return trustOf(h.app) === "denied" ? 403 : 204;
       };
 
       const onMessage = (body: Record<string, unknown>): number => {
         const app = typeof body.app === "string" ? body.app : "";
         const a = known[app];
         const level = trustOf(app);
-        if (!a || level === "non") return 403;
+        if (!a || level === "denied") return 403;
         const m = parseMessage(body, a.schemes);
         if (typeof m === "string") { ctx.log("warn", "Boîte aux lettres : message refusé.", { app, raison: m }); return 400; }
         deliver(a, m, level);
@@ -278,7 +278,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
           recent.unshift({ app: m.app, name: a.name, text: m.text, label: m.action.label, url: m.action.url, at: now() });
           recent.length = Math.min(recent.length, MAX_RECENT);
         }
-        const voice = level === "app" && m.mode === "voix";
+        const voice = level === "app" && m.mode === "voice";
         ctx.emit("initiative", {
           source: `inbox:${m.app}`,
           text: tr(m.text, lang),
@@ -308,7 +308,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
       const pick = (n: unknown): Recent | undefined => recent[Math.max(1, Math.floor(Number(n ?? 1)) || 1) - 1];
       const usable = (r: Recent): string | undefined => {
         const a = known[r.app];
-        if (!a || trustOf(r.app) === "non") return undefined;
+        if (!a || trustOf(r.app) === "denied") return undefined;
         const u = checkActionUrl(r.url, a.schemes);
         return typeof u === "string" ? u : undefined;
       };

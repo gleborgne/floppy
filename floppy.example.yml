@@ -23,9 +23,9 @@ slots:
   # voice.tts: tts-local/femme     # voice in Local mode (default: the first one offered, e.g. a system voice)
   conversation.live: "@none"       # "@none" = Local mode; "live-gemini/account" = Gemini Live
   listen.wakeword: wakeword-stt/account   # wake word engine ("@none" = push-to-talk only)
-  veille.tri: claude/sonnet               # brain that sorts the news digest
+  watch.triage: claude/sonnet            # brain that sorts the news digest
   orca.summary: claude/sonnet             # short summaries of completed agents and any next action
-  veille.recherche: websearch/claude      # web search engine of the digest ("@none" = RSS feeds only)
+  watch.search: websearch/claude         # web search engine of the digest ("@none" = RSS feeds only)
 plugins:
   # --- Tools (MCP servers). Add connectors in Settings → Connectors, or here.
   - id: tools
@@ -105,14 +105,14 @@ plugins:
       #   femme:          # Floppy's female voice (SIWIS, CC BY 4.0), cloned by Pocket TTS (CPU)
       #     label: Floppy
       #     model: C:/models/audiocpp/pocket-tts-french-q8_0.gguf
-      #     famille: pocket_tts
-      #     voix: clone
+      #     family: pocket_tts
+      #     voice: clone
       #     refWav: plugins/tts/audiocpp/voices/ref_fr_siwis.wav
       #   anna:           # Qwen3-TTS CustomVoice preset voice (graphics card)
       #     label: Anna
       #     model: C:/models/audiocpp/qwen3-tts-12hz-1.7b-customvoice-q8_0.gguf
-      #     famille: qwen3_tts
-      #     voix: integree
+      #     family: qwen3_tts
+      #     voice: builtin
       #     speaker: ono_anna
   - { id: tts-elevenlabs, plugin: tts-elevenlabs }
   - { id: tts-gemini, plugin: tts-gemini }
@@ -146,7 +146,7 @@ plugins:
   - { id: browser, plugin: browser }
   - { id: websearch, plugin: websearch, config: { engine: claude, claudeModel: haiku } }
   - { id: m365, plugin: m365 }
-  - { id: orca, plugin: orca, config: { pollSeconds: 15, notifications: importantes } }
+  - { id: orca, plugin: orca, config: { pollSeconds: 15, notifications: important } }
   # Mailbox: apps on this computer send announcements to Floppy (off until turned on in Settings → Connectors).
   - { id: inbox, plugin: inbox, disabled: true }
   - { id: documents, plugin: documents }
@@ -156,11 +156,11 @@ plugins:
   - id: veille
     plugin: veille
     config:
-      interets:
+      interests:
         ia-locale:
-          nom: IA locale
+          name: IA locale
           description: "New open-weights models, llama.cpp, local inference on consumer GPUs, local voice (STT/TTS)."
-          flux:
+          feeds:
             - https://simonwillison.net/atom/everything/
             - https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day
   # --- Notification channels (Settings → Notifications). Tokens live in the OS keychain.

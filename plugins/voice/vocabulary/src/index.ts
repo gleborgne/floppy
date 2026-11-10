@@ -100,8 +100,8 @@ export default definePlugin<z.infer<typeof Config>>({
     id: "vocabulary", version: "0.1.0", licence: "MIT", provides: ["vocabulary"],
     optional: ["memory"],
     description: T("Corrections explicites du vocabulaire personnel, contextualisées et conservées par la mémoire choisie.", "Explicit personal vocabulary corrections, scoped and stored by the selected memory."),
-    sections: [{ id: "ecoute", label: T("Écoute", "Listening") }],
-    addable: { section: "ecoute", single: true, label: T("Vocabulaire personnel", "Personal vocabulary"),
+    sections: [{ id: "listening", label: T("Écoute", "Listening") }],
+    addable: { section: "listening", single: true, label: T("Vocabulaire personnel", "Personal vocabulary"),
       description: T("Retient tes corrections de noms dans leur contexte.", "Remembers your name corrections in their context.") },
   },
   config: Config,
@@ -109,13 +109,13 @@ export default definePlugin<z.infer<typeof Config>>({
     let automatic = ctx.settings.saved<boolean>("vocabulary.automatic") ?? cfg.automatic;
     let traceText = ctx.settings.saved<boolean>("vocabulary.trace_text") ?? cfg.traceText;
     ctx.settings.declare([{
-      key: "vocabulary.automatic", section: "ecoute", group: T("Vocabulaire personnel", "Personal vocabulary"),
+      key: "vocabulary.automatic", section: "listening", group: T("Vocabulaire personnel", "Personal vocabulary"),
       label: T("Retenir mes corrections sans redemander", "Remember my corrections without asking again"),
       description: T("Une correction explicite comme « non, je dis Core Team » est retenue sans redemander si la configuration autorise cet outil. Désactive pour demander un accord à chaque correction. Les suppressions demandent toujours un accord.",
         "An explicit correction such as “no, I said Core Team” is remembered without asking again if configuration authorizes this tool. Turn off to ask for approval for each correction. Deletions always require approval."),
       type: "boolean", risk: "cli", get: () => automatic, set: (v) => { automatic = v === true; },
     }, {
-      key: "vocabulary.trace_text", section: "ecoute", group: T("Vocabulaire personnel", "Personal vocabulary"),
+      key: "vocabulary.trace_text", section: "listening", group: T("Vocabulaire personnel", "Personal vocabulary"),
       label: T("Inclure le texte des corrections dans le journal", "Include correction text in the log"),
       description: T("Pour le diagnostic : conserve le fragment entendu, le nom corrigé et une preuve limitée dans le journal local. Désactivé par défaut ; le contexte et l’historique complets ne sont pas ajoutés.",
         "For diagnostics: keeps the heard fragment, corrected name and a limited evidence excerpt in the local log. Off by default; full context and history are not added."),

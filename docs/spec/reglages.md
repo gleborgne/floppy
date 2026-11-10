@@ -58,19 +58,19 @@ sequenceDiagram
 | Rubrique | Clé | Plugin | Risque | Valeurs |
 |---|---|---|---|---|
 | Voix et ton | slot `voice.tts` | tts-audiocpp, tts-system, tts cloud | free | les voix offertes par les plugins `tts` (ex. Anna, Floppy) |
-| Voix et ton | `ton` | brain-aisdk | free | texte libre ; préréglages cordial, sobre, sarcastique, enjoué, professionnel |
+| Voix et ton | `tone` | conversation | free | texte libre ; préréglages cordial, sobre, sarcastique, enjoué, professionnel |
 | Écoute | `mot_activation` | conversation | free | texte : graphies séparées par des virgules (au moins un mot de 3 lettres) |
-| Écoute | `ecoute_libre` | conversation | free | 0 à 30 s |
-| Cerveau | `cerveau` | brain-aisdk + llm-llamacpp | free ; Claude (cloud) = ask | Gemma 4 12B · Qwen3.5 9B · Qwen3.6 35B-A3B · Claude (cloud) |
+| Écoute | `free_listen_s` | conversation | free | 0 à 30 s |
+| Cerveau | slot `brain.main` | brain-aisdk + llm-llamacpp | free ; Claude (cloud) = ask | Gemma 4 12B · Qwen3.5 9B · Qwen3.6 35B-A3B · Claude (cloud) |
 | Cerveau | `delegation` | brain-aisdk | ask | oui / non (Claude Sonnet, cloud) |
 | Connecteurs | (éléments, plus de réglage `connecteur_<serveur>` : repris une fois puis supprimés) | tools | allumer un connecteur **cloud** = accord (toujours) ; éteindre = libre | voir [elements.md](elements.md) : l'état réel s'affiche sur l'élément (« connecté, 5 outils », « erreur : … ») |
-| Orca | `orca_notifications` | orca | free | toutes · importantes · aucune |
+| Orca | `orca_notifications` | orca | free | `all` (toutes les fins) · `important` · `none` (« toutes », « importantes », « aucune » restent des mots reconnus à la voix) |
 | Orca | `orca_surveillance` | orca | free | oui / non |
 | Affichage | `avatar_visible` | body-electron | free | oui / non (l'avatar revient quand on lui parle) |
-| Affichage | `masquer_apres` | body-electron | free | 0 à 120 min d'inactivité (0 = jamais) |
-| Affichage | `bulle` | body-electron | free | oui / non (les cartes d'accord restent toujours visibles) |
-| Affichage | `toujours_devant` | body-electron | free | oui / non |
-| Système | `demarrage_windows` | body-electron (appliqué par l'app) | free | oui / non : entrée « Floppy » dans le démarrage de la session Windows (clé `Run` de l'utilisateur). Testé : oui → entrée créée, non → entrée retirée. Piège Electron : le vrai état est `executableWillLaunchAtLogin`, pas `openAtLogin`. |
+| Affichage | `hide_after` | body-electron | free | 0 à 120 min d'inactivité (0 = jamais) |
+| Affichage | `bubble` | body-electron | free | oui / non (les cartes d'accord restent toujours visibles) |
+| Affichage | `always_on_top` | body-electron | free | oui / non |
+| Système | `autostart` | body-electron (appliqué par l'app) | free | oui / non : entrée « Floppy » dans le démarrage de la session Windows (clé `Run` de l'utilisateur). Testé : oui → entrée créée, non → entrée retirée. Piège Electron : le vrai état est `executableWillLaunchAtLogin`, pas `openAtLogin`. |
 
 Un réglage peut avoir un risque **selon la valeur** (`riskFor`) : allumer un connecteur cloud demande l'accord, l'éteindre non.
 
@@ -136,7 +136,7 @@ flowchart LR
   [elements.md](elements.md)). Rien n'est en dur : un nouveau plugin apparaît tout seul.
 - Formulaires générés depuis les champs déclarés par les plugins : 1) choisir le type, 2) remplir, 3) « Essayer ».
   Bouton « Parcourir » pour les fichiers (dialogue de Windows).
-- Français et anglais (réglage `langue_interface`), menus de l'icône compris.
+- Français et anglais (réglage `ui_language`), menus de l'icône compris.
 - Mise à jour en direct : un réglage changé à la voix se voit tout de suite dans la fenêtre.
 - **Ouvrir sur un élément** : `ouvrir_reglages` accepte `element`, le nom entendu (« ouvre les réglages d'Orca »).
   Le corps cherche l'élément dans le catalogue (`plugins/body/electron/src/settings-target.ts`) : nom exact, nom contenu,

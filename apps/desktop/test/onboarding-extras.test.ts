@@ -30,9 +30,9 @@ describe("façons d'appeler Floppy (fenêtre Bienvenue)", () => {
 
   it("la fenêtre ne peut changer que ces deux réglages", () => {
     expect(wayChange("wake", "@none")).toEqual({ key: "slot.listen.wakeword", value: "@none" });
-    expect(wayChange("talk", "")).toEqual({ key: "raccourci_parler", value: "" });
+    expect(wayChange("talk", "")).toEqual({ key: "shortcut_talk", value: "" });
     expect(wayChange("brain.main", "x")).toBeUndefined();
-    expect(wayChange("talk", 12)).toEqual({ key: "raccourci_parler", value: "" });
+    expect(wayChange("talk", 12)).toEqual({ key: "shortcut_talk", value: "" });
   });
 });
 

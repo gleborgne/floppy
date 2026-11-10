@@ -9,13 +9,13 @@ export default definePlugin({
   manifest: {
     id: "live-openai", version: "0.1.0", licence: "MIT", provides: ["live"],
     description: "GPT Live : voix native avec délégation au cerveau de l'application.",
-    sections: [{ id: "cerveau", label: { fr: "Cerveau", en: "Brain" } }],
+    sections: [{ id: "brain", label: { fr: "Cerveau", en: "Brain" } }],
     permissions: { cloud: true, net: ["api.openai.com"] },
-    addable: { section: "cerveau", label: "GPT Live", cloud: true, single: true },
+    addable: { section: "brain", label: "GPT Live", cloud: true, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
-    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "GPT Live", section: "cerveau", capabilities: ["live"], offers: "live", fields: [
+    const account = providerConfig(ctx, { schema: Config, base: cfg, label: "GPT Live", section: "brain", capabilities: ["live"], offers: "live", fields: [
       { key: "model", label: T("Modèle Live", "Live model"), type: "text", required: true }, { key: "voice", label: T("Voix GPT Live", "GPT Live voice"), type: "text", required: true },
     ] });
     const sessions = new Set<LiveSession>();

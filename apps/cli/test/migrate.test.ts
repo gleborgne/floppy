@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readMigrationMarker, type MigrationStep } from "@floppy/core";
 import { boot, type Running } from "../src/boot.ts";
+import { HOME_MIGRATIONS } from "@floppy/setup";
 import { migrateCommand } from "../src/migrate.ts";
 
 const say = (fr: string, _en: string) => fr;
@@ -35,6 +36,7 @@ describe("floppy migrate", () => {
       "  onboarding.json : level",
       "[onboarding-selection] premier lancement : les niveaux (`level`, `brain`) laissent place au choix par rôle (`selection`) — 1 fichier(s) à modifier",
       "  onboarding.json : level",
+      ...["settings-keys", "settings-values", "config-yaml", "items-fields", "inbox-trust", "watch-preferences"].map((id) => `[${id}] rien à changer`),
       "Rien n'a été modifié. Pour appliquer (après une sauvegarde du dossier) : floppy migrate --apply",
     ]);
     expect(r.lines.join("\n")).not.toMatch(/hybride"|secret-body|Veille du jour/);
@@ -49,10 +51,27 @@ describe("floppy migrate", () => {
     expect(r.lines.at(-1)).toBe("Done: 1 file(s) changed. Originals are kept next to them (*.bak-<step>).");
     expect(readFileSync(join(home, "documents", "a.md"), "utf8")).toBe(OLD_DOC.replace("titre:", "title:"));
     expect(readFileSync(join(home, "documents", "a.md.bak-documents-title"), "utf8")).toBe(OLD_DOC);
-    expect(Object.keys(readMigrationMarker(home).applied)).toEqual(["documents-title", "onboarding-level", "onboarding-selection"]);
+    expect(Object.keys(readMigrationMarker(home).applied)).toEqual(HOME_MIGRATIONS.map((s) => s.id));
     const again = migrateCommand(home, {}, say);
     expect(again.lines.slice(1, 4)).toEqual(["[documents-title] déjà faite", "[onboarding-level] déjà faite", "[onboarding-selection] déjà faite"]);
     expect(again.lines.at(-1)).toBe("Rien à faire.");
+  });
+
+  it("réglages et configuration : à blanc, les noms des clés (jamais les valeurs, jamais les identifiants choisis) et les conflits ; --apply écrit, floppy.yml garde ses commentaires", () => {
+    const yml = "# mes notes\nplugins:\n  - id: sx\n    plugin: searxng\n    config:\n      langue: fr   # ma langue\n";
+    writeFileSync(join(home, "floppy.yml"), yml);
+    writeFileSync(join(home, "settings.json"), JSON.stringify({ ton: "ancien tres secret", tone: "nouveau", demarrage_windows: true, cerveau: "x" }));
+    const dry = migrateCommand(home, {}, say);
+    expect(dry.lines).toContain("  settings.json : ton, demarrage_windows, cerveau");
+    expect(dry.lines).toContain("  settings.json : ton (les deux noms sont présents : le nouveau est gardé)");
+    expect(dry.lines).toContain("  floppy.yml : plugins[plugin=searxng].config.langue");
+    expect(dry.lines.join("\n")).not.toMatch(/secret|nouveau"|ma langue/);
+    expect(readFileSync(join(home, "floppy.yml"), "utf8")).toBe(yml);
+    const done = migrateCommand(home, { apply: true }, sayEn);
+    expect(done.code).toBe(0);
+    expect(readFileSync(join(home, "floppy.yml"), "utf8")).toBe(yml.replace("langue: fr", "language: fr"));
+    expect(JSON.parse(readFileSync(join(home, "settings.json"), "utf8"))).toEqual({ tone: "nouveau", autostart: true });
+    expect(done.lines).toContain("  settings.json : ton (both names are present: the new one is kept)");
   });
 
   it("un fichier illisible est cité, laissé tel quel", () => {

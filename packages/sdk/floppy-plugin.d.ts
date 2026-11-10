@@ -98,7 +98,7 @@ export interface SettingDef {
   type: "enum" | "number" | "boolean" | "text";
   /**
    * Rubrique de la fenêtre des réglages (obligatoire) : "general" pour un réglage ordinaire, ou l'id d'une rubrique
-   * déclarée par un plugin (cerveau, voix, ecoute, connecteurs, corps…) ou par ton manifeste (`sections`).
+   * déclarée par un plugin (brain, voice, listening, connectors, body…) ou par ton manifeste (`sections`).
    */
   section: string;
   group?: Text;

@@ -74,7 +74,7 @@ describe("fenêtre des réglages (Preact)", () => {
   it("la bibliothèque de modèles montre la note de langue, dans la langue de la fenêtre, et suit la langue de l'assistant", async () => {
     const lang = (value: string) => {
       const d = structuredClone(DEMO.settings);
-      d.list = [...d.list.filter((x: Any) => x.key !== "langue_assistant"), { key: "langue_assistant", section: "general", label: "Langue de l'assistant", type: "enum", value, risk: "free", options: [] }];
+      d.list = [...d.list.filter((x: Any) => x.key !== "assistant_language"), { key: "assistant_language", section: "general", label: "Langue de l'assistant", type: "enum", value, risk: "free", options: [] }];
       return d;
     };
     const items = structuredClone(DEMO.items);

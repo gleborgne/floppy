@@ -31,7 +31,7 @@ describe("plugin navigateur", () => {
 
   it("est une application de la rubrique Connecteurs, qu'on peut retirer", async () => {
     const { k } = await start();
-    const P = "apps-connecteurs";
+    const P = "apps-connectors";
     expect(k.items.provider(P)!.kinds!.map((x) => x.id)).toEqual(["browser"]);
     await k.items.run({ op: "remove", provider: P, id: "browser" }, "ui");
     expect(k.tools.list().some((t) => t.name === "ouvrir_url")).toBe(false);
@@ -43,7 +43,7 @@ describe("plugin navigateur", () => {
   });
 
   it("logo : celui du navigateur par défaut, ou du programme choisi", async () => {
-    const logo = async (config: Record<string, unknown>) => (await (await start(config)).k.items.provider("apps-connecteurs")!.list())[0]?.logo;
+    const logo = async (config: Record<string, unknown>) => (await (await start(config)).k.items.provider("apps-connectors")!.list())[0]?.logo;
     expect(await logo({})).toEqual({ handler: "https" });
     expect(await logo({ program: "C:/Programs/contoso/browser.exe" })).toEqual({ program: "C:/Programs/contoso/browser.exe" });
   });

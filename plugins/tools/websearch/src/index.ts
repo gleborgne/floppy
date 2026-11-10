@@ -194,14 +194,14 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
       version: "0.1.0",
       licence: "MIT",
       sections: [
-        { id: "connecteurs", label: { fr: "Connecteurs", en: "Connectors" } },
+        { id: "connectors", label: { fr: "Connecteurs", en: "Connectors" } },
       ],
       description: "Recherche sur internet avec l'abonnement Claude ou Codex.",
       provides: ["search"],
       permissions: { exec: ["claude", "codex"], cloud: true },
       optional: ["body"],
       addable: {
-        section: "connecteurs",
+        section: "connectors",
         single: true,
         cloud: true,
         logo: CLAUDE,

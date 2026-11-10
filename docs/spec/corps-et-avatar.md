@@ -94,7 +94,7 @@ Le visage attentif reste lisible lorsque les mouvements sont réduits.
 
 ### Profil d'expressivité
 
-Le réglage `expressivite` (Voix) propose **discret**, **naturel** et **joueur**, à chaud, avec **joueur par défaut**.
+Le réglage `expressiveness` (Voix) propose **discret**, **naturel** et **joueur**, à chaud, avec **joueur par défaut**.
 Il module l'intensité des émotions envoyées aux corps (facteurs 0,45 / 0,8 / 1) et le jeu des voix compatibles.
 Il ne modifie pas la fréquence des gestes autonomes. Les consignes vocales des modèles Live reçoivent aussi
 ce profil, à l'ouverture et à chaud quand le ton ou l'expressivité change.

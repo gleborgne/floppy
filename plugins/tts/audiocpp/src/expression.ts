@@ -2,9 +2,9 @@ import type { SpeechDelivery } from "@floppy/contracts";
 import { speechStyle } from "@floppy/toolkit";
 
 /** Profils explicites par variante : la famille seule ne garantit pas le même langage de contrôle. */
-export function expressionProfile(family: string, model: string, voice: "clone" | "integree"): "instructions" | "fish-s2-tags" | "voxcpm2-style" | "none" {
+export function expressionProfile(family: string, model: string, voice: "clone" | "builtin"): "instructions" | "fish-s2-tags" | "voxcpm2-style" | "none" {
   const filename = model.replace(/\\/g, "/").split("/").at(-1) ?? "";
-  if (family === "qwen3_tts" && voice === "integree" && /1[._-]7b.*customvoice/i.test(filename)) return "instructions";
+  if (family === "qwen3_tts" && voice === "builtin" && /1[._-]7b.*customvoice/i.test(filename)) return "instructions";
   if (family === "fish_audio" && /fish[-_]audio[-_]s2[-_]pro[-_]/i.test(filename)) return "fish-s2-tags";
   if (family === "voxcpm2" && /^voxcpm2[-_.]/i.test(filename)) return "voxcpm2-style";
   return "none";

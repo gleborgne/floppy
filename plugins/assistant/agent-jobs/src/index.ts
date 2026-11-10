@@ -18,7 +18,7 @@ export default definePlugin({
   manifest: {
     id: "agent-jobs", version: "0.1.0", licence: "MIT", description: "Délégation vers un agent nommé et travaux suivis.",
     optional: ["agent", "documents"], permissions: { "fs.write": ["workspaces/agent-jobs"] },
-    addable: { section: "cerveau", label: T("Travaux des agents", "Agent tasks"), single: true,
+    addable: { section: "brain", label: T("Travaux des agents", "Agent tasks"), single: true,
       description: T("Confie une mission à un agent et retrouve son résultat. Les outils restent soumis aux accords de Floppy.",
         "Give an agent a task and retrieve its result. Tools remain subject to Floppy approvals.") },
   },

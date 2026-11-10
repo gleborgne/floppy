@@ -23,7 +23,7 @@ async function start(approve = true, dynamic = false) {
   kernels.push(k);
   k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, approve, "test"); });
   await k.applyConfig({ plugins: [...(dynamic ? [{ id: "pi", plugin: "test-agent" }] : []), { id: "sessions", plugin: "agent-sessions", config: {
-    dossier: join(dir, "travaux"), claudeExe: exe("claude"), codexExe: exe("codex"), agyExe: exe("agy"),
+    folder: join(dir, "travaux"), claudeExe: exe("claude"), codexExe: exe("codex"), agyExe: exe("agy"),
   } }] });
   return { k, launched, dir };
 }

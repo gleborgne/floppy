@@ -15,16 +15,16 @@ export default definePlugin({
   manifest: {
     id: "wakeword-porcupine", version: "0.1.0", licence: "MIT", provides: ["wakeword"],
     description: "Détection locale Porcupine avec un modèle de mot personnalisé et une AccessKey Picovoice.",
-    sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
+    sections: [{ id: "listening", label: { fr: "Écoute", en: "Listening" } }],
     permissions: { cloud: true },
-    addable: { section: "ecoute", label: "Porcupine", cloud: true, description: T("Détection CPU locale ; activation Picovoice par clé, modèle .ppn et paramètres .pv requis.", "Local CPU detection; Picovoice activation by key, .ppn model and .pv parameters required.") },
+    addable: { section: "listening", label: "Porcupine", cloud: true, description: T("Détection CPU locale ; activation Picovoice par clé, modèle .ppn et paramètres .pv requis.", "Local CPU detection; Picovoice activation by key, .ppn model and .pv parameters required.") },
   },
   config: Config,
   apply(ctx, cfg) {
     const changed = new Set<() => void>(), sessions = new Set<WakewordStream>();
     const lifetime = new AbortController();
     const account = providerConfig(ctx, {
-      schema: Config, base: cfg, label: `Porcupine — ${ctx.id}`, section: "ecoute", offers: "wakeword", secretLabel: T("AccessKey Picovoice", "Picovoice AccessKey"),
+      schema: Config, base: cfg, label: `Porcupine — ${ctx.id}`, section: "listening", offers: "wakeword", secretLabel: T("AccessKey Picovoice", "Picovoice AccessKey"),
       onChange: () => { for (const fn of [...changed]) fn(); },
       validate: c => !file(c.keywordPath) ? T("Porcupine : modèle de mot .ppn absent.", "Porcupine: .ppn keyword model missing.") : !file(c.modelPath) ? T("Porcupine : paramètres de langue .pv absents.", "Porcupine: .pv language parameters missing.") : undefined,
       fields: [

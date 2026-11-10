@@ -65,11 +65,11 @@ const values = () => cerveau().options!.map((o) => o.value);
 
 describe("slot cerveau principal (brain.main)", () => {
   it("textes fr/en et section cerveau", () => {
-    expect(cerveau().section).toBe("cerveau");
+    expect(cerveau().section).toBe("brain");
     expect(tr(cerveau().label, "en")).toBe("Main brain");
     expect(cerveau().role).toBe("brain.main");
     // Le ton appartient désormais à conversation, également utilisée sans ce cerveau en Live.
-    expect(k.settings.list().find((s) => s.key === "ton")).toBeUndefined();
+    expect(k.settings.list().find((s) => s.key === "tone")).toBeUndefined();
     // Les anciens réglages ont disparu : le slot les remplace.
     expect(k.settings.list().find((s) => s.key === "cerveau" || s.key === "delegation")).toBeUndefined();
   });

@@ -362,7 +362,7 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
 
   const def: ProviderDef = {
     id: "connectors",
-    section: "connecteurs",
+    section: "connectors",
     label: t("Connecteurs", "Connectors"),
     description: t("Serveurs MCP et commandes que Floppy peut utiliser.", "MCP servers and commands Floppy can use."),
     order: 10,

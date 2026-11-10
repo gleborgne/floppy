@@ -30,7 +30,7 @@ describe("body-ws : appareils", () => {
     await k.applyConfig({ assistant: { name: "Floppy", wake_words: ["floppy"] }, approvals: { timeout_s: 5 },
       plugins: [{ id: "body", plugin: "body-hub" }, { id: "ws", plugin: "body-ws", config: { port: 0 } }] });
     const p = (await k.items.snapshot()).find((x) => x.id === "ws-devices")!;
-    expect(p.section).toBe("corps");
+    expect(p.section).toBe("body");
     expect(p.kinds.map((x) => x.id)).toEqual(["device"]);
     expect((await k.items.run({ op: "add", provider: "ws-devices", kind: "device", values: {} }, "ui")).ok).toBe(false);
     const r = await k.items.run({ op: "add", provider: "ws-devices", kind: "device", values: { name: "Mon téléphone" } }, "ui");

@@ -17,7 +17,7 @@ const other = gguf("other.gguf");
 // Petit plugin qui demande le modèle de son slot, comme le fait le cerveau.
 let got: LlmService | undefined;
 const probe = definePlugin({
-  manifest: { id: "probe", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "cerveau", label: "Cerveau" }] },
+  manifest: { id: "probe", version: "0", licence: "MIT", slots: [{ id: "brain.main", service: "llm", section: "brain", label: "Cerveau" }] },
   async apply(ctx) { got = await ctx.slot<LlmService>("brain.main"); },
 });
 
@@ -55,7 +55,7 @@ const offered = () => k.settings.list().find((s) => s.key === "slot.brain.main")
 describe("llm-local", () => {
   it("déclare le fournisseur (rubrique cerveau, kind gguf) et garde les modèles de la config", async () => {
     const p = await provider();
-    expect(p).toMatchObject({ section: "cerveau", label: { fr: "LLM local", en: "Local LLM" } });
+    expect(p).toMatchObject({ section: "brain", label: { fr: "LLM local", en: "Local LLM" } });
     expect(p.kinds.map((x) => x.id)).toEqual(["gguf"]);
     expect(p.kinds[0]!.fields.map((f) => f.key)).toEqual(["label", "aliases", "model", "spec", "draft", "placement", "nCpuMoe", "gpuMargin", "ctx", "ubatch", "kv", "mmproj", "reasoning", "thinkBudget", "exe", "args"]);
     const g = p.items.find((i) => i.id === "gemma")!;
@@ -135,9 +135,9 @@ describe("changement de modèle", () => {
 
   it("programme et dossiers de modèles : réglages jamais modifiables à la voix", async () => {
     const byKey = (key: string) => k.settings.list().find((s) => s.key === key);
-    expect(byKey("llm_local_programme")).toMatchObject({ section: "cerveau", type: "text", risk: "cli", value: "" });
-    expect(byKey("llm_local_dossiers")).toMatchObject({ section: "cerveau", type: "text", risk: "cli" });
-    const r = await k.settings.change("llm_local_programme", "C:/x/evil.exe", "voice");
+    expect(byKey("llm_local_program")).toMatchObject({ section: "brain", type: "text", risk: "cli", value: "" });
+    expect(byKey("llm_local_folders")).toMatchObject({ section: "brain", type: "text", risk: "cli" });
+    const r = await k.settings.change("llm_local_program", "C:/x/evil.exe", "voice");
     expect(r.ok).toBe(false);
   });
 

@@ -58,7 +58,7 @@ describe("corps branchés (fournisseur bodies)", () => {
     hub.attach(b.transport, { id: "tel" });
     b.say(hello("tel", "Téléphone"));
     const p = await list();
-    expect(p.section).toBe("corps");
+    expect(p.section).toBe("body");
     expect(p.label).toEqual({ fr: "Corps", en: "Bodies" });
     expect(p.items).toHaveLength(1);
     expect(p.items[0]).toMatchObject({ id: "tel", enabled: true, status: "ok", tags: [{ fr: "voix", en: "voice" }, { fr: "accord", en: "approval" }] });

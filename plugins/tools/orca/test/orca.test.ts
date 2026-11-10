@@ -131,7 +131,7 @@ describe("surveillance", () => {
   });
 
   it("importance selon le réglage", async () => {
-    for (const [notif, state, imp] of [["importantes", "waiting-input", "important"], ["toutes", "done", "important"], ["importantes", "done", "normal"]] as const) {
+    for (const [notif, state, imp] of [["important", "waiting-input", "important"], ["all", "done", "important"], ["important", "done", "normal"]] as const) {
       const data = { calls: 0, v: mk("working") };
       const { got } = await start(data, { notifications: notif });
       await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
@@ -142,15 +142,15 @@ describe("surveillance", () => {
   });
 
   it("rien : pas d'initiative mais suivi actif ; l'ancien « surveillance : non » vaut « rien »", async () => {
-    for (const cfg of [{ notifications: "aucune" }, { surveillance: false }]) {
+    for (const cfg of [{ notifications: "none" }, { surveillance: false }]) {
       const data = { calls: 0, v: mk("working") };
       const { k, got } = await start(data, cfg);
       data.v = mk("done");
       await new Promise((r) => setTimeout(r, 120));
       expect(data.calls).toBeGreaterThan(0);
       expect(got).toEqual([]);
-      expect(k.settings.list().find((x) => x.key === "orca_notifications")!.value).toBe("aucune");
-      expect(JSON.stringify((await k.items.provider("apps-connecteurs")!.list()).find((i) => i.kind === "orca")!.statusText)).toContain("annonces coupées");
+      expect(k.settings.list().find((x) => x.key === "orca_notifications")!.value).toBe("none");
+      expect(JSON.stringify((await k.items.provider("apps-connectors")!.list()).find((i) => i.kind === "orca")!.statusText)).toContain("annonces coupées");
     }
   });
 
@@ -165,6 +165,19 @@ describe("surveillance", () => {
     expect(data.calls).toBeGreaterThan(n);
   });
 
+  it("réglage des annonces : valeurs en anglais, mais les mots français et anglais dits à la voix restent compris", async () => {
+    const data = { calls: 0, v: mk("working") };
+    const { k } = await start(data);
+    const value = () => k.settings.list().find((x) => x.key === "orca_notifications")!.value;
+    expect(value()).toBe("important");
+    for (const [said, expected] of [["toutes", "all"], ["importantes", "important"], ["aucune", "none"], ["chaque fin", "all"], ["quand il attend", "important"], ["coupe les annonces", "none"], ["every", "all"], ["when waiting", "important"], ["off", "none"]] as const) {
+      expect((await k.settings.change("orca_notifications", said, "voice")).ok, said).toBe(true);
+      expect(value(), said).toBe(expected);
+    }
+    // Les options ne portent que les nouvelles valeurs ; les anciens mots ne sont plus que des alias parlés.
+    expect(k.settings.list().find((x) => x.key === "orca_notifications")!.options!.map((o) => o.value)).toEqual(["all", "important", "none"]);
+  });
+
   it("Orca hors ligne : on continue sans planter", async () => {
     const data = { calls: 0, v: [] as OrcaWorktree[], fail: true };
     const { k } = await start(data);
@@ -176,7 +189,7 @@ describe("surveillance", () => {
 
 describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", () => {
   const mk = (state: string) => [wt("w1", "dev-mcp", [ag("p1", state, { taskTitle: "Migration" })])];
-  const P = "apps-connecteurs";
+  const P = "apps-connectors";
   const orca = async (k: Kernel) => (await k.items.provider(P)!.list()).find((i) => i.kind === "orca")!;
 
   it("un élément avec ses outils ; éteint = entrée arrêtée (outils retirés, surveillance coupée) ; retiré puis rajouté", async () => {
@@ -217,7 +230,7 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     expect(k.tools.list().some((t) => t.name === "orca_agents")).toBe(true);
     for (const key of ["orca_notifications"]) {
       const s = k.settings.list().find((x) => x.key === key)!;
-      expect(s.section).toBe("connecteurs");
+      expect(s.section).toBe("connectors");
       expect(typeof s.label).toBe("object");
     }
   });

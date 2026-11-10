@@ -18,15 +18,15 @@ export default definePlugin({
   manifest: {
     id: "wakeword-sherpa", version: "0.1.0", licence: "MIT", provides: ["wakeword"],
     description: "Détection de mots d'activation locale sur CPU avec Sherpa ONNX.",
-    sections: [{ id: "ecoute", label: { fr: "Écoute", en: "Listening" } }],
-    addable: { section: "ecoute", label: "Sherpa ONNX", description: T("Moteur CPU sans clé ; modèles ONNX et fichier de mots requis.", "CPU engine, no key; ONNX models and a keywords file required.") },
+    sections: [{ id: "listening", label: { fr: "Écoute", en: "Listening" } }],
+    addable: { section: "listening", label: "Sherpa ONNX", description: T("Moteur CPU sans clé ; modèles ONNX et fichier de mots requis.", "CPU engine, no key; ONNX models and a keywords file required.") },
   },
   config: Config,
   apply(ctx, cfg) {
     const changed = new Set<() => void>(), sessions = new Set<WakewordStream>();
     const lifetime = new AbortController();
     const account = providerConfig(ctx, {
-      schema: Config, base: cfg, label: `Sherpa ONNX — ${ctx.id}`, section: "ecoute", offers: "wakeword", secret: false,
+      schema: Config, base: cfg, label: `Sherpa ONNX — ${ctx.id}`, section: "listening", offers: "wakeword", secret: false,
       onChange: () => { for (const fn of [...changed]) fn(); },
       validate: c => {
         for (const key of ["encoder", "decoder", "joiner", "tokens", "keywordsFile"] as const) if (!file(c[key])) return T(`Sherpa : fichier ${key} absent. Configure ce plugin dans Écoute.`, `Sherpa: ${key} file missing. Configure this plugin in Listening.`);

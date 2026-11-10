@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { slotSources } from "../src/renderer/slot-sources.ts";
 
 // Rubrique Voix : audio.cpp déclare ses éléments, la voix du système n'offre que par ctx.offer.
-const audiocpp = { id: "voix-locale", source: "tts-audiocpp", offers: "tts", items: [{ id: "anna" }] };
+const audiocpp = { id: "local-voice", source: "tts-audiocpp", offers: "tts", items: [{ id: "anna" }] };
 const apps = {
-  id: "apps-voix", source: "core",
+  id: "apps-voice", source: "core",
   kinds: [{ id: "tts-audiocpp", provides: ["tts"] }, { id: "tts-system", provides: ["tts"] }, { id: "notes", provides: ["notes"] }],
   items: [{ id: "tts-audiocpp", kind: "tts-audiocpp" }, { id: "tts-system", kind: "tts-system" }, { id: "notes", kind: "notes" }],
 };

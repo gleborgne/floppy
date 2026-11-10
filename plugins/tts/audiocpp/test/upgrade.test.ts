@@ -30,15 +30,15 @@ describe("audio.cpp : de la version processeur à la version carte graphique", (
         extract: async (_a, d) => { mkdirSync(d, { recursive: true }); writeFileSync(join(d, exeName), ""); },
       },
     });
-    const snap = async () => (await k.items.snapshot()).find((p) => p.id === "voix-locale-program")!.items;
+    const snap = async () => (await k.items.snapshot()).find((p) => p.id === "local-voice-program")!.items;
     try {
       // Départ minimal : seulement Pocket TTS (processeur), donc la petite version d'audio.cpp.
       await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp" }] });
-      await k.items.run({ op: "action", provider: "voix-locale-program", id: "win-cpu", action: "download" }, "ui");
+      await k.items.run({ op: "action", provider: "local-voice-program", id: "win-cpu", action: "download" }, "ui");
       await vi.waitFor(async () => expect((await snap()).find((i) => i.id === "win-cpu")?.status).toBe("ok"));
       expect(fetched).toHaveLength(1);
       // Plus tard : une voix plus costaude (Qwen3-TTS, puce graphique) rejoint la liste.
-      await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { models: { q: { label: "Qwen", model, famille: "qwen3_tts" } } } }] });
+      await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { models: { q: { label: "Qwen", model, family: "qwen3_tts" } } } }] });
       await vi.waitFor(async () => expect((await snap()).find((i) => i.id === "win-cuda13")?.status).toBe("ok"));
       expect(fetched.at(-1)).toMatch(/a\.zip$/);
     } finally { await k.stopAll(); }
@@ -60,10 +60,10 @@ describe("audio.cpp : de la version processeur à la version carte graphique", (
     });
     try {
       await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp" }] });
-      await k.items.run({ op: "action", provider: "voix-locale-program", id: "win-cpu", action: "download" }, "ui");
+      await k.items.run({ op: "action", provider: "local-voice-program", id: "win-cpu", action: "download" }, "ui");
       await vi.waitFor(() => expect(fetched).toHaveLength(1));
       await k.idle();
-      await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { backend: "cpu", models: { q: { label: "Qwen", model, famille: "qwen3_tts" } } } }] });
+      await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { backend: "cpu", models: { q: { label: "Qwen", model, family: "qwen3_tts" } } } }] });
       await new Promise((r) => setTimeout(r, 100));
       expect(fetched).toHaveLength(1);
     } finally { await k.stopAll(); }

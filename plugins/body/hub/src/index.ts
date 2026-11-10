@@ -63,7 +63,7 @@ export default definePlugin<Config>({
     version: "0.1.0",
     licence: "MIT",
     sections: [
-      { id: "corps", order: 50, merge: true, label: { fr: "Corps et affichage", en: "Bodies and display" }, description: { fr: "Un corps, c'est là où Floppy t'entend et te répond. Plusieurs corps peuvent marcher en même temps.", en: "A body is where Floppy hears and answers you. Several bodies can run at the same time." } },
+      { id: "body", order: 50, merge: true, label: { fr: "Corps et affichage", en: "Bodies and display" }, description: { fr: "Un corps, c'est là où Floppy t'entend et te répond. Plusieurs corps peuvent marcher en même temps.", en: "A body is where Floppy hears and answers you. Several bodies can run at the same time." } },
     ],
     description: "Service body : plusieurs corps à la fois, routage des accords et des outils corps.",
     provides: ["body"],
@@ -237,7 +237,7 @@ export default definePlugin<Config>({
     };
     const OFF = "nom:";
     ctx.items.declare({
-      id: "bodies", section: "corps", order: 10,
+      id: "bodies", section: "body", order: 10,
       label: { fr: "Corps", en: "Bodies" },
       description: { fr: "Là où Floppy t'entend et te répond. Désactivé : Floppy l'ignore, sans le supprimer.", en: "Where Floppy hears and answers you. Disabled: Floppy ignores it, nothing is deleted." },
       list: () => {

@@ -13,26 +13,26 @@ import { emotionNote, speechInstructions } from "@floppy/toolkit";
 import { dynamicCatalogue } from "./catalogue.ts";
 import { expressionProfile, fishDeliveryText, voxDeliveryText } from "./expression.ts";
 
-/** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_dossiers » (ou de la config). */
+/** Aucun dossier imposé : ceux de l'utilisateur viennent du réglage « tts_local_folders » (ou de la config). */
 export const DEFAULT_SCAN_DIRS: string[] = [];
 
 const ModelEntry = z.object({
   label: z.string(),
   model: z.string(),
-  famille: z.string().optional(),
-  voix: z.enum(["clone", "integree"]).optional(),
+  family: z.string().optional(),
+  voice: z.enum(["clone", "builtin"]).optional(),
   refWav: z.string().optional(),
   refText: z.string().optional(),
   speaker: z.string().optional(),
   instruct: z.string().optional(),
-  langue: z.string().optional(),
+  language: z.string().optional(),
   rate: z.number().int().optional(),
   mode: z.enum(["streaming", "offline"]).optional(),
   seed: z.number().int().nonnegative().optional(),
 });
 
 const Config = z.object({
-  /** Programme audiocpp_server. Absent : réglage « tts_local_programme », sinon trouvé dans le PATH. */
+  /** Programme audiocpp_server. Absent : réglage « tts_local_program », sinon trouvé dans le PATH. */
   exe: z.string().optional(),
   port: z.number().int().default(8089),
   /** « auto » : cuda avec une carte NVIDIA, sinon le processeur (audio.cpp n'a pas encore Metal ni Vulkan). */
@@ -42,7 +42,7 @@ const Config = z.object({
   startTimeout_s: z.number().default(180),
   /** Dossiers où chercher des .gguf (action « scan »). */
   scanDirs: z.array(z.string()).default(DEFAULT_SCAN_DIRS),
-  /** Modèles de base (floppy.yml) : { qwen3: { label, model, voix, refWav, refText… } }. */
+  /** Modèles de base (floppy.yml) : { qwen3: { label, model, voice, refWav, refText… } }. */
   models: z.record(z.string(), ModelEntry).default({}),
 });
 export type Config = z.infer<typeof Config>;
@@ -51,14 +51,14 @@ export type Config = z.infer<typeof Config>;
 export interface ModelValues {
   label: string;
   model: string;
-  famille: string;
-  familleAutre: string;
-  voix: "clone" | "integree";
+  family: string;
+  familyOther: string;
+  voice: "clone" | "builtin";
   refWav: string;
   refText: string;
   speaker: string;
   instruct: string;
-  langue: string;
+  language: string;
   /** 0 = automatique selon la famille. */
   rate: number;
   mode: "streaming" | "offline";
@@ -76,17 +76,17 @@ const str = (x: unknown): string => (typeof x === "string" ? x.trim() : "");
 
 /** Complète les valeurs d'un formulaire (champs absents ou mal typés). */
 export function clean(v: Record<string, unknown>): ModelValues {
-  const fam = str(v.famille) || "qwen3_tts";
-  const known = FAMILLES.includes(fam) || fam === "autre";
+  const fam = str(v.family) || "qwen3_tts";
+  const known = FAMILLES.includes(fam) || fam === "other";
   const rate = Number(v.rate);
   return {
     label: str(v.label), model: str(v.model),
     // Une famille inconnue venant d'floppy.yml devient « autre ».
-    famille: known ? fam : "autre", familleAutre: known ? str(v.familleAutre) : fam,
-    voix: v.voix === "integree" ? "integree" : "clone",
+    family: known ? fam : "other", familyOther: known ? str(v.familyOther) : fam,
+    voice: v.voice === "builtin" ? "builtin" : "clone",
     refWav: str(v.refWav), refText: typeof v.refText === "string" ? v.refText.trim() : "", speaker: str(v.speaker),
     // Langue absente : celle de l'assistant au moment de parler (voir speechRequest).
-    instruct: str(v.instruct), langue: typeof v.langue === "string" ? v.langue.trim() : "",
+    instruct: str(v.instruct), language: typeof v.language === "string" ? v.language.trim() : "",
     rate: Number.isFinite(rate) && rate >= 8000 ? Math.round(rate) : 0,
     mode: fam === "chatterbox" || v.mode === "offline" ? "offline" : "streaming",
     ...(typeof v.seed === "number" && Number.isSafeInteger(v.seed) && v.seed >= 0 ? { seed: v.seed } : {}),
@@ -94,7 +94,7 @@ export function clean(v: Record<string, unknown>): ModelValues {
 }
 
 /** Nom de la famille pour le serveur. */
-export const familyOf = (m: ModelValues): string => (m.famille === "autre" ? m.familleAutre : m.famille) || "qwen3_tts";
+export const familyOf = (m: ModelValues): string => (m.family === "other" ? m.familyOther : m.family) || "qwen3_tts";
 
 /** Fréquence de la voix : celle du réglage, sinon celle de la famille. */
 export const rateOf = (m: ModelValues): number => m.rate || RATES[familyOf(m)] || 24000;
@@ -118,22 +118,22 @@ export function serverConfig(item: ModelValues, cfg: ServerCfg, dirs: { voiceDir
 
 /** Corps de la requête de parole. `lang` : langue de l'assistant, utilisée quand le modèle n'en impose pas. */
 export function speechRequest(item: ModelValues, text: string, lang?: string, delivery?: SpeechDelivery): Record<string, unknown> {
-  const language = item.langue || lang;
+  const language = item.language || lang;
   const options: Record<string, unknown> = {};
   const fam = familyOf(item);
-  const expression = expressionProfile(fam, item.model, item.voix);
+  const expression = expressionProfile(fam, item.model, item.voice);
   const instructions = delivery && expression === "instructions" ? [delivery.intent === "reassure" ? "" : item.instruct, speechInstructions(delivery)].filter(Boolean).join("\n") : item.instruct;
   const input = delivery && expression === "fish-s2-tags" ? fishDeliveryText(text, delivery)
     : delivery && expression === "voxcpm2-style" ? voxDeliveryText(text, delivery) : text;
   if (expression === "fish-s2-tags") options.text_chunk_mode = "tag_aware";
   if (fam === "voxcpm2") options.retry_badcase = false;
-  if (item.voix === "integree") {
+  if (item.voice === "builtin") {
     if (item.speaker) options.voice_id = item.speaker;
   } else if (!item.refText && (fam === "qwen3_tts" || fam === "voxcpm2")) options.x_vector_only_mode = true; // option propre à ces familles
   return {
     model: MODEL_ID, input,
     ...(item.seed === undefined ? {} : { seed: item.seed }),
-    ...(item.voix === "clone" ? { voice: VOICE_NAME } : {}),
+    ...(item.voice === "clone" ? { voice: VOICE_NAME } : {}),
     ...(item.mode === "streaming" ? { stream_format: "sse" } : { response_format: "wav" }),
     ...(language ? { language } : {}),
     ...(instructions ? { instructions } : {}),
@@ -146,7 +146,7 @@ export function prepareDir(dir: string, item: ModelValues, cfg: ServerCfg): stri
   const voiceDir = join(dir, "voices");
   rmSync(voiceDir, { recursive: true, force: true });
   mkdirSync(voiceDir, { recursive: true });
-  if (item.voix === "clone" && item.refWav) {
+  if (item.voice === "clone" && item.refWav) {
     copyFileSync(item.refWav, join(voiceDir, `${VOICE_NAME}.wav`));
     if (item.refText) writeFileSync(join(voiceDir, "prompt_text"), `${VOICE_NAME}|${item.refText.replace(/\s*[\r\n]+\s*/g, " ")}\n`, "utf8");
   }
@@ -204,7 +204,7 @@ const T = (fr: string, en: string) => ({ fr, en });
 const FIELDS: FieldDef[] = [
   { key: "label", label: T("Nom affiché", "Display name"), type: "text", required: true, placeholder: T("Qwen3 TTS (ma voix)", "Qwen3 TTS (my voice)") },
   { key: "model", label: T("Fichier du modèle (GGUF)", "Model file (GGUF)"), type: "path", required: true, filters: [{ name: "GGUF", extensions: ["gguf"] }] },
-  { key: "famille", label: T("Famille du modèle", "Model family"), type: "select", default: "qwen3_tts", options: [
+  { key: "family", label: T("Famille du modèle", "Model family"), type: "select", default: "qwen3_tts", options: [
     { value: "qwen3_tts", label: T("Qwen3 TTS", "Qwen3 TTS") },
     { value: "voxcpm2", label: T("VoxCPM2", "VoxCPM2") },
     { value: "chatterbox", label: "Chatterbox" },
@@ -213,23 +213,23 @@ const FIELDS: FieldDef[] = [
     { value: "omnivoice", label: "OmniVoice" },
     { value: "pocket_tts", label: T("Pocket TTS (processeur, voix clonée)", "Pocket TTS (CPU, cloned voice)") },
     { value: "supertonic", label: T("Supertonic (processeur, voix F1…F5, M1…M5)", "Supertonic (CPU, voices F1…F5, M1…M5)") },
-    { value: "autre", label: T("Autre (je donne le nom)", "Other (I give the name)") },
+    { value: "other", label: T("Autre (je donne le nom)", "Other (I give the name)") },
   ] },
-  { key: "familleAutre", label: T("Nom de la famille", "Family name"), type: "text", placeholder: T("kokoro_tts", "kokoro_tts"),
-    hint: T("Le nom d'audio.cpp (voir le dossier model_specs).", "The audio.cpp name (see the model_specs folder)."), showIf: { key: "famille", values: ["autre"] } },
-  { key: "voix", label: T("Voix", "Voice"), type: "select", default: "clone", options: [
+  { key: "familyOther", label: T("Nom de la famille", "Family name"), type: "text", placeholder: T("kokoro_tts", "kokoro_tts"),
+    hint: T("Le nom d'audio.cpp (voir le dossier model_specs).", "The audio.cpp name (see the model_specs folder)."), showIf: { key: "family", values: ["other"] } },
+  { key: "voice", label: T("Voix", "Voice"), type: "select", default: "clone", options: [
     { value: "clone", label: T("Clonée depuis un enregistrement (WAV)", "Cloned from a recording (WAV)") },
-    { value: "integree", label: T("Voix du modèle (ex. Vivian)", "Built-in voice (e.g. Vivian)") },
+    { value: "builtin", label: T("Voix du modèle (ex. Vivian)", "Built-in voice (e.g. Vivian)") },
   ] },
   { key: "refWav", label: T("Enregistrement de la voix (WAV)", "Voice recording (WAV)"), type: "path", filters: [{ name: "WAV", extensions: ["wav"] }],
-    hint: T("Quelques secondes de voix claire, sans bruit.", "A few seconds of clear voice, no noise."), showIf: { key: "voix", values: ["clone"] } },
+    hint: T("Quelques secondes de voix claire, sans bruit.", "A few seconds of clear voice, no noise."), showIf: { key: "voice", values: ["clone"] } },
   { key: "refText", label: T("Ce que dit l'enregistrement", "What the recording says"), type: "textarea",
     hint: T("Obligatoire pour Fish Audio. Qwen3 Base et VoxCPM2 peuvent copier seulement le timbre si ce champ est vide.", "Required for Fish Audio. Qwen3 Base and VoxCPM2 can copy only the timbre when this field is empty."),
-    showIf: { key: "voix", values: ["clone"] } },
-  { key: "speaker", label: T("Nom de la voix intégrée", "Built-in voice name"), type: "text", placeholder: T("Vivian", "Vivian"), showIf: { key: "voix", values: ["integree"] } },
+    showIf: { key: "voice", values: ["clone"] } },
+  { key: "speaker", label: T("Nom de la voix intégrée", "Built-in voice name"), type: "text", placeholder: T("Vivian", "Vivian"), showIf: { key: "voice", values: ["builtin"] } },
   { key: "instruct", label: T("Style (facultatif)", "Style (optional)"), type: "text", advanced: true,
     hint: T("Ex. « voix calme et chaleureuse ».", "E.g. \"calm, warm voice\".") },
-  { key: "langue", label: T("Langue", "Language"), type: "text", default: "", advanced: true,
+  { key: "language", label: T("Langue", "Language"), type: "text", default: "", advanced: true,
     hint: T("Code de langue (fr, en…). Vide : la langue de l'assistant.", "Language code (fr, en…). Empty: the assistant language.") },
   { key: "rate", label: T("Fréquence de l'audio (Hz)", "Audio rate (Hz)"), type: "number", advanced: true, min: 8000,
     hint: T("Vide = automatique (24000 pour Qwen3 et Pocket TTS, 48000 pour VoxCPM2, 44100 pour Supertonic).", "Empty = automatic (24000 for Qwen3 and Pocket TTS, 48000 for VoxCPM2, 44100 for Supertonic).") },
@@ -255,7 +255,7 @@ export const CLONERS = ["qwen3_tts", "voxcpm2", "pocket_tts", "chatterbox", "fis
  * intégrées (audio.cpp répond « prefill requires speaker ») et « VoiceDesign » invente une voix d'après une description.
  * La variante se lit dans le nom du fichier.
  */
-export function clones(m: Pick<ModelValues, "famille" | "familleAutre" | "model">): boolean {
+export function clones(m: Pick<ModelValues, "family" | "familyOther" | "model">): boolean {
   if (!CLONERS.includes(familyOf(m as ModelValues))) return false;
   return !/custom[-_ ]?voice|voice[-_ ]?design/i.test(basename(m.model.replace(/\\/g, "/")));
 }
@@ -267,7 +267,7 @@ export function trialReference(m: ModelValues): Record<string, unknown> {
   if (WITH_TEXT.includes(fam) && m.refText) return { reference_text: m.refText.replace(/\s*[\r\n]+\s*/g, " ") };
   return !m.refText && (fam === "qwen3_tts" || fam === "voxcpm2") ? { options: { x_vector_only_mode: true } } : {};
 }
-const missingReferenceText = (m: ModelValues): Text | undefined => m.voix === "clone" && familyOf(m) === "fish_audio" && !m.refText.trim()
+const missingReferenceText = (m: ModelValues): Text | undefined => m.voice === "clone" && familyOf(m) === "fish_audio" && !m.refText.trim()
   ? T("Fish Audio : renseigne le texte prononcé dans l'enregistrement.", "Fish Audio: enter the words spoken in the recording.") : undefined;
 
 /**
@@ -308,7 +308,7 @@ export function voiceKind(models: { value: string; label: Text }[], lang: "fr" |
         hint: T("La phrase lue. Si tu as dit autre chose, corrige-la ici. Obligatoire pour Fish Audio ; facultatif pour les autres modèles.", "The sentence read. If you said something else, fix it here. Required for Fish Audio; optional for the other models.") },
       { key: "model", label: T("Modèle qui la fait parler", "Model that speaks it"), type: "select", required: true, options: models,
         hint: T("Choisis parmi les modèles téléchargés qui savent cloner. Chatterbox prépare chaque phrase entière ; Fish Audio demande la transcription. Qwen3 CustomVoice et Voxtral utilisent leurs voix intégrées.", "Choose from downloaded models that support cloning. Chatterbox prepares each complete sentence; Fish Audio needs the transcript. Qwen3 CustomVoice and Voxtral use built-in voices.") },
-      { key: "essai", label: T("Phrase d'essai", "Test sentence"), type: "text", default: TRIAL[lang] },
+      { key: "trial", label: T("Phrase d'essai", "Test sentence"), type: "text", default: TRIAL[lang] },
     ],
   };
 }
@@ -338,11 +338,11 @@ const samePath = (a: string, b: string): boolean => {
  * Ce que demande un modèle de voix : Pocket TTS et Supertonic parlent en temps réel sur le processeur ;
  * Qwen3-TTS demande une carte NVIDIA (~4,5 Go mesurés pour la 1.7B).
  */
-export function voiceNeeds(k: Pick<KnownVoiceModel, "famille"> & Partial<Pick<KnownVoiceModel, "files">>): ModelNeeds {
-  if (!["qwen3_tts", "voxcpm2", "chatterbox", "voxtral_tts", "fish_audio", "omnivoice"].includes(k.famille)) return { memory: 0.8 * 1024 ** 3, device: "cpu" };
+export function voiceNeeds(k: Pick<KnownVoiceModel, "family"> & Partial<Pick<KnownVoiceModel, "files">>): ModelNeeds {
+  if (!["qwen3_tts", "voxcpm2", "chatterbox", "voxtral_tts", "fish_audio", "omnivoice"].includes(k.family)) return { memory: 0.8 * 1024 ** 3, device: "cpu" };
   // Budget indicatif : taille des poids du catalogue + marge de travail ; ce n'est pas une mesure de VRAM.
-  const bytes = (k.files ?? KNOWN_VOICE_MODELS.find(m => m.famille === k.famille)?.files)?.reduce((n, f) => n + (f.size ?? 0), 0) ?? 0;
-  return { memory: k.famille === "qwen3_tts" ? Math.max(4.5 * 1024 ** 3, bytes + 1.5 * 1024 ** 3) : bytes + 1.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] };
+  const bytes = (k.files ?? KNOWN_VOICE_MODELS.find(m => m.family === k.family)?.files)?.reduce((n, f) => n + (f.size ?? 0), 0) ?? 0;
+  return { memory: k.family === "qwen3_tts" ? Math.max(4.5 * 1024 ** 3, bytes + 1.5 * 1024 ** 3) : bytes + 1.5 * 1024 ** 3, device: "gpu", backends: ["cuda", "vulkan", "metal"] };
 }
 
 /** `builds` : archives d'audio.cpp (remplaçables pour les tests). */
@@ -352,12 +352,12 @@ return definePlugin<Config>({
     id: "tts-audiocpp",
     version: "0.1.0",
     licence: "MIT",
-    sections: [{ id: "voix", label: { fr: "Voix", en: "Voice" } }],
+    sections: [{ id: "voice", label: { fr: "Voix", en: "Voice" } }],
     description: "Voix locales (audio.cpp) : un modèle de synthèse vocale à la fois, lancé seulement quand il sert.",
     provides: ["tts"],
     // net : téléchargement des modèles connus (voir known-voices.ts).
     permissions: { exec: ["audiocpp_server"], net: ["huggingface.co", "github.com", "raw.githubusercontent.com"] },
-    addable: { section: "voix", label: "audio.cpp", description: { fr: "Modèles de voix GGUF sur ce PC (voix clonée ou intégrée), lancés seulement quand ils servent.", en: "GGUF voice models on this PC (cloned or built-in voice), run only while in use." }, single: true },
+    addable: { section: "voice", label: "audio.cpp", description: { fr: "Modèles de voix GGUF sur ce PC (voix clonée ou intégrée), lancés seulement quand ils servent.", en: "GGUF voice models on this PC (cloned or built-in voice), run only while in use." }, single: true },
   },
   config: Config,
   apply(ctx, cfg) {
@@ -372,17 +372,17 @@ return definePlugin<Config>({
     const running = new Map<string, boolean>();
 
     // ---- Chemins propres à chaque PC : réglages (fenêtre ou CLI), jamais à la voix (ils lancent un programme).
-    let exeSetting = ctx.settings.saved<string>("tts_local_programme") ?? "";
-    let dirsSetting = ctx.settings.saved<string>("tts_local_dossiers") ?? "";
+    let exeSetting = ctx.settings.saved<string>("tts_local_program") ?? "";
+    let dirsSetting = ctx.settings.saved<string>("tts_local_folders") ?? "";
     ctx.settings.declare([
       {
-        key: "tts_local_programme", section: "voix", group: T("audio.cpp", "audio.cpp"), type: "text", maxLength: 500, risk: "cli",
+        key: "tts_local_program", section: "voice", group: T("audio.cpp", "audio.cpp"), type: "text", maxLength: 500, risk: "cli",
         label: T("Programme audio.cpp", "audio.cpp program"),
         description: T("Chemin complet du programme audiocpp_server. Vide : Floppy le cherche dans le PATH.", "Full path to the audiocpp_server program. Empty: Floppy looks for it in the PATH."),
         get: () => exeSetting, set: (v) => { exeSetting = String(v ?? "").trim(); },
       },
       {
-        key: "tts_local_dossiers", section: "voix", group: T("audio.cpp", "audio.cpp"), type: "text", maxLength: 2000, risk: "cli",
+        key: "tts_local_folders", section: "voice", group: T("audio.cpp", "audio.cpp"), type: "text", maxLength: 2000, risk: "cli",
         label: T("Dossiers de modèles de voix", "Voice model folders"),
         description: T("Dossiers où chercher des fichiers .gguf de voix, séparés par « ; ».", "Folders to search for voice .gguf files, separated by “;”."),
         get: () => dirsSetting, set: (v) => { dirsSetting = String(v ?? "").trim(); },
@@ -391,7 +391,7 @@ return definePlugin<Config>({
     /** audiocpp_server à lancer : réglage, config, sinon PATH. Undefined s'il est introuvable. */
     // Le programme audiocpp_server, téléchargé par Floppy dans la bonne version pour la machine (CUDA, Vulkan, Metal…).
     const program = programLibrary(ctx, {
-      id: "voix-locale-program", section: "voix", order: 20, offers: "tts", label: "audio.cpp", program: "audiocpp_server",
+      id: "local-voice-program", section: "voice", order: 20, offers: "tts", label: "audio.cpp", program: "audiocpp_server",
       version: AUDIOCPP_VERSION, builds, licence: { name: "Apache-2.0", url: "https://github.com/0xShug0/audio.cpp/blob/main/LICENSE" },
       // Nouvelle version pour la puce graphique, repli, réparation : la voix en marche repart avec.
       changed: (why) => { ctx.items.changed(); if (restartsModels(why)) void ctx.restartOffers("tts"); },
@@ -399,7 +399,7 @@ return definePlugin<Config>({
     /** Le moteur est choisi par Floppy, avec son propre programme (pas un programme ou un moteur choisi à la main). */
     const ours = (): boolean => cfg.backend === "auto" && !exeSetting && !cfg.exe && !!program.path();
     /** Voix qui demande la puce graphique (Qwen3-TTS). */
-    const gpuVoice = (m: Entry): boolean => voiceNeeds({ famille: familyOf(m) as KnownVoiceModel["famille"] }).device === "gpu";
+    const gpuVoice = (m: Entry): boolean => voiceNeeds({ family: familyOf(m) as KnownVoiceModel["family"] }).device === "gpu";
     /**
      * Une voix de la puce graphique est dans la liste et Floppy n'a que la version « processeur » d'audio.cpp
      * (réglage de départ minimal, puis voix plus costaude choisie plus tard) : la bonne version se télécharge en fond.
@@ -431,9 +431,9 @@ return definePlugin<Config>({
     /** Lance le serveur pour ce fork (tué avec lui) et attend qu'il réponde. */
     const launch = async (f: Context, e: Entry): Promise<void> => {
       if (!existsSync(e.model)) throw new TextError(T(`fichier du modèle introuvable : ${e.model}`, `model file not found: ${e.model}`));
-      if (e.voix === "clone" && !e.refWav) throw new TextError(T("voix clonée : choisis l'enregistrement de la voix (WAV) dans les réglages", "cloned voice: pick the voice recording (WAV) in the settings"));
-      if (e.voix === "clone" && !existsSync(e.refWav)) throw new TextError(T(`enregistrement de la voix introuvable : ${e.refWav}`, `voice recording not found: ${e.refWav}`));
-      if (e.voix === "clone" && !clones(e)) throw new TextError(noClone(e.model));
+      if (e.voice === "clone" && !e.refWav) throw new TextError(T("voix clonée : choisis l'enregistrement de la voix (WAV) dans les réglages", "cloned voice: pick the voice recording (WAV) in the settings"));
+      if (e.voice === "clone" && !existsSync(e.refWav)) throw new TextError(T(`enregistrement de la voix introuvable : ${e.refWav}`, `voice recording not found: ${e.refWav}`));
+      if (e.voice === "clone" && !clones(e)) throw new TextError(noClone(e.model));
       const referenceProblem = missingReferenceText(e);
       if (referenceProblem) throw new TextError(referenceProblem);
       if (await httpHealthy(base)) throw new TextError(T(`le port ${cfg.port} est déjà pris par un autre serveur : arrête-le d'abord (ou change le port)`, `port ${cfg.port} is already taken by another server: stop it first (or change the port)`));
@@ -490,7 +490,7 @@ return definePlugin<Config>({
 
     ctx.offer("tts", {
       max: 1, // la mémoire du GPU
-      items: () => enabled().filter(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m))).map((m) => ({ id: m.id, label: m.label, slow: true, note: emotionNote(expressionProfile(familyOf(m), m.model, m.voix) !== "none") })),
+      items: () => enabled().filter(m => m.voice !== "clone" || (m.refWav && !missingReferenceText(m))).map((m) => ({ id: m.id, label: m.label, slow: true, note: emotionNote(expressionProfile(familyOf(m), m.model, m.voice) !== "none") })),
       startTimeout_s: cfg.startTimeout_s + 60,
       async start(f, id) {
         const e = enabled().find((m) => m.id === id);
@@ -514,7 +514,7 @@ return definePlugin<Config>({
     });
 
     // ---- Fenêtre des réglages : rubrique « Voix », fournisseur « Voix locale »
-    const voiceText = (m: Entry) => m.voix === "clone"
+    const voiceText = (m: Entry) => m.voice === "clone"
       ? T(`voix clonée${m.refWav ? ` (${basename(m.refWav)})` : ""}`, `cloned voice${m.refWav ? ` (${basename(m.refWav)})` : ""}`)
       : T(`voix intégrée${m.speaker ? ` (${m.speaker})` : ""}`, `built-in voice${m.speaker ? ` (${m.speaker})` : ""}`);
     /** Fichier GGUF d'un modèle connu, dans le dossier des téléchargements. */
@@ -525,7 +525,7 @@ return definePlugin<Config>({
       ?? (familyOf(m) === "qwen3_tts" && /customvoice/i.test(basename(m.model)) ? known.find(k => k.id === "qwen3-tts-customvoice")?.voices ?? []
         : familyOf(m) === "voxtral_tts" ? known.find(k => k.id === "voxtral-tts")?.voices ?? [] : []);
     const missingBuiltins = (m: ModelValues) => builtins(m).filter(v => !all().some(other =>
-      samePath(other.model, m.model) && other.voix === "integree" && other.speaker.toLowerCase() === v.id.toLowerCase()));
+      samePath(other.model, m.model) && other.voice === "builtin" && other.speaker.toLowerCase() === v.id.toLowerCase()));
     /**
      * Plusieurs voix d'un même fichier (ex. les voix de Pocket TTS) : groupées sous le modèle. La fenêtre fait alors
      * choisir le modèle, puis la voix. Un fichier qui n'a qu'une voix reste une ligne simple.
@@ -540,7 +540,7 @@ return definePlugin<Config>({
       if (!m.model) return {};
       const size = sizeOf(m.model);
       const q = quantOf(m.model);
-      const where = voiceNeeds({ famille: familyOf(m) as KnownVoiceModel["famille"] }).device === "gpu" ? T("carte graphique", "graphics card") : T("processeur", "processor");
+      const where = voiceNeeds({ family: familyOf(m) as KnownVoiceModel["family"] }).device === "gpu" ? T("carte graphique", "graphics card") : T("processeur", "processor");
       const detail = size === undefined ? T("fichier introuvable", "file not found")
         : T(`${gb(size)} Go · ${q ? `${q.fr} · ` : ""}${where.fr}`, `${gb(size)} GB · ${q ? `${q.en} · ` : ""}${where.en}`);
       return { group: { id: m.model.replace(/\\/g, "/").toLowerCase(), label: modelLabel(m.model), detail } };
@@ -563,7 +563,7 @@ return definePlugin<Config>({
       const ready = running.get(m.id);
       const active = ready !== undefined;
       const on = store.isEnabled(m.id);
-      const clone = m.voix === "clone";
+      const clone = m.voice === "clone";
       const noRef = clone && !m.refWav;
       const noText = missingReferenceText(m);
       const cantClone = clone && !clones(m);
@@ -605,8 +605,8 @@ return definePlugin<Config>({
       const model = str(values.model) || cur?.model || "";
       const twin = all().find((m) => samePath(m.model, model));
       const v = clean({
-        ...(cur ?? {}), ...(twin ? { famille: twin.famille, familleAutre: twin.familleAutre, mode: twin.mode, rate: twin.rate } : {}),
-        label: values.label ?? cur?.label, model, voix: "clone",
+        ...(cur ?? {}), ...(twin ? { family: twin.family, familyOther: twin.familyOther, mode: twin.mode, rate: twin.rate } : {}),
+        label: values.label ?? cur?.label, model, voice: "clone",
         refWav: wav ? "" : str(values.sample) || cur?.refWav || "",
         refText: typeof values.refText === "string" ? values.refText : cur?.refText ?? "",
       } as Record<string, unknown>);
@@ -654,13 +654,13 @@ return definePlugin<Config>({
       if (!clones(loaded)) return { ok: true, text: T(`Le modèle chargé (${nameFr}) ne sait pas cloner une voix, donc l'essai est impossible maintenant. Garde la voix puis choisis-la : Floppy charge son modèle, et tu l'entends.`, `The loaded model (${nameEn}) cannot clone a voice, so a trial is not possible right now. Keep the voice and choose it: Floppy loads its model, and you hear it.`) };
       let ref = v.refWav;
       if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "essai.wav"); writeFileSync(ref, wav); }
-      const text = str(values.essai) || TRIAL[ctx.uiLang() === "en" ? "en" : "fr"];
+      const text = str(values.trial) || TRIAL[ctx.uiLang() === "en" ? "en" : "fr"];
       const streaming = loaded.mode === "streaming";
       // Essai : 120 s pour toute la réponse (flux compris), par ctx.fetch.
       const r = await ctx.fetch(`${base}/v1/audio/speech`, {
         method: "POST", timeoutMs: 120_000, headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          model: MODEL_ID, input: text, voice_ref: slash(ref), language: loaded.langue || ctx.assistant.language,
+          model: MODEL_ID, input: text, voice_ref: slash(ref), language: loaded.language || ctx.assistant.language,
           ...trialReference(v),
           ...(streaming ? { stream_format: "sse" } : { response_format: "wav" }),
         }),
@@ -685,13 +685,13 @@ return definePlugin<Config>({
     const problem = (v: ModelValues): Text | undefined => {
       if (!v.label) return T("Donne un nom au modèle.", "Give the model a name.");
       if (!v.model || !existsSync(v.model)) return T(`Fichier introuvable : ${v.model}`, `File not found: ${v.model}`);
-      if (v.famille === "autre" && !v.familleAutre) return T("Donne le nom de la famille du modèle.", "Give the model family name.");
-      if (v.voix === "clone" && v.refWav && !existsSync(v.refWav)) return T(`Enregistrement introuvable : ${v.refWav}`, `Recording not found: ${v.refWav}`);
+      if (v.family === "other" && !v.familyOther) return T("Donne le nom de la famille du modèle.", "Give the model family name.");
+      if (v.voice === "clone" && v.refWav && !existsSync(v.refWav)) return T(`Enregistrement introuvable : ${v.refWav}`, `Recording not found: ${v.refWav}`);
       return undefined;
     };
 
     ctx.items.declare({
-      id: "voix-locale", section: "voix", order: 20, offers: "tts",
+      id: "local-voice", section: "voice", order: 20, offers: "tts",
       label: T("Voix locale (audio.cpp)", "Local voice (audio.cpp)"),
       description: T("Modèles de voix GGUF lancés par audio.cpp sur ce PC, seulement quand ils servent. Un seul chargé à la fois.", "GGUF voice models run by audio.cpp on this PC, only while in use. Only one loaded at a time."),
       addLabel: T("Ajouter un modèle local", "Add a local model"),
@@ -766,7 +766,7 @@ return definePlugin<Config>({
         const v = clean(values);
         const size = sizeOf(v.model);
         if (size === undefined) return { ok: false, text: T(`Fichier introuvable : ${v.model}`, `File not found: ${v.model}`) };
-        if (v.voix === "clone") {
+        if (v.voice === "clone") {
           if (!v.refWav) return { ok: false, text: T("Choisis l'enregistrement de la voix (WAV).", "Pick the voice recording (WAV).") };
           if (sizeOf(v.refWav) === undefined) return { ok: false, text: T(`Enregistrement introuvable : ${v.refWav}`, `Recording not found: ${v.refWav}`) };
         }
@@ -775,7 +775,7 @@ return definePlugin<Config>({
         if (!existsSync(exe)) return { ok: false, text: T(`audio.cpp introuvable : ${exe}`, `audio.cpp not found: ${exe}`) };
         const total = size / 1024 ** 3 + 0.5;
         const cuda = (await backend()) !== "cpu";
-        const noText = v.voix === "clone" && !v.refText;
+        const noText = v.voice === "clone" && !v.refText;
         return { ok: true, text: T(
           `Estimation : ~${total.toFixed(1)} Go ${cuda ? "sur le GPU" : "en mémoire (processeur)"} (modèle ${gb(size)} Go).${noText ? " Sans texte de l'enregistrement, seul le timbre est copié." : ""}`,
           `Estimate: ~${total.toFixed(1)} GB ${cuda ? "on the GPU" : "in memory (CPU)"} (model ${gb(size)} GB).${noText ? " Without the recording's text, only the timbre is copied." : ""}`) };
@@ -786,8 +786,8 @@ return definePlugin<Config>({
           if (!cur || !builtins(cur).length || !existsSync(cur.model)) return { ok: false, text: T("Aucune voix intégrée connue pour ce modèle local.", "No known built-in voices for this local model.") };
           const missing = missingBuiltins(cur);
           for (const v of missing) {
-            const values = clean({ label: ui(v.label), model: cur.model, famille: cur.famille, familleAutre: cur.familleAutre,
-              voix: "integree", speaker: familyOf(cur) === "qwen3_tts" ? v.id.toLowerCase() : v.id, langue: cur.langue, rate: cur.rate, mode: cur.mode });
+            const values = clean({ label: ui(v.label), model: cur.model, family: cur.family, familyOther: cur.familyOther,
+              voice: "builtin", speaker: familyOf(cur) === "qwen3_tts" ? v.id.toLowerCase() : v.id, language: cur.language, rate: cur.rate, mode: cur.mode });
             store.add("gguf", values as unknown as Record<string, unknown>, `${id}-${v.id.toLowerCase()}`, Object.keys(baseList));
           }
           ctx.items.changed();
@@ -813,27 +813,27 @@ return definePlugin<Config>({
     upgrade();
 
     modelLibrary(ctx, {
-      id: "voix-locale-library", section: "voix", order: 21, offers: "tts",
+      id: "local-voice-library", section: "voice", order: 21, offers: "tts",
       label: T("Modèles de voix audio.cpp", "audio.cpp voice models"),
       entries: () => catalogue().map((k) => ({ ...k, needs: voiceNeeds(k) })),
       searchHint: T("Filtrer les modèles du catalogue (nom, famille…)", "Filter catalogue models (name, family…)"),
       search: async (query) => {
         const q = query.trim().toLocaleLowerCase();
-        return catalogue().filter(k => `${ui(k.label)} ${k.famille} ${(k.tags ?? []).map(ui).join(" ")}`.toLocaleLowerCase().includes(q)).map(k => ({ ...k, needs: voiceNeeds(k) }));
+        return catalogue().filter(k => `${ui(k.label)} ${k.family} ${(k.tags ?? []).map(ui).join(" ")}`.toLocaleLowerCase().includes(q)).map(k => ({ ...k, needs: voiceNeeds(k) }));
       },
       has: (e) => mine(e as KnownVoiceModel).length > 0,
-      itemOf: (e) => mine(e as KnownVoiceModel).find(m => m.voix !== "clone" || (m.refWav && !missingReferenceText(m)))?.id,
+      itemOf: (e) => mine(e as KnownVoiceModel).find(m => m.voice !== "clone" || (m.refWav && !missingReferenceText(m)))?.id,
       description: T("compatibles audio.cpp · qualité à évaluer sur ta machine", "audio.cpp compatible · quality to evaluate on your machine"),
       missing: () => (exePath() ? undefined : T("Le programme audio.cpp n'est pas encore installé.", "The audio.cpp program is not installed yet.")),
       installed: (e) => {
         const k = e as KnownVoiceModel;
         if (mine(k).length) return;
         if (k.clone) {
-          const values = clean({ label: ui(k.label), model: knownFile(k), famille: k.famille, voix: "clone", langue: k.langue, mode: k.mode });
+          const values = clean({ label: ui(k.label), model: knownFile(k), family: k.family, voice: "clone", language: k.language, mode: k.mode });
           store.add("voice", values as unknown as Record<string, unknown>, `${k.id}-voice`, Object.keys(baseList));
         }
         for (const v of k.voices) {
-          const values = clean({ label: ui(v.label), model: knownFile(k), famille: k.famille, voix: "integree", speaker: v.id, langue: k.langue, mode: k.mode });
+          const values = clean({ label: ui(v.label), model: knownFile(k), family: k.family, voice: "builtin", speaker: v.id, language: k.language, mode: k.mode });
           store.add("gguf", values as unknown as Record<string, unknown>, `${k.id}-${v.id}`, Object.keys(baseList));
         }
         ctx.items.changed();

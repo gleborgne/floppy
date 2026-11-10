@@ -177,7 +177,7 @@ export function findAgents(
 function usableBrains(clouds: CloudBrain[], agents: Agent[]): string[] {
   return [
     ...clouds.filter((c) => c.found !== false).map((c) => c.value),
-    ...agents.filter((a) => a.found && !a.entries.length && a.section === "cerveau").map((a) => ADD_PREFIX + a.plugin),
+    ...agents.filter((a) => a.found && !a.entries.length && a.section === "brain").map((a) => ADD_PREFIX + a.plugin),
   ];
 }
 
@@ -368,7 +368,7 @@ export function planChoices(
         installed: true, size: 0, recommended: c.value === recommended.brain,
       };
     }),
-    ...agents.filter((a) => a.found && !a.entries.length && a.section === "cerveau").map((a): Choice => ({
+    ...agents.filter((a) => a.found && !a.entries.length && a.section === "brain").map((a): Choice => ({
       value: ADD_PREFIX + a.plugin, kind: "cloud", label: a.label,
       description: T("Trouvé sur la machine : sera ajouté à Floppy.", "Found on this computer: it will be added to Floppy."),
       fits: true, installed: false, size: 0, recommended: ADD_PREFIX + a.plugin === recommended.brain,
@@ -851,7 +851,7 @@ export function onboardingFor(kernel: Kernel): Onboarding {
     onItems: (fn) => kernel.items.onChange(fn),
     machine: (fresh) => kernel.machine(fresh),
     language: () => kernel.assistantSettings.language,
-    setLanguage: (lang) => kernel.settings.change("langue_assistant", lang, "ui"),
+    setLanguage: (lang) => kernel.settings.change("assistant_language", lang, "ui"),
     borrowLlm: (value) => kernel.borrowItem<MeasuredLlm>("llm", value),
     idle: () => kernel.idle(),
   });
