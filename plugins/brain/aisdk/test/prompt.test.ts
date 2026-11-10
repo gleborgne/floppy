@@ -91,3 +91,27 @@ describe("buildPrompt : langue de l'assistant", () => {
     expect(claim("Done.")).toBe("no"); // français par défaut
   });
 });
+
+import { timeLine } from "../src/prompt.ts";
+describe("buildPrompt : cache de préfixe", () => {
+  const today = new Date(2026, 10, 5, 14, 32);
+  it("la date du jour reste, l'heure n'est plus dans le prompt système", () => {
+    const fr = buildPrompt({ ...base, today });
+    expect(fr).toContain("(2026-11-05).");
+    expect(fr).not.toContain("14:32");
+    expect(buildPrompt({ ...base, today, lang: "en" })).not.toContain("14:32");
+    expect(buildPrompt({ ...base, today: new Date(2026, 10, 5, 9, 1) })).toBe(fr); // même prompt à toute heure du jour
+  });
+  it("la ligne d'heure est dans la langue de l'assistant", () => {
+    expect(timeLine(today, "fr")).toBe("(Il est 14:32.)");
+    expect(timeLine(today, "en")).toBe("(It is 14:32.)");
+  });
+  it("la mémoire (qui change) vient après toutes les parties stables", () => {
+    const s = buildPrompt({ ...base, today, tone: "sobre", emotions: true, delegateTool: "delegate", memory: { user: "U", memory: "M" } });
+    const at = (t: string) => s.indexOf(t);
+    expect(at("Ton : sobre")).toBeGreaterThan(at("3. FAIRE"));
+    expect(at("Ce que tu sais")).toBeGreaterThan(at("Ton : sobre"));
+    expect(at("Ce que tu sais")).toBeGreaterThan(at("[content]"));
+    expect(s.endsWith("[Tes notes]\nM")).toBe(true);
+  });
+});

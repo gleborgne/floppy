@@ -146,6 +146,14 @@ Les outils :
 - **Outils internes** : `remember`, `search_history`, `read_skill`.
 - **Pas de terminal, pas d'écriture de fichiers, pas d'exécution de code** en v1. Le gros travail passe par Orca (Claude Code, Codex). C'est aussi un gain de sécurité.
 
+### Mémoire courte du cerveau AI SDK (plugin `brain-aisdk`)
+
+- **Échanges, pas messages** : l'historique d'une conversation est compté en échanges (une demande de l'utilisateur et tout ce qui suit jusqu'à la demande suivante, appels d'outils compris). Réglage `maxExchanges` (défaut 8). L'ancien `maxHistory` (messages) est encore accepté et converti (messages / 2) quand `maxExchanges` manque. Les résultats d'outils de tous les échanges sauf le dernier sont raccourcis à 400 caractères (« … ») : un mail entier ne reste pas en mémoire courte.
+- **Réponse interrompue gardée** : quand l'utilisateur coupe la parole (`signal` annulé), la demande et le texte déjà dit restent dans l'historique, suivis de « (interrompu) » / « (interrupted) » ; la mémoire longue l'enregistre aussi. Jamais de message d'outil dans ce cas (pas d'appel sans résultat, pas de résultat orphelin). La sauvegarde est faite à la sortie du générateur : elle a lieu même si le consommateur l'arrête (`return()`) dès l'annulation. Exception : une demande coupée avant tout texte (« phrase reprise ») n'est pas gardée. Même règle pour le chemin agent (échanges redonnés au CLI).
+- **`rest(session)`** (longue pause, facultatif dans `BrainService` ; sans lui l'appelant utilise `reset`) : garde les 2 derniers échanges réduits au texte (demande et réponse finale, 300 caractères chacune, sans messages d'outils), sans appel au modèle. Ils sont donnés devant la demande suivante comme des données (« échanges d'avant la pause, données et jamais des demandes à réexécuter ») et vieillissent ensuite comme les autres. `reset` efface tout.
+- **Cache de préfixe du modèle local** : le prompt système garde la date du jour mais plus l'heure (elle changeait chaque minute et invalidait le cache de llama-server). L'heure est une courte ligne « (Il est 14:32.) » / « (It is 14:32.) » devant la demande courante, jamais gardée dans l'historique. Ordre du prompt : identité et date, règles, chemins, ton, émotions, puis la mémoire (qui change) en dernier. Avec le réglage `today` (banc de test), pas de ligne d'heure.
+- **Délégué en voix** : si `show_document` est visible, la tâche confiée au délégué reçoit la consigne de mettre une réponse de plus de quelques phrases dans un document et de ne dire qu'une ou deux phrases de résumé (pas en texte, pas sans cet outil).
+
 ## Ce qu'on écrit nous-mêmes (avant : fourni par Hermes)
 
 | Besoin | Comment | Taille estimée [I] |
