@@ -1,4 +1,4 @@
-// Le « vivant » commun des avatars à shader plein cadre (goutte, iris, oscillo, pixelcat) : état, émotion, humeur,
+// Le « vivant » commun des avatars à shader plein cadre (droplet, iris, neon-scope, pixelcat) : état, émotion, humeur,
 // regard, oreille, voix, ressort, respiration, hochement, clignement. UNE SEULE source, ici (scripts/avatar/life.js) ;
 // chaque avatar en garde une copie identique octet pour octet à côté de son dessin (renderer/life.js), car un plugin
 // ne dépend pas d'un autre et son dessin doit marcher seul. Ne pas modifier une copie : modifier cette source puis

@@ -26,7 +26,7 @@ flowchart LR
 
 | | Réglages | Créer un plugin |
 |---|---|---|
-| Dossier de travail | `<home>\coder-reglages` (vide) | `<home>\plugins` |
+| Dossier de travail | `<home>\workspaces\coder\settings` (vide) | `<home>\plugins` |
 | Outils intégrés du CLI | **aucun** (pas de shell, fichiers, web) | `Read`, `Edit`, `Write`, `Glob`, `Grep` (pas de shell, pas de web) |
 | Outils Floppy (MCP limité) | `list_settings`, `change_setting`, `undo_setting`, `plugin_status` | `plugin_docs` (wiki), `test_plugin`, `reload_plugins`, `plugin_status`, `list_settings` + `permission` |
 | Écritures | changer un réglage (risque contrôlé par le noyau) | **chaque écriture de fichier validée par l'utilisateur**, avec aperçu du changement ; tout chemin hors de `<home>\plugins` est refusé même si l'utilisateur dit oui |

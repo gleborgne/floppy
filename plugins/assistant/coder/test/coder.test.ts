@@ -270,7 +270,7 @@ describe("coder : kit de développement", () => {
     const copied = copyKit(dir);
     expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe("à moi");
     expect(copied).not.toContain("AGENTS.md");
-    expect(copied.sort()).toEqual(["CLAUDE.md", join("exemple-minuteur", "index.ts"), "floppy-plugin.d.ts"].sort());
+    expect(copied.sort()).toEqual(["CLAUDE.md", join("example-timer", "index.ts"), "floppy-plugin.d.ts"].sort());
     // Deuxième passage : rien à copier ; un fichier modifié reste modifié.
     writeFileSync(join(dir, "floppy-plugin.d.ts"), "modifié");
     expect(copyKit(dir)).toEqual([]);
@@ -279,7 +279,7 @@ describe("coder : kit de développement", () => {
 
   it("le mode plugin copie le kit dans <home>/plugins ; AGENTS.md et CLAUDE.md sont identiques", async () => {
     const sid = await open("claude", "plugin");
-    for (const f of ["floppy-plugin.d.ts", "AGENTS.md", "CLAUDE.md", join("exemple-minuteur", "index.ts")]) expect(existsSync(join(pluginsDir, f))).toBe(true);
+    for (const f of ["floppy-plugin.d.ts", "AGENTS.md", "CLAUDE.md", join("example-timer", "index.ts")]) expect(existsSync(join(pluginsDir, f))).toBe(true);
     expect(readFileSync(join(pluginsDir, "AGENTS.md"), "utf8")).toBe(readFileSync(join(pluginsDir, "CLAUDE.md"), "utf8"));
     coderSvc.close(sid);
   });

@@ -15,7 +15,7 @@ import type { ToolDef } from "./tools.ts";
 import { errorText, T, TextError, tr, type Text } from "./i18n.ts";
 
 export interface TaskInfo {
-  /** "<entrée>/<tâche>" (ex. "veille/quotidienne"). */
+  /** "<entrée>/<tâche>" (ex. "watch/daily"). */
   key: string;
   entry: string;
   plugin: string;

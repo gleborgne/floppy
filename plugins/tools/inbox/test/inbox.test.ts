@@ -77,7 +77,7 @@ describe("boîte aux lettres", () => {
   it("carte de confirmation : un « oui » à la voix n'autorise pas ; un refus ne repose pas la question", async () => {
     const { k, got, post } = await start();
     let n = 0;
-    k.bus.on("approval.request", (r) => { n++; k.approvals.respond(r.id, true, "conv:voix"); });
+    k.bus.on("approval.request", (r) => { n++; k.approvals.respond(r.id, true, "conv:voice"); });
     await post(hello);
     await vi.waitFor(() => expect(got.some((g) => g.key === `inbox:clic:${APP}`)).toBe(true));
     expect(k.settings.list().find((s) => s.key === KEY)?.value).toBe("denied");

@@ -90,8 +90,8 @@ export const macos: Engine = {
         // `say` n'écrit pas de WAV sur sa sortie : on passe par un dossier temporaire.
         const dir = mkdtempSync(join(tmpdir(), "floppy-say-"));
         try {
-          const input = join(dir, "texte.txt");
-          const output = join(dir, "voix.wav");
+          const input = join(dir, "text.txt");
+          const output = join(dir, "voice.wav");
           writeFileSync(input, text, "utf8");
           await run(spawn, "say", ["-v", voice, "-o", output, "--file-format=WAVE", "--data-format=LEI16@22050", "-f", input], { signal });
           return readFileSync(output);

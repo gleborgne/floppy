@@ -141,7 +141,7 @@ export interface ItemInfo {
   /** Clés des réglages qui appartiennent à cet élément : montrés dans l'élément (« Configurer »), pas dans la rubrique. */
   settings?: string[];
   /**
-   * Rubrique rattachée à cet élément (ex. "veille" pour la tâche « Veille du jour ») : la fenêtre la montre dans les
+   * Rubrique rattachée à cet élément (ex. "watch" pour la tâche « Veille du jour ») : la fenêtre la montre dans les
    * réglages de l'élément, et plus dans le menu.
    */
   section?: string;

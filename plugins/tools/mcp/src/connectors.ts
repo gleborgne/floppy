@@ -241,22 +241,8 @@ export function declareConnectors(ctx: Context, base: Record<string, Raw>): Conn
   const store = ctx.items.store();
   const sec = connectorSecrets(ctx);
   const baseIds = Object.keys(base);
-  const x = store.data.extra as { migrated?: boolean; enabled?: string[]; tools?: Record<string, Cached[]> };
+  const x = store.data.extra as { enabled?: string[]; tools?: Record<string, Cached[]> };
 
-  // Une seule fois : reprendre les anciens réglages « connecteur_<clé> » (allumé / éteint).
-  if (!x.migrated) {
-    x.enabled ??= [];
-    for (const id of [...baseIds, ...Object.keys(store.data.added)]) {
-      const old = ctx.settings.saved<boolean>("connecteur_" + id.toLowerCase().replace(/[^a-z0-9_]/g, "_"));
-      if (typeof old !== "boolean") continue;
-      store.data.disabled = store.data.disabled.filter((d) => d !== id);
-      x.enabled = x.enabled.filter((d) => d !== id);
-      if (!old) store.data.disabled.push(id);
-      else x.enabled.push(id);
-    }
-    x.migrated = true;
-    store.save();
-  }
   x.enabled ??= [];
   x.tools ??= {};
 

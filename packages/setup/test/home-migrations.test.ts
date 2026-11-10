@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readMigrationMarker, runHomeMigrations } from "@floppy/core";
+import { DatabaseSync } from "node:sqlite";
+import { ItemStore, readMigrationMarker, runHomeMigrations } from "@floppy/core";
+import { WatchDb } from "../../../plugins/watch/digest/src/store.ts";
 import { HOME_MIGRATIONS, migrateHome } from "../src/index.ts";
 import { scheduleToEnglish } from "../src/home-migrations.ts";
 
@@ -22,7 +24,7 @@ const OLD_DOC = '---\ntitre: "Veille du jour"\ndate: 2026-11-06T08:00:00.000Z\ns
 describe("étape documents-title", () => {
   it("renomme la clé d'en-tête `titre`, garde le reste octet pour octet, sauvegarde l'original", () => {
     write("documents/2026-11-06-0800-veille.md", OLD_DOC);
-    const r = migrateHome(home);
+    const r = [step("documents-title")];
     expect(r.find((x) => x.step === "documents-title")!.changes).toEqual([{ file: "documents/2026-11-06-0800-veille.md", keys: ["titre"] }]);
     expect(read("documents/2026-11-06-0800-veille.md")).toBe(OLD_DOC.replace('---\ntitre:', '---\ntitle:'));
     expect(read("documents/2026-11-06-0800-veille.md.bak-documents-title")).toBe(OLD_DOC);
@@ -130,7 +132,7 @@ describe("marqueur", () => {
   it("note chaque étape et la version la plus haute ; à blanc, rien n'est écrit", () => {
     write("documents/a.md", OLD_DOC);
     const dry = migrateHome(home, { dryRun: true });
-    expect(dry.flatMap((r) => r.changes)).toEqual([{ file: "documents/a.md", keys: ["titre"] }]);
+    expect(dry.find((r) => r.step === "documents-title")!.changes).toEqual([{ file: "documents/a.md", keys: ["titre"] }]);
     expect(existsSync(join(home, "migrations.json"))).toBe(false);
     expect(read("documents/a.md")).toBe(OLD_DOC);
     migrateHome(home);
@@ -557,23 +559,23 @@ describe("toutes les étapes ensemble", () => {
     write("floppy.yml", YML);
     put("inbox-apps.json", { apps: { a: { name: "A", schemes: [], seen: "x", trust: "non" } } });
     const first = migrateHome(home);
-    expect(first.filter((r) => r.changes.length).map((r) => r.step).sort()).toEqual(["config-yaml", "inbox-trust", "settings-keys", "settings-values"]);
+    expect(first.filter((r) => r.changes.length).map((r) => r.step).sort()).toEqual(["config-yaml", "inbox-trust", "plugin-ids", "settings-keys", "settings-values"]);
     expect(first.every((r) => !r.error)).toBe(true);
-    expect(json("settings.json")).toEqual({ tone: "x", orca_notifications: "none", "tasks.veille.quotidienne": "never" });
+    expect(json("settings.json")).toEqual({ tone: "x", orca_notifications: "none", "tasks.watch.daily": "never" });
     expect(migrateHome(home).every((r) => r.alreadyApplied)).toBe(true);
     const forced = migrateHome(home, { force: true });
     expect(forced.flatMap((r) => r.changes)).toEqual([]);
   });
 
   it("les étapes déjà notées du lot 1 ne sont pas rejouées ; les nouvelles ont des versions croissantes et des noms uniques", () => {
-    expect(HOME_MIGRATIONS.map((s) => s.version)).toEqual([1, 2, 3, 10, 11, 12, 13, 14, 15, 20, 21, 22]);
+    expect(HOME_MIGRATIONS.map((s) => s.version)).toEqual([1, 2, 3, 10, 11, 12, 13, 14, 15, 20, 21, 22, 30, 31, 32, 33, 34, 35, 36, 37]);
     expect(new Set(HOME_MIGRATIONS.map((s) => s.id)).size).toBe(HOME_MIGRATIONS.length);
     writeFileSync(join(home, "migrations.json"), JSON.stringify({ version: 2, applied: { "documents-title": "x", "onboarding-level": "x" } }));
     put("settings.json", { ton: "x" });
     const r = migrateHome(home);
     expect(r.slice(0, 2).every((x) => x.alreadyApplied)).toBe(true);
     expect(r.slice(2).some((x) => x.changes.length)).toBe(true);
-    expect(readMigrationMarker(home).version).toBe(22);
+    expect(readMigrationMarker(home).version).toBe(37);
   });
 });
 
@@ -692,6 +694,431 @@ describe("étape tools-command-placeholder", () => {
 
 describe("numérotation des étapes d'outils", () => {
   it("les outils commencent à 20, après les étapes 10 à 15 (les rangs 4 à 9 et 16 à 19 restent libres)", () => {
-    expect(HOME_MIGRATIONS.filter((s) => s.version >= 16).map((s) => [s.id, s.version])).toEqual([["tools-config-yaml", 20], ["tools-items-apps", 21], ["tools-command-placeholder", 22]]);
+    expect(HOME_MIGRATIONS.filter((s) => s.version >= 16).map((s) => [s.id, s.version])).toEqual([["tools-config-yaml", 20], ["tools-items-apps", 21], ["tools-command-placeholder", 22],
+      ["plugin-ids", 30], ["watch-folder", 31], ["watch-database", 32], ["documents-tags", 33], ["folders", 34], ["connectors-settings", 35], ["wakeword-words", 36], ["orca-surveillance", 37]]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Étapes 30 à 37 : identifiants de plugins, dossiers et fichiers, base de la veille, anciens réglages.
+// ---------------------------------------------------------------------------------------------------------------
+
+const has = (rel: string) => existsSync(join(home, rel));
+
+/** Un floppy.yml tel que les étapes précédentes le laissent : commentaires, entrées par défaut ET entrée choisie par l'utilisateur pour le même plugin. */
+const YML_30 = [
+  "# mes notes",
+  "approvals:",
+  "  write: ask",
+  "  toolRules:",
+  "    - { source: veille, tool: watch_feedback, level: write, rule: always }   # mon accord",
+  "    - { source: autre, tool: x, level: write, rule: ask }",
+  "plugins:",
+  "  - { id: bodyel, plugin: body-electron, config: { avatar: goutte } }   # mon avatar",
+  "  - { id: avatar-essaim, plugin: avatar-essaim }",
+  "  - { id: avatar-goutte, plugin: avatar-goutte }   # celui-là me plaît",
+  "  - { id: avatar-oscillo, plugin: avatar-oscillo }",
+  "  - { id: avatar-tv, plugin: avatar-tv }",
+  "  - id: veille",
+  "    plugin: veille",
+  "    config:",
+  "      interests:",
+  "        ia-locale: { name: IA locale }",
+  "  - id: veille-travail   # ma deuxième veille",
+  "    plugin: veille",
+  "  - { id: orca, plugin: orca }",
+  "",
+].join("\n");
+
+const YML_30_NEW = YML_30
+  .replace("source: veille,", "source: watch,")
+  .replace("avatar: goutte", "avatar: droplet")
+  .replace("id: avatar-essaim, plugin: avatar-essaim", "id: avatar-swarm, plugin: avatar-swarm")
+  .replace("id: avatar-goutte, plugin: avatar-goutte", "id: avatar-droplet, plugin: avatar-droplet")
+  .replace("id: avatar-oscillo, plugin: avatar-oscillo", "id: avatar-neon-scope, plugin: avatar-neon-scope")
+  .replace("  - id: veille\n    plugin: veille\n", "  - id: watch\n    plugin: watch\n")
+  .replace("id: veille-travail   # ma deuxième veille\n    plugin: veille", "id: veille-travail   # ma deuxième veille\n    plugin: watch");
+
+/** Les données d'un dossier de travail avec les entrées par défaut de la veille et des avatars. */
+function seed30(): void {
+  write("floppy.yml", YML_30);
+  put("settings.json", {
+    tone: "x", "tasks.veille.quotidienne": "07:30 mon-fri", "tasks.veille.quotidienne.send": "Telegram",
+    "tasks.veille-travail.quotidienne": "never", "tasks.scheduler.autre": "every 3h",
+  });
+  put("tasks.json", {
+    "veille/quotidienne": { lastRun: "2026-11-09T07:30:00.000Z", last: { at: "2026-11-09T07:31:00.000Z", ok: true, text: "Ta veille est prête." } },
+    "veille-travail/quotidienne": { lastRun: "2026-11-08T07:30:00.000Z" },
+    "scheduler/autre": { lastRun: "2026-11-07T07:30:00.000Z" },
+  });
+  put("items/veille.json", { added: { x: { kind: "interest", values: { name: "X" } } }, edits: { "ia-locale": { threshold: 7 } }, disabled: [], removed: [], children: { "ia-locale": { "f:https://a.test": false } }, extra: {} });
+  put("items/veille-travail.json", { added: {}, edits: {}, disabled: ["a"], removed: [], children: {}, extra: {} });
+  put("items/apps.json", {
+    added: { veille: { kind: "veille", values: {} }, perso: { kind: "avatar-goutte", values: {} }, mien: { kind: "body-electron", values: { avatar: "oscillo" } } },
+    edits: { bodyel: { avatar: "essaim", port: 1 }, veille: { threshold: 8 }, "veille-travail": { threshold: 9 } },
+    disabled: ["avatar-essaim", "veille", "autre"], removed: ["avatar-goutte"], children: { veille: { watch_feedback: false } },
+    extra: { tools: { veille: [{ name: "watch_feedback", description: "d", level: "write" }], autre: [] } },
+  });
+  put("items/avatars.json", { added: {}, edits: {}, disabled: ["essaim", "oscillo", "tv"], removed: [], children: {}, extra: { current: "goutte" } });
+}
+
+describe("étape plugin-ids", () => {
+  it("la veille et les avatars : entrées par défaut renommées avec tout ce qui en dérive, entrée choisie par l'utilisateur gardée, commentaires gardés", () => {
+    seed30();
+    const r = step("plugin-ids");
+    expect(r.error).toBeUndefined();
+    expect(read("floppy.yml")).toBe(YML_30_NEW);
+    expect(json("settings.json")).toEqual({
+      tone: "x", "tasks.watch.daily": "07:30 mon-fri", "tasks.watch.daily.send": "Telegram", "tasks.veille-travail.daily": "never", "tasks.scheduler.autre": "every 3h",
+    });
+    expect(json("tasks.json")).toEqual({
+      "watch/daily": { lastRun: "2026-11-09T07:30:00.000Z", last: { at: "2026-11-09T07:31:00.000Z", ok: true, text: "Ta veille est prête." } },
+      "veille-travail/daily": { lastRun: "2026-11-08T07:30:00.000Z" },
+      "scheduler/autre": { lastRun: "2026-11-07T07:30:00.000Z" },
+    });
+    // Le fichier d'éléments de l'entrée par défaut change de nom (copie, original gardé) ; celui de l'entrée de l'utilisateur ne bouge pas.
+    expect(has("items/veille.json")).toBe(false);
+    expect(json("items/watch.json").edits).toEqual({ "ia-locale": { threshold: 7 } });
+    expect(json("items/veille.json.bak-plugin-ids").edits).toEqual({ "ia-locale": { threshold: 7 } });
+    expect(json("items/veille-travail.json").disabled).toEqual(["a"]);
+    const apps = json("items/apps.json");
+    expect(apps.added).toEqual({ watch: { kind: "watch", values: {} }, perso: { kind: "avatar-droplet", values: {} }, mien: { kind: "body-electron", values: { avatar: "neon-scope" } } });
+    expect(apps.edits).toEqual({ bodyel: { avatar: "swarm", port: 1 }, watch: { threshold: 8 }, "veille-travail": { threshold: 9 } });
+    expect(apps.disabled).toEqual(["avatar-swarm", "watch", "autre"]);
+    expect(apps.removed).toEqual(["avatar-droplet"]);
+    expect(apps.children).toEqual({ watch: { watch_feedback: false } });
+    expect(Object.keys(apps.extra.tools)).toEqual(["watch", "autre"]);
+    expect(json("items/avatars.json")).toMatchObject({ disabled: ["swarm", "neon-scope", "tv"], extra: { current: "droplet" } });
+    // Sauvegardes à côté de chaque fichier changé.
+    for (const f of ["floppy.yml", "settings.json", "tasks.json", "items/apps.json", "items/avatars.json"]) expect(has(`${f}.bak-plugin-ids`)).toBe(true);
+    expect(read("floppy.yml.bak-plugin-ids")).toBe(YML_30);
+  });
+
+  it("à blanc : des noms seulement (jamais de valeurs), rien n'est écrit", () => {
+    seed30();
+    const r = step("plugin-ids", { dryRun: true });
+    expect(r.changes.map((c) => c.file)).toEqual(["tasks.json", "settings.json", "items/veille.json", "items/apps.json", "items/avatars.json", "floppy.yml"]);
+    expect(r.changes[2]).toEqual({ file: "items/veille.json", keys: [], renamedTo: "items/watch.json" });
+    expect(JSON.stringify(r)).not.toMatch(/Telegram|07:30|Ta veille/);
+    expect(read("floppy.yml")).toBe(YML_30);
+    expect(has("items/watch.json")).toBe(false);
+    expect(has("migrations.json")).toBe(false);
+  });
+
+  it("second passage (marqueur), rejeu forcé et dossier déjà au nouveau format : sans effet", () => {
+    seed30();
+    const first = runHomeMigrations(home, HOME_MIGRATIONS.filter((s) => s.id === "plugin-ids"));
+    expect(first[0]!.changes.length).toBeGreaterThan(0);
+    const after = read("floppy.yml");
+    expect(step("plugin-ids").alreadyApplied).toBe(true);
+    const forced = step("plugin-ids", { force: true });
+    expect(forced.changes).toEqual([]);
+    expect(forced.skipped).toEqual([]);
+    expect(read("floppy.yml")).toBe(after);
+    // Un dossier créé directement au nouveau format (installation neuve).
+    rmSync(home, { recursive: true, force: true });
+    mkdirSync(home, { recursive: true });
+    write("floppy.yml", YML_30_NEW);
+    put("tasks.json", { "watch/daily": { lastRun: "x" } });
+    put("settings.json", { "tasks.watch.daily": "never" });
+    const fresh = step("plugin-ids");
+    expect(fresh.changes).toEqual([]);
+    expect(read("floppy.yml")).toBe(YML_30_NEW);
+  });
+
+  it("le nouvel id est déjà pris par une autre entrée : l'entrée garde son id (conflit signalé), le type du plugin et la tâche changent quand même", () => {
+    write("floppy.yml", "plugins:\n  - { id: watch, plugin: contoso }\n  - { id: veille, plugin: veille }\n");
+    put("settings.json", { "tasks.veille.quotidienne": "never" });
+    put("tasks.json", { "veille/quotidienne": { lastRun: "x" } });
+    put("items/veille.json", { added: {}, edits: {}, disabled: [], removed: [], children: {}, extra: {} });
+    const r = step("plugin-ids");
+    expect(r.conflicts).toEqual([{ file: "floppy.yml", key: "plugins[veille].id", kept: "both" }]);
+    expect(read("floppy.yml")).toBe("plugins:\n  - { id: watch, plugin: contoso }\n  - { id: veille, plugin: watch }\n");
+    expect(json("settings.json")).toEqual({ "tasks.veille.daily": "never" });
+    expect(json("tasks.json")).toEqual({ "veille/daily": { lastRun: "x" } });
+    expect(has("items/veille.json")).toBe(true);
+    expect(has("items/watch.json")).toBe(false);
+  });
+
+  it("le fichier d'éléments de la nouvelle entrée existe déjà : conflit, les deux fichiers sont laissés", () => {
+    write("floppy.yml", "plugins:\n  - { id: veille, plugin: veille }\n");
+    put("items/veille.json", { added: {}, edits: { a: { x: 1 } }, disabled: [], removed: [], children: {}, extra: {} });
+    put("items/watch.json", { added: {}, edits: { b: { y: 2 } }, disabled: [], removed: [], children: {}, extra: {} });
+    const r = step("plugin-ids");
+    expect(r.skipped).toEqual([{ file: "items/veille.json", why: "exists" }]);
+    expect(json("items/veille.json").edits).toEqual({ a: { x: 1 } });
+    expect(json("items/watch.json").edits).toEqual({ b: { y: 2 } });
+    expect(read("floppy.yml")).toBe("plugins:\n  - { id: watch, plugin: watch }\n");
+  });
+
+  it("floppy.yml illisible : signalé, laissé tel quel ; le choix d'avatar des éléments suit quand même", () => {
+    write("floppy.yml", "plugins: [ {");
+    put("items/avatars.json", { added: {}, edits: {}, disabled: [], removed: [], children: {}, extra: { current: "oscillo" } });
+    const r = step("plugin-ids");
+    expect(r.skipped).toEqual([{ file: "floppy.yml", why: "unreadable" }]);
+    expect(read("floppy.yml")).toBe("plugins: [ {");
+    expect(json("items/avatars.json").extra.current).toBe("neon-scope");
+  });
+});
+
+// ---- Dossier et base de la veille ----
+
+/** Une base de la veille à l'ancien format (noms français), avec des lignes. */
+function oldWatchDb(rel: string): void {
+  mkdirSync(join(home, rel, ".."), { recursive: true });
+  const db = new DatabaseSync(join(home, rel));
+  db.exec(`
+    CREATE TABLE vus (url TEXT PRIMARY KEY, titre TEXT, interet TEXT, vu_le TEXT);
+    CREATE TABLE digest (numero INTEGER PRIMARY KEY, doc TEXT, interet TEXT, titre TEXT, url TEXT, source TEXT, resume TEXT);
+    INSERT INTO vus VALUES ('https://blog.ai/1', 'Gemma 5', 'ia-locale', '${new Date().toISOString()}'), ('https://blog.ai/2', 'Kokoro', 'ia-locale', '${new Date().toISOString()}');
+    INSERT INTO digest VALUES (1, 'doc1', 'ia-locale', 'Gemma 5 sort', 'https://blog.ai/1', 'Blog IA', 'Un nouveau modèle'), (2, 'doc1', 'ia-locale', 'Kokoro', 'https://blog.ai/2', 'Blog IA', 'Une voix');
+  `);
+  db.close();
+}
+
+describe("étapes watch-folder et watch-database", () => {
+  const folder = () => step("watch-folder");
+  const database = () => step("watch-database");
+
+  it("dossier et base déplacés, puis la base lue par le code réel du plugin (lignes gardées, ancien format gardé en copie)", () => {
+    put("veille/preferences.json", { likes: ["llama.cpp"] });
+    oldWatchDb("veille/veille.db");
+    const f = folder();
+    expect(f.changes).toEqual([{ file: "veille/veille.db", keys: [], renamedTo: "veille/watch.db" }, { file: "veille", keys: [], renamedTo: "watch" }]);
+    expect(has("veille")).toBe(false);
+    expect(json("watch/preferences.json")).toEqual({ likes: ["llama.cpp"] });
+    expect(has("watch/veille.db.bak-watch-folder")).toBe(true);
+    const d = database();
+    expect(d.changes).toEqual([{ file: "watch/watch.db", keys: [
+      "vus → seen", "seen.titre → title", "seen.interet → interest", "seen.vu_le → seen_at",
+      "digest.numero → number", "digest.interet → interest", "digest.titre → title", "digest.resume → summary"] }]);
+    const db = new WatchDb(join(home, "watch", "watch.db"));
+    try {
+      expect(db.seen("https://blog.ai/1")).toBe(true);
+      expect(db.seen("https://blog.ai/9")).toBe(false);
+      expect(db.digest()).toEqual([
+        { number: 1, doc: "doc1", interest: "ia-locale", title: "Gemma 5 sort", url: "https://blog.ai/1", source: "Blog IA", summary: "Un nouveau modèle" },
+        { number: 2, doc: "doc1", interest: "ia-locale", title: "Kokoro", url: "https://blog.ai/2", source: "Blog IA", summary: "Une voix" },
+      ].map((x) => expect.objectContaining(x)));
+      expect(db.article(2)?.summary).toBe("Une voix");
+      // Le plugin écrit ensuite avec ses nouveaux noms dans la base migrée.
+      db.markSeen([{ url: "https://blog.ai/3", title: "Trois", interest: "ia-locale" }]);
+      expect(db.seen("https://blog.ai/3")).toBe(true);
+    } finally { db.close(); }
+    // La copie d'avant le changement garde l'ancien format.
+    const bak = new DatabaseSync(join(home, "watch", "watch.db.bak-watch-database"), { readOnly: true });
+    expect(bak.prepare("SELECT titre FROM vus ORDER BY url").all().map((x) => x.titre)).toEqual(["Gemma 5", "Kokoro"]);
+    bak.close();
+  });
+
+  it("l'ordre des deux étapes ne compte pas : base d'abord ou dossier d'abord, même résultat", () => {
+    oldWatchDb("veille/veille.db");
+    expect(database().changes[0]!.file).toBe("veille/veille.db");
+    expect(folder().changes.map((c) => c.renamedTo)).toEqual(["veille/watch.db", "watch"]);
+    const db = new WatchDb(join(home, "watch", "watch.db"));
+    expect(db.digest()).toHaveLength(2);
+    db.close();
+    expect(step("watch-database", { force: true }).changes).toEqual([]);
+    expect(step("watch-folder", { force: true }).changes).toEqual([]);
+  });
+
+  it("à blanc : noms de fichiers, de tables et de colonnes ; rien n'est écrit", () => {
+    oldWatchDb("veille/veille.db");
+    const before = readFileSync(join(home, "veille", "veille.db"));
+    const f = step("watch-folder", { dryRun: true });
+    expect(f.changes.map((c) => c.renamedTo)).toEqual(["veille/watch.db", "watch"]);
+    expect(step("watch-database", { dryRun: true }).changes[0]!.keys).toContain("vus → seen");
+    expect(readFileSync(join(home, "veille", "veille.db")).equals(before)).toBe(true);
+    expect(has("watch")).toBe(false);
+    expect(has("migrations.json")).toBe(false);
+  });
+
+  it("le dossier watch/ existe déjà : conflit signalé, les deux dossiers gardés, la base de veille/ est quand même mise au nouveau format", () => {
+    oldWatchDb("veille/veille.db");
+    put("watch/preferences.json", { likes: ["autre"] });
+    const f = folder();
+    expect(f.skipped).toEqual([{ file: "veille", why: "exists" }]);
+    expect(f.error).toBeUndefined();
+    expect(has("veille/watch.db")).toBe(true);
+    expect(json("watch/preferences.json")).toEqual({ likes: ["autre"] });
+    expect(database().changes[0]!.file).toBe("veille/watch.db");
+    const db = new WatchDb(join(home, "veille", "watch.db"));
+    expect(db.digest()).toHaveLength(2);
+    db.close();
+  });
+
+  it("base verrouillée : l'étape échoue et repart au prochain passage ; absente ou déjà au nouveau format : intacte", () => {
+    expect(database().changes).toEqual([]);
+    rmSync(join(home, "migrations.json"));
+    oldWatchDb("watch/watch.db");
+    const holder = new DatabaseSync(join(home, "watch", "watch.db"));
+    holder.exec("BEGIN EXCLUSIVE");
+    const locked = database();
+    holder.exec("ROLLBACK");
+    holder.close();
+    expect(locked.error).toMatch(/watch\.db/);
+    expect(has("migrations.json")).toBe(false);
+    expect(database().error).toBeUndefined();
+    // Déjà au nouveau format : rien.
+    expect(step("watch-database", { force: true }).changes).toEqual([]);
+  });
+});
+
+// ---- Documents ----
+
+describe("étape documents-tags", () => {
+  const DOC = (source: string, tags: string) => `---\ntitle: "Veille du jour"\ndate: 2026-11-06T08:00:00.000Z\nsource: ${source}\ntags: ${tags}\n---\n\nsource: "veille"\ntags: ["veille"]\n`;
+
+  it("source et étiquettes de l'en-tête seulement (pas le corps), original sauvegardé", () => {
+    write("documents/a.md", DOC('"veille"', '["veille"]'));
+    write("documents/b.md", DOC('"floppy"', '["reponse", "x"]'));
+    write("documents/c.md", DOC('"floppy"', '["watch"]'));
+    const r = step("documents-tags");
+    expect(r.changes).toEqual([{ file: "documents/a.md", keys: ["source", "tags"] }, { file: "documents/b.md", keys: ["tags"] }]);
+    expect(read("documents/a.md")).toBe(DOC('"watch"', '["watch"]'));
+    expect(read("documents/b.md")).toBe(DOC('"floppy"', '["answer","x"]'));
+    expect(read("documents/c.md")).toBe(DOC('"floppy"', '["watch"]'));
+    expect(read("documents/a.md.bak-documents-tags")).toBe(DOC('"veille"', '["veille"]'));
+    expect(step("documents-tags", { force: true }).changes).toEqual([]);
+  });
+
+  it("les deux étiquettes présentes : sans doublon", () => {
+    write("documents/a.md", DOC('"watch"', '["veille", "watch"]'));
+    step("documents-tags");
+    expect(read("documents/a.md")).toBe(DOC('"watch"', '["watch"]'));
+  });
+});
+
+// ---- Dossiers et fichiers divers ----
+
+describe("étape folders", () => {
+  it("dossiers de travail du coder, essai de voix et copie du kit : renommés ; un second passage et un nouveau format : rien", () => {
+    put("workspaces/coder/reglages/notes.json", { a: 1 });
+    put("workspaces/coder/revues/b.json", { b: 2 });
+    put("workspaces/brain-claude-cli/c.json", { c: 3 });
+    mkdirSync(join(home, "tts-audiocpp"), { recursive: true });
+    write("tts-audiocpp/essai.wav", "RIFF");
+    put("plugins/exemple-minuteur/index.json", { d: 4 });
+    const r = step("folders");
+    expect(r.changes.map((c) => [c.file, c.renamedTo])).toEqual([
+      ["workspaces/coder/reglages", "workspaces/coder/settings"], ["workspaces/coder/revues", "workspaces/coder/reviews"],
+      ["tts-audiocpp/essai.wav", "tts-audiocpp/trial.wav"], ["plugins/exemple-minuteur", "plugins/example-timer"]]);
+    expect(json("workspaces/coder/settings/notes.json")).toEqual({ a: 1 });
+    expect(json("workspaces/coder/reviews/b.json")).toEqual({ b: 2 });
+    expect(json("workspaces/brain-claude-cli/c.json")).toEqual({ c: 3 });
+    expect(read("tts-audiocpp/trial.wav")).toBe("RIFF");
+    expect(read("tts-audiocpp/essai.wav.bak-folders")).toBe("RIFF");
+    expect(json("plugins/example-timer/index.json")).toEqual({ d: 4 });
+    expect(step("folders", { force: true }).changes).toEqual([]);
+  });
+
+  it("la nouvelle place existe déjà : conflit signalé, les deux sont gardés", () => {
+    put("workspaces/coder/reglages/a.json", { a: 1 });
+    put("workspaces/coder/settings/z.json", { z: 1 });
+    const r = step("folders");
+    expect(r.skipped).toEqual([{ file: "workspaces/coder/reglages", why: "exists" }]);
+    expect(has("workspaces/coder/reglages/a.json")).toBe(true);
+    expect(has("workspaces/coder/settings/z.json")).toBe(true);
+  });
+});
+
+// ---- Anciens réglages lus une fois par le code des plugins ----
+
+describe("étape connectors-settings", () => {
+  const YML = "plugins:\n  - { id: tools, plugin: tools, config: { servers: { a: { command: x }, \"B-2\": { command: y }, c: { command: z } } } }\n  - { id: ailleurs, plugin: contoso }\n";
+
+  it("réglages connecteur_<id> : éteint → disabled, allumé → extra.enabled, une seule fois ; réglages retirés ; même état que l'ancien code", () => {
+    write("floppy.yml", YML);
+    put("settings.json", { connecteur_a: false, connecteur_b_2: true, connecteur_autre: false, "tasks.x.y": "never" });
+    put("items/tools.json", { added: { ajout: { kind: "command", values: {} } }, edits: {}, disabled: ["c"], removed: [], children: {}, extra: { enabled: ["b-nope"] } });
+    put("settings.json", { connecteur_a: false, connecteur_b_2: true, connecteur_ajout: false, connecteur_autre: false, "tasks.x.y": "never" });
+    const r = step("connectors-settings");
+    expect(r.changes.map((c) => c.file)).toEqual(["items/tools.json", "settings.json"]);
+    expect(r.changes[0]!.keys).toEqual(["disabled", "extra.enabled", "extra.migrated"]);
+    const items = json("items/tools.json");
+    expect(items.disabled).toEqual(["c", "a", "ajout"]);
+    expect(items.extra).toEqual({ enabled: ["b-nope", "B-2"], migrated: true });
+    expect(json("settings.json")).toEqual({ "tasks.x.y": "never" });
+    // Lu par l'ItemStore du noyau : les mêmes valeurs que l'ancien code.
+    const store = ItemStore.in(home, "tools");
+    expect(store.isEnabled("a")).toBe(false);
+    expect(store.isEnabled("B-2")).toBe(true);
+    expect(store.data.extra.enabled).toContain("B-2");
+    expect(step("connectors-settings", { force: true }).changes).toEqual([]);
+  });
+
+  it("déjà migré (extra.migrated) : le fichier d'éléments n'est pas touché ; fichier absent : créé ; à blanc : rien d'écrit", () => {
+    write("floppy.yml", YML);
+    put("settings.json", { connecteur_a: false });
+    put("items/tools.json", { added: {}, edits: {}, disabled: [], removed: [], children: {}, extra: { migrated: true } });
+    const done = step("connectors-settings");
+    expect(done.changes).toEqual([{ file: "settings.json", keys: ["connecteur_a"] }]);
+    expect(json("items/tools.json").disabled).toEqual([]);
+    rmSync(join(home, "items", "tools.json"));
+    put("settings.json", { connecteur_c: false });
+    expect(step("connectors-settings", { force: true, dryRun: true }).changes.map((c) => c.file)).toEqual(["items/tools.json", "settings.json"]);
+    expect(has("items/tools.json")).toBe(false);
+    step("connectors-settings", { force: true });
+    expect(json("items/tools.json")).toMatchObject({ disabled: ["c"], extra: { enabled: [], migrated: true } });
+  });
+});
+
+describe("étape wakeword-words", () => {
+  it("l'ancien réglage mot_activation devient les mots de l'entrée (un choix déjà fait ou la config gagnent) ; réglage retiré", () => {
+    write("floppy.yml", "plugins:\n  - { id: stt, plugin: wakeword-stt }\n  - { id: stt2, plugin: wakeword-stt, config: { words: [mimi] } }\n  - { id: stt3, plugin: wakeword-stt }\n");
+    put("settings.json", { mot_activation: "jarvis, salut robot;  ", other: 1 });
+    put("items/stt3.json", { added: {}, edits: { account: { words: ["deja"], name: "Mon nom" } }, disabled: [], removed: [], children: {}, extra: {} });
+    const r = step("wakeword-words");
+    expect(r.changes.map((c) => c.file)).toEqual(["items/stt.json", "settings.json"]);
+    expect(json("items/stt.json").edits).toEqual({ account: { words: ["jarvis", "salut robot"] } });
+    expect(has("items/stt2.json")).toBe(false);
+    expect(json("items/stt3.json").edits.account).toEqual({ words: ["deja"], name: "Mon nom" });
+    expect(json("settings.json")).toEqual({ other: 1 });
+    // Lu comme le plugin le lit : la fusion de l'ItemStore donne les mots repris.
+    expect(ItemStore.in(home, "stt").merge({ account: { words: undefined } }).account).toEqual({ words: ["jarvis", "salut robot"] });
+    expect(step("wakeword-words", { force: true }).changes).toEqual([]);
+  });
+
+  it("réglage vide ou absent : rien à reprendre", () => {
+    write("floppy.yml", "plugins:\n  - { id: stt, plugin: wakeword-stt }\n");
+    expect(step("wakeword-words").changes).toEqual([]);
+    put("settings.json", { mot_activation: "" });
+    const r = step("wakeword-words", { force: true });
+    expect(r.changes).toEqual([{ file: "settings.json", keys: ["mot_activation"] }]);
+    expect(has("items/stt.json")).toBe(false);
+  });
+});
+
+describe("étape orca-surveillance", () => {
+  it("surveillance éteinte : annonces coupées (orca_notifications none) sauf choix déjà fait ; allumée : rien ; réglage retiré", () => {
+    put("settings.json", { orca_surveillance: false, other: 1 });
+    expect(step("orca-surveillance").changes).toEqual([{ file: "settings.json", keys: ["orca_surveillance", "orca_notifications"] }]);
+    expect(json("settings.json")).toEqual({ other: 1, orca_notifications: "none" });
+    put("settings.json", { orca_surveillance: false, orca_notifications: "all" });
+    step("orca-surveillance", { force: true });
+    expect(json("settings.json")).toEqual({ orca_notifications: "all" });
+    put("settings.json", { orca_surveillance: true });
+    step("orca-surveillance", { force: true });
+    expect(json("settings.json")).toEqual({});
+    expect(step("orca-surveillance", { force: true }).changes).toEqual([]);
+  });
+});
+
+describe("les étapes 30 à 37 ensemble", () => {
+  it("un dossier d'avant : tout passe en un passage, rien ne reste d'ancien, le second passage et le rejeu forcé ne changent rien", () => {
+    seed30();
+    put("veille/preferences.json", { likes: ["a"] });
+    oldWatchDb("veille/veille.db");
+    write("documents/a.md", '---\ntitle: "V"\ndate: 2026-11-06T08:00:00.000Z\nsource: "veille"\ntags: ["veille"]\n---\n\ncorps\n');
+    put("workspaces/coder/reglages/n.json", {});
+    const first = migrateHome(home);
+    expect(first.filter((r) => r.error)).toEqual([]);
+    for (const old of ["veille", "workspaces/coder/reglages", "items/veille.json"]) expect(has(old)).toBe(false);
+    expect(has("watch/watch.db")).toBe(true);
+    expect(read("floppy.yml")).toContain("id: watch");
+    expect(migrateHome(home).every((r) => r.alreadyApplied)).toBe(true);
+    const forced = migrateHome(home, { force: true });
+    expect(forced.flatMap((r) => r.changes)).toEqual([]);
+    expect(forced.flatMap((r) => r.skipped)).toEqual([]);
   });
 });

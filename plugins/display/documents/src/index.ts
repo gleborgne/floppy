@@ -218,7 +218,7 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
             const title = String(a.title ?? "").trim();
             const markdown = String(a.markdown ?? "").trim();
             if (!markdown) return { status: "failed", text: "Document vide." };
-            const ref = await service.save({ title: title || "Document", markdown, source: "floppy", tags: ["reponse"] });
+            const ref = await service.save({ title: title || "Document", markdown, source: "floppy", tags: ["answer"] });
             const body = await service.show(ref.id, meta.origin);
             if (!body) return { status: "done", text: "Le document est rangé, mais aucun écran n'est disponible ici. Réponds à l'oral : donne l'essentiel en deux ou trois phrases courtes." };
             const hub = ctx.maybe("body");
@@ -228,7 +228,7 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
         },
         {
           name: "open_document",
-          description: "Rouvre un ancien document dans la fenêtre. what : « last » (le dernier), une date (2026-11-06, today, yesterday), un tag (« veille ») ou des mots du titre.",
+          description: "Rouvre un ancien document dans la fenêtre. what : « last » (le dernier), une date (2026-11-06, today, yesterday), un tag (« watch ») ou des mots du titre.",
           inputSchema: { type: "object", properties: { what: { type: "string" } }, required: ["what"] },
           level: "read",
           handler: async (a, meta) => {
@@ -244,7 +244,7 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
         },
         {
           name: "list_documents",
-          description: "Liste les derniers documents rangés (titre et date). tag : pour filtrer (par exemple « veille »).",
+          description: "Liste les derniers documents rangés (titre et date). tag : pour filtrer (par exemple « watch »).",
           inputSchema: { type: "object", properties: { tag: { type: "string" } } },
           level: "read",
           handler: async (a) => {

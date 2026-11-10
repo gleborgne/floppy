@@ -27,7 +27,7 @@ const DEFAULTS: Record<string, string | undefined> = {
   notify: "notify-telegram",
   search: "websearch",
   stt: "stt-sherpa",
-  task: "veille",
+  task: "watch",
   tts: "tts-audiocpp",
   vad: "stt-sherpa",
   vocabulary: "vocabulary",

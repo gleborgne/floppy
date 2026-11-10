@@ -668,7 +668,7 @@ export async function localComplete(http: Http, baseURL: string, model: string, 
       messages: [{ role: "system", content: req.system }, { role: "user", content: req.prompt }],
       // Pas de réflexion pour un tri : plus rapide, et la réponse reste du JSON pur.
       chat_template_kwargs: { enable_thinking: false }, thinking_budget_tokens: 0,
-      ...(req.schema ? { response_format: { type: "json_schema", json_schema: { name: "reponse", schema: req.schema } } } : {}),
+      ...(req.schema ? { response_format: { type: "json_schema", json_schema: { name: "answer", schema: req.schema } } } : {}),
     };
     const r = await http(`${baseURL}/chat/completions`, { timeoutMs: COMPLETE_TIMEOUT_MS, method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...(req.signal ? { signal: req.signal } : {}) });
     if (!r.ok) throw new Error(`le modèle local a répondu ${r.status} : ${(await r.text()).slice(0, 200)}`);

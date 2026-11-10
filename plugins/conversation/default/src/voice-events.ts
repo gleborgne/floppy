@@ -86,7 +86,7 @@ export function voiceHandler(d: VoiceDeps): (b: Body, ev: VoiceEvent) => void {
             if (startedOpen && !b.muted && Date.now() > b.awakeUntil) b.awakeUntil = Date.now() + 1000; // la fenêtre couvre cette phrase
             if (!b.live?.active && !b.ptt && (b.muted || Date.now() > b.awakeUntil) && !activated) {
               // Trace sans le texte (parole non adressée à Floppy) : assez pour voir qu'une phrase a été jetée.
-              ctx.audit.write({ kind: "transcript.ignored", body: b.id, why: b.muted ? "veille" : "pas de mot d'activation", chars: ev.text.length, state: b.state, late_ms: b.muted ? undefined : Date.now() - b.awakeUntil });
+              ctx.audit.write({ kind: "transcript.ignored", body: b.id, why: b.muted ? "sleep" : "pas de mot d'activation", chars: ev.text.length, state: b.state, late_ms: b.muted ? undefined : Date.now() - b.awakeUntil });
               break;
             }
             if (activation && (activated || b.live?.active || b.ptt || Date.now() > activation.expires)) b.wakeActivation = undefined;

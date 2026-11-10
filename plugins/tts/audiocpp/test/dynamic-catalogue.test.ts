@@ -67,7 +67,7 @@ it("croise les fiches versionnées et les empreintes, écarte les familles/varia
 it("OmniVoice clone à 24 kHz et ne reçoit pas l'option Qwen quand la transcription est vide", () => {
   const v = clean({ family: "omnivoice", model: omni, voice: "clone", refText: "Bonjour.\nComment vas-tu ?" });
   expect(clones(v)).toBe(true); expect(rateOf(v)).toBe(24000);
-  expect(speechRequest(v, "Bonjour", "fr")).toMatchObject({ language: "fr", voice: "voix", stream_format: "sse" });
+  expect(speechRequest(v, "Bonjour", "fr")).toMatchObject({ language: "fr", voice: "voice", stream_format: "sse" });
   expect(trialReference(v)).toEqual({ reference_text: "Bonjour. Comment vas-tu ?" });
   expect(trialReference({ ...v, refText: "" })).toEqual({});
   expect(trialReference({ ...v, family: "qwen3_tts", refText: "" })).toEqual({ options: { x_vector_only_mode: true } });
@@ -78,7 +78,7 @@ async function boot(home: string, fetch: typeof globalThis.fetch, seeds?: KnownV
   const k = new Kernel({ home, logger: () => {}, plugins: [makePlugin(seeds, [])], downloads: { fetch } });
   await k.applyConfig({ plugins: [{ id: "tts", plugin: "tts-audiocpp", config: { models: {} } }] });
   const provider = async (id = "local-voice-library") => (await k.items.snapshot()).find(p => p.id === id)!;
-  const refresh = () => k.items.run({ op: "action", provider: "local-voice-catalogue", id: "catalogue", action: "refresh" }, "ui");
+  const refresh = () => k.items.run({ op: "action", provider: "local-voice-catalogue", id: "catalog", action: "refresh" }, "ui");
   return { k, provider, refresh };
 }
 

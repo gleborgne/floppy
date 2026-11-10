@@ -130,10 +130,10 @@ plugins:
   # Avatars of the desktop app (plugins/avatar/).
   - { id: avatar-tv, plugin: avatar-tv }
   - { id: avatar-pixel, plugin: avatar-pixel }
-  - { id: avatar-essaim, plugin: avatar-essaim }
+  - { id: avatar-swarm, plugin: avatar-swarm }
   - { id: avatar-gyre, plugin: avatar-gyre }
-  - { id: avatar-goutte, plugin: avatar-goutte }
-  - { id: avatar-oscillo, plugin: avatar-oscillo }
+  - { id: avatar-droplet, plugin: avatar-droplet }
+  - { id: avatar-neon-scope, plugin: avatar-neon-scope }
   - { id: avatar-iris, plugin: avatar-iris }
   - { id: avatar-pixelcat, plugin: avatar-pixelcat }
   - { id: bodyws, plugin: body-ws, config: { port: 8750 } }
@@ -152,9 +152,9 @@ plugins:
   - { id: documents, plugin: documents }
   # --- Tasks: the scheduler runs plugin tasks on time (Settings → Tasks).
   - { id: scheduler, plugin: scheduler }
-  # --- News digest (veille): interests in Settings → News, digest every morning.
-  - id: veille
-    plugin: veille
+  # --- News digest (watch): interests in Settings → News, digest every morning.
+  - id: watch
+    plugin: watch
     config:
       interests:
         ia-locale:

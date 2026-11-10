@@ -1,6 +1,0 @@
-{
-  "id": "goutte",
-  "name": { "fr": "Goutte", "en": "Droplet" },
-  "description": { "fr": "WebGL · goutte de gel sombre qui brille de l'intérieur · forme molle, bulles, 2 yeux de lumière", "en": "WebGL · dark gel droplet glowing from inside · soft body, bubbles, 2 light eyes" },
-  "emotions": ["neutral","happy","sad","angry","surprised","love","confused","wink","sleepy","thinking"]
-}

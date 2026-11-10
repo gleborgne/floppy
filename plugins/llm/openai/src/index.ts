@@ -122,7 +122,7 @@ export default definePlugin<Config>({
             const key = secret.get(m.id);
             const system = req.schema ? `${req.system}\nRéponds seulement avec un JSON valide qui suit ce schéma : ${JSON.stringify(req.schema)}` : req.system;
             const body: Record<string, unknown> = { model: m.model, messages: [{ role: "system", content: system }, { role: "user", content: req.prompt }] };
-            if (req.schema) body.response_format = { type: "json_schema", json_schema: { name: "reponse", schema: req.schema, strict: false } };
+            if (req.schema) body.response_format = { type: "json_schema", json_schema: { name: "answer", schema: req.schema, strict: false } };
             let r: Response;
             try {
               // Même borne qu'avant (6 × timeout_s, réponse entière), portée par ctx.fetch du fork.

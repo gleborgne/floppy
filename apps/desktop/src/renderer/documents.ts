@@ -6,11 +6,11 @@ const $ = (id: string) => document.getElementById(id) as HTMLElement;
 type Lang = "fr" | "en";
 const TXT: Record<Lang, Record<string, string>> = {
   fr: {
-    title: "Documents", filter: "Filtre", all: "Tous", veille: "Veille", none: "Aucun document dans ce filtre.", empty: "Aucun document pour l'instant.",
+    title: "Documents", filter: "Filtre", all: "Tous", watch: "Veille", none: "Aucun document dans ce filtre.", empty: "Aucun document pour l'instant.",
     del: "Supprimer", delSure: "Supprimer ?", delTip: "Supprimer ce document", delSureTip: "Cliquer encore pour supprimer (le fichier est effacé)",
   },
   en: {
-    title: "Documents", filter: "Filter", all: "All", veille: "News", none: "No document in this filter.", empty: "No document yet.",
+    title: "Documents", filter: "Filter", all: "All", watch: "News", none: "No document in this filter.", empty: "No document yet.",
     del: "Delete", delSure: "Delete?", delTip: "Delete this document", delSureTip: "Click again to delete (the file is erased)",
   },
 };
@@ -67,12 +67,12 @@ function focusDel(id: string): void {
 }
 
 function renderList() {
-  const hasVeille = liste.some((d) => d.tags.includes("veille"));
+  const hasWatch = liste.some((d) => d.tags.includes("watch"));
   const box = $("filters");
   box.replaceChildren();
-  box.hidden = !hasVeille;
-  if (hasVeille) {
-    for (const [value, label] of [["", t("all")], ["veille", t("veille")]] as [string, string][]) {
+  box.hidden = !hasWatch;
+  if (hasWatch) {
+    for (const [value, label] of [["", t("all")], ["watch", t("watch")]] as [string, string][]) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "chip" + (filtre === value ? " on" : "");

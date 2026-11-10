@@ -8,7 +8,7 @@ import { boot, type DrawnAvatar } from "./avatar-harness.ts";
 // suite déterministe), les uniformes envoyés au GPU comparés à un enregistrement fait avant la mise en commun du code
 // (fixtures/avatar-life-golden.json). Pour le réécrire volontairement : AVATAR_GOLDEN=update npx vitest run <ce test>.
 const FIXTURE = new URL("./fixtures/avatar-life-golden.json", import.meta.url);
-const IDS = ["pixel", "pixelcat", "iris", "goutte", "oscillo", "gyre", "essaim"];
+const IDS = ["pixel", "pixelcat", "iris", "droplet", "neon-scope", "gyre", "swarm"];
 type Step = { name: string; frames: number; run?: (a: DrawnAvatar) => void; jump?: number };
 
 const steps: Step[] = [

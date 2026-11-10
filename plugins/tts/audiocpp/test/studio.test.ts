@@ -159,13 +159,13 @@ describe("studio de voix", () => {
       expect(t.ok).toBe(true);
       expect(t.text).toContain(`Essai avec ${name}`);
       const body = state.bodies.at(-1)!;
-      expect(body).toMatchObject({ model: "modele", input: "Salut", stream_format: "sse" });
+      expect(body).toMatchObject({ model: "model", input: "Salut", stream_format: "sse" });
       if (family === "qwen3_tts") expect(body.reference_text).toBe("Le matin au soleil");
       else {
         expect(body).not.toHaveProperty("reference_text");
         expect(body).not.toHaveProperty("options");
       }
-      expect(String(body.voice_ref)).toBe(join(home, "tts-audiocpp", "essai.wav").replace(/\\/g, "/"));
+      expect(String(body.voice_ref)).toBe(join(home, "tts-audiocpp", "trial.wav").replace(/\\/g, "/"));
       expect(body).not.toHaveProperty("voice");
       const back = wavPcm(new Uint8Array(Buffer.from(t.audio!.split(",")[1]!, "base64")));
       expect([...back.pcm]).toEqual([5, 6, 7]);

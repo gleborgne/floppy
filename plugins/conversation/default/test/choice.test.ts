@@ -165,7 +165,7 @@ describe("outil ask_choice", () => {
     await vi.waitFor(() => expect(st.spoken).toContain("Quel fruit ? un : Pomme, deux : Poire rouge, trois : Cerise."));
     st.emit({ type: "transcript", text: "la deuxième", audio_s: 0.6, stt_ms: 0, merged: false }); // sans mot d'activation
     await vi.waitFor(() => expect(toolResults).toEqual(["L'utilisateur a choisi : Poire rouge"]));
-    expect(k.audit.tail(50).find((r) => r.kind === "choice")).toMatchObject({ picked: "o2", reason: "user", by: "avatar:voix" });
+    expect(k.audit.tail(50).find((r) => r.kind === "choice")).toMatchObject({ picked: "o2", reason: "user", by: "avatar:voice" });
     await vi.waitFor(() => expect(avatar.of("reply.done")).toHaveLength(1));
     expect(k.choices.pending()).toHaveLength(0);
   });
@@ -179,7 +179,7 @@ describe("outil ask_choice", () => {
     await vi.waitFor(() => expect(toolResults).toEqual(["L'utilisateur a choisi : Poire rouge"]));
     expect(st.spoken).toEqual([]);
     expect(chat.of("choice.closed")[0]).toMatchObject({ picked: "o2" });
-    expect(k.audit.tail(50).find((r) => r.kind === "choice")).toMatchObject({ by: "test:voix" });
+    expect(k.audit.tail(50).find((r) => r.kind === "choice")).toMatchObject({ by: "test:voice" });
   });
 
   it("un corps qui n'est pas l'origine ne peut pas répondre (texte tapé ni voix)", async () => {

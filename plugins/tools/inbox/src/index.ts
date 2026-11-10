@@ -188,7 +188,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
         if (!ctx.alive || !cur || cur.name !== shown.name || !sameList(cur.schemes, shown.schemes)) return;
         // Carte annulée (arrêt du plugin) : elle sera montrée de nouveau ; sinon, une seule fois.
         if (d.reason !== "cancelled" && !cur.asked) { cur.asked = true; save(); }
-        const byVoice = (d.by ?? "").endsWith(":voix");
+        const byVoice = (d.by ?? "").endsWith(":voice");
         if (d.ok && !byVoice) {
           setTrust(id, "app");
           ctx.log("info", "Boîte aux lettres : application autorisée depuis la carte.", { app: id, par: d.by });

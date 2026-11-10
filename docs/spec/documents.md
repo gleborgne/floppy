@@ -25,7 +25,7 @@ flowchart LR
 
 - **Service `documents`** (contrat dans `packages\core\src\services.ts`) : `save`, `show`, `list`, `get`.
 - **Choix du corps** (`show`) : le corps demandé s'il sait afficher ; sinon un corps texte reçoit le Markdown ; sinon le premier corps qui sait afficher ; sinon rien (un corps voix seule comme Reachy : le cerveau répond à l'oral).
-- **Outils du cerveau** (lecture) : `show_document`, `open_document` (« le dernier », « hier », « veille », des mots du titre), `list_documents`. Le prompt du cerveau dit d'utiliser `show_document` pour une réponse longue, seulement si l'outil est visible.
+- **Outils du cerveau** (lecture) : `show_document`, `open_document` (« le dernier », « hier », « watch », des mots du titre), `list_documents`. Le prompt du cerveau dit d'utiliser `show_document` pour une réponse longue, seulement si l'outil est visible.
 
 ## Sécurité de la fenêtre
 

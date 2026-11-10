@@ -21,7 +21,7 @@ describe("serverConfig / speechRequest", () => {
     const fish = clean({ label: "Fish", family: "fish_audio", model: "fish-audio-s2-pro-q8_0.gguf", voice: "clone", refWav: wav, refText: "Bonjour" });
     const delivery = { intent: "playful", profile: "playful", language: "fr" } as const;
     expect(speechRequest(fish, "Bien joué !", "fr").input).toBe("Bien joué !");
-    expect(speechRequest(fish, "Bien joué !", "fr", delivery)).toMatchObject({ input: "[warm and playful] Bien joué !", voice: "voix", options: { text_chunk_mode: "tag_aware" } });
+    expect(speechRequest(fish, "Bien joué !", "fr", delivery)).toMatchObject({ input: "[warm and playful] Bien joué !", voice: "voice", options: { text_chunk_mode: "tag_aware" } });
     expect(speechRequest(fish, "Ça va aller.", "fr", { ...delivery, intent: "reassure", tone: "sarcastique" }).input).toBe("[soft tone] Ça va aller.");
     expect(speechRequest(fish, "Bonjour", "fr", { ...delivery, profile: "discreet", intent: "neutral" }).input).toBe("Bonjour");
     expect(speechRequest({ ...fish, model: "fish-s1.gguf" }, "Bonjour", "fr", delivery).input).toBe("Bonjour");
@@ -44,7 +44,7 @@ describe("serverConfig / speechRequest", () => {
   });
 
   it("clone : voix + langue ; sans texte, x_vector_only_mode", () => {
-    expect(speechRequest(clone, "Salut")).toEqual({ model: "modele", input: "Salut", voice: "voix", stream_format: "sse", language: "fr" });
+    expect(speechRequest(clone, "Salut")).toEqual({ model: "model", input: "Salut", voice: "voice", stream_format: "sse", language: "fr" });
     const sans = clean({ label: "Q", model, voice: "clone", refWav: wav });
     expect(speechRequest(sans, "x")).toMatchObject({ options: { x_vector_only_mode: true } });
   });
@@ -74,7 +74,7 @@ describe("serverConfig / speechRequest", () => {
     expect(pocket.family).toBe("pocket_tts");
     expect(rateOf(pocket)).toBe(24000);
     // x_vector_only_mode est propre à Qwen3 et VoxCPM2 : Pocket TTS refuserait une option inconnue.
-    expect(speechRequest(pocket, "Salut", "fr")).toEqual({ model: "modele", input: "Salut", voice: "voix", stream_format: "sse", language: "fr" });
+    expect(speechRequest(pocket, "Salut", "fr")).toEqual({ model: "model", input: "Salut", voice: "voice", stream_format: "sse", language: "fr" });
     const st = clean({ label: "S", model, family: "supertonic", voice: "builtin", speaker: "F1" });
     expect(rateOf(st)).toBe(44100);
     expect(speechRequest(st, "Salut", "fr")).toMatchObject({ options: { voice_id: "F1" }, language: "fr" });
@@ -89,9 +89,9 @@ describe("serverConfig / speechRequest", () => {
     const d = join(dir, "work");
     const f = prepareDir(d, clone, cfg);
     expect(f).toBe(join(d, "server.json"));
-    expect(existsSync(join(d, "voices", "voix.wav"))).toBe(true);
-    expect(readFileSync(join(d, "voices", "prompt_text"), "utf8")).toBe("voix|Bonjour\n");
-    expect(JSON.parse(readFileSync(f, "utf8")).models[0].id).toBe("modele");
+    expect(existsSync(join(d, "voices", "voice.wav"))).toBe(true);
+    expect(readFileSync(join(d, "voices", "prompt_text"), "utf8")).toBe("voice|Bonjour\n");
+    expect(JSON.parse(readFileSync(f, "utf8")).models[0].id).toBe("model");
   });
 
   it("scan : les noms de voix d'abord", () => {
@@ -204,13 +204,13 @@ describe("noyau : fork, serveur lancé, voix en flux", () => {
       await k.applyConfig({ plugins: [base, { id: "c", plugin: "consumer" }], slots: { "voice.tts": "tts/q" } });
       expect(spawned).toHaveLength(1);
       expect(spawned[0]![0]).toBe("--config");
-      expect(existsSync(join(home, "tts-audiocpp", "q", "voices", "voix.wav"))).toBe(true);
+      expect(existsSync(join(home, "tts-audiocpp", "q", "voices", "voice.wav"))).toBe(true);
       expect(got?.name).toContain("Qwen");
       const chunks = [];
       for await (const c of got!.speak!("Bonjour", { signal: new AbortController().signal })) chunks.push(c);
       expect(chunks.every((c) => c.rate === 24000)).toBe(true);
       expect(chunks.flatMap((c) => [...c.pcm])).toEqual([1, 2, 3]);
-      expect(state.bodies[0]).toMatchObject({ model: "modele", input: "Bonjour", voice: "voix", stream_format: "sse" });
+      expect(state.bodies[0]).toMatchObject({ model: "model", input: "Bonjour", voice: "voice", stream_format: "sse" });
       const p = (await k.items.snapshot()).find((x) => x.id === "local-voice")!;
       expect(p).toMatchObject({ section: "voice", offers: "tts" });
       expect(p.items.find((i) => i.id === "q")).toMatchObject({ active: true, status: "ok" });
@@ -289,7 +289,7 @@ itQ("quantOf : le format en court, lu dans le nom du fichier", () => {
 });
 
 // Essai réel, sur le processeur : FLOPPY_TEST_AUDIOCPP=<audiocpp_server>, FLOPPY_TEST_POCKET=<pocket-tts-french-*.gguf>,
-// FLOPPY_TEST_REF=<voix.wav> (avec le texte dit dans le .txt du même nom, facultatif).
+// FLOPPY_TEST_REF=<voice.wav> (avec le texte dit dans le .txt du même nom, facultatif).
 const realExe = process.env.FLOPPY_TEST_AUDIOCPP, realPocket = process.env.FLOPPY_TEST_POCKET, realRef = process.env.FLOPPY_TEST_REF;
 describe.runIf(!!realExe && !!realPocket && !!realRef)("pour de vrai : Pocket TTS sur le processeur", () => {
   it("le plugin lance audio.cpp, clone la voix et parle en flux", async () => {

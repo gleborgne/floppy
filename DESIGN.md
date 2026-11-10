@@ -224,7 +224,7 @@ Tokens live in CSS custom properties, one `:root` block per window. In the Setti
 - **Cyan Tint** (`accent-tint-bg` with `accent-tint-ink`): the default status chip ("active", "built-in"). Translucent variants of the accent (`rgba(70, 227, 234, 0.07–0.45)`) are used for tinted backgrounds and inset outlines rather than new hues.
 
 ### Secondary
-- **Neon Violet** (`neon-violet`) and **Neon Cyan** (`neon-cyan`): the dictation pill only (breathing dot, gradient level bars, glow). They belong to the presence register, like the avatars' own palettes (for example `#7FE9FF` in gyre, `#7CF7FF` in essaim, cyan and magenta rings in oscillo), which each avatar plugin owns in its renderer.
+- **Neon Violet** (`neon-violet`) and **Neon Cyan** (`neon-cyan`): the dictation pill only (breathing dot, gradient level bars, glow). They belong to the presence register, like the avatars' own palettes (for example `#7FE9FF` in gyre, `#7CF7FF` in swarm, cyan and magenta rings in neon-scope), which each avatar plugin owns in its renderer.
 
 ### Neutral
 - **Night** (`bg`): window background of Settings, Documents and the results panel.
@@ -410,7 +410,7 @@ Compact and quiet; the cyan fill is spent on one action per view.
 - **Reduced motion:** every window honours `prefers-reduced-motion: reduce` (transitions and page animations off, wake ring and bars stopped), and avatars receive `reducedMotion` in `create()` and must damp breathing, nods, kicks and speed.
 
 ### Avatars (signature)
-- **Principles:** abstract, neon, 3D-feeling light on a dark ground; a face is optional (gyre has none, iris is a single eye, essaim forms a face only for a moment); never emoji, never a flat cartoon sticker. Each avatar owns its own palette inside its renderer, typically cool cyans with a second neon hue.
+- **Principles:** abstract, neon, 3D-feeling light on a dark ground; a face is optional (gyre has none, iris is a single eye, swarm forms a face only for a moment); never emoji, never a flat cartoon sticker. Each avatar owns its own palette inside its renderer, typically cool cyans with a second neon hue.
 - **They express, they do not decorate.** The kernel sends the same states (`sleep`, `idle`, `listening`, `thinking`, `speaking`), emotions with intensity and duration, a mood (valence, energy) and short cues (`nod`, `perk`, `startle`, `wake`). Every avatar renders all of them in its own idiom: listening opens up toward the microphone, thinking looks up or orbits, speaking follows the real voice level, sleep closes or settles.
 - **Interface:** `plugins/avatar/<id>/renderer/index.js` exports `create(container, { reducedMotion })` returning `setState`, `setEmotion(name, intensity, ms)`, `setLevel`, and optionally `setMood`, `lookAt`, `setHearing`, `cue`, `destroy`. `avatar.json` declares `id`, `name { fr, en }`, `description { fr, en }` and the `emotions` actually drawn; undrawn emotions fall back to the nearest one.
 - **Alive, not busy:** parameters follow targets like soft springs (small overshoot), strong emotions start with a squash then a jump, breathing and blinking continue at rest.

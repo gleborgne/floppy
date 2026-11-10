@@ -96,7 +96,7 @@ Heavy resources (a model on the GPU, a voice) run only while an active plugin us
 | `packages/toolkit` | Runtime code the plugins share: avatar helpers, speech and emotion helpers, memory context, desktop contribution. Depends on the kernel and the contracts. |
 | `packages/setup` | Product code outside the kernel: first launch, model and program libraries for local runners. Depends on the kernel, never the other way. |
 | `packages/protocol` | Kernel ↔ body protocol: emotions, states, capabilities. |
-| `plugins/<family>/<name>` | All plugins: `brain`, `llm`, `voice`, `tts`, `live`, `wakeword`, `body`, `avatar`, `tools`, `memory`, `tasks`, `veille` (news digest), `notify`, `conversation`… |
+| `plugins/<family>/<name>` | All plugins: `brain`, `llm`, `voice`, `tts`, `live`, `wakeword`, `body`, `avatar`, `tools`, `memory`, `tasks`, `watch` (news digest), `notify`, `conversation`… |
 | `apps/desktop` | The Electron app: kernel in a `utilityProcess`, WebGL avatar, Settings window. |
 | `apps/cli` | The `floppy` CLI and the plugin catalog. |
 | `services/obsidian-mcp` | Read-only Obsidian MCP server. |

@@ -1,6 +1,7 @@
 // Le moteur de migration du répertoire de travail : marqueur, sauvegardes, idempotence, pannes sans danger.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MIGRATION_MARKER, readMigrationMarker, runHomeMigrations, type MigrationStep } from "../src/index.ts";
@@ -143,5 +144,203 @@ describe("moteur de migration", () => {
     runHomeMigrations(home, [mk("c", 20), mk("a", 1), mk("late", 3), mk("b", 10)]);
     expect(order).toEqual(["late"]);
     expect(readMigrationMarker(home).version).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Renommer un fichier ou un dossier, retoucher une base SQLite, créer un fichier JSON absent.
+// ---------------------------------------------------------------------------------------------------------------
+
+const step = (id: string, run: MigrationStep["run"], version = 1): MigrationStep => ({ id, version, label: id, run });
+const exists = (rel: string) => existsSync(join(home, rel));
+
+describe("moteur : renommer un fichier ou un dossier", () => {
+  const mv = step("mv", (env) => { env.renamePath("old.txt", "new.txt"); env.renamePath("olddir", "newdir"); });
+
+  it("fichier : copié à la nouvelle place, l'original mis de côté en .bak-<étape> ; dossier : déplacé d'un bloc, sans copie", () => {
+    write("old.txt", "contenu");
+    write("olddir/a.txt", "a");
+    write("olddir/sub/b.txt", "b");
+    const [r] = runHomeMigrations(home, [mv]);
+    expect(r!.changes).toEqual([{ file: "old.txt", keys: [], renamedTo: "new.txt" }, { file: "olddir", keys: [], renamedTo: "newdir" }]);
+    expect(exists("old.txt")).toBe(false);
+    expect(read("new.txt")).toBe("contenu");
+    expect(read("old.txt.bak-mv")).toBe("contenu");
+    expect(exists("olddir")).toBe(false);
+    expect(read("newdir/a.txt")).toBe("a");
+    expect(read("newdir/sub/b.txt")).toBe("b");
+    expect(exists("olddir.bak-mv")).toBe(false);
+  });
+
+  it("deuxième passage (marqueur) et rejeu forcé sur le nouveau format : sans effet", () => {
+    write("old.txt", "contenu");
+    write("olddir/a.txt", "a");
+    runHomeMigrations(home, [mv]);
+    expect(runHomeMigrations(home, [mv])[0]!.alreadyApplied).toBe(true);
+    const forced = runHomeMigrations(home, [mv], { force: true })[0]!;
+    expect(forced.changes).toEqual([]);
+    expect(forced.skipped).toEqual([]);
+    expect(read("new.txt")).toBe("contenu");
+  });
+
+  it("la nouvelle place existe déjà : conflit signalé, rien n'est écrasé, les deux sont gardés, l'étape n'échoue pas", () => {
+    write("old.txt", "ancien");
+    write("new.txt", "neuf");
+    write("olddir/a.txt", "a");
+    write("newdir/z.txt", "z");
+    const [r] = runHomeMigrations(home, [mv]);
+    expect(r!.error).toBeUndefined();
+    expect(r!.changes).toEqual([]);
+    expect(r!.skipped).toEqual([{ file: "old.txt", why: "exists" }, { file: "olddir", why: "exists" }]);
+    expect(read("old.txt")).toBe("ancien");
+    expect(read("new.txt")).toBe("neuf");
+    expect(read("olddir/a.txt")).toBe("a");
+    expect(read("newdir/z.txt")).toBe("z");
+    expect(exists("old.txt.bak-mv")).toBe(false);
+    expect(readMigrationMarker(home).applied.mv).toBeDefined();
+  });
+
+  it("à blanc : dit ce qui serait renommé, ne bouge rien, n'écrit pas le marqueur", () => {
+    write("old.txt", "contenu");
+    write("olddir/a.txt", "a");
+    const [r] = runHomeMigrations(home, [mv], { dryRun: true });
+    expect(r!.changes).toEqual([{ file: "old.txt", keys: [], renamedTo: "new.txt" }, { file: "olddir", keys: [], renamedTo: "newdir" }]);
+    expect(exists("new.txt")).toBe(false);
+    expect(exists("newdir")).toBe(false);
+    expect(read("old.txt")).toBe("contenu");
+    expect(exists(MIGRATION_MARKER)).toBe(false);
+  });
+
+  it("une sauvegarde déjà là (essai interrompu) garde l'original : le fichier est quand même rangé à sa nouvelle place", () => {
+    write("old.txt", "contenu");
+    write("old.txt.bak-mv", "contenu");
+    runHomeMigrations(home, [mv]);
+    expect(read("new.txt")).toBe("contenu");
+    expect(exists("old.txt")).toBe(false);
+    expect(read("old.txt.bak-mv")).toBe("contenu");
+  });
+
+  it("une place qui n'existe pas : rien", () => {
+    expect(runHomeMigrations(home, [mv])[0]).toMatchObject({ changes: [], skipped: [] });
+  });
+});
+
+describe("moteur : fichier JSON absent (create)", () => {
+  const make = step("make", (env) => env.editJson("items/x.json", (d) => { d.disabled = ["a"]; return ["disabled"]; }, { create: true }));
+  const plain = step("plain", (env) => env.editJson("items/y.json", (d) => { d.disabled = ["a"]; return ["disabled"]; }));
+
+  it("créé seulement avec create, sans sauvegarde ; à blanc n'écrit rien", () => {
+    expect(runHomeMigrations(home, [plain])[0]!.changes).toEqual([]);
+    expect(exists("items/y.json")).toBe(false);
+    const dry = runHomeMigrations(home, [make], { dryRun: true })[0]!;
+    expect(dry.changes).toEqual([{ file: "items/x.json", keys: ["disabled"] }]);
+    expect(exists("items/x.json")).toBe(false);
+    runHomeMigrations(home, [make]);
+    expect(JSON.parse(read("items/x.json"))).toEqual({ disabled: ["a"] });
+    expect(exists("items/x.json.bak-make")).toBe(false);
+  });
+});
+
+describe("moteur : base SQLite", () => {
+  /** Une base à l'ancien format, avec des lignes. */
+  function oldDb(rel: string): void {
+    mkdirSync(join(home, rel, ".."), { recursive: true });
+    const db = new DatabaseSync(join(home, rel));
+    db.exec("CREATE TABLE vus (url TEXT PRIMARY KEY, titre TEXT, vu_le TEXT); INSERT INTO vus VALUES ('https://a.test', 'Un', '2026-11-01'), ('https://b.test', 'Deux', '2026-11-02');");
+    db.exec("CREATE TABLE digest (numero INTEGER PRIMARY KEY, titre TEXT); INSERT INTO digest VALUES (1, 'Un');");
+    db.close();
+  }
+  const schema = (rel: string) => {
+    const db = new DatabaseSync(join(home, rel), { readOnly: true });
+    try {
+      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map((t) => t.name);
+      return Object.fromEntries(tables.map((t) => [t, (db.prepare(`PRAGMA table_info("${t}")`).all() as { name: string }[]).map((c) => c.name)]));
+    } finally { db.close(); }
+  };
+  const sql = step("sql", (env) => env.editSqlite("data.db", (db) => {
+    db.renameTable("vus", "seen");
+    db.renameColumn("seen", "titre", "title");
+    db.renameColumn("seen", "vu_le", "seen_at");
+    db.renameColumn("digest", "numero", "number");
+  }));
+
+  it("tables et colonnes renommées, lignes gardées, copie de l'original à côté, noms seulement dans le rapport", () => {
+    oldDb("data.db");
+    const [r] = runHomeMigrations(home, [sql]);
+    expect(r!.changes).toEqual([{ file: "data.db", keys: ["vus → seen", "seen.titre → title", "seen.vu_le → seen_at", "digest.numero → number"] }]);
+    expect(schema("data.db")).toEqual({ digest: ["number", "titre"], seen: ["url", "title", "seen_at"] });
+    const db = new DatabaseSync(join(home, "data.db"), { readOnly: true });
+    expect(db.prepare("SELECT url, title, seen_at FROM seen ORDER BY url").all().map((x) => ({ ...x }))).toEqual([
+      { url: "https://a.test", title: "Un", seen_at: "2026-11-01" }, { url: "https://b.test", title: "Deux", seen_at: "2026-11-02" }]);
+    db.close();
+    // La copie garde l'ancien format.
+    expect(schema("data.db.bak-sql")).toEqual({ digest: ["numero", "titre"], vus: ["url", "titre", "vu_le"] });
+  });
+
+  it("idempotent : rejeu forcé, base déjà au nouveau format, base absente : intacts, sans nouvelle sauvegarde", () => {
+    oldDb("data.db");
+    runHomeMigrations(home, [sql]);
+    rmSync(join(home, "data.db.bak-sql"));
+    const forced = runHomeMigrations(home, [sql], { force: true })[0]!;
+    expect(forced.changes).toEqual([]);
+    expect(exists("data.db.bak-sql")).toBe(false);
+    rmSync(join(home, "data.db"));
+    expect(runHomeMigrations(home, [sql], { force: true })[0]).toMatchObject({ changes: [], skipped: [] });
+    expect(exists("data.db")).toBe(false);
+  });
+
+  it("à blanc : dit ce qui changerait (même un renommage de colonne après un renommage de table), ne touche à rien", () => {
+    oldDb("data.db");
+    const before = readFileSync(join(home, "data.db"));
+    const [r] = runHomeMigrations(home, [sql], { dryRun: true });
+    expect(r!.changes[0]!.keys).toEqual(["vus → seen", "seen.titre → title", "seen.vu_le → seen_at", "digest.numero → number"]);
+    expect(readFileSync(join(home, "data.db")).equals(before)).toBe(true);
+    expect(exists("data.db.bak-sql")).toBe(false);
+    expect(exists(MIGRATION_MARKER)).toBe(false);
+  });
+
+  it("les deux noms présents : conflit signalé, la base n'est pas changée à cet endroit", () => {
+    oldDb("data.db");
+    const db = new DatabaseSync(join(home, "data.db"));
+    db.exec("CREATE TABLE seen (url TEXT)");
+    db.close();
+    const [r] = runHomeMigrations(home, [sql]);
+    expect(r!.conflicts).toEqual([{ file: "data.db", key: "vus → seen", kept: "both" }]);
+    expect(schema("data.db").vus).toEqual(["url", "titre", "vu_le"]);
+    expect(schema("data.db").digest).toEqual(["number", "titre"]);
+  });
+
+  it("base verrouillée : l'étape échoue (signalée, pas dans le marqueur), la base est intacte ; libérée, le passage suivant réussit", () => {
+    oldDb("data.db");
+    const holder = new DatabaseSync(join(home, "data.db"));
+    holder.exec("BEGIN EXCLUSIVE");
+    const logs: string[] = [];
+    const first = runHomeMigrations(home, [sql], { log: (l, m) => logs.push(`${l}:${m}`) });
+    holder.exec("ROLLBACK");
+    holder.close();
+    expect(first[0]!.error).toMatch(/data\.db/);
+    expect(readMigrationMarker(home).applied.sql).toBeUndefined();
+    expect(logs.some((l) => l.startsWith("warn:") && l.includes("sera retentée"))).toBe(true);
+    expect(schema("data.db")).toEqual({ digest: ["numero", "titre"], vus: ["url", "titre", "vu_le"] });
+    const second = runHomeMigrations(home, [sql]);
+    expect(second[0]!.error).toBeUndefined();
+    expect(schema("data.db").seen).toEqual(["url", "title", "seen_at"]);
+  });
+
+  it("fichier qui n'est pas une base : l'étape échoue, le fichier est intact, les étapes suivantes tournent quand même", () => {
+    write("data.db", "ceci n'est pas une base SQLite, loin de là, il faut bien plus de seize octets pour que le test soit honnête");
+    const later = step("later", (env) => env.editJson("o.json", (d) => { d.ok = true; return ["ok"]; }, { create: true }), 2);
+    const r = runHomeMigrations(home, [sql, later]);
+    expect(r[0]!.error).toBeDefined();
+    expect(r[1]!.error).toBeUndefined();
+    expect(read("data.db")).toMatch(/^ceci n'est pas/);
+    expect(JSON.parse(read("o.json"))).toEqual({ ok: true });
+  });
+
+  it("un nom SQL douteux est refusé (l'étape échoue, rien n'est exécuté)", () => {
+    oldDb("data.db");
+    const bad = step("bad", (env) => env.editSqlite("data.db", (db) => db.renameColumn("vus", "titre", 'b"; DROP TABLE vus; --')));
+    expect(runHomeMigrations(home, [bad])[0]!.error).toMatch(/nom SQL refusé|data\.db/);
+    expect(schema("data.db").vus).toEqual(["url", "titre", "vu_le"]);
   });
 });

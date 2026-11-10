@@ -385,7 +385,7 @@ Famille `plugins/avatar/<id>/` (comme `plugins/brain/`, `plugins/voice/`…) :
 | `avatar.json` | id, nom (fr/en), description (fr/en), émotions dessinées |
 | `src/index.ts` | le plugin du noyau : `export default defineAvatar(import.meta.url)` (de `@floppy/toolkit`, `packages/toolkit/src/avatars.ts`) |
 | `renderer/index.js` | le dessin : `export function create(container, { reducedMotion })` → `{ setState, setEmotion(name, intensity, ms), setLevel, destroy }`, et en option `setMood(valence, energy)`, `setMouth(open, wide)` (0..1, forme de la bouche d'après le son, en plus de `setLevel` ; `wide` 0 = arrondie, 1 = étirée), `lookAt(x, y)` (-1..1), `setHearing(niveau)`, `cue(nom)` (`nod`, `perk`, `startle`, `wake`, `poke`), `resize` |
-| `renderer/life.js` | (goutte, iris, oscillo, pixelcat) le « vivant » commun : `makeLife`, `approach`, `moodTint` ; importé par `index.js` (`./life.js`), comme `tv` importe `./face.js` |
+| `renderer/life.js` | (droplet, iris, neon-scope, pixelcat) le « vivant » commun : `makeLife`, `approach`, `moodTint` ; importé par `index.js` (`./life.js`), comme `tv` importe `./face.js` |
 
 ```mermaid
 flowchart LR
@@ -400,13 +400,13 @@ flowchart LR
   `body-electron` (facultatif : sans l'app, en mode `--headless`, il ne bloque rien).
 - La page de l'avatar charge seulement un module local (`file://`) envoyé par le noyau.
 - **Avatar par défaut** : le choix de l'utilisateur s'il existe ; sinon `avatar` dans la config de `body-electron` (`floppy.yml` met `tv`) ; sinon le **premier avatar actif par id**. Aucun n'est codé en dur.
-- Les avatars sont trouvés dans `plugins/avatar/<id>/avatar.json` (plus dans `apps/desktop`).
+- Les avatars sont trouvés dans `plugins/avatar/<id>/avatar.json` (plus dans `apps/desktop`). L'`id` est l'identifiant technique, en anglais, du nom anglais de l'avatar (`swarm`, `droplet`, `neon-scope`) ; le nom affiché (`name`, en français et en anglais) reste celui de l'utilisateur. Les anciens `essaim`, `goutte` et `oscillo` sont convertis par l'étape `plugin-ids`.
 - **Mode `--headless`** (sans l'app) : `body-electron` reste actif avec un **avertissement** (« inactif : pas dans l'application »), pas une erreur. Le registre d'avatars existe quand même, sans affichage.
 - `tv` : le visage TV en WebGL (`face.js`, `face-gl.js`, rendu inchangé ; la galerie des émotions les importe d'ici).
 - `pixel` : un rond jaune avec un visage en **points lumineux** (16 × 16), en WebGL. Chaque point glisse vers sa
   nouvelle valeur avec une vague depuis le centre ; ombre douce, reflet, liseré, halo coloré selon l'état, respiration,
   bouche qui suit la voix. 12 émotions dessinées, les autres vont à la plus proche.
-- `essaim` : un **essaim de particules** (1 600 particules, traînées) en mouvement perpétuel, sans visage la plupart
+- `swarm` : un **essaim de particules** (1 600 particules, traînées) en mouvement perpétuel, sans visage la plupart
   du temps. Tout est calculé dans le vertex shader (WebGL2), 1 seul appel de dessin. Chaque état est un champ de
   mouvement (tore au repos, entonnoir vers le bas en écoute, orbites en réflexion, ondes en parole, poussière au sol
   en veille, fontaine, pluie, boule qui tremble, explosion, cœur, 2 tourbillons). Les particules glissent d'un champ à
@@ -416,9 +416,9 @@ flowchart LR
   parlant, avec des pics en colère) et des anneaux inclinés qui tournent comme un gyroscope. Une émotion = un jeu de
   paramètres qui glissent. Ondes venues du bas en écoute, pulsations en parole, éclats en surprise, image doublée en
   confusion.
-- `goutte` : une **goutte de gel sombre** qui brille de l’intérieur (1 fragment shader, formes SDF). Corps mou qui
+- `droplet` : une **goutte de gel sombre** qui brille de l’intérieur (1 fragment shader, formes SDF). Corps mou qui
   frissonne, bord néon, lueur interne, bulles, 2 yeux de lumière. La bouche (une petite onde) ne se montre qu’en parlant.
-- `oscillo` : un **tube de néon rond** avec un double anneau. Yeux et sourcils en néon ; la bouche est une onde
+- `neon-scope` : un **tube de néon rond** avec un double anneau. Yeux et sourcils en néon ; la bouche est une onde
   d’oscilloscope (elle suit la voix entendue en écoute et le niveau de la voix en parole). Le néon scintille parfois.
 - `iris` : un **œil-caméra à diaphragme** (6 lamelles) et un anneau de 24 LED. Pas de bouche : l’ouverture, le regard,
   les paupières et les LED montrent tout (écoute vers le micro, réflexion qui tourne, niveau de la voix).

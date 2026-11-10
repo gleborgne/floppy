@@ -14,7 +14,7 @@ const temp = () => { const d = mkdtempSync(join(tmpdir(), "floppy-sdk-")); tmp.p
 afterEach(() => { for (const d of tmp.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 describe("SDK des plugins", () => {
-  it.each(["minuteur", "meteo"])("l'exemple %s passe les contrôles et démarre isolé", async (name) => {
+  it.each(["timer", "weather"])("l'exemple %s passe les contrôles et démarre isolé", async (name) => {
     const dir = join(SDK_DIR, "examples", name);
     expect(checkPlugin(dir).findings.filter((f) => f.severity === "block")).toEqual([]);
     const { id, def } = await loadPluginDir(dir);
@@ -78,8 +78,8 @@ ${body}
   }, 120_000);
 
   it("un exemple modifié avec un module Node est bloqué", () => {
-    const dir = join(temp(), "minuteur");
-    cpSync(join(SDK_DIR, "examples", "minuteur"), dir, { recursive: true });
+    const dir = join(temp(), "timer");
+    cpSync(join(SDK_DIR, "examples", "timer"), dir, { recursive: true });
     writeFileSync(join(dir, "index.ts"), 'import { readFileSync } from "node:fs";\n' + readFileSync(join(dir, "index.ts"), "utf8"));
     expect(checkPlugin(dir).findings.some((f) => f.code === "import" && f.severity === "block")).toBe(true);
   });

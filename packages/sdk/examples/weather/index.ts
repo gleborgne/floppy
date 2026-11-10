@@ -1,0 +1,43 @@
+// Exemple 2 : un accès réseau déclaré. fetch ne joint que les hôtes de permissions.net
+// (les mêmes ici et dans floppy-plugin.json) ; Floppy vérifie chaque requête, redirections comprises.
+import type { UserPlugin } from "../../floppy-plugin.d.ts";
+import { codeMeteo } from "./codes.ts";
+
+const plugin: UserPlugin = {
+  manifest: {
+    id: "weather",
+    version: "1.0.0",
+    licence: "MIT",
+    description: { fr: "La météo du moment pour une ville (service Open-Meteo, sans clé).", en: "The current weather for a city (Open-Meteo service, no key)." },
+    // cloud : le nom de la ville part sur Internet.
+    permissions: { net: ["geocoding-api.open-meteo.com", "api.open-meteo.com"], cloud: true },
+  },
+
+  apply(ctx) {
+    ctx.tools.register([
+      {
+        name: "current_weather",
+        description: "Donne la météo du moment pour une ville. Paramètre : city (la ville).",
+        inputSchema: { type: "object", properties: { city: { type: "string", maxLength: 80 } }, required: ["city"] },
+        // send : le nom de la ville est envoyé à un service en ligne (accord demandé par défaut).
+        level: "send",
+        handler: async (args, meta) => {
+          const city = String(args.city ?? "").trim().slice(0, 80);
+          if (!city) return { status: "failed", text: { fr: "Il manque la ville.", en: "The city is missing." } };
+          const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&name=${encodeURIComponent(city)}`, { signal: meta.signal });
+          const place = ((await geo.json()) as { results?: { name: string; latitude: number; longitude: number }[] }).results?.[0];
+          if (!place) return { status: "failed", text: { fr: `Je ne trouve pas « ${city} ».`, en: `I cannot find "${city}".` } };
+          const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,weather_code`, { signal: meta.signal });
+          if (!r.ok) return { status: "failed", text: { fr: "Le service météo ne répond pas.", en: "The weather service does not answer." } };
+          const c = ((await r.json()) as { current?: { temperature_2m: number; weather_code: number } }).current;
+          if (!c) return { status: "failed", text: { fr: "Réponse météo vide.", en: "Empty weather answer." } };
+          const ciel = codeMeteo(c.weather_code);
+          ctx.log("debug", `météo ${place.name} : ${c.temperature_2m} °C, code ${c.weather_code}`);
+          return { status: "done", text: { fr: `${place.name} : ${Math.round(c.temperature_2m)} °C, ${ciel.fr}.`, en: `${place.name}: ${Math.round(c.temperature_2m)} °C, ${ciel.en}.` } };
+        },
+      },
+    ]);
+  },
+};
+
+export default plugin;

@@ -24,7 +24,7 @@ export { codexOverrides } from "./codex.ts";
 export { reviewArgs, runReview, REVIEW_SYSTEM, type ReviewAgent } from "./review.ts";
 
 const MAX_SESSIONS = 3;
-const REGLAGES_TOOLS = ["list_settings", "change_setting", "undo_setting", "plugin_status", "list_items", "toggle_item"];
+const SETTINGS_TOOLS = ["list_settings", "change_setting", "undo_setting", "plugin_status", "list_items", "toggle_item"];
 const PLUGIN_TOOLS = ["plugin_docs", "test_plugin", "reload_plugins", "plugin_status", "list_settings"];
 
 const Config = z.object({
@@ -165,13 +165,13 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
         const copied = copyKit(pluginsDir);
         if (copied.length) ctx.log("info", `kit de développement copié : ${copied.join(", ")}`);
       } else {
-        cwd = ctx.workspace("reglages"); // nom du dossier de travail dans <home> : renommé avec les noms de fichiers
+        cwd = ctx.workspace("settings"); // nom du dossier de travail dans <home>
       }
       const s = { id, agent, mode, pending: new Map() } as Session;
       // Mode réglages : outils des éléments en plus (chaque ajout / modification / suppression demande un clic).
       const itemExtras = mode === "plugin" ? [] : itemsTools(ctx, (req) => ask(s, req), lang);
       const extraTools = mode === "plugin" ? (agent === "claude" ? [permissionTool(s)] : []) : itemExtras;
-      const mcpTools = mode === "plugin" ? PLUGIN_TOOLS : [...REGLAGES_TOOLS, ...itemExtras.map((t) => t.name)];
+      const mcpTools = mode === "plugin" ? PLUGIN_TOOLS : [...SETTINGS_TOOLS, ...itemExtras.map((t) => t.name)];
       s.scoped = mcp.scoped({ tools: mcpTools, ...(extraTools.length ? { extraTools } : {}) });
       // Les événements du démarrage partent après le retour de start() : l'appelant connaît alors l'id.
       let started = false;
@@ -245,7 +245,7 @@ function makeCoder(ctx: Context, cfg: Config, mcp: McpEndpoint, model: () => str
       }
       const exeArgs = pick === "claude" ? cfg.claudeExeArgs : pick === "codex" ? cfg.codexExeArgs : cfg.agyExeArgs;
       ctx.audit.write({ kind: "coder.review", agent: pick, chars: prompt.length });
-      const text = await runReview({ agent: pick, exe: e[pick]!, exeArgs, prompt, workdir: ctx.workspace("revues"), spawn: ctx.spawn, ...(pick === "claude" ? { model: model() } : {}), timeoutMs: cfg.review_timeout_s * 1000, ...(signal ? { signal } : {}) });
+      const text = await runReview({ agent: pick, exe: e[pick]!, exeArgs, prompt, workdir: ctx.workspace("reviews"), spawn: ctx.spawn, ...(pick === "claude" ? { model: model() } : {}), timeoutMs: cfg.review_timeout_s * 1000, ...(signal ? { signal } : {}) });
       return { agent: pick, text };
     },
 

@@ -461,11 +461,11 @@ it("le message `display` du noyau (champs en anglais) règle la fenêtre, passe 
 it("la liste de documents venue de la page de l'avatar est nettoyée sous ses noms anglais (`title`)", () => {
   const d = desktop();
   expect(d.api.cleanDocList([
-    { id: 'a1', title: 'Un'.repeat(200), date: '2026-11-06', tags: ['veille', 3] },
+    { id: 'a1', title: 'Un'.repeat(200), date: '2026-11-06', tags: ['watch', 3] },
     { id: '../evil', title: 'x' },
     { id: 'b2', titre: 'ancien nom' },
   ])).toEqual([
-    { id: 'a1', title: 'Un'.repeat(200).slice(0, 200), date: '2026-11-06', tags: ['veille', '3'] },
+    { id: 'a1', title: 'Un'.repeat(200).slice(0, 200), date: '2026-11-06', tags: ['watch', '3'] },
     { id: 'b2', title: '', date: '', tags: [] },
   ]);
   expect(d.api.cleanDocList('pas une liste')).toEqual([]);

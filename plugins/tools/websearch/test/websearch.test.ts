@@ -7,8 +7,8 @@ let kernels: Kernel[] = [];
 afterEach(async () => { for (const k of kernels) await k.stopAll(); kernels = []; });
 
 const RES: SearchResult = {
-  reponse: "Demain à Paris : nuageux, 8 à 13 degrés.",
-  resultats: [{ titre: "Météo Paris", resume: "Ciel couvert.", url: "https://meteo.example/paris", source: "Météo Exemple" }],
+  answer: "Demain à Paris : nuageux, 8 à 13 degrés.",
+  results: [{ title: "Météo Paris", summary: "Ciel couvert.", url: "https://meteo.example/paris", source: "Météo Exemple" }],
 };
 
 describe("recherche web", () => {
@@ -40,9 +40,9 @@ describe("recherche web", () => {
   });
 
   it("lit le JSON (avec ```json), garde seulement les liens http(s)", () => {
-    const r = parseResult('Voici :\n```json\n{"reponse":"ok","resultats":[{"titre":"a","resume":"b","url":"https://x.y","source":"X"},{"titre":"bad","url":"javascript:alert(1)"}]}\n```');
-    expect(r.reponse).toBe("ok");
-    expect(r.resultats.map((x) => x.url)).toEqual(["https://x.y"]);
+    const r = parseResult('Voici :\n```json\n{"answer":"ok","results":[{"title":"a","summary":"b","url":"https://x.y","source":"X"},{"title":"bad","url":"javascript:alert(1)"}]}\n```');
+    expect(r.answer).toBe("ok");
+    expect(r.results.map((x) => x.url)).toEqual(["https://x.y"]);
   });
 
   it("A2UI : surface avec la réponse et un bouton Ouvrir par résultat", () => {
@@ -55,18 +55,18 @@ describe("recherche web", () => {
 
   it("conserve les dates de publication valides, laisse les dates inconnues absentes", () => {
     const dates = ["2026-11-05", null, undefined, "illisible"];
-    const r = parseResult(JSON.stringify({ reponse: "ok", resultats: dates.map((date, i) => ({ titre: `Article ${i}`, url: `https://example.com/${i}`, date })) }));
-    expect(r.resultats[0]?.date).toBe("2026-11-05T00:00:00.000Z");
-    for (const a of r.resultats.slice(1)) expect(a).not.toHaveProperty("date");
+    const r = parseResult(JSON.stringify({ answer: "ok", results: dates.map((date, i) => ({ title: `Article ${i}`, url: `https://example.com/${i}`, date })) }));
+    expect(r.results[0]?.date).toBe("2026-11-05T00:00:00.000Z");
+    for (const a of r.results.slice(1)) expect(a).not.toHaveProperty("date");
   });
 });
 
 describe("service search (slot)", () => {
   it("le même moteur est offert au consommateur d'un slot : résultats convertis, max respecté", async () => {
     const asked: string[] = [];
-    const many: SearchResult = { reponse: "ok", resultats: [
-      { titre: "A", resume: "ra", url: "https://a.test/", source: "A.test", date: "2026-11-05" },
-      { titre: "B", resume: "", url: "https://b.test/", source: "" },
+    const many: SearchResult = { answer: "ok", results: [
+      { title: "A", summary: "ra", url: "https://a.test/", source: "A.test", date: "2026-11-05" },
+      { title: "B", summary: "", url: "https://b.test/", source: "" },
     ] };
     let ctxRef: Context | undefined;
     const user = definePlugin({
@@ -95,7 +95,7 @@ describe("recherche web en anglais", () => {
     const { systemFor } = await import("../src/index.ts");
     expect(systemFor(new Date(2026, 10, 6), "en")).toContain("English-speaking");
     expect(systemFor(new Date(2026, 10, 6), "en")).toContain("Today is Friday, November 6, 2026.");
-    expect(JSON.stringify(resultsA2ui("q", { reponse: "", resultats: RES.resultats }, "claude", "en"))).toContain("\"Open\"");
+    expect(JSON.stringify(resultsA2ui("q", { answer: "", results: RES.results }, "claude", "en"))).toContain("\"Open\"");
     const langs: (string | undefined)[] = [];
     const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async (_q, _c, _w, _s, lang) => { langs.push(lang); return RES; })] });
     kernels.push(k);

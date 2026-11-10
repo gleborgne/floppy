@@ -33,7 +33,7 @@ Dans le manifeste (lu sans démarrer le plugin, comme les slots) :
 
 ```ts
 provides: ["task"],
-tasks: [{ id: "quotidienne", label: "Veille du jour", schedule: { at: "07:30" }, timeout_s: 900 }],   // { at, days? } ou { every }
+tasks: [{ id: "daily", label: "Veille du jour", schedule: { at: "07:30" }, timeout_s: 900 }],   // { at, days? } ou { every }
 ```
 
 Puis `ctx.provide("task", { run(taskId, { signal, reason, lastRun }) { … return { summary, document?, announce? } } })`.
@@ -42,11 +42,11 @@ Puis `ctx.provide("task", { run(taskId, { signal, reason, lastRun }) { … retur
 - `lastRun` : début du dernier passage **réussi** (la veille s'en sert pour ne garder que les nouveaux articles).
 - `announce` : `important` (dit à voix haute), `normal` (notification, par défaut), `silent`.
 
-Une tâche peut aussi dire où sont ses réglages : `configure: "veille"`. Cette rubrique sort alors du menu de la fenêtre et s'affiche sous la tâche (Tâches → « Veille du jour » → Réglages). Un plugin qui ne sert qu'à une tâche n'encombre pas le menu.
+Une tâche peut aussi dire où sont ses réglages : `configure: "watch"`. Cette rubrique sort alors du menu de la fenêtre et s'affiche sous la tâche (Tâches → « Veille du jour » → Réglages). Un plugin qui ne sert qu'à une tâche n'encombre pas le menu.
 
 ## Le registre (noyau)
 
-- Clé d'une tâche : `<entrée>/<tâche>` (ex. `veille/quotidienne`). Une entrée désactivée n'a plus de tâches.
+- Clé d'une tâche : `<entrée>/<tâche>` (ex. `watch/daily`). Une entrée désactivée n'a plus de tâches.
 - Le noyau **garde le plugin en marche** pendant le passage (même un plugin `lazy`), puis le laisse s'arrêter.
 - Outils du cerveau : `list_tasks` (liste) et `run_task` (écriture, accord ; lance en arrière-plan, le résultat arrive tout seul).
 - API plugin : `ctx.tasks.list()`, `ctx.tasks.run(clé)`, `ctx.tasks.onChange(fn)`.

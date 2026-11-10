@@ -41,13 +41,13 @@ async function fixture(bodies: Fake[] = [], clock = new Date(2026, 10, 6, 9, 5))
 describe("documents : stockage", () => {
   it("save / list / get, avec en-tête relu", async () => {
     const f = await fixture();
-    const a = await f.docs.save({ title: "Comparatif Mac/PC : prix", markdown: "# Titre\n\n| a | b |\n|---|---|\n| 1 | 2 |", source: "floppy", tags: ["reponse", "reponse"] });
+    const a = await f.docs.save({ title: "Comparatif Mac/PC : prix", markdown: "# Titre\n\n| a | b |\n|---|---|\n| 1 | 2 |", source: "floppy", tags: ["answer", "answer"] });
     expect(a.id).toMatch(/^2026-11-06-\d{4}-comparatif-mac-pc-prix$/);
-    expect(a.tags).toEqual(["reponse"]);
-    const b = await f.docs.save({ title: "Veille du jour", markdown: "Des liens.", source: "veille", tags: ["veille"] });
+    expect(a.tags).toEqual(["answer"]);
+    const b = await f.docs.save({ title: "Veille du jour", markdown: "Des liens.", source: "watch", tags: ["watch"] });
     const list = await f.docs.list();
     expect(list.map((x) => x.id)).toEqual([b.id, a.id]); // le plus récent d'abord
-    expect((await f.docs.list({ tag: "veille" })).map((x) => x.id)).toEqual([b.id]);
+    expect((await f.docs.list({ tag: "watch" })).map((x) => x.id)).toEqual([b.id]);
     expect(await f.docs.list({ max: 1 })).toHaveLength(1);
     const g = await f.docs.get(a.id);
     expect(g?.title).toBe("Comparatif Mac/PC : prix");
@@ -64,7 +64,7 @@ describe("documents : stockage", () => {
   });
 
   it("l'en-tête fait l'aller-retour (guillemets, deux-points, accents)", () => {
-    const ref = { id: "x", title: 'Un "titre": à é', date: "2026-11-06T08:00:00.000Z", source: "veille", tags: ["a b", "c"] };
+    const ref = { id: "x", title: 'Un "titre": à é', date: "2026-11-06T08:00:00.000Z", source: "watch", tags: ["a b", "c"] };
     const back = parse("x", serialize(ref, "# Corps\n\n---\n\nsuite"));
     expect(back).toEqual({ ...ref, markdown: "# Corps\n\n---\n\nsuite" });
   });
@@ -90,10 +90,10 @@ describe("documents : stockage", () => {
 
   it("fichier écrit en clair avec en-tête", async () => {
     const f = await fixture();
-    const a = await f.docs.save({ title: "T", markdown: "corps", source: "floppy", tags: ["reponse"] });
+    const a = await f.docs.save({ title: "T", markdown: "corps", source: "floppy", tags: ["answer"] });
     const raw = readFileSync(join(f.home, "documents", `${a.id}.md`), "utf8");
     expect(raw.startsWith('---\ntitle: "T"\n')).toBe(true);
-    expect(raw).toContain('tags: ["reponse"]');
+    expect(raw).toContain('tags: ["answer"]');
   });
 });
 
@@ -180,14 +180,14 @@ describe("documents : où montrer", () => {
 });
 
 describe("documents : outils du cerveau", () => {
-  it("show_document : enregistre (source floppy, tag reponse), montre sur l'origine, demande une phrase", async () => {
+  it("show_document : enregistre (source floppy, tag answer), montre sur l'origine, demande une phrase", async () => {
     const f = await fixture([{ id: "avatar", caps: ["voice", "document"] }]);
     const r = await f.k.tools.call("show_document", { title: "Comparatif", markdown: "# A\n\n| x |\n|---|\n| 1 |" }, { origin: "avatar" });
     expect(f.k.tools.list().map((t) => t.name).filter((n) => ["afficher_document", "ouvrir_document", "lister_documents"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toMatch(/UNE seule phrase/);
     const [ref] = await f.docs.list();
-    expect(ref).toMatchObject({ title: "Comparatif", source: "floppy", tags: ["reponse"] });
+    expect(ref).toMatchObject({ title: "Comparatif", source: "floppy", tags: ["answer"] });
     expect(f.sent[0]!.to).toBe("avatar");
   });
 
@@ -206,8 +206,8 @@ describe("documents : outils du cerveau", () => {
 
   it("open_document : dernier, date, tag, mots du titre, inconnu", async () => {
     const f = await fixture([{ id: "avatar", caps: ["document"] }]);
-    const a = await f.docs.save({ title: "Comparatif abonnements", markdown: "a", source: "floppy", tags: ["reponse"] });
-    const v = await f.docs.save({ title: "Veille techno", markdown: "v", source: "veille", tags: ["veille"] });
+    const a = await f.docs.save({ title: "Comparatif abonnements", markdown: "a", source: "floppy", tags: ["answer"] });
+    const v = await f.docs.save({ title: "Veille techno", markdown: "v", source: "watch", tags: ["watch"] });
     const opened = async (quoi: string) => {
       f.sent.length = 0;
       const r = await f.k.tools.call("open_document", { what: quoi }, { origin: "avatar" });
@@ -215,7 +215,7 @@ describe("documents : outils du cerveau", () => {
     };
     expect((await opened("dernier")).id).toBe(v.id);
     expect((await opened("la veille")).id).toBe(v.id);
-    expect((await opened("veille")).id).toBe(v.id);
+    expect((await opened("watch")).id).toBe(v.id);
     expect((await opened("comparatif")).id).toBe(a.id);
     expect((await opened("2026-11-06")).id).toBeDefined();
     expect((await opened("aujourd'hui")).id).toBeDefined();
@@ -228,7 +228,7 @@ describe("documents : outils du cerveau", () => {
   it("list_documents", async () => {
     const f = await fixture();
     expect((await f.k.tools.call("list_documents", {})).text).toBe("Aucun document.");
-    await f.docs.save({ title: "Veille", markdown: "v", source: "veille", tags: ["veille"] });
-    expect((await f.k.tools.call("list_documents", { tag: "veille" })).text).toMatch(/Veille/);
+    await f.docs.save({ title: "Veille", markdown: "v", source: "watch", tags: ["watch"] });
+    expect((await f.k.tools.call("list_documents", { tag: "watch" })).text).toMatch(/Veille/);
   });
 });

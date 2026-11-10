@@ -329,7 +329,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
       const t = T;
       let notifications = ctx.settings.saved<Config["notifications"]>("orca_notifications") ?? cfg.notifications;
       // L'ancien « aucune » coupe désormais les annonces seulement ; la collecte reste utile aux questions.
-      if (ctx.settings.saved("orca_notifications") === undefined && !(ctx.settings.saved<boolean>("orca_surveillance") ?? cfg.surveillance)) notifications = "none";
+      if (ctx.settings.saved("orca_notifications") === undefined && !cfg.surveillance) notifications = "none";
       const announced = new Map<string, number>();
       let pendingAnnouncements = 0;
       let deliveryAnnouncement = 0;

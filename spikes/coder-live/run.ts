@@ -32,7 +32,7 @@ async function turn(sid: string, text: string, autoAllow: boolean): Promise<void
   });
 }
 
-const s1 = await c.start({ agent: "claude", mode: "reglages" });
+const s1 = await c.start({ agent: "claude", mode: "settings" });
 await turn(s1, "Liste mes réglages en deux phrases.", false);
 await turn(s1, "Passe le modèle Claude de l'assistant sur haiku.", false);
 console.log("réglage assistant_claude_model =", k.settings.value("assistant_claude_model"));

@@ -73,7 +73,7 @@ describe("completion llm-openai", () => {
     const r = await b.service.complete({ system: "Note.", prompt: "x", schema });
     b.release();
     expect(r.json).toEqual({ note: 4 });
-    expect(seen.at(-1)!.body.response_format).toEqual({ type: "json_schema", json_schema: { name: "reponse", schema, strict: false } });
+    expect(seen.at(-1)!.body.response_format).toEqual({ type: "json_schema", json_schema: { name: "answer", schema, strict: false } });
     expect(seen.at(-1)!.body.messages[0].content).toContain("JSON valide");
   });
 

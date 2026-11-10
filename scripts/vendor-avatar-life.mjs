@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 export const SOURCE = join(dirname(fileURLToPath(import.meta.url)), "avatar", "life.js");
 /** Les avatars qui importent ./life.js. */
-export const AVATARS = ["goutte", "iris", "oscillo", "pixelcat"];
+export const AVATARS = ["droplet", "iris", "neon-scope", "pixelcat"];
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (const id of AVATARS) copyFileSync(SOURCE, join(dirname(SOURCE), "..", "..", "plugins", "avatar", id, "renderer", "life.js"));

@@ -1,0 +1,15 @@
+{
+  "name": "@floppy/plugin-avatar-swarm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "floppy": { "plugin": true, "order": 300 },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@floppy/core": "0.1.0",
+    "@floppy/toolkit": "0.1.0"
+  }
+}

@@ -11,7 +11,7 @@ import type { Kernel, Manifest, ToolDef } from "@floppy/core";
 
 /** Pages écrites à la main (packages/sdk/wiki/*.md), dans l'ordre de lecture conseillé. */
 export const WIKI_DIR = dirname(fileURLToPath(import.meta.resolve("@floppy/sdk/wiki/basics.md")));
-const EXAMPLES_DIR = dirname(dirname(fileURLToPath(import.meta.resolve("@floppy/sdk/examples/minuteur/index.ts"))));
+const EXAMPLES_DIR = dirname(dirname(fileURLToPath(import.meta.resolve("@floppy/sdk/examples/timer/index.ts"))));
 /** Sources des contrats : ceux du noyau (tâches, documents) et ceux des domaines (@floppy/contracts). */
 const CONTRACTS_DIR = dirname(fileURLToPath(import.meta.resolve("@floppy/contracts")));
 const SERVICES_SRC = [fileURLToPath(new URL("./services.ts", import.meta.resolve("@floppy/core"))),

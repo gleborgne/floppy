@@ -17,7 +17,7 @@ function digest(j: string[], opts: { gate?: Promise<void>; fail?: boolean } = {}
   return definePlugin({
     manifest: {
       id: "digest", version: "0", licence: "MIT", provides: ["task"], lazy: true,
-      tasks: [{ id: "quotidienne", label: "Veille du jour", schedule: { at: "07:30" } }],
+      tasks: [{ id: "daily", label: "Veille du jour", schedule: { at: "07:30" } }],
     },
     apply(ctx) {
       j.push("start");
@@ -67,44 +67,44 @@ describe("registre des tâches", () => {
     const initiatives: unknown[] = [];
     k = new Kernel({ logger: quiet, plugins: [digest(j), docs(shown)] });
     k.bus.on("initiative", (p) => { initiatives.push(p); });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }, { id: "docs", plugin: "docs" }] });
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }, { id: "docs", plugin: "docs" }] });
 
-    expect(k.tasks.list().map((t) => t.key)).toEqual(["veille/quotidienne"]);
-    expect(state(k, "veille")).toBe("loaded"); // endormi : personne ne s'en sert
+    expect(k.tasks.list().map((t) => t.key)).toEqual(["watch/daily"]);
+    expect(state(k, "watch")).toBe("loaded"); // endormi : personne ne s'en sert
     expect(j).toEqual([]);
 
-    const out = await k.tasks.run("veille/quotidienne", "clock");
+    const out = await k.tasks.run("watch/daily", "clock");
     await k.idle();
     expect(out.ok).toBe(true);
-    expect(j).toEqual(["start", "run quotidienne clock sans", "stop"]);
-    expect(state(k, "veille")).toBe("loaded");
-    expect(initiatives).toMatchObject([{ source: "veille/quotidienne", text: "Ta veille est prête.", importance: "normal" }]);
+    expect(j).toEqual(["start", "run daily clock sans", "stop"]);
+    expect(state(k, "watch")).toBe("loaded");
+    expect(initiatives).toMatchObject([{ source: "watch/daily", text: "Ta veille est prête.", importance: "normal" }]);
     expect(shown).toEqual(["d1"]);
 
     // Le 2e passage reçoit la date du 1er.
-    await k.tasks.run("veille/quotidienne", "voice");
-    expect(j).toContain("run quotidienne voice avec");
+    await k.tasks.run("watch/daily", "voice");
+    expect(j).toContain("run daily voice avec");
     expect(k.tasks.list()[0]!.lastRun).toBeTruthy();
   });
 
   it("garde la date du dernier passage dans <home>/tasks.json", async () => {
     const home = mkdtempSync(join(tmpdir(), "tasks-"));
     k = new Kernel({ logger: quiet, home, plugins: [digest([])] });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    await k.tasks.run("veille/quotidienne", "manual");
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }] });
+    await k.tasks.run("watch/daily", "manual");
     const saved = JSON.parse(readFileSync(join(home, "tasks.json"), "utf8"));
-    expect(saved["veille/quotidienne"].lastRun).toBeTruthy();
+    expect(saved["watch/daily"].lastRun).toBeTruthy();
     await k.stopAll();
     // Un nouveau noyau sur le même dossier s'en souvient.
     k = new Kernel({ logger: quiet, home, plugins: [digest([])] });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    expect(k.tasks.list()[0]!.lastRun).toBe(saved["veille/quotidienne"].lastRun);
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }] });
+    expect(k.tasks.list()[0]!.lastRun).toBe(saved["watch/daily"].lastRun);
   });
 
   it("annonce : important → dit, silent → rien ; l'événement task.done et l'audit portent `reason`", async () => {
     let announce: "important" | "silent" | undefined = "important";
     const plugin = definePlugin({
-      manifest: { id: "digest", version: "0", licence: "MIT", provides: ["task"], tasks: [{ id: "quotidienne", label: "Veille du jour", schedule: { at: "07:30" } }] },
+      manifest: { id: "digest", version: "0", licence: "MIT", provides: ["task"], tasks: [{ id: "daily", label: "Veille du jour", schedule: { at: "07:30" } }] },
       apply(ctx) { ctx.provide("task", { run: async () => ({ summary: "Fait.", ...(announce ? { announce } : {}) }) } satisfies TaskService); },
     });
     const audit = new MemoryAudit();
@@ -113,10 +113,10 @@ describe("registre des tâches", () => {
     const done: { reason: string; result: { summary: string } }[] = [];
     k.bus.on("initiative", (p) => { initiatives.push(p); });
     k.bus.on("task.done", (p) => { done.push(p); });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    await k.tasks.run("veille/quotidienne", "voice");
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }] });
+    await k.tasks.run("watch/daily", "voice");
     announce = "silent";
-    await k.tasks.run("veille/quotidienne", "clock");
+    await k.tasks.run("watch/daily", "clock");
     expect(initiatives.map((i) => i.importance)).toEqual(["important"]);
     expect(done.map((d) => [d.reason, d.result.summary])).toEqual([["voice", "Fait."], ["clock", "Fait."]]);
     expect(audit.records.filter((r) => r.kind === "task").map((r) => r.reason)).toEqual(["voice", "clock"]);
@@ -126,11 +126,11 @@ describe("registre des tâches", () => {
     let open!: () => void;
     const gate = new Promise<void>((r) => { open = r; });
     k = new Kernel({ logger: quiet, plugins: [digest([], { gate })] });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    const first = k.tasks.run("veille/quotidienne", "clock");
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }] });
+    const first = k.tasks.run("watch/daily", "clock");
     await new Promise((r) => setTimeout(r, 20));
     expect(k.tasks.list()[0]!.running).toBe(true);
-    const second = await k.tasks.run("veille/quotidienne", "voice");
+    const second = await k.tasks.run("watch/daily", "voice");
     expect(second.ok).toBe(false);
     expect(tr(second.text)).toMatch(/déjà en cours/);
     expect(tr(second.text, "en")).toMatch(/already running/);
@@ -142,8 +142,8 @@ describe("registre des tâches", () => {
     const initiatives: unknown[] = [];
     k = new Kernel({ logger: quiet, plugins: [digest([], { fail: true })] });
     k.bus.on("initiative", (p) => { initiatives.push(p); });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    const out = await k.tasks.run("veille/quotidienne", "clock");
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }] });
+    const out = await k.tasks.run("watch/daily", "clock");
     expect(out.ok).toBe(false);
     expect(tr(out.text)).toMatch(/source en panne/);
     expect(tr(out.text, "en")).toMatch(/failed: .*source en panne/);
@@ -154,9 +154,9 @@ describe("registre des tâches", () => {
 
   it("une entrée désactivée n'a plus de tâche ; les outils suivent la liste", async () => {
     k = new Kernel({ logger: quiet, plugins: [digest([])] });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }] });
     expect(k.tools.list().map((t) => t.name)).toEqual(expect.arrayContaining(["list_tasks", "run_task"]));
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest", disabled: true }] });
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest", disabled: true }] });
     expect(k.tasks.list()).toEqual([]);
     expect(k.tools.list().map((t) => t.name)).not.toContain("run_task");
   });
@@ -164,14 +164,14 @@ describe("registre des tâches", () => {
   it("run_task (voix) lance en arrière-plan, par le nom de la tâche", async () => {
     const j: string[] = [];
     k = new Kernel({ logger: quiet, plugins: [digest(j)] });
-    await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }], approvals: { write: "always" } });
+    await k.applyConfig({ plugins: [{ id: "watch", plugin: "digest" }], approvals: { write: "always" } });
     const r = await k.tools.call("run_task", { task: "veille du jour" });
     expect(k.tools.list().map((t) => t.name).filter((n) => ["taches", "lancer_tache"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toMatch(/lancée/);
     await new Promise((res) => setTimeout(res, 50));
     await k.idle();
-    expect(j).toContain("run quotidienne voice sans");
+    expect(j).toContain("run daily voice sans");
   });
 });
 
@@ -232,12 +232,12 @@ describe("tâche qui ignore l'arrêt", () => {
     k = new Kernel({ logger: quiet, plugins: [digest(j, { gate: new Promise(() => {}) })] });
     k.tasks.abortGraceMs = 20;
     await k.applyConfig({ plugins: [{ id: "digest", plugin: "digest" }] });
-    const run = k.tasks.run("digest/quotidienne", "manual");
+    const run = k.tasks.run("digest/daily", "manual");
     await new Promise((r) => setTimeout(r, 20));
-    expect(k.tasks.cancel("digest/quotidienne")).toBe(true);
+    expect(k.tasks.cancel("digest/daily")).toBe(true);
     const out = await run;
     expect(out.ok).toBe(false);
     expect(tr(out.text, "fr")).toMatch(/arrêtée/);
-    expect(k.tasks.list().find((t) => t.key === "digest/quotidienne")?.running).toBeFalsy();
+    expect(k.tasks.list().find((t) => t.key === "digest/daily")?.running).toBeFalsy();
   });
 });

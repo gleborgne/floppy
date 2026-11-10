@@ -50,7 +50,7 @@ export function reviewArgs(agent: ReviewAgent, model: string | undefined, outFil
 export async function runReview(r: ReviewRun): Promise<string> {
   // Un dossier neuf par relecture, dans l'espace de travail du plugin (sinon le dossier temporaire du système).
   const cwd = mkdtempSync(join(r.workdir ?? tmpdir(), "relecture-"));
-  const outFile = join(cwd, "reponse.txt");
+  const outFile = join(cwd, "answer.txt");
   try {
     const p = r.spawn(r.exe, [...(r.exeArgs ?? []), ...reviewArgs(r.agent, r.model, outFile)], { cwd, windowsHide: true, env: cleanEnv({}) }) as ChildProcessWithoutNullStreams;
     let stdout = "", stderr = "", agyText = "";

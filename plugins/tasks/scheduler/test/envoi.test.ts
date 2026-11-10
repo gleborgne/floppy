@@ -29,15 +29,15 @@ function channels(sent: { channel: string; msg: NotifyMessage }[], opts: { failM
 
 function digest(): PluginDef<any> {
   return definePlugin({
-    manifest: { id: "digest", version: "0", licence: "MIT", provides: ["task"], tasks: [{ id: "quotidienne", label: "Veille du jour" }] },
+    manifest: { id: "digest", version: "0", licence: "MIT", provides: ["task"], tasks: [{ id: "daily", label: "Veille du jour" }] },
     apply(ctx) {
-      ctx.provide("task", { run: async () => ({ summary: "Ta veille est prête.", document: { id: "d1", title: "Veille du 6 novembre", date: "", source: "veille", tags: ["veille"] } }) });
+      ctx.provide("task", { run: async () => ({ summary: "Ta veille est prête.", document: { id: "d1", title: "Veille du 6 novembre", date: "", source: "watch", tags: ["watch"] } }) });
     },
   });
 }
 
 function docs(): PluginDef<any> {
-  const ref: DocRef = { id: "d1", title: "Veille du 6 novembre", date: "", source: "veille", tags: ["veille"] };
+  const ref: DocRef = { id: "d1", title: "Veille du 6 novembre", date: "", source: "watch", tags: ["watch"] };
   return definePlugin({
     manifest: { id: "docs", version: "0", licence: "MIT", provides: ["documents"] },
     apply(ctx) {
@@ -55,7 +55,7 @@ async function setup(sent: { channel: string; msg: NotifyMessage }[], opts: { fa
   k = new Kernel({ logger: () => {}, plugins: [channels(sent, opts), digest(), docs(), createSchedulerPlugin()] });
   k.bus.on("initiative", (p) => { initiatives.push(p); });
   await k.applyConfig({
-    plugins: [{ id: "notify", plugin: "fake-notify" }, { id: "veille", plugin: "digest" }, { id: "docs", plugin: "docs" }, { id: "sched", plugin: "scheduler", config: { delaiDemarrageS: 3600 } }],
+    plugins: [{ id: "notify", plugin: "fake-notify" }, { id: "watch", plugin: "digest" }, { id: "docs", plugin: "docs" }, { id: "sched", plugin: "scheduler", config: { delaiDemarrageS: 3600 } }],
     approvals: { send: "always" },
   });
   return initiatives;
@@ -67,19 +67,19 @@ describe("envoi des résultats", () => {
   it("le réglage « Envoyer à » fait partir le document sur les canaux choisis après chaque passage", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     await setup(sent);
-    const key = "tasks.veille.quotidienne.send";
+    const key = "tasks.watch.daily.send";
     const info = k!.settings.list().find((s) => s.key === key)!;
     expect(info.value).toBe("nowhere");
     expect(info.presets?.map((p) => p.value)).toEqual(["Mon canal", "Gmail perso", "Mon canal, Gmail perso", "nowhere"]);
 
     // Rien de choisi : rien ne part.
-    await k!.tasks.run("veille/quotidienne", "manual");
+    await k!.tasks.run("watch/daily", "manual");
     await wait();
     expect(sent).toEqual([]);
 
     expect((await k!.settings.change(key, "sur mon canal et gmail", "ui")).ok).toBe(true);
     expect(k!.settings.list().find((s) => s.key === key)!.value).toBe("Mon canal, Gmail perso");
-    await k!.tasks.run("veille/quotidienne", "manual");
+    await k!.tasks.run("watch/daily", "manual");
     await wait();
     expect(sent.map((s) => s.channel)).toEqual(["canal", "gmail"]);
     expect(sent[0]!.msg).toEqual({ title: "Veille du 6 novembre", markdown: "# Veille\n\n**1. Un article**" });
@@ -90,12 +90,12 @@ describe("envoi des résultats", () => {
   it("un canal inconnu est refusé ; un envoi raté est signalé", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     const initiatives = await setup(sent, { failMail: true });
-    const key = "tasks.veille.quotidienne.send";
+    const key = "tasks.watch.daily.send";
     const bad = await k!.settings.change(key, "whatsapp", "ui");
     expect(bad.ok).toBe(false);
     expect(bad.text).toMatch(/Je ne connais pas « whatsapp »/);
     await k!.settings.change(key, "Gmail perso", "ui");
-    await k!.tasks.run("veille/quotidienne", "manual");
+    await k!.tasks.run("watch/daily", "manual");
     await wait();
     expect(initiatives.at(-1)?.text).toBe("L'envoi de « Veille du jour » sur Gmail perso a échoué : serveur mail injoignable.");
   });
@@ -103,7 +103,7 @@ describe("envoi des résultats", () => {
   it("l'outil « send_document » envoie le dernier document, ou celui demandé", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     await setup(sent);
-    const r = await k!.tools.call("send_document", { channel: "mon canal", what: "veille" });
+    const r = await k!.tools.call("send_document", { channel: "mon canal", what: "watch" });
     expect(k!.tools.list().map((t) => t.name).filter((n) => ["envoyer"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toBe("« Veille du 6 novembre » envoyé sur Mon canal.");
@@ -118,12 +118,12 @@ describe("envoi des résultats", () => {
     const initiatives = await setup(sent, { failMail: true });
     await k!.settings.change("assistant_language", "en", "ui");
     await k!.idle();
-    const key = "tasks.veille.quotidienne.send";
+    const key = "tasks.watch.daily.send";
     expect((await k!.settings.change(key, "to my canal and gmail", "ui")).ok).toBe(true);
     expect((await k!.settings.change(key, "nowhere", "ui")).ok).toBe(true);
     expect(k!.settings.list().find((s) => s.key === key)!.value).toBe("nowhere");
     await k!.settings.change(key, "Gmail perso", "ui");
-    await k!.tasks.run("veille/quotidienne", "manual");
+    await k!.tasks.run("watch/daily", "manual");
     await wait();
     expect(initiatives.at(-1)?.text).toMatch(/^Sending ".*" to Gmail perso failed: /);
     const r = await k!.tools.call("send_document", { channel: "on my canal", what: "latest" });

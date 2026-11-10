@@ -10,7 +10,7 @@ it("Qwen, Fish et VoxCPM2 transmettent la surprise sans modifier la référence 
   const fish = clean({ model: "fish-audio-s2-pro-q8.gguf", family: "fish_audio", voice: "clone", refText: "Référence" });
   expect(speechRequest(fish, text, "fr", d).input).toBe(`[very surprised] ${text}`);
   const vox = clean({ model: "voxcpm2-bf16.gguf", family: "voxcpm2", voice: "clone", refText: "Référence" });
-  expect(speechRequest(vox, text, "fr", d)).toMatchObject({ input: `(very surprised, natural conversational pace, same speaker voice) ${text}`, voice: "voix", options: { retry_badcase: false } });
+  expect(speechRequest(vox, text, "fr", d)).toMatchObject({ input: `(very surprised, natural conversational pace, same speaker voice) ${text}`, voice: "voice", options: { retry_badcase: false } });
   expect(vox.refText).toBe("Référence");
   expect(speechRequest(vox, text, "fr").input).toBe(text);
   expect(speechRequest(vox, "(calm) Bonjour", "fr", d).input).toBe("(calm) Bonjour");

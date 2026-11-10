@@ -23,9 +23,7 @@ export default definePlugin({
     const changed = new Set<() => void>(), sessions = new Set<WakewordStream>();
     // Dernier réveil : montré dans les réglages, pour voir quelle variante a marché. Gardé en mémoire seulement.
     let lastWake: { text: string; at: number } | undefined;
-    // Migration du réglage qui appartenait auparavant à conversation ; le nouveau catalogue est prioritaire.
-    const legacy = ctx.settings.saved<string>("mot_activation");
-    const base = { ...cfg, words: cfg.words ?? (legacy ? legacy.split(/[,;]/).map(w => w.trim()).filter(Boolean) : [...ctx.assistant.wake_words]) };
+    const base = { ...cfg, words: cfg.words ?? [...ctx.assistant.wake_words] };
     const account = providerConfig(ctx, {
       schema: Config.extend({ words: Words }), base, label: T("Mots d'activation", "Wake words"), section: "listening", offers: "wakeword", secret: false,
       fields: [

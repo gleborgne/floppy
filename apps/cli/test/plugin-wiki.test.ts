@@ -64,7 +64,7 @@ describe("wiki des plugins", () => {
     const w = createWiki({ kernel: await kernel(), manifests: () => [] });
     const ids = w.pages().map((p) => p.id);
     expect(ids[0]).toBe("basics");
-    expect(ids).toEqual(expect.arrayContaining(["services", "contract-notify", "contract-completion", "active-services", "existing-tools", "example-minuteur", "example-meteo"]));
+    expect(ids).toEqual(expect.arrayContaining(["services", "contract-notify", "contract-completion", "active-services", "existing-tools", "example-timer", "example-weather"]));
     expect(w.index()).toContain("- basics: Plugin basics — ");
   });
 
@@ -92,7 +92,7 @@ describe("wiki des plugins", () => {
   });
 
   it("exemples : le code complet, index.ts d'abord", async () => {
-    const page = createWiki({ kernel: await kernel(), manifests: () => [] }).read("example-meteo")!;
+    const page = createWiki({ kernel: await kernel(), manifests: () => [] }).read("example-weather")!;
     expect(page.indexOf("## index.ts")).toBeGreaterThan(0);
     expect(page.indexOf("## index.ts")).toBeLessThan(page.indexOf("## codes.ts"));
     expect(page).toContain("## floppy-plugin.json");

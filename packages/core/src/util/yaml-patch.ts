@@ -9,7 +9,7 @@ import { isAlias, isMap, isScalar, isSeq, parseDocument, type Document, type Nod
  * Un pas du chemin :
  * - `"cle"` : l'enfant de ce nom d'une table ;
  * - `"*"` : tous les enfants d'une table ou tous les éléments d'une liste ;
- * - `{ key, equals }` : les éléments d'une liste dont la table a `key: equals` (ex. `{ key: "plugin", equals: "veille" }`).
+ * - `{ key, equals }` : les éléments d'une liste dont la table a `key: equals` (ex. `{ key: "plugin", equals: "watch" }`).
  */
 export type YamlStep = string | { key: string; equals: string };
 
@@ -107,19 +107,22 @@ export function patchYaml(text: string, ops: readonly YamlOp[]): YamlPatch | und
   return { text: out, keys: [...keys], conflicts: [...conflicts] };
 }
 
-/** Les entrées `plugins:` d'un floppy.yml (id et type de plugin), en lecture seule ; illisible : liste vide. */
-export function yamlPluginEntries(text: string): { id: string; plugin: string }[] {
+/** Les entrées `plugins:` d'un floppy.yml (id, type de plugin et configuration si elle est une table), en lecture seule ; illisible : liste vide. */
+export function yamlPluginEntries(text: string): { id: string; plugin: string; config?: Record<string, unknown> }[] {
   const doc = parseDocument(text);
   if (doc.errors.length) return [];
   const plugins = doc.get("plugins", true);
   if (!isSeq(plugins)) return [];
-  const out: { id: string; plugin: string }[] = [];
+  const out: { id: string; plugin: string; config?: Record<string, unknown> }[] = [];
   for (const item of plugins.items) {
     const m = isAlias(item) ? item.resolve(doc) : item;
     if (!isMap(m)) continue;
     const id = m.get("id");
     const plugin = m.get("plugin");
-    if (typeof id === "string" && typeof plugin === "string") out.push({ id, plugin });
+    if (typeof id !== "string" || typeof plugin !== "string") continue;
+    const config = m.get("config", true);
+    const js = isMap(config) ? (config.toJS(doc) as unknown) : undefined;
+    out.push({ id, plugin, ...(js && typeof js === "object" && !Array.isArray(js) ? { config: js as Record<string, unknown> } : {}) });
   }
   return out;
 }

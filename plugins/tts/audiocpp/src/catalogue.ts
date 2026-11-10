@@ -156,7 +156,7 @@ export function dynamicCatalogue(ctx: Context, seeds: KnownVoiceModel[]): () => 
   ctx.items.declare({
     id: "local-voice-catalogue", section: "voice", layout: "library", offers: "tts", order: 19,
     label: T("Catalogue en ligne", "Online catalogue"), description: T("audio.cpp et Hugging Face", "audio.cpp and Hugging Face"),
-    list: () => [{ id: "catalogue", label: T("Découvrir les modèles et variantes", "Discover models and variants"), enabled: true,
+    list: () => [{ id: "catalog", label: T("Découvrir les modèles et variantes", "Discover models and variants"), enabled: true,
       detail: T("Actualise la liste sans télécharger de modèle. Elle reste consultable hors connexion.", "Refresh the list without downloading models. It remains available offline."),
       tags: [AUDIOCPP_VERSION, ...(updatedAt ? [T(`actualisé le ${updatedAt.slice(0, 10)}`, `updated on ${updatedAt.slice(0, 10)}`)] : [])],
       status: pending ? "loading" : failure ? "error" : undefined,
@@ -166,7 +166,7 @@ export function dynamicCatalogue(ctx: Context, seeds: KnownVoiceModel[]): () => 
       detail: T("Voix française sur processeur. Installation complémentaire nécessaire : eSpeak et ses données de prononciation. Le téléchargement guidé n'est pas encore disponible.", "French voice on CPU. Additional installation required: eSpeak and its pronunciation data. Guided download is not available yet."),
       actions: [{ id: "documentation", label: T("Documentation", "Documentation") }],
     }],
-    action: async (id, action) => id === "catalogue" && action === "refresh" ? update()
+    action: async (id, action) => id === "catalog" && action === "refresh" ? update()
       : id === "kokoro" && action === "documentation" ? { ok: true, text: T("Documentation ouverte.", "Documentation opened."), open: `https://github.com/0xShug0/audio.cpp/blob/${AUDIOCPP_VERSION}/tests/kokoro_tts/MULTILINGUAL_GGUF.md` }
         : { ok: false, text: T("Action inconnue.", "Unknown action.") },
   });

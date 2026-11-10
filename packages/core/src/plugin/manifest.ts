@@ -65,7 +65,7 @@ export interface TaskDef {
   /** Durée max d'un passage, en secondes (défaut : 600). */
   timeout_s?: number;
   /**
-   * Rubrique de la fenêtre des réglages qui règle cette tâche (ex. "veille") : montrée sous la tâche (« Réglages »),
+   * Rubrique de la fenêtre des réglages qui règle cette tâche (ex. "watch") : montrée sous la tâche (« Réglages »),
    * plus dans le menu. Un plugin qui ne sert qu'à une tâche n'encombre pas le menu.
    */
   configure?: string;

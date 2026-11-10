@@ -9,9 +9,9 @@ describe("réglages gardés par préfixe", () => {
   it("rend seulement les clés du préfixe ; un préfixe vide ne rend rien", async () => {
     const home = mkdtempSync(join(tmpdir(), "floppy-saved-"));
     try {
-      writeFileSync(join(home, "settings.json"), JSON.stringify({ meteo_unite: "c", meteo_ville: "Lyon", voix: "x" }));
+      writeFileSync(join(home, "settings.json"), JSON.stringify({ weather_unite: "c", weather_ville: "Lyon", voix: "x" }));
       const k = new Kernel({ home, logger: () => {}, plugins: [] });
-      expect(k.settings.savedEntries("meteo_")).toEqual({ meteo_unite: "c", meteo_ville: "Lyon" });
+      expect(k.settings.savedEntries("weather_")).toEqual({ weather_unite: "c", weather_ville: "Lyon" });
       expect(k.settings.savedEntries("")).toEqual({});
       await k.stopAll();
     } finally { rmSync(home, { recursive: true, force: true }); }

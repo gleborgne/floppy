@@ -470,9 +470,371 @@ const toolsCommandPlaceholder: MigrationStep = {
   },
 };
 
+// ---------------------------------------------------------------------------------------------------------------
+// Étapes 30 et suivantes : les identifiants de plugins, les dossiers et fichiers, la base de la veille, et les anciens
+// réglages que le code lisait encore une fois (connecteur_<id>, mot_activation, orca_surveillance) passent en anglais.
+// Chaque étape est complète et ne dépend du résultat partiel d'aucune autre : elle trouve ce qu'elle doit changer dans
+// l'état qu'elle lit, ancien ou nouveau.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Plugins renommés : ancien identifiant → nouveau. Une entrée de floppy.yml dont l'id est exactement l'ancien identifiant (le choix par défaut) prend le nouveau ; toute autre entrée garde son id (c'est le mot de l'utilisateur). */
+const PLUGIN_RENAMES: Readonly<Record<string, string>> = {
+  veille: "watch", "avatar-essaim": "avatar-swarm", "avatar-goutte": "avatar-droplet", "avatar-oscillo": "avatar-neon-scope",
+};
+/** Identifiants d'avatar (avatar.json) : ancien → nouveau. Gardés dans `items/avatars.json` et dans la config de `body-electron`. */
+const AVATAR_IDS: Readonly<Record<string, string>> = { essaim: "swarm", goutte: "droplet", oscillo: "neon-scope" };
+/** Tâches de la veille : ancien identifiant → nouveau. */
+const WATCH_TASKS: Readonly<Record<string, string>> = { quotidienne: "daily" };
+
+const mapped = (map: Readonly<Record<string, string>>, key: string): string | undefined => (Object.hasOwn(map, key) ? map[key] : undefined);
+
+/** Change le nom des clés d'une table (l'ordre est gardé) ; le nouveau gagne si les deux existent. Rend les anciens noms changés. */
+function rekey(data: Record<string, unknown>, to: (key: string) => string | undefined, conflict: (key: string) => void): string[] {
+  const changed: string[] = [];
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const dest = to(key);
+    if (dest === undefined || dest === key) { if (!Object.hasOwn(next, key)) next[key] = value; continue; }
+    changed.push(key);
+    if (Object.hasOwn(data, dest)) { conflict(key); continue; }
+    next[dest] = value;
+  }
+  if (!changed.length) return [];
+  for (const key of Object.keys(data)) delete data[key];
+  Object.assign(data, next);
+  return changed;
+}
+
+/** Remplace dans une liste de textes (sans doublon, ordre gardé). */
+function remapList(list: unknown, to: (v: string) => string | undefined): { list: unknown; changed: boolean } {
+  if (!Array.isArray(list)) return { list, changed: false };
+  let changed = false;
+  const out: unknown[] = [];
+  for (const v of list) {
+    const dest = typeof v === "string" ? to(v) : undefined;
+    const value = dest ?? v;
+    if (dest !== undefined && dest !== v) changed = true;
+    if (!out.includes(value)) out.push(value); else changed = true;
+  }
+  return { list: out, changed };
+}
+
+/** Les parties d'un fichier d'éléments (`disabled`, `removed`, `edits`, `children`) qui nomment un élément dont l'identifiant change. */
+function renameOverlayIds(data: Record<string, unknown>, to: (id: string) => string | undefined, conflict: (key: string) => void): string[] {
+  const changed: string[] = [];
+  for (const key of ["disabled", "removed"]) {
+    const r = remapList(data[key], to);
+    if (r.changed) { data[key] = r.list; changed.push(key); }
+  }
+  for (const key of ["edits", "children"]) {
+    const group = data[key];
+    if (isTable(group) && rekey(group, to, (k) => conflict(`${key}.${k}`)).length) changed.push(key);
+  }
+  return changed;
+}
+
+/**
+ * Étape 30. Identifiants de plugins : la veille devient `watch`, les avatars `swarm`, `droplet` et `neon-scope`. Tout ce qui nomme
+ * le plugin (`plugin:` de floppy.yml, `kind` des plugins ajoutés), l'entrée par défaut (id de l'entrée, `source` des autorisations
+ * ciblées, fichier `items/<entrée>.json`, clés de `items/apps.json`, réglages `tasks.<entrée>.<tâche>`, `tasks.json`), la tâche
+ * `quotidienne` (→ `daily`) et le choix d'avatar (`items/avatars.json`, `avatar:` de body-electron) change dans cette seule étape.
+ * Une entrée n'est renommée que si son id est exactement l'ancien identifiant du plugin ; si le nouvel id est déjà pris par une
+ * autre entrée, elle garde son id (conflit signalé) et seul le type du plugin change. floppy.yml est modifié en dernier : le plan
+ * se lit dans ce fichier, et tout le reste est déjà fait quand il change.
+ */
+const pluginIds: MigrationStep = {
+  id: "plugin-ids",
+  version: 30,
+  label: "plugins : la veille et les avatars (essaim, goutte, oscillo) passent en anglais (watch, swarm, droplet, neon-scope), avec leurs entrées, tâche et fichiers",
+  run(env) {
+    const owners = entryPlugins(env);
+    const taken = new Set(owners.keys());
+    // Les entrées par défaut à renommer : id = ancien identifiant du plugin.
+    const entryNew = new Map<string, string>();
+    for (const [id, plugin] of owners) {
+      const to = mapped(PLUGIN_RENAMES, plugin);
+      if (to === undefined || id !== plugin) continue;
+      if (taken.has(to)) { env.conflict("floppy.yml", `plugins[${id}].id`, "both"); continue; }
+      entryNew.set(id, to);
+    }
+    const entryTo = (id: string): string => entryNew.get(id) ?? id;
+    const taskTo = (entry: string, task: string): string => (owners.get(entry) === "veille" ? mapped(WATCH_TASKS, task) ?? task : task);
+
+    // 1. Les tâches : `tasks.json` (« entrée/tâche ») et les réglages (`tasks.<entrée>.<tâche>[.send]`).
+    env.editJson("tasks.json", (data) => rekey(data, (key) => {
+      const i = key.indexOf("/");
+      if (i < 0) return undefined;
+      const entry = key.slice(0, i);
+      return `${entryTo(entry)}/${taskTo(entry, key.slice(i + 1))}`;
+    }, (key) => env.conflict("tasks.json", key)));
+    env.editJson("settings.json", (data) => rekey(data, (key) => {
+      const parts = key.split(".");
+      if (parts[0] !== "tasks" || parts.length < 3) return undefined;
+      return ["tasks", entryTo(parts[1]!), taskTo(parts[1]!, parts[2]!), ...parts.slice(3)].join(".");
+    }, (key) => env.conflict("settings.json", key)));
+
+    // 2. Le fichier d'éléments de chaque entrée renommée.
+    for (const [from, to] of entryNew) env.renamePath(`items/${from}.json`, `items/${to}.json`);
+
+    // 3. `items/apps.json` : plugins ajoutés (type, id, avatar choisi), entrées désactivées, retirées, modifiées, outils.
+    env.editJson("items/apps.json", (data) => {
+      const changed: string[] = [];
+      const conflict = (key: string) => env.conflict("items/apps.json", key);
+      const avatarRule: Rule = { values: { avatar: AVATAR_IDS } };
+      if (isTable(data.added)) {
+        for (const a of Object.values(data.added)) {
+          if (!isTable(a)) continue;
+          const kind = typeof a.kind === "string" ? mapped(PLUGIN_RENAMES, a.kind) : undefined;
+          if (kind !== undefined) { a.kind = kind; changed.push("added.kind"); }
+          if (a.kind === "body-electron" && isTable(a.values)) changed.push(...applyRule(a.values, avatarRule, "added.values.", conflict));
+        }
+        if (rekey(data.added, (id) => entryNew.get(id), (k) => conflict(`added.${k}`)).length) changed.push("added");
+      }
+      changed.push(...renameOverlayIds(data, (id) => entryNew.get(id), conflict));
+      if (isTable(data.edits)) for (const [id, edit] of Object.entries(data.edits)) {
+        if (owners.get(id) === "body-electron" && isTable(edit)) changed.push(...applyRule(edit, avatarRule, "edits.", conflict));
+      }
+      if (isTable(data.extra) && isTable(data.extra.tools) && rekey(data.extra.tools, (id) => entryNew.get(id), (k) => conflict(`extra.tools.${k}`)).length) changed.push("extra.tools");
+      return [...new Set(changed)];
+    });
+
+    // 4. `items/avatars.json` : l'avatar choisi et ceux qui sont mis de côté.
+    env.editJson("items/avatars.json", (data) => {
+      const changed: string[] = [];
+      const to = (id: string) => mapped(AVATAR_IDS, id);
+      if (isTable(data.extra) && typeof data.extra.current === "string" && to(data.extra.current) !== undefined) { data.extra.current = to(data.extra.current); changed.push("extra.current"); }
+      changed.push(...renameOverlayIds(data, to, (key) => env.conflict("items/avatars.json", key)));
+      return changed;
+    });
+
+    // 5. floppy.yml, en dernier : type du plugin, id des entrées renommées, `source` des autorisations ciblées, avatar de body-electron.
+    const ops: YamlOp[] = [{ path: ["plugins", "*"], key: "plugin", map: PLUGIN_RENAMES }];
+    for (const [from, to] of entryNew) ops.push({ path: ["plugins", { key: "plugin", equals: from }], key: "id", map: { [from]: to } });
+    if (entryNew.size) ops.push({ path: ["approvals", "toolRules", "*"], key: "source", map: Object.fromEntries(entryNew) });
+    ops.push({ path: ["plugins", { key: "plugin", equals: "body-electron" }, "config"], key: "avatar", map: AVATAR_IDS });
+    patchFloppyYml(env, ops);
+  },
+};
+
+/**
+ * Étape 31. Dossier de la veille : `<home>/veille/` devient `<home>/watch/`, sa base `veille.db` devient `watch.db` (avec ses
+ * fichiers du moment, `-journal`, `-wal`, `-shm`). La base est renommée d'abord, là où elle est, pour que le rapport à blanc dise tout
+ * et qu'une étape tronquée reparte sans dépendre d'un résultat partiel. Le dossier est déplacé d'un bloc, jamais écrasé : si
+ * `watch/` existe déjà, rien ne bouge et le conflit est signalé.
+ */
+const watchFolder: MigrationStep = {
+  id: "watch-folder",
+  version: 31,
+  label: "veille : le dossier veille/ devient watch/ et sa base veille.db devient watch.db",
+  run(env) {
+    for (const dir of ["veille", "watch"]) {
+      for (const suffix of ["", "-journal", "-wal", "-shm"]) env.renamePath(`${dir}/veille.db${suffix}`, `${dir}/watch.db${suffix}`);
+    }
+    env.renamePath("veille", "watch");
+  },
+};
+
+/** Les places possibles de la base de la veille, quel que soit l'avancement de l'étape précédente. */
+const WATCH_DATABASES = ["watch/watch.db", "watch/veille.db", "veille/watch.db", "veille/veille.db"];
+
+/**
+ * Étape 32. Base de la veille (SQLite) : table `vus` → `seen` (colonnes `titre` → `title`, `interet` → `interest`, `vu_le` → `seen_at`),
+ * table `digest` (colonnes `numero` → `number`, `interet`, `titre`, `resume` → `summary`). Une copie `<base>.bak-watch-database`
+ * est écrite avant le premier changement ; les renommages sont dans une transaction. Base absente ou déjà au nouveau format :
+ * intacte. Base verrouillée ou illisible : l'étape échoue et repart au prochain démarrage.
+ */
+const watchDatabase: MigrationStep = {
+  id: "watch-database",
+  version: 32,
+  label: "veille : tables et colonnes de la base (vus, titre, interet, resume, numero, vu_le) passent en anglais",
+  run(env) {
+    for (const file of WATCH_DATABASES) {
+      env.editSqlite(file, (db) => {
+        db.renameTable("vus", "seen");
+        db.renameColumn("seen", "titre", "title");
+        db.renameColumn("seen", "interet", "interest");
+        db.renameColumn("seen", "vu_le", "seen_at");
+        db.renameColumn("digest", "numero", "number");
+        db.renameColumn("digest", "interet", "interest");
+        db.renameColumn("digest", "titre", "title");
+        db.renameColumn("digest", "resume", "summary");
+      });
+    }
+  },
+};
+
+/** Étiquettes des documents : ancien → nouveau. */
+const DOCUMENT_TAGS: Readonly<Record<string, string>> = { veille: "watch", reponse: "answer" };
+
+/**
+ * Étape 33. Documents (`<home>/documents/*.md`) : dans l'en-tête, `source: "veille"` devient `"watch"` et les étiquettes
+ * `veille` / `reponse` de `tags:` deviennent `watch` / `answer`. Le reste du fichier, le titre et le nom du fichier ne changent pas.
+ */
+const documentTags: MigrationStep = {
+  id: "documents-tags",
+  version: 33,
+  label: "documents : la source et l'étiquette « veille » deviennent « watch », l'étiquette « reponse » devient « answer »",
+  run(env) {
+    for (const file of env.list("documents", ".md")) {
+      env.editText(file, (text) => {
+        const m = /^(---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/.exec(text);
+        if (!m) return undefined;
+        const keys: string[] = [];
+        let head = m[2]!;
+        head = head.replace(/^(source:[ \t]*)"veille"([ \t]*)$/m, (_all, a: string, b: string) => { keys.push("source"); return `${a}"watch"${b}`; });
+        head = head.replace(/^(tags:[ \t]*)(\[.*\])([ \t]*)$/m, (all, a: string, list: string, b: string) => {
+          let tags: unknown;
+          try { tags = JSON.parse(list); } catch { return all; }
+          const r = remapList(tags, (t) => mapped(DOCUMENT_TAGS, t));
+          if (!r.changed) return all;
+          keys.push("tags");
+          return `${a}${JSON.stringify(r.list)}${b}`;
+        });
+        return keys.length ? { text: m[1] + head + text.slice(m[1]!.length + m[2]!.length), keys } : undefined;
+      });
+    }
+  },
+};
+
+/**
+ * Étape 34. Dossiers et fichiers que Floppy écrit sous son répertoire de travail : les dossiers de travail du plugin `coder`
+ * (`workspaces/coder/reglages` → `settings`, `revues` → `reviews`), l'enregistrement d'essai d'une voix (`tts-audiocpp/essai.wav` →
+ * `trial.wav`) et la copie de l'exemple du kit de développement (`plugins/exemple-minuteur` → `example-timer`).
+ */
+const folders: MigrationStep = {
+  id: "folders",
+  version: 34,
+  label: "dossiers et fichiers : workspaces/coder/reglages et revues, tts-audiocpp/essai.wav, plugins/exemple-minuteur passent en anglais",
+  run(env) {
+    env.renamePath("workspaces/coder/reglages", "workspaces/coder/settings");
+    env.renamePath("workspaces/coder/revues", "workspaces/coder/reviews");
+    env.renamePath("tts-audiocpp/essai.wav", "tts-audiocpp/trial.wav");
+    env.renamePath("plugins/exemple-minuteur", "plugins/example-timer");
+  },
+};
+
+/** Les entrées d'un type de plugin : id et configuration (floppy.yml, puis les plugins ajoutés dans `items/apps.json`). */
+function entriesOf(env: MigrationEnv, type: string): { id: string; config: Record<string, unknown> }[] {
+  const out = new Map<string, Record<string, unknown>>();
+  const yml = env.read("floppy.yml");
+  if (yml !== undefined) for (const e of yamlPluginEntries(yml)) if (e.plugin === type) out.set(e.id, e.config ?? {});
+  const apps = env.read("items/apps.json");
+  if (apps !== undefined) {
+    try {
+      const added = (JSON.parse(apps) as { added?: unknown }).added;
+      if (isTable(added)) for (const [id, a] of Object.entries(added)) if (isTable(a) && a.kind === type && !out.has(id)) out.set(id, isTable(a.values) ? a.values : {});
+    } catch { /* fichier illisible : rapporté par les autres étapes */ }
+  }
+  return [...out].map(([id, config]) => ({ id, config }));
+}
+
+/** Les réglages de `settings.json`, en lecture seule ; absent ou illisible : table vide. */
+function readSettings(env: MigrationEnv): Record<string, unknown> {
+  const text = env.read("settings.json");
+  if (text === undefined) return {};
+  try { const data = JSON.parse(text) as unknown; return isTable(data) ? data : {}; } catch { return {}; }
+}
+
+/** Retire des clés de `settings.json` (sans elles, plus rien ne les lit). */
+function dropSettings(env: MigrationEnv, drop: (key: string) => boolean): void {
+  env.editJson("settings.json", (data) => {
+    const gone = Object.keys(data).filter(drop);
+    for (const key of gone) delete data[key];
+    return gone;
+  });
+}
+
+/**
+ * Étape 35. Connecteurs (plugin `tools`) : les anciens réglages `connecteur_<id>` (allumé / éteint) passent dans le fichier d'éléments
+ * de l'entrée (`items/<entrée>.json` : `disabled` pour un éteint, `extra.enabled` pour un allumé que la config laissait éteint),
+ * une seule fois (`extra.migrated`). Les réglages sont ensuite retirés de `settings.json`. Remplace la reprise qui était dans le code du plugin.
+ */
+const connectorSettings: MigrationStep = {
+  id: "connectors-settings",
+  version: 35,
+  label: "connecteurs : les réglages connecteur_<id> passent dans les éléments de l'entrée (disabled, extra.enabled)",
+  run(env) {
+    const legacy = Object.entries(readSettings(env)).filter(([key]) => key.startsWith("connecteur_"));
+    if (!legacy.length) return;
+    const saved = new Map(legacy);
+    for (const entry of entriesOf(env, "tools")) {
+      env.editJson(`items/${entry.id}.json`, (data) => {
+        const extra = isTable(data.extra) ? data.extra : {};
+        if (extra.migrated === true) return [];
+        const servers = isTable(entry.config.servers) ? Object.keys(entry.config.servers) : [];
+        const added = isTable(data.added) ? Object.keys(data.added) : [];
+        const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+        let disabled = strings(data.disabled);
+        let enabled = strings(extra.enabled);
+        let any = false;
+        for (const id of [...servers, ...added]) {
+          const old = saved.get(`connecteur_${id.toLowerCase().replace(/[^a-z0-9_]/g, "_")}`);
+          if (typeof old !== "boolean") continue;
+          any = true;
+          disabled = disabled.filter((d) => d !== id);
+          enabled = enabled.filter((d) => d !== id);
+          if (old) enabled.push(id); else disabled.push(id);
+        }
+        if (!any) return [];
+        data.disabled = disabled;
+        data.extra = { ...extra, enabled, migrated: true };
+        return ["disabled", "extra.enabled", "extra.migrated"];
+      }, { create: true });
+    }
+    dropSettings(env, (key) => key.startsWith("connecteur_"));
+  },
+};
+
+/**
+ * Étape 36. Mot d'activation (plugin `wakeword-stt`) : l'ancien réglage `mot_activation` (mots séparés par « , » ou « ; », qui appartenait à la
+ * conversation) devient la liste `edits.account.words` du fichier d'éléments de chaque entrée dont la config ne donne pas de `words` (un
+ * choix déjà fait dans la fenêtre gagne). Le réglage est ensuite retiré de `settings.json`. Remplace la reprise qui était dans le code du plugin.
+ */
+const wakeWords: MigrationStep = {
+  id: "wakeword-words",
+  version: 36,
+  label: "mot d'activation : le réglage mot_activation passe dans les éléments de l'entrée (edits.account.words)",
+  run(env) {
+    const legacy = readSettings(env).mot_activation;
+    if (legacy === undefined) return;
+    const words = typeof legacy === "string" ? legacy.split(/[,;]/).map((w) => w.trim()).filter(Boolean) : [];
+    if (words.length) for (const entry of entriesOf(env, "wakeword-stt")) {
+      if (entry.config.words !== undefined) continue;
+      env.editJson(`items/${entry.id}.json`, (data) => {
+        const edits = isTable(data.edits) ? data.edits : {};
+        const account = isTable(edits.account) ? edits.account : {};
+        if (account.words !== undefined) return [];
+        data.edits = { ...edits, account: { ...account, words } };
+        return ["edits.account.words"];
+      }, { create: true });
+    }
+    dropSettings(env, (key) => key === "mot_activation");
+  },
+};
+
+/**
+ * Étape 37. Orca : l'ancien réglage `orca_surveillance` (booléen) : éteint, il devient `orca_notifications: "none"` (annonces coupées,
+ * la collecte reste active) si ce choix n'était pas déjà fait ; allumé, il ne change rien. Le réglage est ensuite retiré de `settings.json`.
+ */
+const orcaSurveillance: MigrationStep = {
+  id: "orca-surveillance",
+  version: 37,
+  label: "Orca : le réglage orca_surveillance éteint devient orca_notifications « none »",
+  run(env) {
+    env.editJson("settings.json", (data) => {
+      if (!Object.hasOwn(data, "orca_surveillance")) return [];
+      const changed = ["orca_surveillance"];
+      if (data.orca_notifications === undefined && data.orca_surveillance === false) { data.orca_notifications = "none"; changed.push("orca_notifications"); }
+      delete data.orca_surveillance;
+      return changed;
+    });
+  },
+};
+
 /** Toutes les étapes, dans l'ordre. */
 export const HOME_MIGRATIONS: readonly MigrationStep[] = [documentTitle, onboardingLevel, onboardingSelection, settingsKeys, settingsValues, configYaml, itemFields, inboxTrust, watchPreferences,
-  toolsConfigYaml, toolsItemsApps, toolsCommandPlaceholder];
+  toolsConfigYaml, toolsItemsApps, toolsCommandPlaceholder,
+  pluginIds, watchFolder, watchDatabase, documentTags, folders, connectorSettings, wakeWords, orcaSurveillance];
 
 /** Passe les étapes en attente sur ce répertoire de travail (au démarrage, ou `floppy migrate`). Ne lève jamais. */
 export function migrateHome(home: string, opts: MigrationOptions = {}): MigrationReport[] {

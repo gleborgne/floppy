@@ -267,7 +267,7 @@ export default definePlugin<Config>({
       const answer = pending.length ? yesNo(text, wake) : undefined;
       if (answer === undefined) return false;
       b.live?.noteApprovalReply(stripWakeWord(text, wake));
-      ctx.approvals.respond(pending.at(-1)!.id, answer, `${b.id}:voix`);
+      ctx.approvals.respond(pending.at(-1)!.id, answer, `${b.id}:voice`);
       setEmotion(answer ? "happy" : "neutral");
       return true;
     };
@@ -282,7 +282,7 @@ export default definePlugin<Config>({
       const pending = choicesFor(b).at(-1);
       const picked = pending ? matchChoice(text, wake, pending.options) : undefined;
       if (!pending || picked === undefined) return false;
-      if (!ctx.choices.respond(pending.id, picked, `${b.id}:voix`)) return false;
+      if (!ctx.choices.respond(pending.id, picked, `${b.id}:voice`)) return false;
       setEmotion("happy");
       return true;
     };
@@ -316,8 +316,8 @@ export default definePlugin<Config>({
       accepted();
       // 3. « Floppy, dors »
       if (isSleepCommand(text, wake)) {
-        if (b.turn) interrupt(b, "veille");
-        void b.live?.stop("veille");
+        if (b.turn) interrupt(b, "sleep");
+        void b.live?.stop("sleep");
         abortInit(b);
         b.muted = true;
         b.awakeUntil = 0;
@@ -479,7 +479,7 @@ export default definePlugin<Config>({
         ctx, service: live, brain, body: b.id, history: b.history!,
         tone: () => tone, profile: () => profile, freeListen: () => freeListen,
         onInput: (text) => {
-          if (isSleepCommand(text, wake)) { b.muted = true; b.history?.clear(); b.live?.stop("veille"); setState(b, "sleep"); return; }
+          if (isSleepCommand(text, wake)) { b.muted = true; b.history?.clear(); b.live?.stop("sleep"); setState(b, "sleep"); return; }
           answerPending(b, text);
         },
         onState: (state) => { setState(b, b.muted ? "sleep" : state); b.stream?.setSpeaking(!b.muted && state === "speaking"); if (!b.muted && state === "listening") b.awakeUntil = Date.now() + freeListen * 1000; },

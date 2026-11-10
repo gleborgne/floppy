@@ -14,7 +14,7 @@ const hostStub = () => ({
 it("`document` et `documents` : titre et liste arrivent à la fenêtre sous leurs noms anglais", async () => {
   const host = hostStub();
   const f = await mountApp(host);
-  const entries = [{ id: "a", title: "Un", date: "2026-11-06T08:00:00.000Z", tags: ["veille"] }];
+  const entries = [{ id: "a", title: "Un", date: "2026-11-06T08:00:00.000Z", tags: ["watch"] }];
   f.input({ type: "document", id: "a", title: "Un", markdown: "m", entries });
   expect(host.openDocument).toHaveBeenCalledWith({ type: "document", id: "a", title: "Un", markdown: "m", entries });
   f.input({ type: "documents", entries: [] });

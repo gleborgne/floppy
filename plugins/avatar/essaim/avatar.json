@@ -1,6 +1,0 @@
-{
-  "id": "essaim",
-  "name": { "fr": "Essaim", "en": "Swarm" },
-  "description": { "fr": "WebGL · essaim de particules en mouvement perpétuel · visage parfois", "en": "WebGL · ever-moving particle swarm · a face, sometimes" },
-  "emotions": ["neutral","happy","sad","angry","surprised","love","confused","wink","sleepy","thinking"]
-}

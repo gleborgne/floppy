@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kernel, definePlugin } from "@floppy/core";
 import type { WakewordService, WakewordDetection } from "@floppy/contracts";
 import stt from "../src/index.ts";
 
-async function fixture(legacy?: string, voiceEnabled = true) {
+async function fixture(chosen?: string[], voiceEnabled = true) {
   const home = mkdtempSync(join(tmpdir(), "wake-stt-"));
-  if (legacy) writeFileSync(join(home, "settings.json"), JSON.stringify({ mot_activation: legacy }));
+  // Ce que la migration `wakeword-words` écrit à partir de l'ancien réglage « mot_activation » (voir packages/setup).
+  if (chosen) { mkdirSync(join(home, "items"), { recursive: true }); writeFileSync(join(home, "items", "stt.json"), JSON.stringify({ edits: { account: { words: chosen } } })); }
   const openVoice = vi.fn(async () => { throw new Error("Aucun deuxième flux STT ne doit être ouvert"); });
   const voice = definePlugin({ manifest: { id: "existing-voice", version: "0", licence: "MIT", provides: ["voice"] }, apply(c) { c.provide("voice", { name: "STT existant", open: openVoice }); } });
   // Consommateur du slot listen.wakeword (comme la conversation).
@@ -40,8 +41,8 @@ describe("plugin wakeword STT", () => {
       expect(detected).toHaveLength(1);
     } finally { await f.k.stopAll(); }
   });
-  it("migre les anciennes variantes et les remplace par la configuration du plugin", async () => {
-    const f = await fixture("jarvis, salut robot");
+  it("garde les mots choisis (repris de l'ancien réglage par la migration) et les remplace par la configuration du plugin", async () => {
+    const f = await fixture(["jarvis", "salut robot"]);
     try {
       expect(f.service.words!()).toEqual(["jarvis", "salut robot"]);
       const changed = vi.fn(), off = f.service.onChange(changed);

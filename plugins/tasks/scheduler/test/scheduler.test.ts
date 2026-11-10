@@ -132,7 +132,7 @@ function digest(runs: Date[], opts: { fail?: boolean } = {}): PluginDef<any> {
   return definePlugin({
     manifest: {
       id: "digest", version: "0", licence: "MIT", provides: ["task"],
-      tasks: [{ id: "quotidienne", label: "Veille du jour", schedule: { at: "07:30" } }],
+      tasks: [{ id: "daily", label: "Veille du jour", schedule: { at: "07:30" } }],
     },
     apply(ctx) {
       const svc: TaskService = {
@@ -150,14 +150,14 @@ function digest(runs: Date[], opts: { fail?: boolean } = {}): PluginDef<any> {
 /** Dossier de données avec une dernière réussite connue. */
 function homeWith(lastRun?: Date): string {
   const home = mkdtempSync(join(tmpdir(), "sched-"));
-  if (lastRun) writeFileSync(join(home, "tasks.json"), JSON.stringify({ "veille/quotidienne": { lastRun: lastRun.toISOString() } }));
+  if (lastRun) writeFileSync(join(home, "tasks.json"), JSON.stringify({ "watch/daily": { lastRun: lastRun.toISOString() } }));
   return home;
 }
 
 async function start(runs: Date[], home: string, opts: { fail?: boolean; delaiDemarrageS?: number } = {}) {
   k = new Kernel({ logger: quiet, home, plugins: [digest(runs, opts), createSchedulerPlugin()] });
   await k.applyConfig({ plugins: [
-    { id: "veille", plugin: "digest" },
+    { id: "watch", plugin: "digest" },
     { id: "scheduler", plugin: "scheduler", config: { delaiDemarrageS: opts.delaiDemarrageS ?? 120 } },
   ] });
   return k;
@@ -214,7 +214,7 @@ describe("planificateur dans le noyau", () => {
     vi.setSystemTime(L(11, 6, 6, 0));
     const runs: Date[] = [];
     const kk = await start(runs, homeWith(L(11, 5, 7, 31)));
-    const key = "tasks.veille.quotidienne";
+    const key = "tasks.watch.daily";
     expect(kk.settings.list().find((s) => s.key === key)).toMatchObject({ value: "07:30", type: "text", risk: "free", section: "tasks" });
 
     expect((await kk.settings.change(key, "jamais", "voice")).ok).toBe(true);
@@ -236,10 +236,10 @@ describe("planificateur dans le noyau", () => {
     vi.setSystemTime(L(11, 6, 6, 0));
     const home = homeWith(L(11, 5, 7, 31));
     const kk = await start([], home);
-    await kk.settings.change("tasks.veille.quotidienne", "à 8h30 lun-ven", "voice");
+    await kk.settings.change("tasks.watch.daily", "à 8h30 lun-ven", "voice");
     await kk.stopAll();
     const kk2 = await start([], home);
-    expect(kk2.settings.list().find((s) => s.key === "tasks.veille.quotidienne")!.value).toBe("08:30 mon-fri");
+    expect(kk2.settings.list().find((s) => s.key === "tasks.watch.daily")!.value).toBe("08:30 mon-fri");
   });
 
   it("déclare la rubrique « Tâches »", async () => {

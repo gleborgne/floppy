@@ -1,6 +1,0 @@
-{
-  "id": "oscillo",
-  "name": { "fr": "Oscillo néon", "en": "Neon scope" },
-  "description": { "fr": "WebGL · tube de néon rond, double anneau cyan et magenta · la bouche est une onde qui suit la voix", "en": "WebGL · round neon tube, cyan and magenta double ring · the mouth is a wave that follows the voice" },
-  "emotions": ["neutral","happy","sad","angry","surprised","love","confused","wink","sleepy","thinking"]
-}

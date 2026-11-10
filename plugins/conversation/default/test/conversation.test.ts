@@ -713,7 +713,7 @@ describe("conversation (2 corps)", () => {
     st.emit({ type: "transcript", text: "oui", audio_s: 0.4, stt_ms: 30, merged: false });
     await vi.waitFor(() => expect(st.spoken).toContain("C'est ouvert."));
     expect(chat.of("approval.closed")[0]).toMatchObject({ ok: true });
-    expect(k.audit.tail(50).find((r) => r.kind === "approval")).toMatchObject({ ok: true, by: "avatar:voix" });
+    expect(k.audit.tail(50).find((r) => r.kind === "approval")).toMatchObject({ ok: true, by: "avatar:voice" });
   });
 
   it("un « oui » dit sur un autre corps, ou pendant la veille, ne répond pas à l'accord d'un autre", async () => {

@@ -15,7 +15,7 @@ function draw(id: string, intent: "none" | "explain" | "playful" | "question", r
   avatar.destroy(); return values;
 }
 
-it.each(["pixel", "pixelcat", "iris", "goutte", "oscillo", "gyre", "essaim"])("%s interprète les trois intentions, revient au repos et respecte le mouvement réduit", (id) => {
+it.each(["pixel", "pixelcat", "iris", "droplet", "neon-scope", "gyre", "swarm"])("%s interprète les trois intentions, revient au repos et respecte le mouvement réduit", (id) => {
   const baseline = draw(id, "none");
   for (const intent of ["explain", "playful", "question"] as const) {
     const values = draw(id, intent);

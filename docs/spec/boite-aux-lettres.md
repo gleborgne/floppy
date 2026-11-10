@@ -91,7 +91,7 @@ Elle est éteinte par défaut.
   - La carte passe par `ctx.approvals.check`, avec le niveau `write` et `override: "ask"`. Elle est donc toujours
     montrée, même si les écritures sont acceptées d'office.
   - Un clic sur Oui donne « Comme l'app le demande ».
-  - Un « oui » dit à la voix n'autorise pas. L'accord vient d'un corps `…:voix`. Floppy dit alors qu'il faut un clic,
+  - Un « oui » dit à la voix n'autorise pas. L'accord vient d'un corps `…:voice`. Floppy dit alors qu'il faut un clic,
     et où le faire.
   - Non, ou pas de réponse : rien ne change, et le réglage reste dans Connecteurs.
   - La carte n'est montrée qu'une fois par app (`asked` dans `inbox-apps.json`). Elle revient si l'app change de nom

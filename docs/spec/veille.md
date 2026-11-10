@@ -2,7 +2,7 @@
 
 [← Retour à la spec](README.md)
 
-État : **fait** le 6 novembre 2026. Code : `assistant\plugins\veille\digest`. S'appuie sur les [tâches](taches.md), les [documents](documents.md), et les services `search` et `completion`.
+État : **fait** le 6 novembre 2026. Code : `assistant\plugins\watch\digest` (identifiant du plugin : `watch`, tâche `daily`). S'appuie sur les [tâches](taches.md), les [documents](documents.md), et les services `search` et `completion`.
 
 ## L'idée
 
@@ -45,7 +45,7 @@ Un plugin de recherche sert deux fois : il donne un **outil** à Floppy (`search
 
 ## Préférences
 
-Fichier `<home>\veille\preferences.json`, lisible et modifiable à la main : par sujet (`interests.<id>`) et global (`global`), `likes`, `avoids`, `banned`, `examples` (chaque exemple : `title`, `feedback` `+` ou `-`, `date`). Les fichiers écrits avec les anciens noms (`aime`, `evite`, `bannis`, `exemples`, `interets`, `titre`, `avis`) sont convertis une fois par la migration du dossier (étape `watch-preferences`).
+Fichier `<home>\watch\preferences.json`, lisible et modifiable à la main : par sujet (`interests.<id>`) et global (`global`), `likes`, `avoids`, `banned`, `examples` (chaque exemple : `title`, `feedback` `+` ou `-`, `date`). Les fichiers écrits avec les anciens noms (`aime`, `evite`, `bannis`, `exemples`, `interets`, `titre`, `avis`) sont convertis une fois par la migration du dossier (étape `watch-preferences`).
 
 Configuration (`floppy.yml`, `config:` du plugin) : `interests.<id>` avec `name`, `description`, `feeds`, `queries`, `max` ; `threshold`, `batch`, `maxToModel`, `windowDays`. Les éléments ajoutés dans les réglages (`items/<entrée>.json`) ont le type `interest` et les mêmes champs. Anciens noms (`interets`, `nom`, `flux`, `requetes`, `seuil`, `lot`, `maxVersModele`, `fenetreJours`, type `interet`) : étapes `config-yaml` et `items-fields`.
 
@@ -63,8 +63,8 @@ Autres outils : `watch_interests` (liste ; donne aussi les titres numérotés du
 
 ## Données
 
-- `<home>\veille\veille.db` (SQLite) : articles déjà vus (oubliés après 90 jours) et articles numérotés du dernier digest.
-- Les digests eux-mêmes sont des [documents](documents.md) (tag `veille`).
+- `<home>\watch\watch.db` (SQLite) : table `seen` (`url`, `title`, `interest`, `seen_at`) : articles déjà vus (oubliés après 90 jours) ; table `digest` (`number`, `doc`, `interest`, `title`, `url`, `source`, `summary`) : articles numérotés du dernier digest. Les anciens noms (`vus`, `titre`, `interet`, `vu_le`, `numero`, `resume`) sont convertis par l'étape `watch-database` (voir [le noyau](noyau.md), migration du dossier).
+- Les digests eux-mêmes sont des [documents](documents.md) (source et tag `watch`).
 
 ## Limites connues
 

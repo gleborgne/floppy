@@ -100,8 +100,8 @@ export const familyOf = (m: ModelValues): string => (m.family === "other" ? m.fa
 export const rateOf = (m: ModelValues): number => m.rate || RATES[familyOf(m)] || 24000;
 
 /** Nom du modèle côté serveur et de la voix dans la bibliothèque. */
-export const MODEL_ID = "modele";
-export const VOICE_NAME = "voix";
+export const MODEL_ID = "model";
+export const VOICE_NAME = "voice";
 
 const slash = (p: string) => p.replace(/\\/g, "/");
 
@@ -653,7 +653,7 @@ return definePlugin<Config>({
       }
       if (!clones(loaded)) return { ok: true, text: T(`Le modèle chargé (${nameFr}) ne sait pas cloner une voix, donc l'essai est impossible maintenant. Garde la voix puis choisis-la : Floppy charge son modèle, et tu l'entends.`, `The loaded model (${nameEn}) cannot clone a voice, so a trial is not possible right now. Keep the voice and choose it: Floppy loads its model, and you hear it.`) };
       let ref = v.refWav;
-      if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "essai.wav"); writeFileSync(ref, wav); }
+      if (wav) { mkdirSync(join(ctx.home, "tts-audiocpp"), { recursive: true }); ref = join(ctx.home, "tts-audiocpp", "trial.wav"); writeFileSync(ref, wav); }
       const text = str(values.trial) || TRIAL[ctx.uiLang() === "en" ? "en" : "fr"];
       const streaming = loaded.mode === "streaming";
       // Essai : 120 s pour toute la réponse (flux compris), par ctx.fetch.

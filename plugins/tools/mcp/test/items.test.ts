@@ -96,21 +96,6 @@ describe("connecteurs : éléments", () => {
     expect(s.names()).toEqual([]);
     expect(await s.list()).toEqual([]);
   });
-
-  it("migre une seule fois les anciens réglages connecteur_<clé>", async () => {
-    const home = mkdtempSync(join(tmpdir(), "items-"));
-    writeFileSync(join(home, "settings.json"), JSON.stringify({ connecteur_a: false }));
-    const cfg = { a: { command: process.execPath, args: [fake], include: ["planter"] } };
-    const s = await start(cfg, home);
-    expect(s.names()).toEqual([]);
-    expect((await s.item("a")).enabled).toBe(false);
-    expect(JSON.parse(s.file()).extra.migrated).toBe(true);
-    // L'ancien réglage ne compte plus : l'ItemStore décide.
-    await s.run({ op: "enable", id: "a", on: true });
-    writeFileSync(join(home, "settings.json"), JSON.stringify({ connecteur_a: false }));
-    const s2 = await start(cfg, home);
-    expect(s2.names()).toEqual(["planter"]);
-  });
 });
 
 describe("connecteur de type commande", () => {
