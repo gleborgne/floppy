@@ -98,9 +98,10 @@ describe("wiki des plugins", () => {
     expect(page).toContain("## floppy-plugin.json");
   });
 
-  it("outil doc_plugins : sommaire, page (nom souple), page inconnue, recherche", async () => {
+  it("outil plugin_docs : sommaire, page (nom souple), page inconnue, recherche", async () => {
     const { tool } = createWiki({ kernel: await kernel(), manifests: () => [] });
     expect(tool.level).toBe("read");
+    expect(tool.name).toBe("plugin_docs"); // l'ancien nom français n'existe plus
     expect((await tool.handler({}, {})).text).toContain("# Floppy plugin wiki");
     expect((await tool.handler({ page: " Services.md " }, {})).text).toContain("# Using Floppy's services");
     const unknown = await tool.handler({ page: "nope" }, {});

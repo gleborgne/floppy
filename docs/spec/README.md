@@ -33,7 +33,7 @@ Guides pas à pas pour les utilisateurs : [docs/guide](../guide/README.md).
 | [Tâches et Planificateur (implémenté)](taches.md) | Contrat `task`, registre du noyau, horloge et rattrapage, `ctx.borrow` |
 | [Documents Markdown (implémenté)](documents.md) | Floppy répond par un document dans une fenêtre ; fichiers .md ; sécurité du rendu |
 | [Boîte aux lettres (implémenté)](boite-aux-lettres.md) | Les applications locales déposent des annonces ; accord par app ; voix ou info ; « ouvre-la » lance leur lien |
-| [Notifications (implémenté)](notifications.md) | Contrat `notify`, canaux Telegram et mail, « Envoyer à » par tâche, outil `envoyer` |
+| [Notifications (implémenté)](notifications.md) | Contrat `notify`, canaux Telegram et mail, « Envoyer à » par tâche, outil `send_document` |
 | [Veille (implémenté)](veille.md) | Centres d'intérêt, flux RSS et recherches, pré-tri en code, tri par un modèle, digest quotidien, avis à la voix |
 | [Télécharger des modèles (implémenté)](telechargements.md) | Bibliothèque de modèles dans les réglages : modèles choisis, recherche Hugging Face, `ctx.downloads`, barre d'avancement |
 | [Premier lancement (implémenté)](premier-lancement.md) | Lire la machine (carte séparée ou mémoire unifiée), niveaux du texte seul au tout local, fenêtre « Bienvenue », test de vitesse |

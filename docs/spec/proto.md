@@ -39,9 +39,9 @@ flowchart TB
 | Famille | Plugin (`plugins/<famille>/<nom>`) | Rôle |
 |---|---|---|
 | tools | `tools/mcp` | serveurs MCP de l'utilisateur, niveaux, serveur MCP Floppy |
-| tools | `tools/browser`, `tools/orca`, `tools/websearch`, `tools/m365` | applications : ouvrir une page (`ouvrir_url`), Orca, recherche web, Microsoft 365 (voir [elements.md](elements.md)) |
+| tools | `tools/browser`, `tools/orca`, `tools/websearch`, `tools/m365` | applications : ouvrir une page (`open_url`), Orca, recherche web, Microsoft 365 (voir [elements.md](elements.md)) |
 | llm | `llm/llamacpp`, `llm/openai` | llama-server (réutilisé s'il tourne déjà, sinon lancé et surveillé) ; modèles distants au format OpenAI |
-| memory | `memory/local` | `USER.md`, `MEMORY.md`, historique SQLite FTS5, outils `memoriser` et `chercher_historique` |
+| memory | `memory/local` | `USER.md`, `MEMORY.md`, historique SQLite FTS5, outils `remember` et `search_history` |
 | brain | `brain/aisdk` | cerveau Gemma, prompt v3c, délégation |
 | brain | `brain/claude-cli` | CLI Claude : service `delegate` (ou `brain` sans GPU) |
 | voice | `voice/listen` | écoute (Silero + Parakeet par sherpa-onnx) ; la voix vient des plugins `tts` (le service Python `voice/cascade` est archivé le 6 novembre 2026, voir [ecoute.md](ecoute.md)) |
@@ -98,7 +98,7 @@ sequenceDiagram
   participant C as conversation
   participant T as registre d'outils
   participant P as accords (noyau)
-  C->>T: ouvrir_url (write, plugin browser) — corps d'origine : avatar
+  C->>T: open_url (write, plugin browser) — corps d'origine : avatar
   T->>P: check(write) → ask
   P->>A: approval.request (carte Oui / Non) — aussi aux autres corps « approval »
   C->>A: dit « J'ai besoin de ton accord. »
@@ -114,7 +114,7 @@ sequenceDiagram
 Le prompt et la délégation reprennent la variante **v3c** retenue par le prototype 4 (`prototypes\ambiguity\`) :
 
 - 3 chemins dans le prompt : **demander** (ambigu avant une écriture), **déléguer** (calcul en plusieurs étapes, rédaction longue, code, analyse, synthèse), **faire** (le reste), avec des exemples courts. Pas d'outil `demander_precision`.
-- **Règle du noyau** : dès que le **nom** de l'outil `deleguer` arrive dans le flux de Gemma, le noyau dit « Je regarde ça, une seconde. ». La réponse de Claude est lue **en direct**, telle quelle ; la boucle s'arrête (Gemma ne la répète pas). Elle est gardée dans l'historique de la conversation.
+- **Règle du noyau** : dès que le **nom** de l'outil `delegate` arrive dans le flux de Gemma, le noyau dit « Je regarde ça, une seconde. ». La réponse de Claude est lue **en direct**, telle quelle ; la boucle s'arrête (Gemma ne la répète pas). Elle est gardée dans l'historique de la conversation.
 - Le CLI Claude n'a que le serveur MCP Floppy ; sa liste d'outils est vérifiée à chaque lancement (un outil inconnu = arrêt + journal). Un processus de réserve est prêt à l'avance.
 
 ## Mesures

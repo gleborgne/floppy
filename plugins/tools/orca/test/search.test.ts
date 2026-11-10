@@ -28,10 +28,10 @@ async function start(answer: (args: string[]) => unknown) {
   return { k, calls };
 }
 
-describe("orca_recherche", () => {
+describe("orca_search", () => {
   it("cherche dans les conversations et rend titre, projet, branche, date et extrait", async () => {
     const { k, calls } = await start((a) => (a.includes("--index-status") ? { phase: "current" } : HITS));
-    const r = await k.tools.call("orca_recherche", { texte: "UTC" });
+    const r = await k.tools.call("orca_search", { text: "UTC" });
     expect(r.status).toBe("done");
     const text = tr(r.text, "fr");
     expect(text).toContain("Migration des dates (claude, differendum, branche fix-dates, il y a 2 h) : l'agent : « …on garde les dates en UTC partout… »");
@@ -42,15 +42,15 @@ describe("orca_recherche", () => {
 
   it("récentes d'abord à la demande ; texte vide refusé", async () => {
     const { k, calls } = await start(() => ({ kind: "results", hits: [] }));
-    const r = await k.tools.call("orca_recherche", { texte: "cache", recent: true });
+    const r = await k.tools.call("orca_search", { text: "cache", recent: true });
     expect(tr(r.text, "fr")).toContain("Aucune conversation");
     expect(calls[0]).toEqual(["search", "--query", "cache", "--scope", "conversation", "--limit", "5", "--sort", "newest"]);
-    expect((await k.tools.call("orca_recherche", { texte: "  " })).status).toBe("failed");
+    expect((await k.tools.call("orca_search", { text: "  " })).status).toBe("failed");
   });
 
   it("recherche éteinte dans Orca : dit où l'allumer", async () => {
     const { k } = await start(() => ({ kind: "unavailable", reason: "disabled" }));
-    const r = await k.tools.call("orca_recherche", { texte: "UTC" });
+    const r = await k.tools.call("orca_search", { text: "UTC" });
     expect(r.status).toBe("failed");
     expect(tr(r.text, "fr")).toContain("Agent Session History");
   });

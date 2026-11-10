@@ -1,4 +1,4 @@
-// Envoi des résultats des tâches sur les canaux « notify » (Telegram, mail…) : réglage « Envoyer à » et outil « envoyer ».
+// Envoi des résultats des tâches sur les canaux « notify » (Telegram, mail…) : réglage « Envoyer à » et outil « send_document ».
 import { describe, it, expect, afterEach } from "vitest";
 import { Kernel, definePlugin, type PluginDef, type DocRef } from "@floppy/core";
 import type { NotifyMessage } from "@floppy/contracts";
@@ -100,14 +100,15 @@ describe("envoi des résultats", () => {
     expect(initiatives.at(-1)?.text).toBe("L'envoi de « Veille du jour » sur Gmail perso a échoué : serveur mail injoignable.");
   });
 
-  it("l'outil « envoyer » envoie le dernier document, ou celui demandé", async () => {
+  it("l'outil « send_document » envoie le dernier document, ou celui demandé", async () => {
     const sent: { channel: string; msg: NotifyMessage }[] = [];
     await setup(sent);
-    const r = await k!.tools.call("envoyer", { canal: "mon canal", quoi: "veille" });
+    const r = await k!.tools.call("send_document", { channel: "mon canal", what: "veille" });
+    expect(k!.tools.list().map((t) => t.name).filter((n) => ["envoyer"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toBe("« Veille du 6 novembre » envoyé sur Mon canal.");
     expect(sent.map((s) => s.channel)).toEqual(["canal"]);
-    const no = await k!.tools.call("envoyer", { canal: "fax" });
+    const no = await k!.tools.call("send_document", { channel: "fax" });
     expect(no.status).toBe("failed");
     expect(no.text).toMatch(/Canaux : « Mon canal », « Gmail perso »/);
   });
@@ -125,7 +126,7 @@ describe("envoi des résultats", () => {
     await k!.tasks.run("veille/quotidienne", "manual");
     await wait();
     expect(initiatives.at(-1)?.text).toMatch(/^Sending ".*" to Gmail perso failed: /);
-    const r = await k!.tools.call("envoyer", { canal: "on my canal", quoi: "latest" });
+    const r = await k!.tools.call("send_document", { channel: "on my canal", what: "latest" });
     expect(r.text).toBe('"Veille du 6 novembre" sent to Mon canal.');
   });
 });

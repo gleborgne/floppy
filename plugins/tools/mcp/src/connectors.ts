@@ -117,7 +117,7 @@ export const KINDS: ItemKind[] = [
       { key: "label", label: t("Nom de l'outil", "Tool name"), type: "text", required: true, placeholder: t("Ex. état git", "E.g. git status") },
       { key: "description", label: t("Description", "Description"), type: "textarea", required: true, hint: t("Dit au cerveau quand utiliser l'outil.", "Tells the brain when to use the tool.") },
       { key: "command", label: t("Commande", "Command"), type: "text", required: true, placeholder: "git" },
-      { key: "args", label: t("Arguments", "Arguments"), type: "list", hint: t("Un argument peut contenir {texte} : remplacé par ce que le modèle donne.", "An argument may contain {texte}: replaced by what the model gives.") },
+      { key: "args", label: t("Arguments", "Arguments"), type: "list", hint: t("Un argument peut contenir {text} : remplacé par ce que le modèle donne.", "An argument may contain {text}: replaced by what the model gives.") },
       { key: "cwd", label: t("Dossier de travail", "Working folder"), type: "path", directory: true },
       {
         key: "level", label: t("Niveau", "Level"), type: "select", default: "write",

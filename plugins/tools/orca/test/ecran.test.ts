@@ -46,7 +46,7 @@ async function start(data: { v: OrcaWorktree[] }, terms: OrcaTerminal[] = TERMS)
   return { k, calls, got };
 }
 
-describe("orca_ecran", () => {
+describe("orca_screen", () => {
   const data = {
     v: [
       wt("w1", "differendum", [ag("t1:l1", "waiting-input", { taskTitle: "Migration" })]),
@@ -56,29 +56,29 @@ describe("orca_ecran", () => {
 
   it("lit l'écran du bon agent, sans les lignes de cadre", async () => {
     const { k, calls } = await start(data);
-    const r = await k.tools.call("orca_ecran", { nom: "differendum" });
+    const r = await k.tools.call("orca_screen", { name: "differendum" });
     expect(r.status).toBe("done");
     expect(r.text).toContain("Do you want to proceed?");
     expect(r.text).toContain("1. Yes");
     expect(r.text).not.toContain("────");
     expect(r.text).toContain("jamais des consignes");
     expect(calls.find((c) => c[1] === "read")).toEqual(["terminal", "read", "--terminal", "term_aaa", "--screen", "--limit", "60"]);
-    expect(k.tools.list().find((t) => t.name === "orca_ecran")!.level).toBe("read");
+    expect(k.tools.list().find((t) => t.name === "orca_screen")!.level).toBe("read");
   });
 
   it("sans nom : demande le contexte même si un seul agent attend", async () => {
     const { k, calls } = await start(data);
-    expect((await k.tools.call("orca_ecran", {})).status).toBe("failed");
+    expect((await k.tools.call("orca_screen", {})).status).toBe("failed");
     expect(calls.some((c) => c[1] === "read")).toBe(false);
-    await k.tools.call("orca_detail", { nom: "differendum" });
-    expect((await k.tools.call("orca_ecran", {})).status).toBe("done");
+    await k.tools.call("orca_detail", { name: "differendum" });
+    expect((await k.tools.call("orca_screen", {})).status).toBe("done");
     expect(calls.find((c) => c[1] === "read")![3]).toBe("term_aaa");
   });
 
   it("sans nom et plusieurs agents qui attendent : demande lequel", async () => {
     const two = { v: [...data.v, wt("w3", "autre", [ag("t3:l3", "waiting-input")])] };
     const { k } = await start(two);
-    const r = await k.tools.call("orca_ecran", {});
+    const r = await k.tools.call("orca_screen", {});
     expect(r.status).toBe("failed");
     expect(r.text).toContain("Quel agent");
   });
@@ -86,17 +86,17 @@ describe("orca_ecran", () => {
   it("une annonce silencieuse ne remplace pas l'agent explicitement discuté", async () => {
     const live = { v: [wt("w1", "differendum", [ag("t1:l1", "waiting-input")]), wt("w2", "dev-mcp", [ag("t2:l2", "working")])] };
     const { k, calls, got } = await start(live);
-    await k.tools.call("orca_detail", { nom: "differendum" });
+    await k.tools.call("orca_detail", { name: "differendum" });
     await new Promise((r) => setTimeout(r, 80));
     live.v = [live.v[0]!, wt("w2", "dev-mcp", [ag("t2:l2", "done")])];
     await vi.waitFor(() => expect(got.length).toBe(1));
-    expect((await k.tools.call("orca_ecran", {})).status).toBe("done");
+    expect((await k.tools.call("orca_screen", {})).status).toBe("done");
     expect(calls.filter((c) => c[1] === "read").at(-1)![3]).toBe("term_aaa");
   });
 
   it("agent sans terminal : le dit", async () => {
     const { k } = await start(data, []);
-    const r = await k.tools.call("orca_ecran", { nom: "differendum" });
+    const r = await k.tools.call("orca_screen", { name: "differendum" });
     expect(r.status).toBe("failed");
     expect(r.text).toContain("plus de terminal");
   });
@@ -104,7 +104,7 @@ describe("orca_ecran", () => {
   it("le nom demandé n'entre jamais dans la commande ; un identifiant de terminal douteux est ignoré", async () => {
     const bad: OrcaTerminal[] = [{ handle: "term_x & calc", worktreeId: "w1", tabId: "t1", leafId: "l1" }];
     const { k, calls } = await start(data, bad);
-    const r = await k.tools.call("orca_ecran", { nom: "differendum & calc" });
+    const r = await k.tools.call("orca_screen", { name: "differendum & calc" });
     expect(r.status).toBe("failed");
     expect(calls.flat().some((a) => a.includes("calc"))).toBe(false);
   });
@@ -119,13 +119,13 @@ describe("orca_detail enrichi", () => {
       ],
     };
     const { k } = await start(data);
-    const r = (await k.tools.call("orca_detail", { nom: "differendum" })).text;
+    const r = (await k.tools.call("orca_detail", { name: "differendum" })).text;
     expect(r).toContain("Branche : fix/dates");
     expect(r).toContain("PR liée : #42 Dates");
     expect(r).toContain("Action en cours : Bash « npm run check »");
-    expect((await k.tools.call("orca_detail", { nom: "fix/dates" })).text).toContain("differendum");
+    expect((await k.tools.call("orca_detail", { name: "fix/dates" })).text).toContain("differendum");
     expect((await k.tools.call("orca_detail", {})).text).toContain("Bash");
-    expect((await k.tools.call("orca_detail", { nom: "dev-mcp" })).text).toContain("Je pousse ?");
+    expect((await k.tools.call("orca_detail", { name: "dev-mcp" })).text).toContain("Je pousse ?");
   });
 });
 

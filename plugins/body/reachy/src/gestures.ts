@@ -98,11 +98,11 @@ export const STATE_GESTURE: Record<BodyState, string | undefined> = {
 };
 
 export const DIRECTIONS: Record<string, string> = {
-  gauche: "look_left", left: "look_left",
-  droite: "look_right", right: "look_right",
-  haut: "look_up", up: "look_up",
-  bas: "look_down", down: "look_down",
-  devant: "look_front", front: "look_front", droit: "look_front", forward: "look_front", ahead: "look_front", straight: "look_front",
+  left: "look_left",
+  right: "look_right",
+  up: "look_up",
+  down: "look_down",
+  front: "look_front", forward: "look_front", ahead: "look_front", straight: "look_front",
 };
 
 const rad = (deg: number) => (deg * Math.PI) / 180;

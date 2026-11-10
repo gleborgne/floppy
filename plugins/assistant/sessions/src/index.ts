@@ -108,23 +108,23 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
         : t("aucun CLI trouvé (claude, codex, agy)", "no CLI found (claude, codex, agy)"), installed.length ? "ok" : "warn");
       const label = (a: Record<string, unknown>) => {
         const agent = NAMES[a.agent as Agent] ?? String(a.agent);
-        const model = a.modele ? ` (${String(a.modele)})` : "";
-        return { agent: `${agent}${model}`, dir: a.dossier ? String(a.dossier) : "" };
+        const model = a.model ? ` (${String(a.model)})` : "";
+        return { agent: `${agent}${model}`, dir: a.folder ? String(a.folder) : "" };
       };
       ctx.tools.register([{
-        name: "ouvrir_session_agent",
+        name: "open_agent_session",
         description: "Ouvre une vraie session d'un agent ajouté à Floppy dans un terminal de l'utilisateur, sur une consigne. "
-          + "Utilise-le quand l'utilisateur veut suivre lui-même un travail long ou outillé dans le terminal. Consulte lister_agents pour les choix. "
+          + "Utilise-le quand l'utilisateur veut suivre lui-même un travail long ou outillé dans le terminal. Consulte list_agents pour les choix. "
           + "La session a les droits et les connecteurs propres du CLI ; l'utilisateur la suit dans le terminal. Réécris la demande en une consigne complète et autonome.",
         inputSchema: {
           type: "object",
           properties: {
-            agent: { type: "string", description: "Agent demandé : identifiant complet retourné par lister_agents, ou nom non ambigu." },
-            consigne: { type: "string", description: "La tâche complète, en phrases (contexte, attendu, format du résultat)." },
-            modele: { type: "string", description: "Modèle demandé, s'il est dit. Claude : opus, sonnet ou haiku. Codex : ex. gpt-6.1-sol. Antigravity : ex. gemini-4-argon-medium. Sinon, ne rien mettre." },
-            dossier: { type: "string", description: "Dossier de travail absolu, seulement si l'utilisateur en nomme un. Sinon, ne rien mettre : un dossier neuf est créé." },
+            agent: { type: "string", description: "Agent demandé : identifiant complet retourné par list_agents, ou nom non ambigu." },
+            instruction: { type: "string", description: "La tâche complète, en phrases (contexte, attendu, format du résultat)." },
+            model: { type: "string", description: "Modèle demandé, s'il est dit. Claude : opus, sonnet ou haiku. Codex : ex. gpt-6.1-sol. Antigravity : ex. gemini-4-argon-medium. Sinon, ne rien mettre." },
+            folder: { type: "string", description: "Dossier de travail absolu, seulement si l'utilisateur en nomme un. Sinon, ne rien mettre : un dossier neuf est créé." },
           },
-          required: ["agent", "consigne"],
+          required: ["agent", "instruction"],
         },
         level: "write",
         summary: (a) => {
@@ -135,9 +135,9 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
         },
         handler: async (a) => {
           const agent = String(a.agent ?? "");
-          const consigne = String(a.consigne ?? "").trim();
+          const consigne = String(a.instruction ?? "").trim();
           if (!consigne) return { status: "failed", text: t("Il manque la consigne.", "The instruction is missing.") };
-          const rawModel = a.modele ? String(a.modele).trim() : undefined;
+          const rawModel = a.model ? String(a.model).trim() : undefined;
           const model = rawModel && Object.hasOwn(NAMES, agent) ? rawModel.toLowerCase().replace(/\s+/g, "-") : rawModel;
           if (model && !validAgentModel(model)) return { status: "failed", text: t("Nom de modèle refusé.", "Model name rejected.") };
           const borrowed = await borrowAgent(ctx, agent);
@@ -149,8 +149,8 @@ export function createSessionsPlugin(launcher: Launcher = defaultLauncher) {
           if (!borrowed && (!exe || configured)) return { status: "failed", text: t(`Agent indisponible : ${agent}. Vérifie son plugin dans les réglages.`, `Agent unavailable: ${agent}. Check its plugin in Settings.`) };
           const name = borrowed?.service.label ?? NAMES[legacy!];
           let dir: string;
-          if (a.dossier) {
-            dir = String(a.dossier);
+          if (a.folder) {
+            dir = String(a.folder);
             if (!isAbsolute(dir) || !existsSync(dir) || !statSync(dir).isDirectory()) return { status: "failed", text: t(`Dossier introuvable : ${dir}.`, `Folder not found: ${dir}.`) };
           } else {
             dir = join(cfg.folder ?? ctx.workspace(), `${sessionFolderName(consigne)}-${randomUUID().slice(0, 8)}`);

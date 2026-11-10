@@ -9,13 +9,13 @@ export function channelReadTool(g: GraphAuth, deps: {
   resolve: (team: string, channel: string) => Promise<{ team: any; ch: any }>;
 }): ToolDef {
   return {
-    name: "m365_messages_canal",
-    description: "Cherche les publications ET réponses d'un canal Teams par période, auteur, texte, mention, lien ou pièce jointe. Une réponse récente dans un ancien fil compte aussi. Équipe obligatoire, canal Général par défaut. Pas d'état non lu garanti pour les canaux. Rend les ids pour répondre au fil. Lecture soumise à la permission Microsoft des canaux.",
-    inputSchema: { type: "object", properties: { ...periodFields, equipe: { type: "string" }, canal: { type: "string" }, jours: { type: "integer", minimum: 1, maximum: 90 }, auteur: { type: "string", description: "Nom complet ou id ; filtre textuel sur l'auteur, sans identité devinée." }, contient: { type: "string" }, mentions_moi: { type: "boolean" }, avec_lien: { type: "boolean" }, avec_piece_jointe: { type: "boolean" }, max: { type: "integer", minimum: 1, maximum: 30 } }, required: ["equipe"] }, level: "read",
+    name: "m365_channel_messages",
+    description: "Cherche les publications ET réponses d'un canal Teams par période, author, contains (texte), mentions_me, with_link ou with_attachment. Une réponse récente dans un ancien fil compte aussi. team (équipe) obligatoire, channel (canal) Général par défaut ; days : derniers N jours. Pas d'état non lu garanti pour les canaux. Rend les ids pour répondre au fil. Lecture soumise à la permission Microsoft des canaux.",
+    inputSchema: { type: "object", properties: { ...periodFields, team: { type: "string" }, channel: { type: "string" }, days: { type: "integer", minimum: 1, maximum: 90 }, author: { type: "string", description: "Nom complet ou id ; filtre textuel sur l'auteur, sans identité devinée." }, contains: { type: "string" }, mentions_me: { type: "boolean" }, with_link: { type: "boolean" }, with_attachment: { type: "boolean" }, max: { type: "integer", minimum: 1, maximum: 30 } }, required: ["team"] }, level: "read",
     handler: safeHandler(async (a) => {
       const p = daysPeriod(a, 7), scan = new Scan();
       await deps.authorize();
-      const me = await deps.me(), { team, ch } = await deps.resolve(String(a.equipe ?? ""), String(a.canal ?? ""));
+      const me = await deps.me(), { team, ch } = await deps.resolve(String(a.team ?? ""), String(a.channel ?? ""));
       const base = `teams/${encodeURIComponent(team.id)}/channels/${encodeURIComponent(ch.id)}/messages`;
       const roots = await scan.pages(g, `${base}?$top=50&$expand=replies`);
       const ok = (m: any) => m.messageType === "message" && !m.deletedDateTime;
@@ -23,11 +23,11 @@ export function channelReadTool(g: GraphAuth, deps: {
       const body = (m: any) => plain(String(m.body?.content ?? ""), 2000);
       const match = (m: any) => {
         const at = Date.parse(m.createdDateTime);
-        return ok(m) && at >= +p.start && at < +p.end && matches(`${m.from?.user?.displayName ?? ""} ${m.from?.user?.id ?? ""}`, a.auteur)
-          && matches(`${m.subject ?? ""} ${body(m)} ${(m.attachments ?? []).map((f: any) => f.name).join(" ")}`, a.contient)
-          && (typeof a.mentions_moi !== "boolean" || mentioned(m) === a.mentions_moi)
-          && (typeof a.avec_lien !== "boolean" || /https?:\/\//i.test(String(m.body?.content ?? "")) === a.avec_lien)
-          && (typeof a.avec_piece_jointe !== "boolean" || Boolean(m.attachments?.length) === a.avec_piece_jointe);
+        return ok(m) && at >= +p.start && at < +p.end && matches(`${m.from?.user?.displayName ?? ""} ${m.from?.user?.id ?? ""}`, a.author)
+          && matches(`${m.subject ?? ""} ${body(m)} ${(m.attachments ?? []).map((f: any) => f.name).join(" ")}`, a.contains)
+          && (typeof a.mentions_me !== "boolean" || mentioned(m) === a.mentions_me)
+          && (typeof a.with_link !== "boolean" || /https?:\/\//i.test(String(m.body?.content ?? "")) === a.with_link)
+          && (typeof a.with_attachment !== "boolean" || Boolean(m.attachments?.length) === a.with_attachment);
       };
       const found: { root: any; replies: any[]; rootMatches: boolean }[] = [];
       for (const root of roots.filter(ok)) {

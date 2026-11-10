@@ -15,7 +15,7 @@ export function activityText(record: Pick<ActivityAgentRecord, "activity" | "out
 function output(text: string, en: boolean, raw?: unknown): ToolOutput {
   return { status: "done", text: `${text}\n${en ? ORCA_DATA.en : ORCA_DATA.fr}`, raw };
 }
-const filterProperties = { projet: { type: "string" }, depuis: { type: "string", description: "Date ISO 8601 avec fuseau." }, filtre: { type: "string", enum: ["en_cours", "termines", "en_attente", "interrompu", "tous"] } };
+const filterProperties = { project: { type: "string" }, since: { type: "string", description: "Date ISO 8601 avec fuseau." }, filter: { type: "string", enum: ["running", "finished", "waiting", "interrupted", "all"] } };
 
 export function trackingTools(runtime: OrcaRuntime, language: () => string, now: () => number): ToolDef[] {
   const en = () => language() === "en";
@@ -28,16 +28,16 @@ export function trackingTools(runtime: OrcaRuntime, language: () => string, now:
   return [
     {
       name: "orca_agents", level: "read",
-      description: "Liste individuellement les agents Orca avec noms stables, projet, activité et résultat déclaré. Conserve les noms et l'ordre dans ta réponse (pour « le deuxième », « celui sur les mails »). projet/filtre/depuis filtrent, offset/limite paginent ; ne remplace pas la liste par des comptes. Les références brutes concernent uniquement cette page.",
-      inputSchema: { type: "object", properties: { ...filterProperties, offset: { type: "integer", minimum: 0 }, limite: { type: "integer", minimum: 1, maximum: 10 } } },
-      auditArgs: (args) => ({ filtered: !!args.projet, status: ["en_cours", "termines", "en_attente", "interrompu"].includes(String(args.filtre)) ? args.filtre : "tous", paginated: args.offset !== undefined }),
+      description: "Liste individuellement les agents Orca avec noms stables, projet, activité et résultat déclaré. Conserve les noms et l'ordre dans ta réponse (pour « le deuxième », « celui sur les mails »). project/filter/since filtrent, offset/limit paginent ; ne remplace pas la liste par des comptes. Les références brutes concernent uniquement cette page.",
+      inputSchema: { type: "object", properties: { ...filterProperties, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 10 } } },
+      auditArgs: (args) => ({ filtered: !!args.project, status: ["running", "finished", "waiting", "interrupted"].includes(String(args.filter)) ? args.filter : "all", paginated: args.offset !== undefined }),
       handler: async (args, meta) => {
-        if (args.depuis !== undefined && !Number.isFinite(Date.parse(String(args.depuis)))) return { status: "failed", text: T("Précise une date ISO avec son fuseau.", "Specify an ISO date with its time zone.") };
+        if (args.since !== undefined && !Number.isFinite(Date.parse(String(args.since)))) return { status: "failed", text: T("Précise une date ISO avec son fuseau.", "Specify an ISO date with its time zone.") };
         await sync();
         const snapshot = runtime.snapshot();
         const live = runtime.currentReferences();
         const records = snapshot.agents.filter((r) => filterAgent(r, args, now())).sort((a, b) => a.project.localeCompare(b.project) || a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
-        const offset = bounded(args.offset, 0, 5000), limit = Math.max(1, bounded(args.limite, 5, 10));
+        const offset = bounded(args.offset, 0, 5000), limit = Math.max(1, bounded(args.limit, 5, 10));
         const rows: ActivityAgentRecord[] = [];
         const lines: string[] = [];
         let size = 0;
@@ -61,11 +61,11 @@ export function trackingTools(runtime: OrcaRuntime, language: () => string, now:
     {
       name: "orca_detail", level: "read",
       description: "Fiche d'un agent nommé/id, ordinal (« deuxième », « 2nd ») ou pronom (« lui », vide) de cette conversation. Donne mission, activité, présence, résultat déclaré et fraîcheur/provenance. Si ambigu ou disparu, demande de préciser sans choisir un autre agent. Une fin ne prouve pas un succès ou un commit.",
-      inputSchema: { type: "object", properties: { nom: { type: "string" }, id: { type: "string" } } },
-      auditArgs: (args) => ({ explicit: !!(args.nom || args.id) }),
+      inputSchema: { type: "object", properties: { name: { type: "string" }, id: { type: "string" } } },
+      auditArgs: (args) => ({ explicit: !!(args.name || args.id) }),
       handler: async (args, meta) => {
         await sync();
-        const result = runtime.resolve(String(args.id ?? args.nom ?? ""), meta);
+        const result = runtime.resolve(String(args.id ?? args.name ?? ""), meta);
         if (!result.ok) return referenceFailure(result.reason, result.candidates);
         const ref = result.references[0]!;
         const r = ref.record;
@@ -88,22 +88,22 @@ export function trackingTools(runtime: OrcaRuntime, language: () => string, now:
       },
     },
     {
-      name: "orca_historique", level: "read",
-      description: "Récapitulatif nommé des changements observés des agents Orca, conservés 48 h (500 événements maximum). Filtre par nom/id d'agent, projet ou date depuis. Distingue état, résultat déclaré, présence et transmission ; l'absence d'événement ne prouve pas qu'il ne s'est rien passé.",
-      inputSchema: { type: "object", properties: { nom: { type: "string" }, id: { type: "string" }, projet: { type: "string" }, depuis: { type: "string" }, limite: { type: "integer", minimum: 1, maximum: 30 } } },
-      auditArgs: (args) => ({ agentFilter: !!(args.nom || args.id), projectFilter: !!args.projet, sinceFilter: !!args.depuis }),
+      name: "orca_history", level: "read",
+      description: "Récapitulatif nommé des changements observés des agents Orca, conservés 48 h (500 événements maximum). Filtre par name/id d'agent, project ou date since. Distingue état, résultat déclaré, présence et transmission ; l'absence d'événement ne prouve pas qu'il ne s'est rien passé.",
+      inputSchema: { type: "object", properties: { name: { type: "string" }, id: { type: "string" }, project: { type: "string" }, since: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 30 } } },
+      auditArgs: (args) => ({ agentFilter: !!(args.name || args.id), projectFilter: !!args.project, sinceFilter: !!args.since }),
       handler: async (args, meta) => {
         await sync();
-        const since = args.depuis === undefined ? undefined : Date.parse(String(args.depuis));
+        const since = args.since === undefined ? undefined : Date.parse(String(args.since));
         if (since !== undefined && !Number.isFinite(since)) return { status: "failed", text: T("Précise une date ISO avec son fuseau.", "Specify an ISO date with its time zone.") };
         let agentId: string | undefined;
-        const name = String(args.id ?? args.nom ?? "");
+        const name = String(args.id ?? args.name ?? "");
         if (name) {
           const resolved = runtime.resolveHistorical(name, meta);
           if (!resolved.ok) return referenceFailure(resolved.reason, resolved.candidates);
           agentId = resolved.references[0]!.identity;
         }
-        const events = runtime.store.query({ agentId, since, limit: 500 }).filter((e) => !args.projet || e.project.toLowerCase().includes(String(args.projet).toLowerCase())).slice(-Math.max(1, bounded(args.limite, 10, 30)));
+        const events = runtime.store.query({ agentId, since, limit: 500 }).filter((e) => !args.project || e.project.toLowerCase().includes(String(args.project).toLowerCase())).slice(-Math.max(1, bounded(args.limit, 10, 30)));
         const deliveryText = en() ? { accepted: "delivery accepted", failed: "delivery failed", unconfirmed: "delivery unconfirmed", refused: "delivery refused" } : { accepted: "transmission acceptée", failed: "transmission échouée", unconfirmed: "transmission non confirmée", refused: "transmission refusée" };
         const lines = events.map((e) => `- ${e.label} (${e.project}), ${new Date(e.observedAt).toISOString()} : ${activityText(e, en())}${e.delivery ? ` ; ${deliveryText[e.delivery]}` : ""}${e.declaredResult ? ` ; ${clip(e.declaredResult, 120)}` : ""} [${e.provenance}].`);
         const refs = [...new Map(events.map((e) => [e.id, { identity: e.id, label: e.label, project: e.project }])).values()];

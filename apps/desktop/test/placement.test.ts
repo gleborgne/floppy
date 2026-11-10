@@ -1,4 +1,4 @@
-// Place de l'avatar (outil « placer_avatar ») et icône de la barre des tâches : calculs purs, sans Electron.
+// Place de l'avatar (outil « place_avatar ») et icône de la barre des tâches : calculs purs, sans Electron.
 import { it, expect } from "vitest";
 import { inflateSync } from "node:zlib";
 import { avatarSpot, chatSpot, placeOptions } from "../src/placement.ts";
@@ -36,7 +36,7 @@ it("icône : un PNG 32×32 en couleurs vraies avec transparence, opaque au centr
 
 it("charge de la page de l'avatar (IPC avatar:place) : noms anglais, valeurs sûres par défaut", () => {
   expect(placeOptions({ corner: "top_left", screen: 2, target: "window" })).toEqual({ corner: "top_left", screen: 2, target: "window" });
-  expect(placeOptions({ corner: "", target: "fenetre" })).toEqual({ corner: "bottom_right", target: "screen" });
+  expect(placeOptions({ corner: "", target: "inconnue" })).toEqual({ corner: "bottom_right", target: "screen" });
   expect(placeOptions(undefined)).toEqual({ corner: "bottom_right", target: "screen" });
   expect(placeOptions({ screen: "3" })).toEqual({ corner: "bottom_right", screen: 3, target: "screen" });
 });

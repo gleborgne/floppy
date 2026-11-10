@@ -14,7 +14,7 @@ approvals:
   timeout_s: 90
   # Seules les corrections explicitement formulées et vérifiées peuvent être retenues sans nouvel accord.
   toolRules:
-    - { source: vocabulary, tool: corriger_vocabulaire, level: write, rule: always }
+    - { source: vocabulary, tool: correct_vocabulary, level: write, rule: always }
 # Initial slot choices ("<entry id>/<item>"), used until something is chosen in Settings or by voice.
 # The kernel only runs the chosen item while someone uses it.
 slots:

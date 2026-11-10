@@ -54,7 +54,8 @@ it("après « ton agent a fini », transmet « fais le commit » à cet agent ap
     expect(cli.mock.calls.some(([a]) => a[1] === "send")).toBe(false);
     k.approvals.respond(r.id, true, "test");
   });
-  const r = await k.tools.call("orca_envoyer", { message: "Fais le commit." });
+  const r = await k.tools.call("orca_send", { message: "Fais le commit." });
+  expect(k.tools.list().map((t) => t.name).filter((n) => ["orca_envoyer"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
   expect(r.status, r.text).toBe("done");
   expect(approvals).toHaveLength(1);
   expect(approvals[0]).toContain("Migration");
@@ -62,13 +63,13 @@ it("après « ton agent a fini », transmet « fais le commit » à cet agent ap
   expect(cli.mock.calls.filter(([a]) => a[1] === "send")).toEqual([
     [["terminal", "send", "--terminal", "term_aaa", "--text", "Fais le commit.", "--enter"]],
   ]);
-  expect(k.tools.list().find((t) => t.name === "orca_envoyer")?.level).toBe("send");
+  expect(k.tools.list().find((t) => t.name === "orca_send")?.level).toBe("send");
 });
 
 it("un refus n'envoie rien", async () => {
   const { k, cli } = await start();
   k.bus.on("approval.request", (r) => k.approvals.respond(r.id, false, "test"));
-  expect((await k.tools.call("orca_envoyer", { nom: "Migration", message: "Fais le commit." })).status).toBe("refused");
+  expect((await k.tools.call("orca_send", { name: "Migration", message: "Fais le commit." })).status).toBe("refused");
   expect(cli.mock.calls.some(([a]) => a[1] === "send")).toBe(false);
 });
 
@@ -77,7 +78,7 @@ it("une nouvelle annonce pendant l'accord ne change pas le destinataire", async 
   await announceDone();
   const approvals: string[] = [];
   k.bus.on("approval.request", (r) => approvals.push(r.id));
-  const call = k.tools.call("orca_envoyer", { message: "Fais le commit." });
+  const call = k.tools.call("orca_send", { message: "Fais le commit." });
   await vi.waitFor(() => expect(approvals).toHaveLength(1));
   const announced: string[] = [];
   k.bus.on("initiative", (e) => announced.push(e.text));
@@ -98,7 +99,7 @@ it.each(["agent", "terminal"])("%s disparu pendant l'accord : aucun envoi", asyn
     else terms[0]!.handle = "term_replacement";
     k.approvals.respond(r.id, true, "test");
   });
-  expect((await k.tools.call("orca_envoyer", { nom: "Migration", message: "Continue." })).status).toBe("failed");
+  expect((await k.tools.call("orca_send", { name: "Migration", message: "Continue." })).status).toBe("failed");
   expect(cli.mock.calls.some(([a]) => a[1] === "send")).toBe(false);
 });
 
@@ -111,7 +112,7 @@ it.each(["ambigu", "terminal absent", "identifiant invalide", "worker", "sans ci
   if (scenario === "sans cible") data.v[1]!.agents![0]!.state = "done";
   const approval = vi.fn((r: { id: string }) => k.approvals.respond(r.id, false, "test"));
   k.bus.on("approval.request", approval);
-  const r = await k.tools.call("orca_envoyer", { ...(scenario === "sans cible" ? {} : { nom: "Migration" }), message: "Continue." });
+  const r = await k.tools.call("orca_send", { ...(scenario === "sans cible" ? {} : { name: "Migration" }), message: "Continue." });
   expect(r.status, r.text).toBe("failed");
   expect(approval).not.toHaveBeenCalled();
   expect(cli.mock.calls.some(([a]) => a[1] === "send")).toBe(false);
@@ -121,28 +122,28 @@ it("le dernier annoncé disparu ne se rabat pas sur un autre agent en attente", 
   const { k, data, cli, announceDone } = await start();
   await announceDone();
   data.v.shift();
-  expect((await k.tools.call("orca_envoyer", { message: "Continue." })).text).toContain("plus disponible");
+  expect((await k.tools.call("orca_send", { message: "Continue." })).text).toContain("plus disponible");
   expect(cli).not.toHaveBeenCalled();
 });
 
 it("après sa fiche, vise l'agent de cette conversation et garde le texte dans un argument", async () => {
   const { k, cli } = await start();
-  await k.tools.call("orca_detail", { nom: "Revue" });
+  await k.tools.call("orca_detail", { name: "Revue" });
   k.bus.on("approval.request", (r) => k.approvals.respond(r.id, true, "test"));
   const message = 'Écris "fix: dates" puis commit ; $(test) & %PATH% `texte`';
-  expect((await k.tools.call("orca_envoyer", { message })).status).toBe("done");
+  expect((await k.tools.call("orca_send", { message })).status).toBe("done");
   expect(cli.mock.calls.filter(([a]) => a[1] === "send")[0]![0]).toEqual(["terminal", "send", "--terminal", "term_bbb", "--text", message, "--enter"]);
 });
 
 it.each(["", "  ", "un\ndeux", "un\rdeux", "un\x1bdeux", "x".repeat(4001), "--interrupt"])("message invalide : %j", async (message) => {
   const { k, cli } = await start();
-  expect((await k.tools.call("orca_envoyer", { message })).status).toBe("failed");
+  expect((await k.tools.call("orca_send", { message })).status).toBe("failed");
   expect(cli).not.toHaveBeenCalled();
 });
 
 it.each(["orca.cmd", "orca.bat"])("refuse l'envoi via %s", async (command) => {
   const { k } = await start({ command }, true);
-  const r = await k.tools.call("orca_envoyer", { message: "Continue." });
+  const r = await k.tools.call("orca_send", { message: "Continue." });
   expect(r.status).toBe("failed");
   expect(r.text).toContain("sans script intermédiaire");
 });
@@ -156,7 +157,7 @@ it.each(["refus", "inconnu", "erreur"])("accusé %s : ne prétend pas avoir envo
     return receipt === "refus" ? { accepted: false } : {};
   });
   k.bus.on("approval.request", (r) => k.approvals.respond(r.id, true, "test"));
-  expect((await k.tools.call("orca_envoyer", { nom: "Revue", message: "Continue." })).status).toBe(receipt === "refus" ? "failed" : "unverified");
+  expect((await k.tools.call("orca_send", { name: "Revue", message: "Continue." })).status).toBe(receipt === "refus" ? "failed" : "unverified");
   expect(cli.mock.calls.filter(([a]) => a[1] === "send")).toHaveLength(1);
 });
 
@@ -165,7 +166,7 @@ it.each(["input_accepted", "turn_started"])("un reçu moderne %s garde son ident
   const original = cli.getMockImplementation()!;
   cli.mockImplementation(args => args[1] === "send" ? Promise.resolve({ send: { accepted: true, prompt: { requestId: "durable-id", stages: ["input_accepted", ...(stage === "turn_started" ? [stage] : [])] } } }) : original(args));
   k.bus.on("approval.request", r => k.approvals.respond(r.id, true, "test"));
-  const r = await k.tools.call("orca_envoyer", { nom: "Revue", message: "Instruction confidentielle unique." });
+  const r = await k.tools.call("orca_send", { name: "Revue", message: "Instruction confidentielle unique." });
   expect(r.status).toBe("done"); expect(r.text).toContain("ne confirme pas");
   const audit = k.audit.tail(100);
   expect(audit.some(e => e.kind === "orca.delivery" && e.stage === stage && typeof e.requestHash === "string")).toBe(true);
@@ -176,7 +177,7 @@ it.each(["input_accepted", "turn_started"])("un reçu moderne %s garde son ident
 it("un agent redevenu actif pendant l'accord est ignoré avec une trace, sans interruption", async () => {
   const { k, cli, data } = await start();
   k.bus.on("approval.request", r => { data.v[1]!.agents![0]!.state = "working"; k.approvals.respond(r.id, true, "test"); });
-  const r = await k.tools.call("orca_envoyer", { nom: "Revue", message: "Continue." });
+  const r = await k.tools.call("orca_send", { name: "Revue", message: "Continue." });
   expect(r.status).toBe("failed"); expect(r.text).toContain("travaille à nouveau");
   expect(cli.mock.calls.some(([args]) => args[1] === "send")).toBe(false);
   expect(k.audit.tail(100).some(e => e.kind === "orca.delivery" && e.stage === "skipped" && e.reason === "state-changed")).toBe(true);
@@ -186,7 +187,7 @@ it("un terminal réincarné sous le même handle est ignoré", async () => {
   const { k, cli, terms } = await start();
   (terms[1] as unknown as Record<string, unknown>).processIncarnation = "one";
   k.bus.on("approval.request", r => { (terms[1] as unknown as Record<string, unknown>).processIncarnation = "two"; k.approvals.respond(r.id, true, "test"); });
-  expect((await k.tools.call("orca_envoyer", { nom: "Revue", message: "Continue." })).status).toBe("failed");
+  expect((await k.tools.call("orca_send", { name: "Revue", message: "Continue." })).status).toBe("failed");
   expect(cli.mock.calls.some(([args]) => args[1] === "send")).toBe(false);
 });
 
@@ -194,7 +195,7 @@ it("un menu de permission est refusé avant l'accord", async () => {
   const { k, cli, data } = await start();
   data.v[1]!.agents![0]!.state = "permission";
   const approve = vi.fn(); k.bus.on("approval.request", approve);
-  expect((await k.tools.call("orca_envoyer", { nom: "Revue", message: "Oui." })).status).toBe("failed");
+  expect((await k.tools.call("orca_send", { name: "Revue", message: "Oui." })).status).toBe("failed");
   expect(approve).not.toHaveBeenCalled(); expect(cli.mock.calls.some(([args]) => args[1] === "send")).toBe(false);
 });
 
@@ -205,7 +206,7 @@ it("la confirmation et le résultat nomment la tâche et Floppy malgré un espac
   });
   const confirmations: string[] = [];
   k.bus.on("approval.request", r => { confirmations.push(r.summary); k.approvals.respond(r.id, true, "test"); });
-  const result = await k.tools.call("orca_envoyer", { nom: "Corriger les mails", message: "Instruction privée unique." });
+  const result = await k.tools.call("orca_send", { name: "Corriger les mails", message: "Instruction privée unique." });
   expect(result.status).toBe("done");
   for (const text of [confirmations[0]!, result.text]) { expect(text).toContain("Corriger les mails"); expect(text).toContain("Floppy"); expect(text).not.toContain("t2:l2"); expect(text).not.toContain("w2"); }
   expect(result.text).not.toContain("Instruction privée unique");

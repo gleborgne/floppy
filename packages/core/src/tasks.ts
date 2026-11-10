@@ -2,7 +2,7 @@
 //
 // Trois rôles séparés :
 // - QUOI : la tâche, dans son plugin (service `task`). Elle ne connaît ni l'horloge ni les corps.
-// - QUAND : la planification, gardée par un déclencheur (plugin Planificateur) ; la voix (`lancer_tache`) en est un autre.
+// - QUAND : la planification, gardée par un déclencheur (plugin Planificateur) ; la voix (`run_task`) en est un autre.
 // - ANNONCE : le noyau, après le passage (initiative + document montré).
 // Règles : un seul passage à la fois par tâche ; délai max ; le plugin est réveillé s'il dort, et gardé en marche
 // pendant le passage ; la fin du dernier passage réussi est gardée dans <home>/tasks.json.
@@ -162,7 +162,7 @@ export function taskTools(reg: TaskRegistry): ToolDef[] {
   const names = tasks.map((t) => `${t.key} (« ${tr(t.label)} »)`).join(", ") || "aucune";
   return [
     {
-      name: "taches",
+      name: "list_tasks",
       description: "Liste les tâches que tu sais faire (veille, résumés…) : dernier passage, en cours ou non.",
       inputSchema: { type: "object", properties: {} },
       level: "read",
@@ -176,13 +176,13 @@ export function taskTools(reg: TaskRegistry): ToolDef[] {
       },
     },
     {
-      name: "lancer_tache",
+      name: "run_task",
       description: `Lance une tâche maintenant, en arrière-plan (« fais ma veille maintenant »). Le résultat arrive tout seul plus tard : dis juste que c'est lancé. Tâches : ${names}.`,
-      inputSchema: { type: "object", properties: { tache: { type: "string", description: "Clé ou nom de la tâche." } }, required: ["tache"] },
+      inputSchema: { type: "object", properties: { task: { type: "string", description: "Clé ou nom de la tâche." } }, required: ["task"] },
       level: "write",
-      summary: (a) => T(`Lancer la tâche « ${String(a.tache ?? "")} »`, `Run the task "${String(a.tache ?? "")}"`),
+      summary: (a) => T(`Lancer la tâche « ${String(a.task ?? "")} »`, `Run the task "${String(a.task ?? "")}"`),
       handler: async (a) => {
-        const t = reg.find(String(a.tache ?? ""));
+        const t = reg.find(String(a.task ?? ""));
         if (!t) return { status: "failed", text: T(`Je ne connais pas cette tâche. Tâches : ${names}.`, `I don't know this task. Tasks: ${names}.`) };
         if (t.running) return { status: "done", text: alreadyRunning(t.label) };
         void reg.run(t.key, "voice");

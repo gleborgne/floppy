@@ -98,7 +98,7 @@ export function createAvatar(deps: AvatarDeps): AvatarWindow {
     return [primary, ...screen.getAllDisplays().filter((d) => d.id !== primary.id).sort((a, b) => a.bounds.x - b.bounds.x)];
   }
   /**
-   * Placer l'avatar (outil vocal « placer_avatar »). corner : bottom_right, bottom_left, top_right, top_left, center.
+   * Placer l'avatar (outil vocal « place_avatar »). corner : bottom_right, bottom_left, top_right, top_left, center.
    * screen : numéro (1 = principal). target "window" : dans le coin de la fenêtre active (le terminal, le navigateur…).
    */
   function placeAvatar(opts: { corner?: string; screen?: number; target?: string } = {}): Bilingual {

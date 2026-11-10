@@ -28,7 +28,7 @@ flowchart LR
 |---|---|---|
 | Dossier de travail | `<home>\coder-reglages` (vide) | `<home>\plugins` |
 | Outils intégrés du CLI | **aucun** (pas de shell, fichiers, web) | `Read`, `Edit`, `Write`, `Glob`, `Grep` (pas de shell, pas de web) |
-| Outils Floppy (MCP limité) | `lister_reglages`, `changer_reglage`, `annuler_reglage`, `etat_plugins` | `doc_plugins` (wiki), `tester_plugin`, `recharger_plugins`, `etat_plugins`, `lister_reglages` + `permission` |
+| Outils Floppy (MCP limité) | `list_settings`, `change_setting`, `undo_setting`, `plugin_status` | `plugin_docs` (wiki), `test_plugin`, `reload_plugins`, `plugin_status`, `list_settings` + `permission` |
 | Écritures | changer un réglage (risque contrôlé par le noyau) | **chaque écriture de fichier validée par l'utilisateur**, avec aperçu du changement ; tout chemin hors de `<home>\plugins` est refusé même si l'utilisateur dit oui |
 
 - **Jeton MCP limité** : un jeton par conversation, qui ne voit et n'appelle que les outils de son mode (les autres répondent « Outil inconnu », journal `mcp.scope_refused`). Le jeton complet reste réservé à la délégation.
@@ -39,8 +39,8 @@ flowchart LR
 
 ### Ce que l'assistant sait de la config
 
-- Il ne lit **jamais** `floppy.yml` ni `settings.json`. Il ne voit les réglages qu'à travers `lister_reglages`, qui donne pour chacun : clé, groupe, valeur actuelle, choix possibles (ou bornes, ou texte libre avec préréglages) et risque.
-- `changer_reglage` valide **par le code** : clé connue, valeur dans les choix ou les bornes, risque (`ask` = accord de l'utilisateur, `cli` = refusé, l'utilisateur clique lui-même). Une valeur fausse est refusée avec la liste des choix.
+- Il ne lit **jamais** `floppy.yml` ni `settings.json`. Il ne voit les réglages qu'à travers `list_settings`, qui donne pour chacun : clé, groupe, valeur actuelle, choix possibles (ou bornes, ou texte libre avec préréglages) et risque.
+- `change_setting` valide **par le code** : clé connue, valeur dans les choix ou les bornes, risque (`ask` = accord de l'utilisateur, `cli` = refusé, l'utilisateur clique lui-même). Une valeur fausse est refusée avec la liste des choix.
 - Le prompt impose : lister avant de changer, ne jamais deviner une clé ou une valeur, dire ancienne → nouvelle valeur.
 - Limite : ce qui n'est pas un réglage (ajouter un serveur MCP, son adresse, sa liste d'outils) n'est pas modifiable par l'assistant.
 
@@ -52,28 +52,28 @@ sequenceDiagram
   participant A as Assistant (mode plugin)
   participant K as Noyau
   U->>A: « Crée un plugin qui me rappelle de boire de l'eau »
-  A->>K: doc_plugins : sommaire, basics, services…
+  A->>K: plugin_docs : sommaire, basics, services…
   A->>A: lit floppy-plugin.d.ts, l'exemple
   A->>U: validation : créer plugins\eau\index.ts (aperçu)
   U-->>A: Autoriser
-  A->>K: tester_plugin(eau) — accord (exécute du code)
+  A->>K: test_plugin(eau) — accord (exécute du code)
   K-->>A: OK, état actif, outils, réglages
-  A->>K: recharger_plugins — accord
+  A->>K: reload_plugins — accord
   A-->>U: « Active-le d'un clic dans les réglages »
   U->>K: clic : plugin_eau = oui (jamais à la voix)
 ```
 
 - Un plugin = `<home>\plugins\<id>\index.ts`, qui exporte par défaut un objet `{ manifest, config?, apply(ctx, cfg) }`, avec seulement des `import type`. Le kit (`floppy-plugin.d.ts`, `AGENTS.md`/`CLAUDE.md`, exemple `exemple-minuteur`) est copié au premier usage, sans écraser.
 - Chaque plugin a un réglage `plugin_<id>` (groupe « Plugins utilisateur », risque **cli**) : il ne s'active **que par un clic** (ou la CLI), jamais à la voix, car c'est du code non vérifié.
-- **Au démarrage, un plugin désactivé n'est pas lu** (lire = exécuter son code) : il est seulement listé par son nom. Il est lu au clic d'activation, ou par `recharger_plugins` / `tester_plugin` (niveau write : accord demandé).
-- `tester_plugin` le fait tourner dans un **noyau jetable** (10 s) et rend : état, erreur, services manquants, outils, réglages, journal.
+- **Au démarrage, un plugin désactivé n'est pas lu** (lire = exécuter son code) : il est seulement listé par son nom. Il est lu au clic d'activation, ou par `reload_plugins` / `test_plugin` (niveau write : accord demandé).
+- `test_plugin` le fait tourner dans un **noyau jetable** (10 s) et rend : état, erreur, services manquants, outils, réglages, journal.
 - Rechargement à chaud : le noyau remplace la définition et redémarre seulement ce plugin et ses dépendants (`replacePlugin`).
 - Risque restant : un plugin personnel activé tourne dans le noyau avec tous les droits.
 - Un dossier qui a un `floppy-plugin.json` (plugin distribué) n'est jamais importé : il tourne dans un processus isolé. Installer le plugin de quelqu'un d'autre, le faire relire par un agent IA, le mode debug et le SDK : [plugins-tiers.md](plugins-tiers.md).
 
-### Le wiki des plugins (`doc_plugins`)
+### Le wiki des plugins (`plugin_docs`)
 
-L'agent qui écrit un plugin ne voit que le dossier `<home>\plugins`. Pour qu'il connaisse la structure et les contrats de Floppy sans quitter l'application, le noyau a un outil de lecture `doc_plugins`, un wiki **en anglais** (`apps/cli/src/plugins/wiki.ts`, enregistré par `boot.ts`). Sans argument : le sommaire ; `{ page }` : une page ; `{ search }` : les lignes qui contiennent tous les mots.
+L'agent qui écrit un plugin ne voit que le dossier `<home>\plugins`. Pour qu'il connaisse la structure et les contrats de Floppy sans quitter l'application, le noyau a un outil de lecture `plugin_docs`, un wiki **en anglais** (`apps/cli/src/plugins/wiki.ts`, enregistré par `boot.ts`). Sans argument : le sommaire ; `{ page }` : une page ; `{ search }` : les lignes qui contiennent tous les mots.
 
 | Pages | Source |
 |---|---|
@@ -84,13 +84,13 @@ L'agent qui écrit un plugin ne voit que le dossier `<home>\plugins`. Pour qu'il
 | `example-<nom>` | le code complet des exemples du SDK (`packages/sdk/examples`) |
 
 - Pourquoi un outil et pas des fichiers copiés : le kit copié dans `<home>\plugins` n'est jamais écrasé (il vieillit), certaines pages sont calculées, et le même outil marche pour Claude Code et Codex.
-- La consigne du mode plugin dit d'appeler `doc_plugins` d'abord, et qu'une API absente du wiki n'existe pas pour un plugin.
+- La consigne du mode plugin dit d'appeler `plugin_docs` d'abord, et qu'une API absente du wiki n'existe pas pour un plugin.
 - Services d'un plugin personnel : `optional`/`inject` dans le manifeste, puis `ctx.maybe`/`ctx.get` (fournisseur unique) ou `ctx.offers` + `ctx.borrowItem` (éléments au choix : canaux `notify`, modèles `completion`, moteurs `search`). Ces méthodes et les 4 contrats sont dans `floppy-plugin.d.ts` ; `packages/sdk/test/types.test.ts` vérifie qu'ils suivent le noyau. Un plugin tiers (processus isolé) n'a pas de services : `offers` rend `[]`, `get` et `borrowItem` lèvent une erreur claire.
 - L'outil est aussi visible du cerveau à la voix (niveau `read`, sans effet).
 
 ## Testé
 
-- Avec le **vrai Claude** (noyau jetable) : mode réglages (liste, puis « passe le modèle sur haiku » change bien le réglage) ; mode plugin (lecture du kit, **écriture validée**, `tester_plugin` OK, `recharger_plugins`).
+- Avec le **vrai Claude** (noyau jetable) : mode réglages (liste, puis « passe le modèle sur haiku » change bien le réglage) ; mode plugin (lecture du kit, **écriture validée**, `test_plugin` OK, `reload_plugins`).
 - Tests automatiques : 22 tests du plugin coder (faux CLI : flux, plusieurs tours, Stop + reprise, validations, chemins refusés, connexion requise), jeton MCP limité, 7 tests des plugins utilisateur (dont : code d'un plugin désactivé jamais exécuté au démarrage).
 - Le panneau dans la vraie fenêtre : visible, Claude et Codex détectés. Le fil complet dans la fenêtre reste à essayer à la main.
 
@@ -100,11 +100,11 @@ L'assistant de la fenêtre peut aussi gérer les **éléments** (voir [elements.
 
 | Outil | Ce qu'il fait | Clic de l'utilisateur |
 |---|---|---|
-| `lister_elements`, `types_elements` | voir les éléments, les types qu'on peut ajouter et les champs de chaque formulaire | non (lecture) |
-| `activer_element` | activer / désactiver | comme à la voix (accord si cloud) |
-| `ajouter_application` | ajouter une application livrée avec Floppy (Orca…) | toujours un accord ; valeurs par défaut |
-| `essayer_element` | se connecter et lister les outils (peut lancer une commande) | **oui** |
-| `ajouter_element`, `modifier_element`, `supprimer_element` | ajouter, modifier, supprimer | **oui** |
+| `list_items`, `list_item_types` | voir les éléments, les types qu'on peut ajouter et les champs de chaque formulaire | non (lecture) |
+| `toggle_item` | activer / désactiver | comme à la voix (accord si cloud) |
+| `add_app` | ajouter une application livrée avec Floppy (Orca…) | toujours un accord ; valeurs par défaut |
+| `try_item` | se connecter et lister les outils (peut lancer une commande) | **oui** |
+| `add_item`, `edit_item`, `delete_item` | ajouter, modifier, supprimer | **oui** |
 
 - Ces outils existent seulement pour l'assistant de la fenêtre (jeton MCP restreint, `plugins/assistant/coder/src/items-tools.ts`), jamais pour le cerveau à la voix.
 - Après le clic « Autoriser », l'opération part comme un clic dans la fenêtre (`via: "ui"`).

@@ -1,4 +1,4 @@
-// Où poser l'avatar (outil vocal « placer_avatar ») : calcul pur, testé sans Electron.
+// Où poser l'avatar (outil vocal « place_avatar ») : calcul pur, testé sans Electron.
 
 export type Area = { x: number; y: number; width: number; height: number };
 /** Texte dans les deux langues (le noyau choisit celle qu'il dit). */

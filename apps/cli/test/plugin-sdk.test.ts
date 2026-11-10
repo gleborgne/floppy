@@ -32,7 +32,7 @@ describe("SDK des plugins", () => {
     expect(r.files.map((f) => f.path).sort()).toEqual([".gitignore", "AGENTS.md", "CLAUDE.md", "README.md", "floppy-plugin.d.ts", "floppy-plugin.json", "index.ts"]);
     expect(readFileSync(join(dir, "index.ts"), "utf8")).not.toContain("__");
     const t = await throwawayTest((await loadPluginDir(dir)).def, "mon-essai");
-    expect(t).toMatchObject({ ok: true, tools: [{ name: "mon_essai_bonjour", level: "read" }], settings: [{ key: "mon_essai_poli", risk: "free" }] });
+    expect(t).toMatchObject({ ok: true, tools: [{ name: "mon_essai_hello", level: "read" }], settings: [{ key: "mon_essai_polite", risk: "free" }] });
     expect(() => newPlugin("mon-essai", parent)).toThrow();
     expect(() => newPlugin("Mauvais Id", parent)).toThrow();
   }, 30_000);

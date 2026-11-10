@@ -216,21 +216,22 @@ describe("plugin veille (avec le noyau)", () => {
     expect(k.status().some((s) => s.fork && s.state === "active")).toBe(false);
 
     // Avis : « le 1 ne m'intéresse pas » et « plus jamais de crypto ».
-    const a1 = await k.tools.call("veille_avis", { article: 1, avis: "moins" });
+    const a1 = await k.tools.call("watch_feedback", { article: 1, feedback: "less" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["veille_avis", "veille_interets", "veille_article", "veille_modifier_interet"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(a1.text).toMatch(/pas aimé « A garder : Gemma 5 »/);
-    const a2 = await k.tools.call("veille_avis", { sujet: "crypto", avis: "jamais" });
+    const a2 = await k.tools.call("watch_feedback", { topic: "crypto", feedback: "never" });
     expect(a2.text).toMatch(/plus jamais « crypto »/);
-    const art = await k.tools.call("veille_article", { article: 2 });
+    const art = await k.tools.call("watch_article", { article: 2 });
     expect(art.text).toContain("https://blog.ai/3");
     // Sans numéro : par les mots du sujet, ou la liste des titres.
-    const parMots = await k.tools.call("veille_article", { recherche: "la crypto" });
+    const parMots = await k.tools.call("watch_article", { search: "la crypto" });
     expect(parMots.text).toContain("https://blog.ai/3");
-    const liste = await k.tools.call("veille_article", {});
+    const liste = await k.tools.call("watch_article", {});
     expect(liste.text).toContain("1. A garder : Gemma 5");
     expect(liste.text).toContain("2. A garder aussi : crypto et IA");
-    const rien = await k.tools.call("veille_article", { recherche: "TTS" });
+    const rien = await k.tools.call("watch_article", { search: "TTS" });
     expect(rien.text).toMatch(/Aucun titre ne parle de « TTS »[\s\S]*2\. A garder aussi/);
-    expect((await k.tools.call("veille_interets", {})).text).toContain("1. A garder : Gemma 5");
+    expect((await k.tools.call("watch_interests", {})).text).toContain("1. A garder : Gemma 5");
 
     // Passage suivant : les anciens sont déjà vus ; le nouvel article crypto est retiré avant le modèle.
     feed = RSS([
@@ -255,14 +256,14 @@ describe("plugin veille (avec le noyau)", () => {
     await k.settings.change("assistant_language", "en", "ui");
     await k.idle();
     expect((await k.tasks.run("veille/quotidienne", "manual")).text).toMatch(/^Nothing new/);
-    expect((await k.tools.call("veille_avis", { sujet: "bitcoin", avis: "jamais" })).text).toMatch(/^Got it: never again “bitcoin”/);
+    expect((await k.tools.call("watch_feedback", { topic: "bitcoin", feedback: "never" })).text).toMatch(/^Got it: never again “bitcoin”/);
   });
 
   it("sans centre d'intérêt : le dit ; sans cerveau du tri : échec clair ; ajout à la voix", async () => {
     k = new Kernel({ logger: () => {}, plugins: [createVeillePlugin()] });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "veille" }], approvals: { write: "always" } });
     expect((await k.tasks.run("veille/quotidienne", "manual")).text).toMatch(/aucun centre d'intérêt/);
-    const add = await k.tools.call("veille_modifier_interet", { action: "ajouter", nom: "Bretagne", requetes: ["festival Bretagne"] });
+    const add = await k.tools.call("watch_edit_interest", { action: "add", name: "Bretagne", queries: ["festival Bretagne"] });
     expect(add.status).toBe("done");
     const r = await k.tasks.run("veille/quotidienne", "manual");
     expect(r.ok).toBe(false);
@@ -277,7 +278,7 @@ describe("plugin veille (avec le noyau)", () => {
     const list = async () => (await kn.items.snapshot()).find((p) => p.id === "watch-interests")!.items.map((i) => ({ name: i.label, ...(i.values as object) }));
 
     // « Ajoute un centre d'intérêt sur l'IA locale » : pas de source → le nom devient la recherche.
-    const add = await kn.tools.call("veille_modifier_interet", { action: "ajouter", nom: "IA locale" });
+    const add = await kn.tools.call("watch_edit_interest", { action: "add", name: "IA locale" });
     expect(add.status).toBe("done");
     expect(add.text).toMatch(/je cherch.* « IA locale » sur le web/);
     expect(await list()).toMatchObject([{ name: "IA locale", feeds: [], queries: ["IA locale"] }]);
@@ -285,27 +286,27 @@ describe("plugin veille (avec le noyau)", () => {
     // Modifier : ajoute une recherche et un flux, change la description ; l'accord dit ce qui change.
     const asked: string[] = [];
     kn.bus.on("approval.request", (r) => { asked.push(String(r.summary)); });
-    const mod = await kn.tools.call("veille_modifier_interet", {
-      action: "modifier", nom: "ia locale", requetes: ["llama.cpp"], flux: ["https://www.reddit.com/r/LocalLLaMA/.rss"], description: "modèles open weights",
+    const mod = await kn.tools.call("watch_edit_interest", {
+      action: "edit", name: "ia locale", queries: ["llama.cpp"], feeds: ["https://www.reddit.com/r/LocalLLaMA/.rss"], description: "modèles open weights",
     });
     expect(mod.status).toBe("done");
     expect(await list()).toMatchObject([{ name: "IA locale", description: "modèles open weights", feeds: ["https://www.reddit.com/r/LocalLLaMA/.rss"], queries: ["IA locale", "llama.cpp"] }]);
 
     // Retire le flux (morceau d'adresse) et une recherche, renomme.
-    await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "IA locale", retirer_flux: ["reddit"], retirer_requetes: ["ia locale"], nouveau_nom: "LLM locaux" });
+    await kn.tools.call("watch_edit_interest", { action: "edit", name: "IA locale", remove_feeds: ["reddit"], remove_queries: ["ia locale"], new_name: "LLM locaux" });
     expect(await list()).toMatchObject([{ name: "LLM locaux", feeds: [], queries: ["llama.cpp"] }]);
 
     // Tout retirer : le centre d'intérêt ne devient pas vide, son nom redevient la recherche.
-    const vide = await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "LLM locaux", retirer_requetes: ["llama.cpp"] });
+    const vide = await kn.tools.call("watch_edit_interest", { action: "edit", name: "LLM locaux", remove_queries: ["llama.cpp"] });
     expect(vide.text).toMatch(/« LLM locaux » sur le web/);
     expect(await list()).toMatchObject([{ queries: ["LLM locaux"] }]);
 
-    expect((await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "Bretagne" })).status).toBe("failed");
+    expect((await kn.tools.call("watch_edit_interest", { action: "edit", name: "Bretagne" })).status).toBe("failed");
 
     // La demande d'accord dit ce qui change (règle « write: ask »).
     await kn.applyConfig({ plugins: [{ id: "veille", plugin: "veille" }], approvals: { write: "ask" } });
     kn.bus.on("approval.request", (r) => { kn.approvals.respond(r.id, false, "test"); });
-    const no = await kn.tools.call("veille_modifier_interet", { action: "modifier", nom: "LLM locaux", requetes: ["gguf"] });
+    const no = await kn.tools.call("watch_edit_interest", { action: "edit", name: "LLM locaux", queries: ["gguf"] });
     expect(no.status).toBe("refused");
     expect(asked.at(-1)).toBe("Modifier le centre d'intérêt « LLM locaux » (+ recherches : gguf)");
 

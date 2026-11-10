@@ -11,7 +11,7 @@ Une **tâche** est un travail qu'un plugin sait faire seul, sans conversation : 
 | Rôle | Qui | Exemple |
 |---|---|---|
 | **Quoi** | Le plugin de la tâche (contrat `task`) | La Veille collecte, trie, écrit le digest |
-| **Quand** | Un déclencheur : le plugin Planificateur (horloge), ou la voix (`lancer_tache`) | « 07:30 », « à 8 h du lundi au vendredi », « toutes les 3 h » |
+| **Quand** | Un déclencheur : le plugin Planificateur (horloge), ou la voix (`run_task`) | « 07:30 », « à 8 h du lundi au vendredi », « toutes les 3 h » |
 | **Annonce** | Le noyau | Notification « Ta veille est prête », document montré |
 
 Une tâche ne connaît donc ni l'horloge ni les corps. Le Planificateur ne connaît aucune tâche en particulier.
@@ -21,7 +21,7 @@ flowchart LR
   M["Manifeste du plugin<br/>tasks: [{ id, label, schedule }]"] --> R
   R["Registre des tâches (noyau)<br/>un passage à la fois · délai max<br/>réveille le plugin s'il dort<br/>&lt;home&gt;/tasks.json"]
   H["Planificateur<br/>(horloge, rattrapage)"] -- "ctx.tasks.run(clé, clock)" --> R
-  V["Voix : lancer_tache"] -- "voice" --> R
+  V["Voix : run_task"] -- "voice" --> R
   R -- "run()" --> P["Plugin (service task)"]
   P -- "{ summary, document, announce }" --> R
   R --> A["initiative + documents.show"]
@@ -48,7 +48,7 @@ Une tâche peut aussi dire où sont ses réglages : `configure: "veille"`. Cette
 
 - Clé d'une tâche : `<entrée>/<tâche>` (ex. `veille/quotidienne`). Une entrée désactivée n'a plus de tâches.
 - Le noyau **garde le plugin en marche** pendant le passage (même un plugin `lazy`), puis le laisse s'arrêter.
-- Outils du cerveau : `taches` (liste) et `lancer_tache` (écriture, accord ; lance en arrière-plan, le résultat arrive tout seul).
+- Outils du cerveau : `list_tasks` (liste) et `run_task` (écriture, accord ; lance en arrière-plan, le résultat arrive tout seul).
 - API plugin : `ctx.tasks.list()`, `ctx.tasks.run(clé)`, `ctx.tasks.onChange(fn)`.
 
 ## Emprunter un slot : `ctx.borrow`

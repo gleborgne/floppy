@@ -13,8 +13,8 @@ interface Mail {
 
 export function unreadMailTool(g: GraphAuth, defaultMax: number): ToolDef {
   return {
-    name: "m365_mails_non_lus",
-    description: "Mails actuellement non lus de la boîte de réception Outlook : nombre, expéditeur, objet, date, extrait. Filtre sur la date de réception AVANT de limiter la liste. Pour « aujourd'hui », date: aujourd'hui ; « hier », date: hier ; un jour précis, date: AAAA-MM-JJ. Pour une plage, debut et fin : dates AAAA-MM-JJ incluses, ou heures locales AAAA-MM-JJTHH:MM (fin exclue). Pour « ce matin », debut à 00:00 et fin à 12:00 du jour courant. Sans date ni plage : tous les non-lus. max limite seulement la liste (défaut 8), jamais le décompte.",
+    name: "m365_unread_mail",
+    description: "Mails actuellement non lus de la boîte de réception Outlook : nombre, expéditeur, objet, date, extrait. Filtre sur la date de réception AVANT de limiter la liste. Pour « aujourd'hui », date: today ; « hier », date: yesterday ; un jour précis, date: AAAA-MM-JJ. Pour une plage, start et end : dates AAAA-MM-JJ incluses, ou heures locales AAAA-MM-JJTHH:MM (end exclue). Pour « ce matin », start à 00:00 et end à 12:00 du jour courant. Sans date ni plage : tous les non-lus. max limite seulement la liste (défaut 8), jamais le décompte.",
     inputSchema: {
       type: "object",
       properties: {

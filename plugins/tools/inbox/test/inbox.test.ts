@@ -50,12 +50,13 @@ describe("boîte aux lettres", () => {
     expect(await post(msg())).toBe(204);
     expect(got).toEqual([{ source: `inbox:${APP}`, text: "Vous avez été ajouté comme relecteur sur la PR 1234, Fix login.", importance: "important", key: `inbox:${APP}:n-1` }]);
 
-    const list = await k.tools.call("annonces_recentes", {});
+    const list = await k.tools.call("list_recent_announcements", {});
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["annonces_recentes", "ouvrir_annonce"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(JSON.stringify(list.text)).toContain("Ouvrir la PR 1234");
 
     let summary = "";
     k.bus.on("approval.request", (r) => { summary = JSON.stringify(r); k.approvals.respond(r.id, true, "test"); });
-    expect((await k.tools.call("ouvrir_annonce", {})).status).toBe("done");
+    expect((await k.tools.call("open_announcement", {})).status).toBe("done");
     expect(summary).toContain("Ouvrir la PR 1234 — inwink-differendum:// (Differendum)");
     expect(opened).toEqual([msg().action.url]);
   });
@@ -204,7 +205,7 @@ describe("boîte aux lettres", () => {
   it("rien à ouvrir : réponse claire, rien lancé", async () => {
     const { k, opened } = await start();
     k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, true, "test"); });
-    expect((await k.tools.call("ouvrir_annonce", {})).status).toBe("failed");
+    expect((await k.tools.call("open_announcement", {})).status).toBe("failed");
     expect(opened).toHaveLength(0);
   });
 });

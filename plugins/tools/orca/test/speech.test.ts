@@ -7,7 +7,7 @@ const w = (displayName: string, repo: string) => ({ worktreeId: "x", displayName
 const a = (o: Partial<OrcaAgent>) => ({ paneKey: "p", ...o }) as OrcaAgent;
 
 describe("notifications de fin synthétiques", () => {
-  const f = { ...facts(w("Floppy", "Floppy"), a({}), "termines"), label: "Correction des notifications", outcome: "unknown" as const };
+  const f = { ...facts(w("Floppy", "Floppy"), a({}), "finished"), label: "Correction des notifications", outcome: "unknown" as const };
   it("nomme le travail une seule fois sans métadonnées ni extrait de rapport", () => {
     expect(completionSentence({ ...f, last: "Rapport très détaillé. ".repeat(30) })).toBe("Correction des notifications : terminé.");
     expect(completionSentence({ ...f, lang: "en" })).toBe("Correction des notifications : finished.");
@@ -62,7 +62,7 @@ describe("annonces Orca sans jargon (données réelles)", () => {
   });
 
   it("phrase sans LLM", () => {
-    const f = facts(w("master-differendum", "Differendum"), a({ conversationName: "Réponse aux commentaires dans les PR" }), "termines");
+    const f = facts(w("master-differendum", "Differendum"), a({ conversationName: "Réponse aux commentaires dans les PR" }), "finished");
     expect(plainSentence(f)).toBe("Sur Differendum, ton agent a fini : réponse aux commentaires dans les PR.");
   });
 
@@ -77,7 +77,7 @@ describe("annonces Orca sans jargon (données réelles)", () => {
     });
     await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
     const port = (srv.address() as { port: number }).port;
-    const f = facts(w("master-differendum", "Differendum"), a({ lastAssistantMessage: "Differendum 1.0.19 is published." }), "termines");
+    const f = facts(w("master-differendum", "Differendum"), a({ lastAssistantMessage: "Differendum 1.0.19 is published." }), "finished");
     expect(await llmSentence({ baseURL: `http://127.0.0.1:${port}/v1`, model: "m" }, f, fetch)).toBe("Sur Differendum, la version 1.0.19 est publiée.");
     expect(body).toContain("Differendum 1.0.19 is published");
     srv.close();
@@ -88,7 +88,7 @@ describe("annonces Orca sans jargon (données réelles)", () => {
 
 describe("annonces Orca en anglais", () => {
   it.each(["fr", "en"] as const)("préserve le nom individuel et ne transforme pas une fin inconnue en succès (%s)", (lang) => {
-    const f = { ...facts(w("Floppy", "Floppy"), a({ taskTitle: "Courrier" }), "termines", lang), label: "Courrier", outcome: "unknown" as const };
+    const f = { ...facts(w("Floppy", "Floppy"), a({ taskTitle: "Courrier" }), "finished", lang), label: "Courrier", outcome: "unknown" as const };
     expect(plainSentence(f)).toContain("Courrier");
     expect(plainSentence(f)).toContain(lang === "en" ? "unknown result" : "résultat inconnu");
     expect(llmPrompt(f)).toContain(lang === "en" ? "Finished does not mean successful or committed" : "Une fin ne prouve ni réussite ni commit");
@@ -96,12 +96,12 @@ describe("annonces Orca en anglais", () => {
   });
   it("phrase faite par le code et consigne du LLM dans la langue de l'assistant", async () => {
     const { llmPrompt } = await import("../src/speech.ts");
-    const f = facts(w("env-stg", ""), a({ taskTitle: "Fix login" }), "en_attente", "en");
+    const f = facts(w("env-stg", ""), a({ taskTitle: "Fix login" }), "waiting", "en");
     expect(f.lang).toBe("en");
     expect(plainSentence(f)).toBe("On Stg, your agent is waiting for your answer: Fix login.");
-    expect(plainSentence(facts(w("", ""), a({}), "termines", "en"))).toBe("On a project, your agent is done.");
+    expect(plainSentence(facts(w("", ""), a({}), "finished", "en"))).toBe("On a project, your agent is done.");
     expect(llmPrompt(f)).toContain("natural spoken English");
     // Par défaut : français, comme avant.
-    expect(plainSentence(facts(w("", ""), a({}), "termines"))).toBe("Sur un projet, ton agent a fini.");
+    expect(plainSentence(facts(w("", ""), a({}), "finished"))).toBe("Sur un projet, ton agent a fini.");
   });
 });

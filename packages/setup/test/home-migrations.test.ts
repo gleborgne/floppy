@@ -141,7 +141,7 @@ describe("marqueur", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// Étapes 3 à 8 : réglages, configuration, éléments, boîte aux lettres, préférences de la veille.
+// Étapes 10 à 15 : réglages, configuration, éléments, boîte aux lettres, préférences de la veille.
 // ---------------------------------------------------------------------------------------------------------------
 
 const json = (rel: string) => JSON.parse(read(rel)) as Record<string, any>;
@@ -477,7 +477,7 @@ describe("étape items-fields", () => {
         etranger: { kind: "contoso", values: { langue: "fr" } },
       },
       edits: { web: { langue: "en" }, veille: { seuil: 8 }, inconnu: { langue: "fr" } },
-      disabled: [], removed: [], children: { m365: { m365_ajouter_rdv: false } }, extra: { tools: { veille: [{ name: "veille_avis", description: "d", level: "write" }] } },
+      disabled: [], removed: [], children: { m365: { m365_add_meeting: false } }, extra: { tools: { veille: [{ name: "watch_feedback", description: "d", level: "write" }] } },
     });
     const r = step("items-fields");
     expect(r.changes[0]!.keys.sort()).toEqual(["added.values.dossier", "added.values.langue", "edits.langue", "edits.seuil"]);
@@ -486,9 +486,9 @@ describe("étape items-fields", () => {
     expect(d.added.ses.values).toEqual({ folder: "~/Travaux" });
     expect(d.added.etranger.values).toEqual({ langue: "fr" });
     expect(d.edits).toEqual({ web: { language: "en" }, veille: { threshold: 8 }, inconnu: { langue: "fr" } });
-    // Les noms d'outils (lot suivant) et leurs réglages ne bougent pas.
-    expect(d.children).toEqual({ m365: { m365_ajouter_rdv: false } });
-    expect(d.extra.tools.veille[0].name).toBe("veille_avis");
+    // Les noms d'outils ne sont pas de cette étape (voir tools-items-apps).
+    expect(d.children).toEqual({ m365: { m365_add_meeting: false } });
+    expect(d.extra.tools.veille[0].name).toBe("watch_feedback");
   });
 
   it("les deux champs présents : le nouveau est gardé et le conflit rapporté ; fichiers d'autres plugins et déjà convertis : intacts", () => {
@@ -566,13 +566,132 @@ describe("toutes les étapes ensemble", () => {
   });
 
   it("les étapes déjà notées du lot 1 ne sont pas rejouées ; les nouvelles ont des versions croissantes et des noms uniques", () => {
-    expect(HOME_MIGRATIONS.map((s) => s.version)).toEqual([1, 2, 3, 10, 11, 12, 13, 14, 15]);
+    expect(HOME_MIGRATIONS.map((s) => s.version)).toEqual([1, 2, 3, 10, 11, 12, 13, 14, 15, 20, 21, 22]);
     expect(new Set(HOME_MIGRATIONS.map((s) => s.id)).size).toBe(HOME_MIGRATIONS.length);
     writeFileSync(join(home, "migrations.json"), JSON.stringify({ version: 2, applied: { "documents-title": "x", "onboarding-level": "x" } }));
     put("settings.json", { ton: "x" });
     const r = migrateHome(home);
     expect(r.slice(0, 2).every((x) => x.alreadyApplied)).toBe(true);
     expect(r.slice(2).some((x) => x.changes.length)).toBe(true);
-    expect(readMigrationMarker(home).version).toBe(15);
+    expect(readMigrationMarker(home).version).toBe(22);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Étapes 20 à 22 : les noms d'outils de Floppy (configuration, éléments, commandes).
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("étape tools-config-yaml", () => {
+  const OLD = [
+    "# mes accords",
+    "approvals:",
+    "  write: ask",
+    "  toolRules:",
+    "    - { source: vocabulary, tool: corriger_vocabulaire, level: write, rule: always }",
+    "    - { source: m365, tool: m365_ajouter_rdv, level: write, rule: always }",
+    "    - { source: work, tool: ouvrir_url, level: write, rule: always }   # outil d'un serveur extérieur",
+    "    - { source: tools, tool: m365_ajouter_rdv, level: write, rule: ask }",
+    "    - { source: core, tool: changer_reglage, level: write, rule: ask }",
+    "plugins:",
+    "  - { id: vocabulary, plugin: vocabulary }",
+    "  - { id: m365, plugin: m365 }",
+    "  - { id: work, plugin: contoso }",
+    "  - { id: tools, plugin: tools, config: { servers: { work: { include: [ouvrir_url, agenda_du_jour], levels: { ouvrir_url: write } } } } }",
+    "  - { id: brain, plugin: brain-aisdk, config: { delegateTool: deleguer } }",
+    "",
+  ].join("\n");
+
+  it("renomme les outils de Floppy selon le plugin de la source, jamais ceux d'un serveur extérieur ni leurs listes include / levels", () => {
+    write("floppy.yml", OLD);
+    const r = step("tools-config-yaml");
+    expect(r.error).toBeUndefined();
+    const text = read("floppy.yml");
+    expect(text).toContain("source: vocabulary, tool: correct_vocabulary");
+    expect(text).toContain("source: m365, tool: m365_add_meeting");
+    expect(text).toContain("source: core, tool: change_setting");
+    expect(text).toContain("delegateTool: delegate");
+    // Un autre plugin ayant le même nom d'outil, un serveur extérieur et ses listes : intacts.
+    expect(text).toContain("source: work, tool: ouvrir_url, level: write, rule: always }   # outil d'un serveur extérieur");
+    expect(text).toContain("source: tools, tool: m365_ajouter_rdv");
+    expect(text).toContain("include: [ouvrir_url, agenda_du_jour], levels: { ouvrir_url: write }");
+    // Le reste (commentaire, mise en forme) est gardé octet pour octet : seuls les noms changent.
+    expect(text.replace("correct_vocabulary", "corriger_vocabulaire").replace("m365_add_meeting", "m365_ajouter_rdv").replace("change_setting", "changer_reglage").replace("delegateTool: delegate", "delegateTool: deleguer")).toBe(OLD);
+    expect(read("floppy.yml.bak-tools-config-yaml")).toBe(OLD);
+    expect(r.changes[0]!.keys.sort()).toEqual(["approvals.toolRules[source=core].tool", "approvals.toolRules[source=m365].tool", "approvals.toolRules[source=vocabulary].tool", "plugins[plugin=brain-aisdk].config.delegateTool"]);
+  });
+
+  it("deuxième passage et rejeu forcé : sans effet ; fichier absent ou illisible : intact", () => {
+    write("floppy.yml", OLD);
+    step("tools-config-yaml");
+    expect(step("tools-config-yaml").alreadyApplied).toBe(true);
+    expect(step("tools-config-yaml", { force: true }).changes).toEqual([]);
+    rmSync(join(home, "migrations.json"));
+    rmSync(join(home, "floppy.yml"));
+    expect(step("tools-config-yaml").changes).toEqual([]);
+    write("floppy.yml", "plugins: [ {\n");
+    rmSync(join(home, "migrations.json"));
+    expect(step("tools-config-yaml").changes).toEqual([]);
+    expect(read("floppy.yml")).toBe("plugins: [ {\n");
+  });
+});
+
+describe("étape tools-items-apps", () => {
+  it("renomme les outils des applications de Floppy (children, extra.tools) et pas ceux d'un autre plugin ni de tools.json", () => {
+    write("floppy.yml", "plugins:\n  - { id: m365, plugin: m365 }\n  - { id: browser, plugin: browser }\n  - { id: tools, plugin: tools }\n  - { id: autre, plugin: contoso }\n");
+    put("items/apps.json", {
+      added: {}, edits: {}, disabled: [], removed: [],
+      children: { m365: { m365_ajouter_rdv: false, m365_presence: true }, browser: { ouvrir_url: true }, autre: { ouvrir_url: false } },
+      extra: { tools: {
+        browser: [{ name: "ouvrir_url", description: "d", level: "write" }],
+        m365: [{ name: "m365_mails_non_lus", description: "d", level: "read" }, { name: "m365_presence", description: "d", level: "read" }],
+        autre: [{ name: "ouvrir_url", description: "d", level: "write" }],
+      } },
+    });
+    const before = read("items/apps.json");
+    put("items/tools.json", { added: {}, edits: {}, disabled: ["work"], removed: [], children: { work: { ouvrir_url: true } }, extra: { tools: { work: [{ name: "ouvrir_url" }, { name: "agenda_du_jour" }] } } });
+    const tools = read("items/tools.json");
+    const r = step("tools-items-apps");
+    expect(r.error).toBeUndefined();
+    const d = json("items/apps.json");
+    expect(d.children).toEqual({ m365: { m365_presence: true, m365_add_meeting: false }, browser: { open_url: true }, autre: { ouvrir_url: false } });
+    expect(d.extra.tools.browser[0].name).toBe("open_url");
+    expect(d.extra.tools.m365.map((t: { name: string }) => t.name)).toEqual(["m365_unread_mail", "m365_presence"]);
+    expect(d.extra.tools.autre[0].name).toBe("ouvrir_url");
+    expect(read("items/apps.json.bak-tools-items-apps")).toBe(before);
+    // Les outils d'un serveur extérieur ne sont jamais lus.
+    expect(read("items/tools.json")).toBe(tools);
+    expect(existsSync(join(home, "items/tools.json.bak-tools-items-apps"))).toBe(false);
+    expect(step("tools-items-apps", { force: true }).changes).toEqual([]);
+  });
+
+  it("entrée absente de floppy.yml : son id sert de type ; l'ancien et le nouveau nom présents : le nouveau est gardé, conflit rapporté", () => {
+    put("items/apps.json", { added: {}, edits: {}, disabled: [], removed: [], children: { orca: { orca_ecran: false, orca_screen: true, orca_agents: true } }, extra: {} });
+    const r = step("tools-items-apps");
+    expect(json("items/apps.json").children.orca).toEqual({ orca_screen: true, orca_agents: true });
+    expect(r.conflicts).toEqual([{ file: "items/apps.json", key: "children.*.orca_ecran" }]);
+  });
+});
+
+describe("étape tools-command-placeholder", () => {
+  it("{texte} devient {text} dans les commandes du plugin tools seulement", () => {
+    write("floppy.yml", "plugins:\n  - { id: tools, plugin: tools }\n  - { id: autre, plugin: contoso }\n");
+    put("items/tools.json", { added: {
+      echo: { kind: "command", values: { label: "Écho", command: "echo", args: ["-n", "{texte}", "fin"] } },
+      srv: { kind: "mcp-local", values: { command: "npx", args: ["{texte}"] } },
+    }, edits: {}, disabled: [], removed: [], children: {}, extra: {} });
+    put("items/autre.json", { added: { x: { kind: "command", values: { args: ["{texte}"] } } }, edits: {}, disabled: [], removed: [], children: {}, extra: {} });
+    const r = step("tools-command-placeholder");
+    expect(r.changes).toEqual([{ file: "items/tools.json", keys: ["added.values.args"] }]);
+    const d = json("items/tools.json");
+    expect(d.added.echo.values.args).toEqual(["-n", "{text}", "fin"]);
+    expect(d.added.srv.values.args).toEqual(["{texte}"]);
+    expect(json("items/autre.json").added.x.values.args).toEqual(["{texte}"]);
+    expect(step("tools-command-placeholder", { force: true }).changes).toEqual([]);
+  });
+});
+
+describe("numérotation des étapes d'outils", () => {
+  it("les outils commencent à 20, après les étapes 10 à 15 (les rangs 4 à 9 et 16 à 19 restent libres)", () => {
+    expect(HOME_MIGRATIONS.filter((s) => s.version >= 16).map((s) => [s.id, s.version])).toEqual([["tools-config-yaml", 20], ["tools-items-apps", 21], ["tools-command-placeholder", 22]]);
   });
 });

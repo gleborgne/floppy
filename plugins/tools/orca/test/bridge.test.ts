@@ -208,10 +208,10 @@ describe("plugin Orca (worker)", () => {
   });
 
   it("états d'Orca", () => {
-    expect(kindOfEvent("working", undefined)).toBe("en_cours");
-    expect(kindOfEvent("blocked", undefined)).toBe("en_attente");
-    expect(kindOfEvent("waiting", undefined)).toBe("en_attente");
-    expect(kindOfEvent("done", "interruption")).toBe("interrompu");
-    expect(kindOfEvent("done", "success")).toBe("termines");
+    expect(kindOfEvent("working", undefined)).toBe("running");
+    expect(kindOfEvent("blocked", undefined)).toBe("waiting");
+    expect(kindOfEvent("waiting", undefined)).toBe("waiting");
+    expect(kindOfEvent("done", "interruption")).toBe("interrupted");
+    expect(kindOfEvent("done", "success")).toBe("finished");
   });
 });

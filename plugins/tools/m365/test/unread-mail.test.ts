@@ -69,10 +69,10 @@ describe("mails non lus par date de réception", () => {
 
   it("plage de dates inclusive et matinée avec fin exclue", async () => {
     const { tool } = mailbox();
-    const range = await tool.handler({ debut: "2026-11-07", fin: "2026-11-08" }, {});
+    const range = await tool.handler({ start: "2026-11-07", end: "2026-11-08" }, {});
     expect(tr(range.text)).toContain("4 mail(s) non lu(s)");
     expect(tr(range.text)).not.toContain("[id next]");
-    const morning = await tool.handler({ debut: "2026-11-08T00:00", fin: "2026-11-08T12:00" }, {});
+    const morning = await tool.handler({ start: "2026-11-08T00:00", end: "2026-11-08T12:00" }, {});
     expect(tr(morning.text)).toContain("2 mail(s) non lu(s)");
     expect(tr(morning.text)).toContain("[id midnight]");
     expect(tr(morning.text)).toContain("[id morning]");
@@ -92,11 +92,11 @@ describe("mails non lus par date de réception", () => {
 
   it.each([
     { date: "2026-02-30" }, { date: "2026-13-01" }, { date: "" }, { date: "n'importe quand" },
-    { date: "2026-11-08T12:00" }, { date: "2026-11-08", debut: "2026-11-08" },
-    { debut: "2026-11-08" }, { fin: "2026-11-08" }, { debut: "2026-11-09", fin: "2026-11-07" },
-    { debut: "2026-11-08T12:00", fin: "2026-11-08T12:00" },
-    { debut: "2026-11-08T24:00", fin: "2026-11-09" },
-    { debut: "2026-11-08T00:00Z", fin: "2026-11-09" },
+    { date: "2026-11-08T12:00" }, { date: "2026-11-08", start: "2026-11-08" },
+    { start: "2026-11-08" }, { end: "2026-11-08" }, { start: "2026-11-09", end: "2026-11-07" },
+    { start: "2026-11-08T12:00", end: "2026-11-08T12:00" },
+    { start: "2026-11-08T24:00", end: "2026-11-09" },
+    { start: "2026-11-08T00:00Z", end: "2026-11-09" },
   ])("refuse une période invalide sans élargir la recherche : %j", async (args) => {
     const { tool, fetcher } = mailbox();
     const result = await tool.handler(args, {});

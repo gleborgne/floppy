@@ -1,13 +1,13 @@
 // Outils Teams du plugin m365 : conversations (privées et de groupe), canaux d'équipe, présence, envoi.
 //
 // Parcours visés (utilisateur à son ordinateur) :
-//  - « J'ai des messages Teams non lus ? »                 → m365_teams_non_lus
-//  - « Qu'est-ce que Florent m'a envoyé ? » / « on parlait de quoi avec Florent ? » → m365_messages_teams
-//  - « Lis-moi la conversation du groupe Projet Voix »     → m365_conversations_teams puis m365_lire_conversation_teams
-//  - « Quoi de neuf dans le canal Général de Marketing ? » → m365_messages_canal (m365_canaux_teams pour la liste)
+//  - « J'ai des messages Teams non lus ? »                 → m365_teams_unread
+//  - « Qu'est-ce que Florent m'a envoyé ? » / « on parlait de quoi avec Florent ? » → m365_teams_messages
+//  - « Lis-moi la conversation du groupe Projet Voix »     → m365_teams_chats puis m365_read_teams_chat
+//  - « Quoi de neuf dans le canal Général de Marketing ? » → m365_channel_messages (m365_teams_channels pour la liste)
 //  - « Florent est dispo ? »                               → m365_presence
-//  - « Envoie un message à Florent pour lui demander… »    → m365_envoyer_message_teams (carte d'accord)
-//  - « Réponds dans le canal / dans ce fil »              → m365_publier_canal (carte d'accord)
+//  - « Envoie un message à Florent pour lui demander… »    → m365_send_teams_message (carte d'accord)
+//  - « Réponds dans le canal / dans ce fil »              → m365_post_channel (carte d'accord)
 //
 // Envoi : le destinataire est TOUJOURS une adresse ou un id précis, jamais un prénom deviné. La carte d'accord
 // montre le nom complet, l'adresse et le texte exact. Les canaux se lisent seulement si un administrateur
@@ -116,14 +116,14 @@ export function teamsTools(g: GraphAuth, max: number, labels: Map<string, Text>)
   return [
     ...teamsReadTools(g, max, labels),
     {
-      name: "m365_canaux_teams",
-      description: "Équipes Teams de l'utilisateur et leurs canaux (noms et ids, pour m365_messages_canal et m365_publier_canal). equipe : nom d'une équipe pour ne voir que ses canaux (facultatif).",
-      inputSchema: { type: "object", properties: { equipe: { type: "string" } } },
+      name: "m365_teams_channels",
+      description: "Équipes Teams de l'utilisateur et leurs canaux (noms et ids, pour m365_channel_messages et m365_post_channel). team : nom d'une équipe pour ne voir que ses canaux (facultatif).",
+      inputSchema: { type: "object", properties: { team: { type: "string" } } },
       level: "read",
       handler: wrap(async (a) => {
         let ts = await joinedTeams();
         if (!ts.length) return "Tu n'es membre d'aucune équipe Teams.";
-        if (a.equipe) { const one = pick(ts, String(a.equipe)); if (!one) return `Équipe « ${a.equipe} » introuvable. Tes équipes : ${ts.map((x) => x.displayName).join(", ")}.`; ts = [one]; }
+        if (a.team) { const one = pick(ts, String(a.team)); if (!one) return `Équipe « ${a.team} » introuvable. Tes équipes : ${ts.map((x) => x.displayName).join(", ")}.`; ts = [one]; }
         const shown = ts.slice(0, 15);
         const cs = await Promise.all(shown.map((x) => channelsOf(x.id).catch(() => [] as any[])));
         const out = shown.map((x, i) => `${x.displayName} [équipe id ${x.id}]\n${cs[i]!.map((c) => {
@@ -136,12 +136,12 @@ export function teamsTools(g: GraphAuth, max: number, labels: Map<string, Text>)
     channelReadTool(g, { authorize: () => need(CHANNEL_READ, CHANNEL_HINT), me: meId, resolve: findChannel }),
     {
       name: "m365_presence",
-      description: "Disponibilité d'un collègue sur Teams (disponible, occupé, en réunion, absent…), son message de statut et son message d'absence. Utile avant de l'appeler ou de lui écrire. personne : nom ou adresse mail.",
-      inputSchema: { type: "object", properties: { personne: { type: "string" } }, required: ["personne"] },
+      description: "Disponibilité d'un collègue sur Teams (disponible, occupé, en réunion, absent…), son message de statut et son message d'absence. Utile avant de l'appeler ou de lui écrire. person : nom ou adresse mail.",
+      inputSchema: { type: "object", properties: { person: { type: "string" } }, required: ["person"] },
       level: "read",
       handler: wrap(async (a) => {
-        const q = String(a.personne ?? "").trim();
-        if (!q) return "personne : il faut un nom.";
+        const q = String(a.person ?? "").trim();
+        if (!q) return "person : il faut un nom.";
         await need("Presence.Read.All");
         const u = await person(q);
         const p = await g.get<any>(`users/${enc(u.id)}/presence`);
@@ -152,23 +152,23 @@ export function teamsTools(g: GraphAuth, max: number, labels: Map<string, Text>)
       }),
     },
     {
-      name: "m365_envoyer_message_teams",
-      description: "Envoie un message Teams au nom de l'utilisateur : à une personne (discussion privée, créée si besoin) ou dans une conversation de groupe. destinataire : l'ADRESSE MAIL de la personne (rendue par m365_chercher_personnes ou m365_messages_teams) OU l'ID d'une conversation (rendu par m365_conversations_teams, m365_teams_non_lus, m365_messages_teams). Si tu n'as qu'un prénom, cherche d'abord l'adresse ; si plusieurs personnes correspondent, demande laquelle à l'utilisateur. Ne devine jamais. nom : nom de la personne ou du groupe (pour la carte d'accord). texte : le message, écrit comme l'utilisateur l'écrirait lui-même (première personne, court, naturel, ton adapté à la relation, sans signature). L'utilisateur voit le destinataire et le texte exact, et accepte avant l'envoi.",
+      name: "m365_send_teams_message",
+      description: "Envoie un message Teams au nom de l'utilisateur : à une personne (discussion privée, créée si besoin) ou dans une conversation de groupe. recipient : l'ADRESSE MAIL de la personne (rendue par m365_search_people ou m365_teams_messages) OU l'ID d'une conversation (rendu par m365_teams_chats, m365_teams_unread, m365_teams_messages). Si tu n'as qu'un prénom, cherche d'abord l'adresse ; si plusieurs personnes correspondent, demande laquelle à l'utilisateur. Ne devine jamais. name : nom de la personne ou du groupe (pour la carte d'accord). text : le message, écrit comme l'utilisateur l'écrirait lui-même (première personne, court, naturel, ton adapté à la relation, sans signature). L'utilisateur voit le destinataire et le texte exact, et accepte avant l'envoi.",
       inputSchema: {
         type: "object",
-        properties: { destinataire: { type: "string" }, nom: { type: "string" }, texte: { type: "string" } },
-        required: ["destinataire", "texte"],
+        properties: { recipient: { type: "string" }, name: { type: "string" }, text: { type: "string" } },
+        required: ["recipient", "text"],
       },
       level: "write",
       summary: (a) => {
-        const to = destLabel(String(a.destinataire ?? "").trim(), a.nom);
-        return T(`Envoyer sur Teams à ${tr(to, "fr")} : « ${quote(a.texte)} »`, `Send on Teams to ${tr(to, "en")}: “${quote(a.texte)}”`);
+        const to = destLabel(String(a.recipient ?? "").trim(), a.name);
+        return T(`Envoyer sur Teams à ${tr(to, "fr")} : « ${quote(a.text)} »`, `Send on Teams to ${tr(to, "en")}: “${quote(a.text)}”`);
       },
       handler: wrap(async (a) => {
-        const dest = String(a.destinataire ?? "").trim();
-        const text = String(a.texte ?? "").trim();
-        if (!text) throw new Error("texte : le message est vide.");
-        if (!dest) throw new Error("destinataire : il faut l'adresse mail de la personne ou l'id d'une conversation.");
+        const dest = String(a.recipient ?? "").trim();
+        const text = String(a.text ?? "").trim();
+        if (!text) throw new Error("text : le message est vide.");
+        if (!dest) throw new Error("recipient : il faut l'adresse mail de la personne ou l'id d'une conversation.");
         await need("ChatMessage.Send");
         let chatId = dest;
         if (EMAIL.test(dest)) {
@@ -182,36 +182,36 @@ export function teamsTools(g: GraphAuth, max: number, labels: Map<string, Text>)
             chatId = c.id;
           }
         } else if (!dest.startsWith("19:")) {
-          throw new Error(`destinataire « ${dest} » : il faut une adresse mail ou un id de conversation (qui commence par « 19: »). Cherche d'abord l'adresse avec m365_chercher_personnes.`);
+          throw new Error(`recipient « ${dest} » : il faut une adresse mail ou un id de conversation (qui commence par « 19: »). Cherche d'abord l'adresse avec m365_search_people.`);
         }
         await g.call("POST", `chats/${enc(chatId)}/messages`, { body: { contentType: "html", content: toHtml(text) } });
-        return `Message envoyé sur Teams à ${tr(destLabel(dest, a.nom), "fr")}. [conversation id ${chatId}]`;
+        return `Message envoyé sur Teams à ${tr(destLabel(dest, a.name), "fr")}. [conversation id ${chatId}]`;
       }),
     },
     {
-      name: "m365_publier_canal",
-      description: "Publie un message dans un canal d'équipe Teams au nom de l'utilisateur, ou répond dans le fil d'un message du canal. equipe_id et canal_id : rendus par m365_canaux_teams ou m365_messages_canal. reponse_a : id du message du canal auquel répondre (facultatif ; sans lui, c'est un nouveau fil visible par toute l'équipe). texte : le message, écrit comme l'utilisateur l'écrirait. L'utilisateur voit le canal et le texte exact, et accepte avant l'envoi.",
+      name: "m365_post_channel",
+      description: "Publie un message dans un canal d'équipe Teams au nom de l'utilisateur, ou répond dans le fil d'un message du canal. team_id et channel_id : rendus par m365_teams_channels ou m365_channel_messages. reply_to : id du message du canal auquel répondre (facultatif ; sans lui, c'est un nouveau fil visible par toute l'équipe). text : le message, écrit comme l'utilisateur l'écrirait. L'utilisateur voit le canal et le texte exact, et accepte avant l'envoi.",
       inputSchema: {
         type: "object",
-        properties: { equipe_id: { type: "string" }, canal_id: { type: "string" }, reponse_a: { type: "string" }, texte: { type: "string" } },
-        required: ["equipe_id", "canal_id", "texte"],
+        properties: { team_id: { type: "string" }, channel_id: { type: "string" }, reply_to: { type: "string" }, text: { type: "string" } },
+        required: ["team_id", "channel_id", "text"],
       },
       level: "write",
       summary: (a) => {
-        const where = labels.get(`${a.equipe_id}|${a.canal_id}`) ?? T("canal Teams (nom inconnu)", "Teams channel (unknown name)");
+        const where = labels.get(`${a.team_id}|${a.channel_id}`) ?? T("canal Teams (nom inconnu)", "Teams channel (unknown name)");
         return T(
-          `${a.reponse_a ? "Répondre dans un fil du" : "Publier un nouveau message dans le"} ${tr(where, "fr")} : « ${quote(a.texte)} »`,
-          `${a.reponse_a ? "Reply in a thread of the" : "Post a new message in the"} ${tr(where, "en")}: “${quote(a.texte)}”`,
+          `${a.reply_to ? "Répondre dans un fil du" : "Publier un nouveau message dans le"} ${tr(where, "fr")} : « ${quote(a.text)} »`,
+          `${a.reply_to ? "Reply in a thread of the" : "Post a new message in the"} ${tr(where, "en")}: “${quote(a.text)}”`,
         );
       },
       handler: wrap(async (a) => {
-        const text = String(a.texte ?? "").trim();
-        if (!text) throw new Error("texte : le message est vide.");
+        const text = String(a.text ?? "").trim();
+        if (!text) throw new Error("text : le message est vide.");
         await need("ChannelMessage.Send");
-        const base = `teams/${enc(String(a.equipe_id ?? ""))}/channels/${enc(String(a.canal_id ?? ""))}/messages`;
-        const path = a.reponse_a ? `${base}/${enc(String(a.reponse_a))}/replies` : base;
+        const base = `teams/${enc(String(a.team_id ?? ""))}/channels/${enc(String(a.channel_id ?? ""))}/messages`;
+        const path = a.reply_to ? `${base}/${enc(String(a.reply_to))}/replies` : base;
         await g.call("POST", path, { body: { contentType: "html", content: toHtml(text) } });
-        return `${a.reponse_a ? "Réponse publiée" : "Message publié"} dans le ${tr(labels.get(`${a.equipe_id}|${a.canal_id}`) ?? "canal Teams", "fr")}.`;
+        return `${a.reply_to ? "Réponse publiée" : "Message publié"} dans le ${tr(labels.get(`${a.team_id}|${a.channel_id}`) ?? "canal Teams", "fr")}.`;
       }),
     },
   ];

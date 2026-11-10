@@ -20,14 +20,14 @@ function withoutNoAction(text: string): string {
 }
 
 export function announcementText(f: Facts, summary: string | undefined, state?: string, toolName?: string | null): string {
-  const fallback = () => f.kind === "en_attente" ? waitingSentence(f, state, toolName) : completionSentence(f);
+  const fallback = () => f.kind === "waiting" ? waitingSentence(f, state, toolName) : completionSentence(f);
   const text = withoutNoAction(summary?.replace(/\s+/g, " ").trim() ?? "");
   if (!text || text.length > 220 || text.split(/\s+/).length > 30 || /[`#*<>]/.test(text)
     || (text.match(/[.!?](?:\s|$)/g)?.length ?? 0) > 2) return fallback();
   const normalized = fold(text);
   if (f.outcome === "failure" && !/echec|echou|fail|error/.test(normalized)) return fallback();
   if (f.outcome === "interruption" && !/interromp|interrupt|cancel/.test(normalized)) return fallback();
-  if (f.kind === "en_attente" && !/attend|attente|reponse|validation|approv|waiting|answer/.test(normalized)) return fallback();
+  if (f.kind === "waiting" && !/attend|attente|reponse|validation|approv|waiting|answer/.test(normalized)) return fallback();
   const name = (f.label || f.task || f.project).slice(0, 120);
   const result = text.toLowerCase().startsWith(name.toLowerCase()) ? text : `${name} : ${text}`;
   return result.length <= 260 && result.split(/\s+/).length <= 35 ? result : fallback();

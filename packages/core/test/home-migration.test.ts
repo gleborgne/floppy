@@ -131,4 +131,17 @@ describe("moteur de migration", () => {
     expect(r[0]!.alreadyApplied).toBe(false);
     expect(readMigrationMarker(home).version).toBe(1);
   });
+
+  it("les rangs peuvent avoir des trous : l'ordre suit la version, pas la position dans la liste, et un rang inséré plus tard tourne seul", () => {
+    const order: string[] = [];
+    const mk = (id: string, version: number): MigrationStep => ({ id, version, label: id, run() { order.push(id); } });
+    runHomeMigrations(home, [mk("c", 20), mk("a", 1), mk("b", 10)]);
+    expect(order).toEqual(["a", "b", "c"]);
+    expect(readMigrationMarker(home).version).toBe(20);
+    order.length = 0;
+    // Un rang qui s'intercale (3, entre 1 et 10) tourne une fois ; les autres ne rejouent pas.
+    runHomeMigrations(home, [mk("c", 20), mk("a", 1), mk("late", 3), mk("b", 10)]);
+    expect(order).toEqual(["late"]);
+    expect(readMigrationMarker(home).version).toBe(20);
+  });
 });

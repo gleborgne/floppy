@@ -4,7 +4,7 @@
 
 Ce dossier contient tes plugins personnels. Un plugin = un dossier `<id>/index.ts`.
 Exemple complet : `exemple-minuteur/index.ts`. Les types sont dans `floppy-plugin.d.ts`.
-Le wiki à jour (en anglais) est l'outil MCP `doc_plugins` : appelle-le sans argument pour le sommaire, puis `{ page: "basics" }`.
+Le wiki à jour (en anglais) est l'outil MCP `plugin_docs` : appelle-le sans argument pour le sommaire, puis `{ page: "basics" }`.
 Il décrit aussi les services de Floppy (envoyer un message, demander au modèle, chercher sur le web) et leurs contrats.
 
 ## Règles du format
@@ -74,11 +74,11 @@ Guide complet : docs/guide/plugins/README.md dans le dépôt de Floppy.
 
 ## Après avoir écrit ou modifié un plugin
 
-1. Appelle l'outil MCP `tester_plugin` avec l'id du plugin. Il vérifie le format et charge le plugin à blanc.
-2. Corrige les erreurs, puis rappelle `tester_plugin` jusqu'à ce qu'il soit bon.
-3. Appelle `recharger_plugins` pour que Floppy relise le dossier.
+1. Appelle l'outil MCP `test_plugin` avec l'id du plugin. Il vérifie le format et charge le plugin à blanc.
+2. Corrige les erreurs, puis rappelle `test_plugin` jusqu'à ce qu'il soit bon.
+3. Appelle `reload_plugins` pour que Floppy relise le dossier.
 4. Dis à l'utilisateur d'activer le plugin d'un clic dans la fenêtre des réglages. Tu ne peux pas l'activer toi-même.
-`etat_plugins` montre l'état de chaque plugin (utile si quelque chose ne démarre pas).
+`plugin_status` montre l'état de chaque plugin (utile si quelque chose ne démarre pas).
 
 ## Ce que tu peux écrire ici
 

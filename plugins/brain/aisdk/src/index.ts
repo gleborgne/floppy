@@ -3,7 +3,7 @@
 // - Les outils viennent du registre du noyau (MCP, corps, mémoire) : chaque appel passe par ToolRegistry.call
 //   (règle, accord, journal).
 // - Délégation (variante v3c du prototype 4) : si le service `delegate` existe (CLI Claude/Codex), l'outil
-//   `deleguer` est ajouté. Dès que son NOM arrive dans le flux, le noyau dit la phrase d'attente ; la réponse
+//   `delegate` est ajouté. Dès que son NOM arrive dans le flux, le noyau dit la phrase d'attente ; la réponse
 //   du grand modèle est lue telle quelle, en direct ; la boucle s'arrête (Gemma ne la répète pas).
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -31,7 +31,7 @@ const Config = z.object({
   /** Date imposée (banc de test : les fausses données sont au 4/11/2026). */
   today: z.string().optional(),
   emotions: z.boolean().default(true),
-  delegateTool: z.string().default("deleguer"),
+  delegateTool: z.string().default("delegate"),
   /** Phrase d'attente fixe de la délégation (remplace la liste si elle est donnée). */
   waitingPhrase: z.string().optional(),
   /** Phrases d'attente de la délégation : une au hasard, jamais deux fois de suite (défaut : selon la langue de l'assistant). */
@@ -322,7 +322,7 @@ export default definePlugin<Config>({
         if (dlg && delegationOn) {
           tools[cfg.delegateTool] = dynamicTool({
             description: delegateDescription(dlg.name),
-            inputSchema: jsonSchema({ type: "object", properties: { tache: { type: "string" } }, required: ["tache"] }),
+            inputSchema: jsonSchema({ type: "object", properties: { task: { type: "string" } }, required: ["task"] }),
             execute: async (args, opts) => {
               out.push({ type: "delegate", to: dlg.name });
               const sub = `${input.session}:delegate`;
@@ -332,7 +332,7 @@ export default definePlugin<Config>({
               const unbind = ctx.maybe("mcp")?.bindContext?.(toolContext);
               try {
                 for await (const ev of dlg.run({
-                  text: String((args as { tache?: string }).tache ?? input.text), session: sub, mode: input.mode,
+                  text: String((args as { task?: string }).task ?? input.text), session: sub, mode: input.mode,
                   turn, toolContext, recordMemory: false, memoryContext: remembered ?? null,
                   ...(remembered && !dlg.managesMemory ? { context: [{ role: "user" as const, text: memoryContextMessage(remembered, lang) }] } : {}),
                   ...(input.tone === undefined ? {} : { tone: input.tone }),

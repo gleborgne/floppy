@@ -33,4 +33,4 @@ ctx.settings.declare([{
 A plugin can add its own section: `manifest.sections: [{ id: "water", label: { fr: "Eau", en: "Water" } }]`,
 then `section: "water"` on its settings. For one or two settings, keep `"general"`.
 
-The `lister_reglages` tool shows the existing settings and their keys.
+The `list_settings` tool shows the existing settings and their keys.

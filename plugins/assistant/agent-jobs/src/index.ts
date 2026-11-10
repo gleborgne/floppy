@@ -38,12 +38,12 @@ export default definePlugin({
       await Promise.allSettled([...running.values()].map((r) => r.done));
     });
     const failure = (fr: string, en: string) => ({ status: "failed" as const, text: T(fr, en) });
-    const instruction = (a: Record<string, unknown>) => String(a.consigne ?? "").trim();
-    const validate = (a: Record<string, unknown>) => instruction(a) && (!a.modele || validAgentModel(String(a.modele)));
+    const instruction = (a: Record<string, unknown>) => String(a.instruction ?? "").trim();
+    const validate = (a: Record<string, unknown>) => instruction(a) && (!a.model || validAgentModel(String(a.model)));
     const execute = async (agent: AgentService, a: Record<string, unknown>, signal: AbortSignal, origin?: string, onTool?: (name: string) => void) => {
       if (!agent.run) throw new TextError(T("Cet agent propose seulement des sessions interactives.", "This agent only supports interactive sessions."));
       let result: string | undefined;
-      for await (const ev of agent.run({ text: instruction(a), model: a.modele ? String(a.modele) : undefined,
+      for await (const ev of agent.run({ text: instruction(a), model: a.model ? String(a.model) : undefined,
         session: randomUUID(), origin, mode: "text", signal })) {
         signal.throwIfAborted();
         if (ev.type === "tool") onTool?.(ev.name);
@@ -57,14 +57,14 @@ export default definePlugin({
       return result;
     };
     const schema = { type: "object", properties: {
-      agent: { type: "string", description: "Identifiant complet de lister_agents, ou nom non ambigu." },
-      modele: { type: "string", description: "Modèle demandé pour cette mission seulement." },
-      consigne: { type: "string", description: "Consigne complète et autonome." },
-    }, required: ["agent", "consigne"] };
-    const summary = (a: Record<string, unknown>) => T(`Confier une mission à ${String(a.agent)}${a.modele ? ` (${String(a.modele)})` : ""} ?`, `Give a task to ${String(a.agent)}${a.modele ? ` (${String(a.modele)})` : ""}?`);
+      agent: { type: "string", description: "Identifiant complet de list_agents, ou nom non ambigu." },
+      model: { type: "string", description: "Modèle demandé pour cette mission seulement." },
+      instruction: { type: "string", description: "Consigne complète et autonome." },
+    }, required: ["agent", "instruction"] };
+    const summary = (a: Record<string, unknown>) => T(`Confier une mission à ${String(a.agent)}${a.model ? ` (${String(a.model)})` : ""} ?`, `Give a task to ${String(a.agent)}${a.model ? ` (${String(a.model)})` : ""}?`);
     ctx.tools.register([
       {
-        name: "lister_agents", description: "Liste les agents ajoutés et disponibles, leurs identifiants, alias et usages pris en charge. Utilise ces identifiants pour une mission ou une session.",
+        name: "list_agents", description: "Liste les agents ajoutés et disponibles, leurs identifiants, alias et usages pris en charge. Utilise ces identifiants pour une mission ou une session.",
         inputSchema: { type: "object", properties: {} }, level: "read",
         handler: async () => {
           const list = [];
@@ -78,12 +78,12 @@ export default definePlugin({
         },
       },
       {
-        name: "deleguer_agent", description: "Confie une mission à un agent et attend sa réponse dans ce tour. Modèle ponctuel ; outils et accords Floppy. Pour un travail long avec notification, utilise lancer_travail_agent.",
+        name: "delegate_to_agent", description: "Confie une mission à un agent et attend sa réponse dans ce tour. Modèle ponctuel ; outils et accords Floppy. Pour un travail long avec notification, utilise start_agent_job.",
         inputSchema: schema, level: "write", summary,
         handler: async (a, meta) => {
           if (!validate(a)) return failure("Consigne ou modèle invalide.", "Invalid instruction or model.");
           const b = await borrowAgent(ctx, String(a.agent));
-          if (!b) return failure("Agent introuvable. Consulte lister_agents.", "Agent not found. Use lister_agents.");
+          if (!b) return failure("Agent introuvable. Consulte list_agents.", "Agent not found. Use list_agents.");
           const lost = new AbortController();
           void b.lost.then(() => lost.abort());
           try {
@@ -94,17 +94,17 @@ export default definePlugin({
         },
       },
       {
-        name: "lancer_travail_agent", description: "Lance en arrière-plan une mission avec les outils et accords Floppy. Rend son identifiant immédiatement ; une notification annonce la fin. Aucun terminal à surveiller.",
+        name: "start_agent_job", description: "Lance en arrière-plan une mission avec les outils et accords Floppy. Rend son identifiant immédiatement ; une notification annonce la fin. Aucun terminal à surveiller.",
         inputSchema: schema, level: "write", summary,
         handler: async (a, meta) => {
           if (!validate(a)) return failure("Consigne ou modèle invalide.", "Invalid instruction or model.");
           if (running.size >= cfg.maxConcurrent) return failure("Trop de travaux sont déjà en cours.", "Too many tasks are already running.");
           const b = await borrowAgent(ctx, String(a.agent));
-          if (!b) return failure("Agent introuvable. Consulte lister_agents.", "Agent not found. Use lister_agents.");
+          if (!b) return failure("Agent introuvable. Consulte list_agents.", "Agent not found. Use list_agents.");
           if (!b.service.run) { b.release(); return failure("Cet agent propose seulement des sessions interactives.", "This agent only supports interactive sessions."); }
           if (running.size >= cfg.maxConcurrent) { b.release(); return failure("Trop de travaux sont déjà en cours.", "Too many tasks are already running."); }
           const id = randomUUID(); const controller = new AbortController();
-          const job: Job = { id, agent: String(a.agent), model: a.modele ? String(a.modele) : undefined,
+          const job: Job = { id, agent: String(a.agent), model: a.model ? String(a.model) : undefined,
             instruction: instruction(a), state: "running", started: new Date().toISOString() };
           jobs.push(job);
           // Borne l'historique sans retirer les missions en cours.
@@ -140,7 +140,7 @@ export default definePlugin({
         },
       },
       {
-        name: "travaux_agents", description: "Liste les travaux d'agent et leurs états ; avec id, rend la consigne et le résultat, y compris le document produit.",
+        name: "list_agent_jobs", description: "Liste les travaux d'agent et leurs états ; avec id, rend la consigne (instruction) et le résultat, y compris le document produit.",
         inputSchema: { type: "object", properties: { id: { type: "string" } } }, level: "read",
         handler: async (a) => {
           const job = a.id ? jobs.find((j) => j.id === a.id) : undefined;
@@ -149,7 +149,7 @@ export default definePlugin({
         },
       },
       {
-        name: "arreter_travail_agent", description: "Arrête un travail d'agent en cours.",
+        name: "stop_agent_job", description: "Arrête un travail d'agent en cours.",
         inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }, level: "write",
         summary: (a) => T(`Arrêter le travail ${String(a.id)} ?`, `Stop task ${String(a.id)}?`),
         handler: async (a) => {

@@ -26,7 +26,7 @@ approvals:
   send: ask
   delete: ask
   toolRules:
-    - { source: vocabulary, tool: corriger_vocabulaire, level: write, rule: always }
+    - { source: vocabulary, tool: correct_vocabulary, level: write, rule: always }
 ```
 
 Do not duplicate an existing memory entry. The permission's `source` must match the vocabulary plugin entry id. Without this permission, each correction requires approval. Other writes and sends keep their normal rules, and `write: never` still forbids memory writes.

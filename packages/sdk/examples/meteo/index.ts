@@ -16,13 +16,13 @@ const plugin: UserPlugin = {
   apply(ctx) {
     ctx.tools.register([
       {
-        name: "meteo_actuelle",
-        description: "Donne la météo du moment pour une ville. Paramètre : ville.",
-        inputSchema: { type: "object", properties: { ville: { type: "string", maxLength: 80 } }, required: ["ville"] },
+        name: "current_weather",
+        description: "Donne la météo du moment pour une ville. Paramètre : city (la ville).",
+        inputSchema: { type: "object", properties: { city: { type: "string", maxLength: 80 } }, required: ["city"] },
         // send : le nom de la ville est envoyé à un service en ligne (accord demandé par défaut).
         level: "send",
         handler: async (args, meta) => {
-          const ville = String(args.ville ?? "").trim().slice(0, 80);
+          const ville = String(args.city ?? "").trim().slice(0, 80);
           if (!ville) return { status: "failed", text: { fr: "Il manque la ville.", en: "The city is missing." } };
           const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&name=${encodeURIComponent(ville)}`, { signal: meta.signal });
           const lieu = ((await geo.json()) as { results?: { name: string; latitude: number; longitude: number }[] }).results?.[0];

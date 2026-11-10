@@ -17,13 +17,13 @@ flowchart LR
   end
   PL -- "ctx.settings.declare" --> R["SettingsRegistry (noyau)<br/>risque · valeurs · historique"]
   R --> F["settings.json<br/>(gardé au redémarrage)"]
-  R -- "3 outils internes" --> BR["Cerveau<br/>lister_reglages · changer_reglage · annuler_reglage"]
+  R -- "3 outils internes" --> BR["Cerveau<br/>list_settings · change_setting · undo_setting"]
   CLI["floppy settings / set / undo"] --> R
   R -- "risque ask" --> AP["Accord (corps, CLI)"]
 ```
 
 - Chaque plugin **déclare** ses réglages : clé, libellé, type (choix, nombre, oui/non), valeurs possibles avec des mots de l'oral (« femme », « féminine »), **risque**, et comment l'appliquer **à chaud** (sans redémarrer).
-- Le cerveau reçoit 3 outils. La description de `changer_reglage` liste chaque réglage, sa valeur actuelle et les choix : le cerveau sait quoi proposer. Elle est mise à jour quand un plugin arrive ou part.
+- Le cerveau reçoit 3 outils. La description de `change_setting` liste chaque réglage, sa valeur actuelle et les choix : le cerveau sait quoi proposer. Elle est mise à jour quand un plugin arrive ou part.
 - **Le risque est contrôlé par le code** du registre, jamais par le modèle :
 
 | Risque | À la voix | Exemple |
@@ -45,7 +45,7 @@ sequenceDiagram
   participant R as Réglages (noyau)
   participant V as Service voix
   U->>B: « Floppy, prends une voix de femme »
-  B->>R: changer_reglage(voix, « voix de femme »)
+  B->>R: change_setting(voix, « voix de femme »)
   R->>R: « femme » → valeur femme ; risque free
   R->>V: POST /voice femme (même modèle : instantané)
   R->>R: historique + settings.json + journal
@@ -121,7 +121,7 @@ Un modèle faible peut mal comprendre « reviens sur Gemma » (essai : Qwen 9B n
 ```mermaid
 flowchart LR
   T["Icône : « Réglages… »"] --> M
-  V["« Floppy, ouvre les réglages »<br/>outil corps ouvrir_reglages"] --> M
+  V["« Floppy, ouvre les réglages »<br/>outil corps open_settings"] --> M
   M["Processus principal<br/>(une seule fenêtre)"] --> W["Fenêtre des réglages<br/>settings.html"]
   W -- "settings:get / set / undo, items / itemOp / pickPath (IPC)" --> M
   M -- "settings.* et items.* (port du utilityProcess)" --> K["Noyau<br/>SettingsRegistry + CatalogRegistry"]
@@ -138,7 +138,7 @@ flowchart LR
   Bouton « Parcourir » pour les fichiers (dialogue de Windows).
 - Français et anglais (réglage `ui_language`), menus de l'icône compris.
 - Mise à jour en direct : un réglage changé à la voix se voit tout de suite dans la fenêtre.
-- **Ouvrir sur un élément** : `ouvrir_reglages` accepte `element`, le nom entendu (« ouvre les réglages d'Orca »).
+- **Ouvrir sur un élément** : `open_settings` accepte `item`, le nom entendu (« ouvre les réglages d'Orca »).
   Le corps cherche l'élément dans le catalogue (`plugins/body/electron/src/settings-target.ts`) : nom exact, nom contenu,
   puis nom proche (fautes de dictée) ; les bibliothèques de modèles sont ignorées (trop d'homonymes). Le message
   `settings.open` porte alors `target: { section, provider, id }` ; le processus principal le vérifie (textes courts) et
@@ -146,7 +146,7 @@ flowchart LR
   La réponse cite les boutons de l'élément (« Boutons : « Installer dans Orca » »). Élément introuvable : la fenêtre s'ouvre
   quand même et la réponse le dit.
 - **Boutons à la voix** : un bouton d'élément (installer le plugin Orca, se connecter à Microsoft 365…) ne se lance pas à
-  la voix (le catalogue refuse `via: "voice"`). La description de `ouvrir_reglages` dit au cerveau d'ouvrir les réglages
+  la voix (le catalogue refuse `via: "voice"`). La description de `open_settings` dit au cerveau d'ouvrir les réglages
   sur l'élément et de dire sur quel bouton cliquer. Vérifié dans l'app (7 novembre 2026) : « orka » ouvre la page Orca.
 - Un clic dans la fenêtre compte comme un geste de confiance (`via: "ui"`) : pas de demande d'accord, même pour les réglages `cli`.
 - « Annuler le dernier changement ».
@@ -183,7 +183,7 @@ Sohee est retirée (peu fiable en français d'après les essais de `cascade`).
 
 ### Comportement du cerveau pour un réglage
 
-Gemma appelle `changer_reglage` **tout de suite, sans rien dire avant et sans demander de confirmation** ; si la valeur manque (« change de voix »), il en choisit une autre lui-même ; l'utilisateur peut dire « annule ». Sans cette règle, il demandait « Quelle voix ? » (prompt v3c : « demander si ambigu »), et une phrase dite avant l'outil partait avec l'ancienne voix (mélange de voix dans la même réponse).
+Gemma appelle `change_setting` **tout de suite, sans rien dire avant et sans demander de confirmation** ; si la valeur manque (« change de voix »), il en choisit une autre lui-même ; l'utilisateur peut dire « annule ». Sans cette règle, il demandait « Quelle voix ? » (prompt v3c : « demander si ambigu »), et une phrase dite avant l'outil partait avec l'ancienne voix (mélange de voix dans la même réponse).
 
 ## CLI
 

@@ -180,9 +180,10 @@ describe("documents : où montrer", () => {
 });
 
 describe("documents : outils du cerveau", () => {
-  it("afficher_document : enregistre (source floppy, tag reponse), montre sur l'origine, demande une phrase", async () => {
+  it("show_document : enregistre (source floppy, tag reponse), montre sur l'origine, demande une phrase", async () => {
     const f = await fixture([{ id: "avatar", caps: ["voice", "document"] }]);
-    const r = await f.k.tools.call("afficher_document", { titre: "Comparatif", markdown: "# A\n\n| x |\n|---|\n| 1 |" }, { origin: "avatar" });
+    const r = await f.k.tools.call("show_document", { title: "Comparatif", markdown: "# A\n\n| x |\n|---|\n| 1 |" }, { origin: "avatar" });
+    expect(f.k.tools.list().map((t) => t.name).filter((n) => ["afficher_document", "ouvrir_document", "lister_documents"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toMatch(/UNE seule phrase/);
     const [ref] = await f.docs.list();
@@ -190,26 +191,26 @@ describe("documents : outils du cerveau", () => {
     expect(f.sent[0]!.to).toBe("avatar");
   });
 
-  it("afficher_document sans écran : dit de répondre à l'oral", async () => {
+  it("show_document sans écran : dit de répondre à l'oral", async () => {
     const f = await fixture([{ id: "reachy", caps: ["voice"] }]);
-    const r = await f.k.tools.call("afficher_document", { titre: "T", markdown: "m" }, { origin: "reachy" });
+    const r = await f.k.tools.call("show_document", { title: "T", markdown: "m" }, { origin: "reachy" });
     expect(r.status).toBe("done");
     expect(r.text).toMatch(/à l'oral/);
     expect(await f.docs.list()).toHaveLength(1);
   });
 
-  it("afficher_document : document vide refusé", async () => {
+  it("show_document : document vide refusé", async () => {
     const f = await fixture([{ id: "avatar", caps: ["document"] }]);
-    expect((await f.k.tools.call("afficher_document", { titre: "T", markdown: "  " }, { origin: "avatar" })).status).toBe("failed");
+    expect((await f.k.tools.call("show_document", { title: "T", markdown: "  " }, { origin: "avatar" })).status).toBe("failed");
   });
 
-  it("ouvrir_document : dernier, date, tag, mots du titre, inconnu", async () => {
+  it("open_document : dernier, date, tag, mots du titre, inconnu", async () => {
     const f = await fixture([{ id: "avatar", caps: ["document"] }]);
     const a = await f.docs.save({ title: "Comparatif abonnements", markdown: "a", source: "floppy", tags: ["reponse"] });
     const v = await f.docs.save({ title: "Veille techno", markdown: "v", source: "veille", tags: ["veille"] });
     const opened = async (quoi: string) => {
       f.sent.length = 0;
-      const r = await f.k.tools.call("ouvrir_document", { quoi }, { origin: "avatar" });
+      const r = await f.k.tools.call("open_document", { what: quoi }, { origin: "avatar" });
       return { r, id: (f.sent[0]?.msg as { id?: string } | undefined)?.id };
     };
     expect((await opened("dernier")).id).toBe(v.id);
@@ -224,10 +225,10 @@ describe("documents : outils du cerveau", () => {
     expect(none.id).toBeUndefined();
   });
 
-  it("lister_documents", async () => {
+  it("list_documents", async () => {
     const f = await fixture();
-    expect((await f.k.tools.call("lister_documents", {})).text).toBe("Aucun document.");
+    expect((await f.k.tools.call("list_documents", {})).text).toBe("Aucun document.");
     await f.docs.save({ title: "Veille", markdown: "v", source: "veille", tags: ["veille"] });
-    expect((await f.k.tools.call("lister_documents", { tag: "veille" })).text).toMatch(/Veille/);
+    expect((await f.k.tools.call("list_documents", { tag: "veille" })).text).toMatch(/Veille/);
   });
 });

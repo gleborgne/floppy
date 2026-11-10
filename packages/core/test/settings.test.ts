@@ -35,12 +35,13 @@ describe("Réglages à la voix", () => {
     const k = await boot(home);
     const asked: unknown[] = [];
     k.bus.on("approval.request", (r) => asked.push(r));
-    const r = await k.tools.call("changer_reglage", { cle: "voix", valeur: "une voix féminine" }, { origin: "avatar" });
+    const r = await k.tools.call("change_setting", { key: "voix", value: "une voix féminine" }, { origin: "avatar" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["lister_reglages", "changer_reglage", "annuler_reglage"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r).toMatchObject({ status: "done", text: "Voix : voix de femme." });
     expect(asked).toHaveLength(0);
     expect(JSON.parse(readFileSync(join(home, "settings.json"), "utf8"))).toMatchObject({ voix: "femme" });
-    expect((await k.tools.call("annuler_reglage", {})).text).toMatch(/revient à voix d'homme/);
-    await k.tools.call("changer_reglage", { cle: "voix", valeur: "femme" });
+    expect((await k.tools.call("undo_setting", {})).text).toMatch(/revient à voix d'homme/);
+    await k.tools.call("change_setting", { key: "voix", value: "femme" });
     await k.stopAll();
     const k2 = await boot(home);
     expect(k2.settings.list().find((s) => s.key === "voix")?.value).toBe("femme");
@@ -50,7 +51,7 @@ describe("Réglages à la voix", () => {
   it("accord : demandé avant ; refusé = rien ne change", async () => {
     const k = await boot(mkdtempSync(join(tmpdir(), "set-")));
     k.bus.on("approval.request", (r) => k.approvals.respond(r.id, false, "test"));
-    const r = await k.tools.call("changer_reglage", { cle: "cloud", valeur: "oui" });
+    const r = await k.tools.call("change_setting", { key: "cloud", value: "oui" });
     expect(r.status).toBe("refused");
     expect(k.settings.list().find((s) => s.key === "cloud")?.value).toBe(false);
     await k.stopAll();
@@ -58,20 +59,20 @@ describe("Réglages à la voix", () => {
 
   it("CLI seulement : refusé à la voix, accepté par la CLI", async () => {
     const k = await boot(mkdtempSync(join(tmpdir(), "set-")));
-    const r = await k.tools.call("changer_reglage", { cle: "dossier", valeur: "Documents" });
+    const r = await k.tools.call("change_setting", { key: "dossier", value: "Documents" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/ne se change pas à la voix/);
     expect((await k.settings.change("dossier", "documents", "cli")).ok).toBe(true);
     await k.stopAll();
   });
 
-  it("la description de changer_reglage liste les réglages et leurs choix (pour le cerveau)", async () => {
+  it("la description de change_setting liste les réglages et leurs choix (pour le cerveau)", async () => {
     const k = await boot(mkdtempSync(join(tmpdir(), "set-")));
-    const d = k.tools.list().find((t) => t.name === "changer_reglage")!.description;
+    const d = k.tools.list().find((t) => t.name === "change_setting")!.description;
     expect(d).toMatch(/voix : Voix, actuellement « voix d'homme » \(choix : voix d'homme, voix de femme\)/);
     expect(d).toMatch(/\[pas à la voix\]/);
     await k.stopAll();
-    expect(k.tools.list().find((t) => t.name === "changer_reglage")!.description).not.toMatch(/voix d'homme/);
+    expect(k.tools.list().find((t) => t.name === "change_setting")!.description).not.toMatch(/voix d'homme/);
   });
 });
 

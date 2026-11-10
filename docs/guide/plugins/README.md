@@ -19,7 +19,7 @@ floppy dev mon-plugin                 # lance Floppy avec ce plugin
 Dans un autre terminal :
 
 ```sh
-floppy tool mon_plugin_bonjour '{"nom":"Ada"}' --home mon-plugin/.floppy-dev
+floppy tool mon_plugin_hello '{"name":"Ada"}' --home mon-plugin/.floppy-dev
 floppy chat --home mon-plugin/.floppy-dev     # parler à Floppy au clavier
 ```
 
@@ -172,7 +172,7 @@ Autres commandes : `floppy plugin list`, `floppy plugin approve <id>`, `floppy p
 ## Faire écrire le plugin par l'assistant IA
 
 Dans la fenêtre des réglages, rubrique Assistant IA, choisis « Créer un plugin » et décris ce que tu veux.
-L'agent (Claude Code ou Codex) lit d'abord le wiki des plugins avec l'outil `doc_plugins` : les règles, les recettes, les contrats exacts des services de Floppy, ce qui tourne en ce moment.
+L'agent (Claude Code ou Codex) lit d'abord le wiki des plugins avec l'outil `plugin_docs` : les règles, les recettes, les contrats exacts des services de Floppy, ce qui tourne en ce moment.
 Chaque fichier qu'il écrit t'est montré avant. Il teste le plugin, puis tu l'actives d'un clic.
 
 Le wiki (en anglais) est aussi lisible à la main : [`packages/sdk/wiki`](../../../packages/sdk/wiki).

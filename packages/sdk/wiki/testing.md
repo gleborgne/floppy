@@ -2,11 +2,11 @@
 > The order of the steps, and common errors.
 
 1. Write `<id>/index.ts` (the user sees every write first).
-2. `tester_plugin` with the id: it loads the plugin in a throwaway kernel (10 s) and returns the state, error, tools, settings and log.
-3. Fix, then run `tester_plugin` again until "OK".
-4. `recharger_plugins`: Floppy reads the folder again.
+2. `test_plugin` with the id: it loads the plugin in a throwaway kernel (10 s) and returns the state, error, tools, settings and log.
+3. Fix, then run `test_plugin` again until "OK".
+4. `reload_plugins`: Floppy reads the folder again.
 5. Tell the user to turn the plugin on with a click in the settings ("Plugins utilisateur" / "User plugins" group). You cannot turn it on.
-6. `etat_plugins` shows the state of each plugin if something does not start.
+6. `plugin_status` shows the state of each plugin if something does not start.
 
 ## Common errors
 

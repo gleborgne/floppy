@@ -73,28 +73,28 @@ function cleanInteret(v: Record<string, unknown>): Omit<Interet, "id"> {
 const strList = (x: unknown): string[] => (Array.isArray(x) ? x : typeof x === "string" ? [x] : []).map((v) => String(v).trim()).filter(Boolean);
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/** Valeurs d'un centre d'intérêt après « modifier » à la voix : ajoute, retire, remplace la description ou le nom. */
+/** Valeurs d'un centre d'intérêt après `edit` à la voix : ajoute, retire, remplace la description ou le nom. */
 function modified(cur: Omit<Interet, "id">, a: Record<string, unknown>): Record<string, unknown> {
-  const outFlux = strList(a.retirer_flux).map((x) => x.toLowerCase());
-  const outReq = strList(a.retirer_requetes);
+  const outFlux = strList(a.remove_feeds).map((x) => x.toLowerCase());
+  const outReq = strList(a.remove_queries);
   const feeds = cur.feeds.filter((u) => !outFlux.some((x) => u.toLowerCase().includes(x)));
   const queries = cur.queries.filter((q) => !outReq.some((x) => same(q, x)));
-  for (const u of strList(a.flux)) if (!feeds.some((x) => same(x, u))) feeds.push(u);
-  for (const q of strList(a.requetes)) if (!queries.some((x) => same(x, q))) queries.push(q);
-  const name = strList(a.nouveau_nom)[0] ?? cur.name;
+  for (const u of strList(a.feeds)) if (!feeds.some((x) => same(x, u))) feeds.push(u);
+  for (const q of strList(a.queries)) if (!queries.some((x) => same(x, q))) queries.push(q);
+  const name = strList(a.new_name)[0] ?? cur.name;
   const description = typeof a.description === "string" && a.description.trim() ? a.description.trim() : cur.description;
   return { name, description, feeds, queries, max: cur.max };
 }
 
-/** Ce que change « modifier », pour la demande d'accord. */
+/** Ce que change `edit`, pour la demande d'accord. */
 function changes(a: Record<string, unknown>, l: "fr" | "en"): string {
   const en = l === "en";
   const list = (k: string, fr: string, eng: string) => (strList(a[k]).length ? `${en ? eng : fr}${en ? ": " : " : "}${strList(a[k]).join(", ")}` : "");
   const parts = [
-    strList(a.nouveau_nom)[0] ? (en ? `rename to “${strList(a.nouveau_nom)[0]}”` : `renommer en « ${strList(a.nouveau_nom)[0]} »`) : "",
+    strList(a.new_name)[0] ? (en ? `rename to “${strList(a.new_name)[0]}”` : `renommer en « ${strList(a.new_name)[0]} »`) : "",
     typeof a.description === "string" && a.description.trim() ? (en ? "new description" : "nouvelle description") : "",
-    list("requetes", "+ recherches", "+ searches"), list("flux", "+ flux", "+ feeds"),
-    list("retirer_requetes", "− recherches", "− searches"), list("retirer_flux", "− flux", "− feeds"),
+    list("queries", "+ recherches", "+ searches"), list("feeds", "+ flux", "+ feeds"),
+    list("remove_queries", "− recherches", "− searches"), list("remove_feeds", "− flux", "− feeds"),
   ].filter(Boolean);
   return parts.length ? ` (${parts.join(en ? "; " : " ; ")})` : "";
 }
@@ -362,48 +362,48 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
       // ---------------------------------------------------------------- outils pour le cerveau
       const tools: ToolDef[] = [
         {
-          name: "veille_avis",
-          description: "Retient un avis de l'utilisateur sur sa veille, pour trier mieux les jours suivants. « le 3 ne m'intéresse pas » → article: 3, avis: moins. « plus d'articles sur llama.cpp » → sujet, avis: plus. « plus jamais de crypto » → sujet: crypto, avis: jamais (retiré avant même le tri). « en fait la crypto ça va » → sujet, avis: oublier. Appelle-le tout de suite, sans demander de confirmation.",
+          name: "watch_feedback",
+          description: "Retient un avis de l'utilisateur sur sa veille, pour trier mieux les jours suivants. « le 3 ne m'intéresse pas » → article: 3, feedback: less. « plus d'articles sur llama.cpp » → topic, feedback: more. « plus jamais de crypto » → topic: crypto, feedback: never (retiré avant même le tri). « en fait la crypto ça va » → topic, feedback: forget. interest : centre d'intérêt concerné (facultatif). Appelle-le tout de suite, sans demander de confirmation.",
           inputSchema: {
             type: "object",
             properties: {
               article: { type: "integer", description: "Numéro de l'article dans le dernier digest." },
-              sujet: { type: "string", description: "Sujet ou mot (« crypto », « levées de fonds »)." },
-              avis: { type: "string", enum: ["plus", "moins", "jamais", "oublier"] },
-              interet: { type: "string", description: "Centre d'intérêt concerné, si l'utilisateur le dit. Sinon : celui de l'article, ou tous." },
+              topic: { type: "string", description: "Sujet ou mot (« crypto », « levées de fonds »)." },
+              feedback: { type: "string", enum: ["more", "less", "never", "forget"] },
+              interest: { type: "string", description: "Centre d'intérêt concerné, si l'utilisateur le dit. Sinon : celui de l'article, ou tous." },
             },
-            required: ["avis"],
+            required: ["feedback"],
           },
           // Préférence interne, sans effet hors de la veille, annulable par « oublier » : pas d'accord demandé.
           level: "read",
           handler: async (a) => {
-            const avis = String(a.avis ?? "");
+            const avis = String(a.feedback ?? "");
             const art = a.article !== undefined ? db.article(Number(a.article)) : undefined;
             if (a.article !== undefined && !art) return { status: "failed", text: T(`Il n'y a pas d'article ${String(a.article)} dans le dernier digest.`, `There is no article ${String(a.article)} in the latest digest.`) };
-            const it = findInteret(a.interet ? String(a.interet) : undefined)?.id ?? art?.interet;
-            const sujet = a.sujet ? String(a.sujet).trim() : "";
+            const it = findInteret(a.interest ? String(a.interest) : undefined)?.id ?? art?.interet;
+            const sujet = a.topic ? String(a.topic).trim() : "";
             const nom = it ? all().find((i) => i.id === it)?.name ?? it : "";
             const where = it ? T(` pour « ${nom} »`, ` for “${nom}”`) : T(" pour toute la veille", " for the whole news watch");
             const w = (l: "fr" | "en") => tr(where, l);
             const done: Text[] = [];
-            if (art && (avis === "plus" || avis === "moins")) {
-              prefs.addExample(art.titre, avis === "plus" ? "+" : "-", art.interet);
-              done.push(avis === "plus" ? T(`noté que tu as aimé « ${art.titre} »`, `noted that you liked “${art.titre}”`) : T(`noté que tu n'as pas aimé « ${art.titre} »`, `noted that you didn't like “${art.titre}”`));
+            if (art && (avis === "more" || avis === "less")) {
+              prefs.addExample(art.titre, avis === "more" ? "+" : "-", art.interet);
+              done.push(avis === "more" ? T(`noté que tu as aimé « ${art.titre} »`, `noted that you liked “${art.titre}”`) : T(`noté que tu n'as pas aimé « ${art.titre} »`, `noted that you didn't like “${art.titre}”`));
             }
-            if (art && avis === "jamais" && !sujet) {
+            if (art && avis === "never" && !sujet) {
               prefs.addExample(art.titre, "-", art.interet);
               done.push(T(`noté que tu n'as pas aimé « ${art.titre} » (dis-moi le sujet à bannir pour l'écarter toujours)`, `noted that you didn't like “${art.titre}” (tell me the topic to ban to always leave it out)`));
             }
             if (sujet) {
-              if (avis === "oublier") {
+              if (avis === "forget") {
                 done.push(prefs.forget(sujet, it)
                   ? both((l) => (l === "en" ? `forgot “${sujet}”` : `oublié « ${sujet} »`) + w(l))
                   : both((l) => (l === "en" ? `“${sujet}” was not in your preferences` : `« ${sujet} » n'était pas dans tes préférences`) + w(l)));
               } else {
-                const list = avis === "plus" ? "likes" : avis === "moins" ? "avoids" : "banned";
+                const list = avis === "more" ? "likes" : avis === "less" ? "avoids" : "banned";
                 prefs.addTopic(list, sujet, it);
-                done.push(both((l) => (avis === "plus" ? (l === "en" ? `more “${sujet}”` : `plus de « ${sujet} »`)
-                  : avis === "moins" ? (l === "en" ? `less “${sujet}”` : `moins de « ${sujet} »`)
+                done.push(both((l) => (avis === "more" ? (l === "en" ? `more “${sujet}”` : `plus de « ${sujet} »`)
+                  : avis === "less" ? (l === "en" ? `less “${sujet}”` : `moins de « ${sujet} »`)
                   : (l === "en" ? `never again “${sujet}”` : `plus jamais « ${sujet} »`)) + w(l)));
               }
             }
@@ -416,7 +416,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           },
         },
         {
-          name: "veille_interets",
+          name: "watch_interests",
           description: "Liste les centres d'intérêt de la veille (sources, préférences), et le dernier digest.",
           inputSchema: { type: "object", properties: {} },
           level: "read",
@@ -434,19 +434,19 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
               });
               const titres = d.map((x) => `${x.numero}. ${x.titre}`).join("\n");
               return en
-                ? `${lines.join("\n")}\nLatest digest: ${d.length ? `${d.length} articles (details: veille_article)\n${titres}` : "none"}.`
-                : `${lines.join("\n")}\nDernier digest : ${d.length ? `${d.length} articles (détails : veille_article)\n${titres}` : "aucun"}.`;
+                ? `${lines.join("\n")}\nLatest digest: ${d.length ? `${d.length} articles (details: watch_article)\n${titres}` : "none"}.`
+                : `${lines.join("\n")}\nDernier digest : ${d.length ? `${d.length} articles (détails : watch_article)\n${titres}` : "aucun"}.`;
             }) };
           },
         },
         {
-          name: "veille_article",
-          description: "Articles du dernier digest. Avec article (numéro) ou recherche (mots du sujet ou du titre : « TTS », « Gemma ») : détails de l'article (titre, source, résumé, adresse), pour en parler ou l'ouvrir avec ouvrir_url. Sans rien : la liste numérotée des titres. Appelle-le dès que l'utilisateur parle d'un article de sa veille, sans lui demander le numéro.",
+          name: "watch_article",
+          description: "Articles du dernier digest. Avec article (numéro) ou search (mots du sujet ou du titre : « TTS », « Gemma ») : détails de l'article (titre, source, résumé, adresse), pour en parler ou l'ouvrir avec open_url. Sans rien : la liste numérotée des titres. Appelle-le dès que l'utilisateur parle d'un article de sa veille, sans lui demander le numéro.",
           inputSchema: {
             type: "object",
             properties: {
               article: { type: "integer", description: "Numéro de l'article dans le dernier digest." },
-              recherche: { type: "string", description: "Mots qui désignent l'article (sujet, outil, titre), si l'utilisateur ne donne pas de numéro." },
+              search: { type: "string", description: "Mots qui désignent l'article (sujet, outil, titre), si l'utilisateur ne donne pas de numéro." },
             },
           },
           level: "read",
@@ -459,7 +459,7 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
             }
             const d = db.digest();
             if (!d.length) return { status: "failed", text: T("Il n'y a pas encore de digest.", "There is no digest yet.") };
-            const q = typeof a.recherche === "string" ? a.recherche.trim() : "";
+            const q = typeof a.search === "string" ? a.search.trim() : "";
             const found = q ? findArticles(d, q) : [];
             if (found.length === 1) return { status: "done", text: details(found[0]!) };
             const list = (found.length ? found : d).map((x) => `${x.numero}. ${x.titre}`).join("\n");
@@ -470,38 +470,38 @@ export function createVeillePlugin(opts: VeilleOptions = {}): PluginDef<Config> 
           },
         },
         {
-          name: "veille_modifier_interet",
-          description: "Ajoute, modifie ou retire un centre d'intérêt de la veille, quand l'utilisateur le demande. « ajoute un centre d'intérêt sur l'IA locale » → action: ajouter, nom: « IA locale » (donne aussi description et requetes si tu sais ; sans source, le nom sert de recherche web). « ajoute la recherche llama.cpp à mon IA locale » → action: modifier, nom, requetes. « retire le flux de Reddit » → action: modifier, retirer_flux. « supprime ma veille sur la Bretagne » → action: retirer. Le noyau demande l'accord : appelle-le directement.",
+          name: "watch_edit_interest",
+          description: "Ajoute, modifie ou retire un centre d'intérêt de la veille, quand l'utilisateur le demande. « ajoute un centre d'intérêt sur l'IA locale » → action: add, name: « IA locale » (donne aussi description et queries si tu sais ; sans source, le nom sert de recherche web). « ajoute la recherche llama.cpp à mon IA locale » → action: edit, name, queries. « retire le flux de Reddit » → action: edit, remove_feeds. « supprime ma veille sur la Bretagne » → action: remove. new_name : nouveau nom (edit) ; feeds : adresses de flux à ajouter ; remove_queries : recherches à retirer. Le noyau demande l'accord : appelle-le directement.",
           inputSchema: {
             type: "object",
             properties: {
-              action: { type: "string", enum: ["ajouter", "modifier", "retirer"] },
-              nom: { type: "string", description: "Nom du centre d'intérêt à créer, à modifier ou à retirer." },
-              nouveau_nom: { type: "string", description: "modifier : nouveau nom." },
-              description: { type: "string", description: "Ce qui intéresse l'utilisateur, pour le modèle qui trie. modifier : remplace l'ancienne." },
-              flux: { type: "array", items: { type: "string" }, description: "Adresses de flux RSS ou Atom à ajouter." },
-              requetes: { type: "array", items: { type: "string" }, description: "Recherches web à ajouter." },
-              retirer_flux: { type: "array", items: { type: "string" }, description: "modifier : flux à retirer (adresse ou morceau d'adresse)." },
-              retirer_requetes: { type: "array", items: { type: "string" }, description: "modifier : recherches à retirer." },
+              action: { type: "string", enum: ["add", "edit", "remove"] },
+              name: { type: "string", description: "Nom du centre d'intérêt à créer, à modifier ou à retirer." },
+              new_name: { type: "string", description: "edit : nouveau nom." },
+              description: { type: "string", description: "Ce qui intéresse l'utilisateur, pour le modèle qui trie. edit : remplace l'ancienne." },
+              feeds: { type: "array", items: { type: "string" }, description: "Adresses de flux RSS ou Atom à ajouter." },
+              queries: { type: "array", items: { type: "string" }, description: "Recherches web à ajouter." },
+              remove_feeds: { type: "array", items: { type: "string" }, description: "edit : flux à retirer (adresse ou morceau d'adresse)." },
+              remove_queries: { type: "array", items: { type: "string" }, description: "edit : recherches à retirer." },
             },
-            required: ["action", "nom"],
+            required: ["action", "name"],
           },
           level: "write",
           summary: (a) => {
-            const nom = String(a.nom ?? "");
-            if (a.action === "retirer") return T(`Retirer le centre d'intérêt « ${nom} »`, `Remove the interest “${nom}”`);
-            if (a.action === "modifier") return T(`Modifier le centre d'intérêt « ${nom} »${changes(a, "fr")}`, `Change the interest “${nom}”${changes(a, "en")}`);
+            const nom = String(a.name ?? "");
+            if (a.action === "remove") return T(`Retirer le centre d'intérêt « ${nom} »`, `Remove the interest “${nom}”`);
+            if (a.action === "edit") return T(`Modifier le centre d'intérêt « ${nom} »${changes(a, "fr")}`, `Change the interest “${nom}”${changes(a, "en")}`);
             return T(`Ajouter le centre d'intérêt « ${nom} »`, `Add the interest “${nom}”`);
           },
           handler: async (a) => {
-            const nom = String(a.nom ?? "");
-            if (a.action === "retirer" || a.action === "modifier") {
+            const nom = String(a.name ?? "");
+            if (a.action === "remove" || a.action === "edit") {
               const cur = findInteret(nom);
-              if (!cur) return { status: "failed", text: T(`Je ne trouve pas « ${nom} ». Utilise veille_interets.`, `I can't find “${nom}”. Use veille_interets.`) };
-              const r: OpResult = a.action === "retirer" ? remove(cur.id) : update(cur.id, modified(cur, a));
+              if (!cur) return { status: "failed", text: T(`Je ne trouve pas « ${nom} ». Utilise watch_interests.`, `I can't find “${nom}”. Use watch_interests.`) };
+              const r: OpResult = a.action === "remove" ? remove(cur.id) : update(cur.id, modified(cur, a));
               return { status: r.ok ? "done" : "failed", text: r.text };
             }
-            const r = add({ name: nom, description: a.description ?? "", feeds: a.flux ?? [], queries: a.requetes ?? [] });
+            const r = add({ name: nom, description: a.description ?? "", feeds: a.feeds ?? [], queries: a.queries ?? [] });
             return { status: r.ok ? "done" : "failed", text: r.text };
           },
         },

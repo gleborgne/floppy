@@ -76,15 +76,16 @@ describe("searxng", () => {
     b!.release();
   });
 
-  it("outil chercher_searxng : liste courte pour le cerveau", async () => {
+  it("outil search_searxng : liste courte pour le cerveau", async () => {
     const srv = await serve(json(FAKE));
     const { k } = await boot(srv.url);
-    const info = k.tools.list().find((x) => x.name === "chercher_searxng")!;
+    const info = k.tools.list().find((x) => x.name === "search_searxng")!;
     expect(info.level).toBe("read");
-    const r = await k.tools.call("chercher_searxng", { question: "floppy" });
+    const r = await k.tools.call("search_searxng", { question: "floppy" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["chercher_searxng"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toContain("1. Floppy sort — exemple.fr — https://www.exemple.fr/floppy — Une nouvelle version.");
-    expect((await k.tools.call("chercher_searxng", { question: " " })).status).toBe("failed");
+    expect((await k.tools.call("search_searxng", { question: " " })).status).toBe("failed");
   });
 
   it("application de la rubrique Connecteurs", async () => {
@@ -98,7 +99,7 @@ describe("searxng", () => {
   it("HTTP 403 (JSON désactivé) : message clair", async () => {
     const srv = await serve((_, res) => { res.statusCode = 403; res.end("Forbidden"); });
     const { k } = await boot(srv.url);
-    const r = await k.tools.call("chercher_searxng", { question: "x" });
+    const r = await k.tools.call("search_searxng", { question: "x" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/search\.formats/);
   });
@@ -106,7 +107,7 @@ describe("searxng", () => {
   it("réponse qui n'est pas du JSON", async () => {
     const srv = await serve((_, res) => { res.setHeader("content-type", "text/html"); res.end("<html>salut</html>"); });
     const { k } = await boot(srv.url);
-    const r = await k.tools.call("chercher_searxng", { question: "x" });
+    const r = await k.tools.call("search_searxng", { question: "x" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/pas répondu en JSON/);
   });
@@ -114,14 +115,14 @@ describe("searxng", () => {
   it("délai dépassé", async () => {
     const srv = await serve(() => { /* ne répond jamais */ });
     const { k } = await boot(srv.url, { timeoutMs: 500 });
-    const r = await k.tools.call("chercher_searxng", { question: "x" });
+    const r = await k.tools.call("search_searxng", { question: "x" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/ne répond pas/);
   });
 
   it("serveur absent", async () => {
     const { k } = await boot("http://127.0.0.1:1");
-    const r = await k.tools.call("chercher_searxng", { question: "x" });
+    const r = await k.tools.call("search_searxng", { question: "x" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/Impossible de joindre SearXNG/);
   });

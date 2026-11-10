@@ -85,4 +85,4 @@ Field names of the contracts are English (`title`, `summary`): copy them as they
 
 - The plugin restarts when an `optional` service arrives or changes: do not keep the service outside a call.
 - Sending (notify) or using a `cloud` model leaves the user's computer: the tool that does it is level `send`.
-- In `tester_plugin` (throwaway kernel) there are no services: `offers` returns an empty list. Handle that case.
+- In `test_plugin` (throwaway kernel) there are no services: `offers` returns an empty list. Handle that case.

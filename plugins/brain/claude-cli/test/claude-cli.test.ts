@@ -12,7 +12,7 @@ describe("cliPrompt", () => {
   it("ne cite que les outils visibles", () => {
     const s = cliPrompt("Floppy", [{ name: "agenda_du_jour" }]);
     expect(s).toContain("Tes outils : agenda_du_jour.");
-    for (const w of ["Azure DevOps", "Obsidian", "Orca", "ouvrir_url"]) expect(s).not.toContain(w);
+    for (const w of ["Azure DevOps", "Obsidian", "Orca", "open_url", "ouvrir_url"]) expect(s).not.toContain(w);
     expect(cliPrompt("Floppy", [])).toContain("aucun outil");
   });
   it("suit la langue de l'assistant (français par défaut)", () => {

@@ -28,7 +28,7 @@ Le cerveau est un **plugin** : agent **Vercel AI SDK** avec un LLM local, ou CLI
 | `body` | Montrer l'état et les émotions, donner du retour. | Electron (v1), Reachy, téléphone, Telegram |
 | `display` | Afficher les réponses et l'UI générée. | Bulle Electron (A2UI, MCP Apps) |
 | `memory` | Retenir et retrouver faits, préférences, leçons. | **Noyau** (`MEMORY.md`, `USER.md`, historique en SQLite FTS5 avec `node:sqlite`) |
-| `skills` | Fournir des recettes Markdown à la demande. | **Noyau** (`SKILL.md`, outil `lire_skill`) |
+| `skills` | Fournir des recettes Markdown à la demande. | **Noyau** (`SKILL.md`, outil `read_skill`) |
 | `tools` | Agir : lire, chercher, ouvrir, envoyer. | Serveurs **MCP** (client MCP de l'AI SDK) : Obsidian, Office 365, Azure DevOps, Orca ; CLI Claude Code / Codex par Orca ; outils « corps » (afficher une carte, ouvrir les réglages) ; plugin `browser` (ouvrir une URL) |
 
 ## Les modes du cerveau
@@ -84,7 +84,7 @@ Chaque plugin déclare :
 
 - WebSocket local, sur `127.0.0.1` seulement par défaut.
 - Messages inspirés d'OpenAI Realtime et des concepts de LiveKit, pour pouvoir ajouter un adaptateur LiveKit plus tard.
-- Au branchement, le corps déclare ses **outils « corps »** (exemples : `afficher_carte`, `ouvrir_reglages`, `hocher_tete`). Son **identité** (id, nom) vient du transport, jamais du `hello`. Le noyau les ajoute aux outils du cerveau et renvoie leurs appels au corps.
+- Au branchement, le corps déclare ses **outils « corps »** (exemples : `show_card`, `open_settings`, `nod_head`). Son **identité** (id, nom) vient du transport, jamais du `hello`. Le noyau les ajoute aux outils du cerveau et renvoie leurs appels au corps.
 - Le noyau envoie des **événements** : état (veille, écoute, réfléchit, parle), émotion, notification, UI A2UI, demande d'accord.
 - Le corps renvoie les **réponses d'accord** (voir [Sécurité → L'accord](securite.md#laccord)).
 

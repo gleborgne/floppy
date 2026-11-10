@@ -35,7 +35,7 @@ const plugin: UserPlugin = {
 
     ctx.tools.register([
       {
-        name: "lancer_minuteur",
+        name: "start_timer",
         description: "Lance un minuteur. Quand il sonne, l'assistant prévient l'utilisateur. Paramètre : minutes (de 1 à 180).",
         inputSchema: {
           type: "object",

@@ -13,28 +13,22 @@ import type { Texts } from "./app-texts.ts";
 
 /** Demande d'outil du noyau (tool.call) : le protocole type `args` en vrac, l'avatar lit les siens. */
 type ToolCallMsg = Omit<Extract<KernelToBody, { type: "tool.call" }>, "args"> & {
-  args?: { titre?: unknown; lignes?: string[]; coin?: string; ecran?: unknown; cible?: string };
+  args?: { title?: unknown; lines?: string[]; corner?: string; screen?: unknown; target?: string };
 };
 /** Message du noyau reçu par l'avatar : les types du protocole (aucun n'est ignoré par le `switch`). */
 export type KernelMsg = Exclude<KernelToBody, { type: "tool.call" }> | ToolCallMsg;
 
 const TOOLS: BodyToolDecl[] = [
   // Ouvrir une page web : c'est le plugin « browser » (Réglages → Connecteurs), plus un outil de l'avatar.
-  { name: "afficher_carte", description: "Affiche une carte à l'écran (titre et quelques lignes), pour une information longue. La réponse reste dite à voix haute.",
-    inputSchema: { type: "object", properties: { titre: { type: "string" }, lignes: { type: "array", items: { type: "string" } } }, required: ["titre"] }, level: "read" },
-  { name: "placer_avatar", description: "Déplace l'avatar de Floppy à l'écran (par ex. « remets-toi en place », « va en haut à gauche », « va sur l'écran 2 », « mets-toi sur ma fenêtre »). Sans précision : en bas à droite de l'écran principal, sa place habituelle.",
+  { name: "show_card", description: "Affiche une carte à l'écran (title : le titre ; lines : quelques lignes), pour une information longue. La réponse reste dite à voix haute.",
+    inputSchema: { type: "object", properties: { title: { type: "string" }, lines: { type: "array", items: { type: "string" } } }, required: ["title"] }, level: "read" },
+  { name: "place_avatar", description: "Déplace l'avatar de Floppy à l'écran (par ex. « remets-toi en place », « va en haut à gauche », « va sur l'écran 2 », « mets-toi sur ma fenêtre »). Sans précision : en bas à droite de l'écran principal, sa place habituelle.",
     inputSchema: { type: "object", properties: {
-      coin: { type: "string", enum: ["bas_droite", "bas_gauche", "haut_droite", "haut_gauche", "centre"], description: "Où dans la zone. Par défaut bas_droite." },
-      ecran: { type: "integer", minimum: 1, description: "Numéro d'écran : 1 = principal, puis de gauche à droite." },
-      cible: { type: "string", enum: ["ecran", "fenetre"], description: "fenetre : dans la fenêtre active (celle où l'utilisateur travaille) au lieu de tout l'écran." },
+      corner: { type: "string", enum: ["bottom_right", "bottom_left", "top_right", "top_left", "center"], description: "Où dans la zone. Par défaut bottom_right." },
+      screen: { type: "integer", minimum: 1, description: "Numéro d'écran : 1 = principal, puis de gauche à droite." },
+      target: { type: "string", enum: ["screen", "window"], description: "window : dans la fenêtre active (celle où l'utilisateur travaille) au lieu de tout l'écran." },
     } }, level: "read" },
 ];
-/**
- * Frontière avec l'outil `placer_avatar` : ses arguments et valeurs restent en français jusqu'au lot des outils ;
- * la fenêtre de l'app (IPC `avatar:place`) reçoit déjà les noms anglais. Un lot suivant supprime cette table.
- */
-const CORNER_OF_TOOL: Record<string, string> = { bas_droite: "bottom_right", bas_gauche: "bottom_left", haut_droite: "top_right", haut_gauche: "top_left", centre: "center" };
-
 const CAPABILITIES: Capability[] = ["voice", "display", "emotion", "approval", "panel", "document", "speech_timing", "choice"];
 
 /** Ce que la fenêtre « Conversation » reçoit du noyau (relayé par l'app, qui relit chaque champ). */
@@ -81,13 +75,13 @@ export function createProtocol(deps: ProtocolDeps) {
 
   async function onToolCall(m: ToolCallMsg): Promise<void> {
     try {
-      if (m.name === "afficher_carte") {
-        bubble.card("info", String(m.args?.titre ?? ""), (m.args?.lignes ?? []).join("\n"));
+      if (m.name === "show_card") {
+        bubble.card("info", String(m.args?.title ?? ""), (m.args?.lines ?? []).join("\n"));
         send({ type: "tool.result", callId: m.callId, ok: true, text: texts.S("cardShown") });
-      } else if (m.name === "placer_avatar" && host?.place) {
+      } else if (m.name === "place_avatar" && host?.place) {
         // Réponse de l'app : { ok, text: { fr, en } } (ou une phrase, version plus ancienne).
         const a = m.args;
-        const r = await host.place({ corner: CORNER_OF_TOOL[a?.coin ?? ""] ?? a?.coin, screen: a?.ecran, target: a?.cible === "fenetre" ? "window" : "screen" });
+        const r = await host.place({ corner: a?.corner, screen: a?.screen, target: a?.target === "window" ? "window" : "screen" });
         const ok = r && typeof r === "object" && "ok" in r ? r.ok !== false : true;
         send({ type: "tool.result", callId: m.callId, ok, text: texts.said(r && typeof r === "object" && "ok" in r ? r.text : r) });
       } else send({ type: "tool.result", callId: m.callId, ok: false, text: texts.S("unknownTool")(m.name) });

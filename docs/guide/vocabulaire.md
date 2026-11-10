@@ -32,7 +32,7 @@ approvals:
   send: ask
   delete: ask
   toolRules:
-    - { source: vocabulary, tool: corriger_vocabulaire, level: write, rule: always }
+    - { source: vocabulary, tool: correct_vocabulary, level: write, rule: always }
 ```
 
 Ne duplique pas l'entrée `memory` si elle existe déjà. `source` doit correspondre à l'id de ton entrée de vocabulaire. Sans cette autorisation ciblée, chaque correction demande l'accord ; les autres écritures et envois gardent leurs règles normales. `write: never` interdit toujours ces écritures.

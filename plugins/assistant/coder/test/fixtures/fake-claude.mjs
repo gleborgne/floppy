@@ -32,14 +32,14 @@ rl.on("line", async (l) => {
   turns++;
   if (!started) {
     started = true;
-    out({ type: "system", subtype: "init", session_id: sid, tools: [...toolsArg.split(",").filter(Boolean), "mcp__floppy__lister_reglages"] });
+    out({ type: "system", subtype: "init", session_id: sid, tools: [...toolsArg.split(",").filter(Boolean), "mcp__floppy__list_settings"] });
   }
   if (text === "hello") {
     startText(); delta("Bon"); delta("jour");
     out({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Bonjour" }] } });
     result();
   } else if (text === "tool") {
-    out({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__floppy__lister_reglages", input: {} }] } });
+    out({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__floppy__list_settings", input: {} }] } });
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "voix : femme" }] } });
     out({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "Read", input: { file_path: "x" } }] } });
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t2", content: [{ type: "text", text: "boum" }], is_error: true }] } });

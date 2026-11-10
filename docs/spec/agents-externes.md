@@ -41,7 +41,7 @@ Les configurations générées référencent le jeton MCP par variable d'environ
 
 Le cerveau principal choisit l'offre `llm` dans `brain.main`, la délégation habituelle choisit `delegate` dans `brain.delegate`. Chaque demande lance un processus dans le fork qui l'emprunte. Le texte arrive sur stdin ou par le protocole WS, pas par une commande de shell. Les shims npm reconnus sont traduits en programme Node + script ; un autre script de shell est refusé.
 
-Chaque tour reçoit un jeton MCP limité aux outils visibles. `deleguer_agent`, `lancer_travail_agent` et `ouvrir_session_agent` sont retirés de ce périmètre pour empêcher une mission de lancer d'autres missions ou un terminal. Un appel d'outil métier passe toujours par le serveur MCP et l'accord du noyau. Les résultats de processus en erreur, flux invalides, outils inconnus et résultats manquants sont refusés. Annulation et délai ferment les processus et révoquent le jeton.
+Chaque tour reçoit un jeton MCP limité aux outils visibles. `delegate_to_agent`, `start_agent_job` et `open_agent_session` sont retirés de ce périmètre pour empêcher une mission de lancer d'autres missions ou un terminal. Un appel d'outil métier passe toujours par le serveur MCP et l'accord du noyau. Les résultats de processus en erreur, flux invalides, outils inconnus et résultats manquants sont refusés. Annulation et délai ferment les processus et révoquent le jeton.
 
 - **OpenCode V2** : serveur privé `--standalone`, configuration et répertoires de données séparés, agent `floppy` dont les permissions refusent tout sauf les outils MCP déclarés. Une configuration système ou administrée détectée fait refuser ce mode ; elle pourrait sinon charger du code avant nos règles. Le service partagé de l'utilisateur n'est pas utilisé.
 - **Pi** : mode print JSON, extension MCP intégrée seule, liste `mcp__floppy__*`, sans outils natifs, ressources projet, skills ni contexte ambiant.
@@ -54,11 +54,11 @@ Le plugin `agent-jobs` apporte cinq outils, sans nouveau mécanisme de tâche da
 
 | Outil | Niveau | Comportement |
 |---|---|---|
-| `lister_agents` | read | Identifiants, alias, session interactive et disponibilité de l'exécution pilotée |
-| `deleguer_agent` | write | Mission ponctuelle avec agent et modèle nommés, résultat dans le tour courant |
-| `lancer_travail_agent` | write | Rend immédiatement l'identifiant du travail ; le résultat arrive plus tard |
-| `travaux_agents` | read | Liste des états ou résultat complet d'un identifiant |
-| `arreter_travail_agent` | write | Demande d'arrêt d'une mission en cours |
+| `list_agents` | read | Identifiants, alias, session interactive et disponibilité de l'exécution pilotée |
+| `delegate_to_agent` | write | Mission ponctuelle avec agent et modèle nommés, résultat dans le tour courant |
+| `start_agent_job` | write | Rend immédiatement l'identifiant du travail ; le résultat arrive plus tard |
+| `list_agent_jobs` | read | Liste des états ou résultat complet d'un identifiant |
+| `stop_agent_job` | write | Demande d'arrêt d'une mission en cours |
 
 Trois travaux simultanés au plus par défaut ; délai global de dix minutes, auquel s'ajoute le délai propre de l'adaptateur (deux minutes par défaut pour les nouveaux agents). La mission conserve l'origine du corps pour router ses accords. Le changement de modèle reste ponctuel.
 

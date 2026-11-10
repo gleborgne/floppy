@@ -31,15 +31,16 @@ async function start(approve = true, dynamic = false) {
 describe("sessions d'agent", () => {
   it("agent fourni par un autre plugin, alias et modèle provider/model conservé", async () => {
     const { k, launched } = await start(true, true);
-    const r = await k.tools.call("ouvrir_session_agent", { agent: "pi agent", modele: "provider/Model-1", consigne: "Fais un rapport" });
+    const r = await k.tools.call("open_agent_session", { agent: "pi agent", model: "provider/Model-1", instruction: "Fais un rapport" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["ouvrir_session_agent"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(launched[0]).toMatchObject({ cmd: process.execPath, args: ["--model", "provider/Model-1", expect.any(String)] });
   });
 
   it("deux sessions proches ont des dossiers et consignes distincts", async () => {
     const { k, launched } = await start();
-    await k.tools.call("ouvrir_session_agent", { agent: "claude", consigne: "Première consigne" });
-    await k.tools.call("ouvrir_session_agent", { agent: "claude", consigne: "Deuxième consigne" });
+    await k.tools.call("open_agent_session", { agent: "claude", instruction: "Première consigne" });
+    await k.tools.call("open_agent_session", { agent: "claude", instruction: "Deuxième consigne" });
     const files = launched.map((l) => l.args.at(-1)!.match(/fichier (.+\.md)/)![1]!);
     expect(files[0]).not.toBe(files[1]); expect(launched[0]!.dir).not.toBe(launched[1]!.dir);
     expect(readFileSync(files[0]!, "utf8")).toContain("Première consigne");
@@ -48,7 +49,7 @@ describe("sessions d'agent", () => {
   it("Claude avec Opus : accord, dossier neuf, consigne dans un fichier, phrase fixe au CLI", async () => {
     const { k, launched, dir } = await start();
     const consigne = "Analyse les bugs des 3 derniers mois ; fais-moi un artefact. & del C:\\ \"rm -rf\"";
-    const r = await k.tools.call("ouvrir_session_agent", { agent: "claude", modele: "Opus", consigne });
+    const r = await k.tools.call("open_agent_session", { agent: "claude", model: "Opus", instruction: consigne });
     expect(r.status).toBe("done");
     expect(launched).toHaveLength(1);
     const l = launched[0]!;
@@ -67,18 +68,18 @@ describe("sessions d'agent", () => {
 
   it("refus de l'accord : rien n'est lancé", async () => {
     const { k, launched } = await start(false);
-    const r = await k.tools.call("ouvrir_session_agent", { agent: "codex", consigne: "Fais un PPT du bilan semestriel" });
+    const r = await k.tools.call("open_agent_session", { agent: "codex", instruction: "Fais un PPT du bilan semestriel" });
     expect(r.status).not.toBe("done");
     expect(launched).toHaveLength(0);
   });
 
   it("dossier donné : doit exister ; modèle et agent vérifiés", async () => {
     const { k, launched, dir } = await start();
-    expect((await k.tools.call("ouvrir_session_agent", { agent: "codex", consigne: "x", dossier: join(dir, "absent") })).status).toBe("failed");
-    expect((await k.tools.call("ouvrir_session_agent", { agent: "claude", consigne: "x", modele: "opus; calc" })).status).toBe("failed");
-    expect((await k.tools.call("ouvrir_session_agent", { agent: "bash", consigne: "x" })).status).toBe("failed");
+    expect((await k.tools.call("open_agent_session", { agent: "codex", instruction: "x", folder: join(dir, "absent") })).status).toBe("failed");
+    expect((await k.tools.call("open_agent_session", { agent: "claude", instruction: "x", model: "opus; calc" })).status).toBe("failed");
+    expect((await k.tools.call("open_agent_session", { agent: "bash", instruction: "x" })).status).toBe("failed");
     expect(launched).toHaveLength(0);
-    expect((await k.tools.call("ouvrir_session_agent", { agent: "antigravity", consigne: "x", dossier: dir, modele: "gemini-4-argon-medium" })).status).toBe("done");
+    expect((await k.tools.call("open_agent_session", { agent: "antigravity", instruction: "x", folder: dir, model: "gemini-4-argon-medium" })).status).toBe("done");
     expect(launched[0]).toMatchObject({ dir, args: ["--model", "gemini-4-argon-medium", "-i", expect.any(String)] });
   });
 

@@ -21,8 +21,8 @@ async function turn(text) {
     note("turn/completed", { turn: { id: "tu1", status: "failed", error: { message: "401 Unauthorized" } } });
     return;
   } else {
-    note("item/started", { item: { type: "mcpToolCall", id: "c1", server: "floppy", tool: "lister_reglages", arguments: {}, status: "inProgress" } });
-    note("item/completed", { item: { type: "mcpToolCall", id: "c1", server: "floppy", tool: "lister_reglages", status: "completed", result: { content: [{ type: "text", text: "ok" }] } } });
+    note("item/started", { item: { type: "mcpToolCall", id: "c1", server: "floppy", tool: "list_settings", arguments: {}, status: "inProgress" } });
+    note("item/completed", { item: { type: "mcpToolCall", id: "c1", server: "floppy", tool: "list_settings", status: "completed", result: { content: [{ type: "text", text: "ok" }] } } });
     note("item/agentMessage/delta", { itemId: "m1", delta: "Salut" });
   }
   note("turn/completed", { turn: { id: "tu1", status: "completed", error: null } });

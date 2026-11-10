@@ -1,4 +1,4 @@
-// Garde-fou « fausse action » : la relance traite `deleguer` comme le chemin principal (phrase d'attente + arrêt).
+// Garde-fou « fausse action » : la relance traite `delegate` comme le chemin principal (phrase d'attente + arrêt).
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,7 +58,7 @@ beforeAll(async () => {
         calls++;
         res.setHeader("content-type", "text/event-stream");
         // 1er appel : « C'est fait » sans outil (fausse action) ; 2e appel (relance) : délègue ; un 3e serait une faute.
-        res.end(repeatedClaim ? textReply(claimText) : calls === 1 ? textReply("C'est fait.") : toolReply("deleguer", JSON.stringify({ tache: "écris un script" })));
+        res.end(repeatedClaim ? textReply(claimText) : calls === 1 ? textReply("C'est fait.") : toolReply("delegate", JSON.stringify({ task: "écris un script" })));
       } else {
         res.setHeader("content-type", "application/json");
         res.end(req.url === "/v1/models" ? JSON.stringify({ data: [{ id: "gemma" }] }) : "{}");

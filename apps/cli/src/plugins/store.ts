@@ -1,6 +1,6 @@
 // Installation des plugins tiers : récupérer, contrôler, faire relire, puis installer sur un clic de l'utilisateur.
 //
-// 1. `installer_plugin` (outil, niveau write) : copie la source dans une quarantaine (<home>/plugins-pending/<id>),
+// 1. `install_plugin` (outil, niveau write) : copie la source dans une quarantaine (<home>/plugins-pending/<id>),
 //    lance les contrôles automatiques puis la revue par un agent IA. Aucun code du plugin n'est exécuté.
 //    Sans agent de code (Claude Code, Codex, Antigravity), l'installation est refusée.
 // 2. Un réglage par plugin en attente (`plugin_installer_<id>`, risque cli : clic ou CLI, jamais à la voix) montre le
@@ -219,7 +219,7 @@ export function createPluginStore(kernel: Kernel, opts: StoreOptions): PluginSto
 
   const tools: ToolDef[] = [
     {
-      name: "installer_plugin",
+      name: "install_plugin",
       description: "Récupère un plugin tiers (dossier, archive .zip, adresse https://…zip ou dépôt git, avec #branche ou #commit), le contrôle, puis le fait relire par un agent IA. N'installe ni n'active rien : l'utilisateur décide ensuite d'un clic dans la fenêtre des réglages.",
       inputSchema: { type: "object", properties: { source: { type: "string", description: "chemin ou adresse du plugin" } }, required: ["source"] },
       // write : télécharge et lance un agent de code ; rien n'est exécuté du plugin.
@@ -234,7 +234,7 @@ export function createPluginStore(kernel: Kernel, opts: StoreOptions): PluginSto
       },
     },
     {
-      name: "plugins_tiers",
+      name: "list_third_party_plugins",
       description: "Liste les plugins tiers installés (source, version, verdict de la revue) et ceux en attente d'installation.",
       inputSchema: { type: "object", properties: {} },
       level: "read",
@@ -253,7 +253,7 @@ export function createPluginStore(kernel: Kernel, opts: StoreOptions): PluginSto
       },
     },
     {
-      name: "desinstaller_plugin",
+      name: "uninstall_plugin",
       description: "Désinstalle un plugin tiers : il est désactivé, ses fichiers sont supprimés. Retire aussi un plugin en attente d'installation.",
       inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
       level: "delete",

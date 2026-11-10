@@ -2,7 +2,7 @@
 // C'est une « application » : l'utilisateur l'ajoute dans Réglages → Connecteurs (manifest.addable).
 //
 // - Service `search` (offert par ctx.offer) : pour les autres plugins (la Veille), choisi dans un slot.
-// - Outil `chercher_searxng(question)` : la même recherche, pour le cerveau (liste courte : titre, site, lien, résumé).
+// - Outil `search_searxng(question)` : la même recherche, pour le cerveau (liste courte : titre, site, lien, résumé).
 // - Un seul code pour les deux. Rien n'est « cloud » : les requêtes ne partent que vers l'adresse donnée.
 // - SearXNG doit accepter le format JSON : dans son settings.yml, `search.formats: [html, json]`.
 import { z } from "zod";
@@ -135,7 +135,7 @@ export function createSearxngPlugin(fetchImpl?: FetchLike) {
         start(f) { f.provide("search", service); },
       });
       ctx.tools.register([{
-        name: "chercher_searxng",
+        name: "search_searxng",
         description: "Cherche sur internet avec SearXNG (actualité, documentation, tout ce qui n'est pas dans tes autres outils). Rend une liste de résultats : titre, site, lien, résumé. Choisis les plus utiles et réponds en une ou deux phrases ; ne lis pas les liens à voix haute. question : la recherche, en clair.",
         inputSchema: { type: "object", properties: { question: { type: "string" } }, required: ["question"] },
         level: "read",

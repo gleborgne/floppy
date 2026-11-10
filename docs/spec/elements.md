@@ -70,7 +70,7 @@ flowchart LR
     X["Secrets<br/>Gestionnaire d'identification Windows"]
   end
   W["Fenêtre des réglages<br/>(formulaires générés)"]
-  F["Floppy à la voix<br/>lister_elements · activer_element · utiliser_element · ajouter_application"]
+  F["Floppy à la voix<br/>list_items · toggle_item · use_item · add_app"]
   L & O & T & V & R & E -- "ctx.items.declare(fournisseur)" --> C
   L & O & T & V & R & E -. "ajouts, modifs, désactivés" .-> S
   O & T -. "clés, jetons" .-> X
@@ -119,18 +119,18 @@ On ne peut pas désactiver l'élément en service sans remplaçant (le modèle c
 
 | Opération | Fenêtre (clic) | CLI | Voix |
 |---|---|---|---|
-| Lister | oui | `GET /items` | `lister_elements` |
-| Activer / désactiver | oui | `POST /items` | `activer_element` ; activer un élément **cloud** = demande d'accord |
-| Passer sur un élément (bouton « Utiliser » : l'avatar affiché) | oui | `POST /items` | `utiliser_element` : seulement les actions `use` que l'élément marque `voice: true` (choix sans risque). « Utiliser » d'un modèle (l'ajouter à la liste) reste refusé à la voix |
-| Ajouter une **application** livrée avec Floppy (Orca, navigateur…) | oui | `POST /items` | `ajouter_application` : **toujours** une demande d'accord, valeurs par défaut seulement |
+| Lister | oui | `GET /items` | `list_items` |
+| Activer / désactiver | oui | `POST /items` | `toggle_item` ; activer un élément **cloud** = demande d'accord |
+| Passer sur un élément (bouton « Utiliser » : l'avatar affiché) | oui | `POST /items` | `use_item` : seulement les actions `use` que l'élément marque `voice: true` (choix sans risque). « Utiliser » d'un modèle (l'ajouter à la liste) reste refusé à la voix |
+| Ajouter une **application** livrée avec Floppy (Orca, navigateur…) | oui | `POST /items` | `add_app` : **toujours** une demande d'accord, valeurs par défaut seulement |
 | Ajouter un autre élément (MCP, commande…), modifier, supprimer | oui | `POST /items` | **jamais** (un MCP local lance une commande sur le PC) |
 
 Le contrôle est fait dans `CatalogRegistry.run` : le modèle ne peut pas le contourner. Chaque opération va au journal.
 
 ### Installer une application à la voix
 
-« Floppy, tu sais te connecter à Orca ? » → `lister_elements` montre, sous « À ajouter », les applications pas encore
-ajoutées (plugins `manifest.addable`). « Oui, j'ai un plugin pour ça. » → « Alors installe-le. » → `ajouter_application`.
+« Floppy, tu sais te connecter à Orca ? » → `list_items` montre, sous « À ajouter », les applications pas encore
+ajoutées (plugins `manifest.addable`). « Oui, j'ai un plugin pour ça. » → « Alors installe-le. » → `add_app`.
 
 - Seuls les fournisseurs marqués `voiceAdd` l'acceptent (les « Applications » du noyau) : c'est du code livré avec Floppy.
   Un MCP ou une commande ne s'ajoutent jamais à la voix.
@@ -139,7 +139,7 @@ ajoutées (plugins `manifest.addable`). « Oui, j'ai un plugin pour ça. » → 
 - Le formulaire prend ses **valeurs par défaut**. S'il a un champ obligatoire sans défaut (adresse, clé), Floppy répond
   d'ajouter l'application dans la fenêtre des réglages, sans rien demander.
 - Une application « une seule à la fois » déjà ajoutée n'est pas ajoutée deux fois : éteinte, elle se rallume avec
-  `activer_element`.
+  `toggle_item`.
 
 ## Où sont gardées les choses
 
@@ -274,7 +274,7 @@ Exemple : ajouter le MCP Office 365 = « Ajouter » → « Serveur MCP local » 
 ## Applications : des plugins qu'on ajoute ou retire
 
 Certains plugins sont des **applications** : l'utilisateur les ajoute, les éteint ou les retire lui-même, comme un
-connecteur. Exemples : **Navigateur** (outil `ouvrir_url`) et **Orca**. Un plugin le devient en déclarant
+connecteur. Exemples : **Navigateur** (outil `open_url`) et **Orca**. Un plugin le devient en déclarant
 `manifest.addable` (`packages/core/src/plugin/manifest.ts`) :
 
 ```ts
@@ -333,7 +333,7 @@ Chaque ligne de Connecteurs montre le **vrai logo** de l'outil, à gauche du nom
 
 ### Navigateur (`plugins/tools/browser`)
 
-- Outil `ouvrir_url`. Seulement `http` et `https`. Lancé sans shell (`rundll32 url.dll,FileProtocolHandler` sous
+- Outil `open_url`. Seulement `http` et `https`. Lancé sans shell (`rundll32 url.dll,FileProtocolHandler` sous
   Windows, ou le programme choisi).
 - Accord avant chaque ouverture par défaut (case « Demander mon accord avant d'ouvrir »).
 - Avant, c'était un outil de l'avatar : un corps sans écran (Reachy, Telegram) ne pouvait pas ouvrir de page, et on
@@ -379,8 +379,8 @@ sequenceDiagram
   `chercher_personnes`, `chercher_fichiers`, `conversations_teams`. Le contenu des mails est marqué comme une donnée,
   jamais une consigne.
 - Se connecter / se déconnecter : boutons de l'élément, clic seulement (refusé à la voix).
-- **Mails non lus par période** : `m365_mails_non_lus` accepte `date` (jour local `AAAA-MM-JJ`,
-  `aujourd'hui` / `today`, `hier` / `yesterday`) ou `debut` et `fin`. Les dates de la plage sont incluses ;
+- **Mails non lus par période** : `m365_unread_mail` accepte `date` (jour local `AAAA-MM-JJ`,
+  `aujourd'hui` / `today`, `hier` / `yesterday`) ou `start` et `end`. Les dates de la plage sont incluses ;
   les heures locales `AAAA-MM-JJTHH:MM` définissent un début inclus et une fin exclue. « Ce matin » :
   de 00:00 à 12:00 du jour courant. Sans période, tous les non-lus de la boîte de réception.
   Le filtre porte sur la **réception** des mails actuellement non lus, dans Graph, avant la limite `max`.
@@ -392,36 +392,36 @@ sequenceDiagram
   et [le décompte des résultats](https://learn.microsoft.com/en-us/graph/query-parameters#count-parameter).
 - **Recherches vocales fines** (`plugins/tools/m365/src/query.ts`, `mail-search.ts`, `calendar.ts`,
   `teams-read.ts`, `channel-search.ts`) :
-  - Périodes communes à Outlook, Teams et l'agenda : `date`, `debut` + `fin`, `depuis` (jusqu'à maintenant),
-    ou `periode` (`ce_matin` 00–12 h, `cet_apres_midi` 12–18 h, `cette_semaine`, `semaine_derniere`,
-    `semaine_prochaine`, `ce_mois`). Semaines du lundi au dimanche, heures locales ; `demain` / `tomorrow`
-    également reconnus. Les modes sont exclusifs. `jours` reste compatible avec les anciennes signatures,
-    et `date` + `jours` avec l'agenda. Une mauvaise date n'est jamais remplacée par aujourd'hui.
-  - `m365_chercher_mails` combine expéditeur, destinataire (À/Cc), sujet, texte, période, état de lecture,
+  - Périodes communes à Outlook, Teams et l'agenda : `date`, `start` + `end`, `since` (jusqu'à maintenant),
+    ou `period` (`this_morning` 00–12 h, `this_afternoon` 12–18 h, `this_week`, `last_week`,
+    `next_week`, `this_month`). Semaines du lundi au dimanche, heures locales ; `demain` / `tomorrow`
+    également reconnus. Les modes sont exclusifs. `days` reste compatible avec les anciennes signatures,
+    et `date` + `days` avec l'agenda. Une mauvaise date n'est jamais remplacée par aujourd'hui.
+  - `m365_search_mail` combine expéditeur, destinataire (À/Cc), sujet, texte, période, état de lecture,
     présence de pièce jointe, dossier et tri. Aucun mot-clé obligatoire. Période sur la réception, ou l'envoi
     dans le dossier Envoyés. Les noms sont des filtres textuels, pas des identités devinées.
     Sans période, un mot présélectionne les candidats dans l'index Outlook ; les autres critères sont
     revérifiés sur les messages. Avec période, Graph filtre dates et états, le texte est vérifié localement.
     `max` s'applique après ces filtres. Le plafond de 1 000 résultats de l'index rend le parcours partiel.
-  - `m365_lire_fil_mail(id)` retrouve la conversation du mail et lit les échanges reçus et envoyés,
+  - `m365_read_mail_thread(id)` retrouve la conversation du mail et lit les échanges reçus et envoyés,
     chronologiquement, avec auteurs, destinataires et ids. Les derniers messages sont affichés en priorité.
-  - `m365_messages_teams` accepte une personne facultative, une conversation (id ou nom), un type (privé/groupe),
-    un sens (reçus/envoyés/les deux), des mots, liens, pièces jointes et mentions. `seulement_lui` reste un alias
-    de `sens=recus`. Avec une personne, reçus signifie ses propres messages ; les deux côtés gardent le contexte
+  - `m365_teams_messages` accepte une personne facultative, une conversation (id ou nom), un type (`chat_type` : all/private/group),
+    un sens (`direction` : received/sent/both), des mots, liens, pièces jointes et mentions. `only_them` reste un alias
+    de `direction=received`. Avec une personne, reçus signifie ses propres messages ; les deux côtés gardent le contexte
     du groupe. Homonymes ou groupes ambigus : demander lequel, même pour lire.
-    `m365_lire_conversation_teams` et `m365_teams_non_lus` partagent les filtres et périodes.
+    `m365_read_teams_chat` et `m365_teams_unread` partagent les filtres et périodes.
     Les non-lus sont calculés message par message après la dernière lecture, même si le dernier message est
     le nôtre ; les états de lecture absents sont explicitement inconnus. Défaut : 90 jours pour les non-lus,
     14 pour la recherche, 30 pour la lecture. Les canaux n'ont pas d'état non lu garanti.
-  - `m365_messages_canal` cherche dans les publications et leurs réponses, y compris une réponse récente
+  - `m365_channel_messages` cherche dans les publications et leurs réponses, y compris une réponse récente
     dans un vieux fil. Période, auteur, mots, mention, lien et pièce jointe se combinent. La publication
     d'origine reste affichée comme contexte lorsqu'elle ne correspond pas aux filtres. Les réponses ont
     aussi leurs ids. Les permissions de lecture des canaux restent nécessaires.
-  - `m365_agenda` et `m365_prochain_rdv` combinent période, participant (organisateur compris), organisateur,
+  - `m365_calendar` et `m365_next_meeting` combinent période, participant (organisateur compris), organisateur,
     sujet et lieu. Ils rendent participants, état de réponse, lieu et liens. L'agenda inclut les événements
     qui chevauchent la période ; le prochain rendez-vous exclut ceux déjà commencés. Défauts : aujourd'hui
     pour l'agenda, maintenant + 14 jours pour le prochain rendez-vous. Les annulations sont écartées.
-  - `m365_creneaux_libres` calcule les intervalles libres du seul agenda personnel (pas celui des collègues).
+  - `m365_free_slots` calcule les intervalles libres du seul agenda personnel (pas celui des collègues).
     Défauts : 7 jours, lundi-vendredi 09–18 h, durée 30 min, marge 0 min ; tous réglables dans l'appel.
     Les réunions occupées, provisoires et absences bloquent ; les événements libres, annulés ou refusés
     ne bloquent pas. Les chevauchements et marges sont fusionnés. Aucun créneau passé n'est proposé.
@@ -434,8 +434,8 @@ sequenceDiagram
     le cerveau puisse reprendre les critères ou la référence au tour suivant (« et hier ? », « lis celui-là »).
     La continuité utilise l'historique de conversation existant ; aucun cache de recherche global n'est ajouté.
 - **Écriture dans l'agenda** (permission `Calendars.ReadWrite`, niveau `write` = carte d'accord à chaque fois) :
-  `m365_ajouter_rdv` (titre, début, durée, lieu, rappel ; personne n'est invité, donc aucun mail n'est envoyé) et
-  `m365_ajouter_rappel` (créneau de 15 min marqué « libre », catégorie « Floppy », notification à l'heure dite).
+  `m365_add_meeting` (title, start, duration_min, location, reminder_min ; personne n'est invité, donc aucun mail n'est envoyé) et
+  `m365_add_reminder` (créneau de 15 min marqué « libre », catégorie « Floppy », notification à l'heure dite).
   Heures données en heure locale (`AAAA-MM-JJTHH:MM`), envoyées à Graph en UTC. Le cerveau reçoit la date ISO et
   l'heure actuelle dans son prompt.
 

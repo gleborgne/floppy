@@ -5,15 +5,15 @@ import { Scan, choice, dataText, dateText, invalid, limit, matches, period, peri
 
 const fields = {
   ...periodFields,
-  requete: { type: "string", description: "Mots à rechercher dans expéditeur, sujet et corps. Facultatif si d'autres filtres sont donnés." },
-  expediteur: { type: "string", description: "Nom complet ou adresse de l'expéditeur ; ne pas transformer un prénom en adresse devinée." },
-  destinataire: { type: "string", description: "Nom ou adresse parmi À et Cc." },
-  sujet: { type: "string", description: "Mots dans l'objet." },
-  contient: { type: "string", description: "Mots dans le texte du mail." },
-  lecture: { type: "string", enum: ["tous", "lus", "non_lus"] },
-  avec_piece_jointe: { type: "boolean" },
-  dossier: { type: "string", enum: ["tous", "reception", "envoyes", "archives", "brouillons"], description: "Défaut tous. La période porte sur l'envoi pour envoyes, la réception sinon." },
-  tri: { type: "string", enum: ["recent", "ancien"], description: "Défaut recent. max limite l'affichage après filtrage." },
+  query: { type: "string", description: "Mots à rechercher dans expéditeur, sujet et corps. Facultatif si d'autres filtres sont donnés." },
+  sender: { type: "string", description: "Nom complet ou adresse de l'expéditeur ; ne pas transformer un prénom en adresse devinée." },
+  recipient: { type: "string", description: "Nom ou adresse parmi À et Cc." },
+  subject: { type: "string", description: "Mots dans l'objet." },
+  contains: { type: "string", description: "Mots dans le texte du mail." },
+  read_state: { type: "string", enum: ["all", "read", "unread"] },
+  with_attachment: { type: "boolean" },
+  folder: { type: "string", enum: ["all", "inbox", "sent", "archive", "drafts"], description: "Défaut all. La période porte sur l'envoi pour sent, la réception sinon." },
+  sort: { type: "string", enum: ["recent", "oldest"], description: "Défaut recent (oldest : les plus anciens d'abord). max limite l'affichage après filtrage." },
   max: { type: "integer", minimum: 1, maximum: 50 },
 };
 const address = (v: any) => `${v?.emailAddress?.name ?? ""} ${v?.emailAddress?.address ?? ""}`;
@@ -22,39 +22,39 @@ const label = (v: any) => v?.emailAddress?.name || v?.emailAddress?.address || "
 export function mailSearchTools(g: GraphAuth, max: number): ToolDef[] {
   const select = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,hasAttachments,conversationId,webLink";
   return [{
-    name: "m365_chercher_mails",
-    description: "Cherche des mails Outlook en combinant personne, période, sujet, texte, lecture et pièces jointes. Exemples : mails de Sophie hier sur le budget ; dernier mail envoyé à Contoso. Aucun mot-clé obligatoire. Les noms sont des filtres textuels, pas une identité résolue. Résultats numérotés avec id pour lire le mail ou son fil. Si recherche partielle, ne pas affirmer un total exhaustif ni l'absence de mail.",
+    name: "m365_search_mail",
+    description: "Cherche des mails Outlook en combinant sender, recipient, période, subject, contains (texte), read_state (all/read/unread) et with_attachment ; query : mots libres. Exemples : mails de Sophie hier sur le budget ; dernier mail envoyé à Contoso. Aucun mot-clé obligatoire. Les noms sont des filtres textuels, pas une identité résolue. Résultats numérotés avec id pour lire le mail ou son fil. Si recherche partielle, ne pas affirmer un total exhaustif ni l'absence de mail.",
     inputSchema: { type: "object", properties: fields }, level: "read",
     handler: safeHandler(async (a) => {
       const p = period(a), scan = new Scan();
-      const folder = choice(a, "dossier", ["tous", "reception", "envoyes", "archives", "brouillons"], "tous");
-      const read = choice(a, "lecture", ["tous", "lus", "non_lus"], "tous");
-      const sort = choice(a, "tri", ["recent", "ancien"], "recent");
-      const by = folder === "envoyes" ? "sentDateTime" : "receivedDateTime";
+      const folder = choice(a, "folder", ["all", "inbox", "sent", "archive", "drafts"], "all");
+      const read = choice(a, "read_state", ["all", "read", "unread"], "all");
+      const sort = choice(a, "sort", ["recent", "oldest"], "recent");
+      const by = folder === "sent" ? "sentDateTime" : "receivedDateTime";
       const filters = [`${by} ge ${p ? p.start.toISOString() : "0001-01-01T00:00:00Z"}`];
       if (p) filters.push(`${by} lt ${p.end.toISOString()}`);
-      if (read !== "tous") filters.push(`isRead eq ${read === "lus"}`);
-      if (typeof a.avec_piece_jointe === "boolean") filters.push(`hasAttachments eq ${a.avec_piece_jointe}`);
-      const folders: Record<string, string> = { reception: "inbox", envoyes: "sentitems", archives: "archive", brouillons: "drafts" };
-      const path = folder === "tous" ? "me/messages" : `me/mailFolders/${folders[folder]}/messages`;
+      if (read !== "all") filters.push(`isRead eq ${read === "read"}`);
+      if (typeof a.with_attachment === "boolean") filters.push(`hasAttachments eq ${a.with_attachment}`);
+      const folders: Record<string, string> = { inbox: "inbox", sent: "sentitems", archive: "archive", drafts: "drafts" };
+      const path = folder === "all" ? "me/messages" : `me/mailFolders/${folders[folder]}/messages`;
       // Sans période, garder la recherche indexée : parcourir seulement les mails récents raterait
       // facilement un ancien échange. Un mot sûr présélectionne les candidats ; tous les critères
       // sont ensuite revérifiés. Graph interdit de combiner $search avec $filter/$orderby.
       let indexed = "";
-      if (!p) for (const [key, field] of [["sujet", "subject"], ["contient", "body"], ["requete", ""], ["expediteur", "from"], ["destinataire", "recipients"]]) {
+      if (!p) for (const [key, field] of [["subject", "subject"], ["contains", "body"], ["query", ""], ["sender", "from"], ["recipient", "recipients"]]) {
         const word = String(a[key!] ?? "").match(/[\p{L}\p{N}]+/gu)?.find((w) => w.length >= 3 && !/^(AND|OR|NOT)$/i.test(w));
         if (word) { indexed = field ? `${field}:${word}` : word; break; }
       }
-      const query = indexed ? `$search=${encodeURIComponent(`"${indexed}"`)}&$top=100` : `$filter=${encodeURIComponent(filters.join(" and "))}&$orderby=${by} ${sort === "ancien" ? "asc" : "desc"}&$top=50`;
+      const query = indexed ? `$search=${encodeURIComponent(`"${indexed}"`)}&$top=100` : `$filter=${encodeURIComponent(filters.join(" and "))}&$orderby=${by} ${sort === "oldest" ? "asc" : "desc"}&$top=50`;
       const all = await scan.pages(g, `${path}?${query}&$select=${select}`);
       if (indexed && all.length >= 1000) scan.partial = true; // plafond du moteur de recherche Outlook
-      const found = all.filter((m) => (read === "tous" || m.isRead === (read === "lus"))
-        && (typeof a.avec_piece_jointe !== "boolean" || m.hasAttachments === a.avec_piece_jointe)
-        && matches(address(m.from), a.expediteur)
-        && matches([...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])].map(address).join(" "), a.destinataire)
-        && matches(m.subject, a.sujet) && matches(plain(String(m.body?.content ?? ""), 1000000), a.contient)
-        && matches(`${address(m.from)} ${m.subject} ${plain(String(m.body?.content ?? ""), 1000000)}`, a.requete));
-      found.sort((x, y) => (Date.parse(x[by]) - Date.parse(y[by])) * (sort === "ancien" ? 1 : -1));
+      const found = all.filter((m) => (read === "all" || m.isRead === (read === "read"))
+        && (typeof a.with_attachment !== "boolean" || m.hasAttachments === a.with_attachment)
+        && matches(address(m.from), a.sender)
+        && matches([...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])].map(address).join(" "), a.recipient)
+        && matches(m.subject, a.subject) && matches(plain(String(m.body?.content ?? ""), 1000000), a.contains)
+        && matches(`${address(m.from)} ${m.subject} ${plain(String(m.body?.content ?? ""), 1000000)}`, a.query));
+      found.sort((x, y) => (Date.parse(x[by]) - Date.parse(y[by])) * (sort === "oldest" ? 1 : -1));
       const shown = found.slice(0, limit(a.max, max));
       const render = (lang: string) => {
         const fr = lang === "fr";
@@ -64,7 +64,7 @@ export function mailSearchTools(g: GraphAuth, max: number): ToolDef[] {
       return { status: "done", text: T(render("fr"), render("en")) };
     }),
   }, {
-    name: "m365_lire_fil_mail",
+    name: "m365_read_mail_thread",
     description: "Lit les échanges reçus et envoyés du fil auquel appartient un mail. Pour « qu'est-ce que je lui avais répondu ? », « résume nos échanges ». id : id du mail déjà trouvé. Chaque mail conserve auteur, date et id. Ne déduis pas une absence de réponse si le parcours est partiel.",
     inputSchema: { type: "object", properties: { id: { type: "string" }, max: { type: "integer", minimum: 1, maximum: 50 } }, required: ["id"] }, level: "read",
     handler: safeHandler(async (a) => {

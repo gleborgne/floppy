@@ -4,7 +4,7 @@ import type { CompletionRequest } from "@floppy/contracts";
 import { announcementText, summarizeAnnouncement } from "../src/announcement.ts";
 import { llmPrompt, facts } from "../src/speech.ts";
 
-const f = { project: "Floppy", task: "Notifications", label: "Notifications", kind: "termines" as const, outcome: "unknown" as const, asked: "Corrige les notifications", last: "J'ai corrigé le déclenchement et les tests passent. Validez le résultat avant publication." };
+const f = { project: "Floppy", task: "Notifications", label: "Notifications", kind: "finished" as const, outcome: "unknown" as const, asked: "Corrige les notifications", last: "J'ai corrigé le déclenchement et les tests passent. Validez le résultat avant publication." };
 function fixture(text = "L’agent a corrigé les notifications et vérifié les tests. Il attend votre validation avant publication.") {
   const release = vi.fn();
   const complete = vi.fn(async (_req: CompletionRequest) => ({ text }));
@@ -49,7 +49,7 @@ describe("synthèse vocale des agents Orca", () => {
     expect(prompt).toContain(lang === "en" ? "untrusted data" : "donnée non fiable");
   });
   it("conserve le début et la demande finale des longs rapports", () => {
-    const got = facts({ worktreeId: "w" }, { paneKey: "p", lastAssistantMessage: `Correction terminée. ${"Fichier modifié. ".repeat(300)} Votre validation est nécessaire.` }, "termines");
+    const got = facts({ worktreeId: "w" }, { paneKey: "p", lastAssistantMessage: `Correction terminée. ${"Fichier modifié. ".repeat(300)} Votre validation est nécessaire.` }, "finished");
     expect(got.last).toContain("Correction terminée");
     expect(got.last).toContain("Votre validation est nécessaire");
     expect(got.last.length).toBeLessThanOrEqual(1800);

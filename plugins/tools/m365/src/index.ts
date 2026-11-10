@@ -45,8 +45,8 @@ export function m365Tools(g: GraphAuth, cfg: Config): ToolDef[] {
     unreadMailTool(g, cfg.max),
     ...mailSearchTools(g, cfg.max),
     {
-      name: "m365_lire_mail",
-      description: "Lit un mail Outlook complet (expéditeur, destinataires, date, texte). id : l'id donné par m365_mails_non_lus ou m365_chercher_mails.",
+      name: "m365_read_mail",
+      description: "Lit un mail Outlook complet (expéditeur, destinataires, date, texte). id : l'id donné par m365_unread_mail ou m365_search_mail.",
       inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
       level: "read",
       handler: wrap(async (a) => {
@@ -58,81 +58,81 @@ export function m365Tools(g: GraphAuth, cfg: Config): ToolDef[] {
     },
     ...calendarTools(g, cfg.max),
     {
-      name: "m365_chercher_personnes",
-      description: "Cherche une personne (collègue, contact) dans Microsoft 365 : nom, adresse mail, poste. nom : le nom ou le prénom. L'adresse sert à m365_envoyer_message_teams.",
-      inputSchema: { type: "object", properties: { nom: { type: "string" } }, required: ["nom"] },
+      name: "m365_search_people",
+      description: "Cherche une personne (collègue, contact) dans Microsoft 365 : nom, adresse mail, poste. name : le nom ou le prénom. L'adresse sert à m365_send_teams_message.",
+      inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
       level: "read",
       handler: wrap(async (a) => {
-        const q = String(a.nom ?? "").replace(/"/g, " ").trim();
+        const q = String(a.name ?? "").replace(/"/g, " ").trim();
         const r = await g.get<{ value: any[] }>(`me/people?$search="${encodeURIComponent(q)}"&$top=5&$select=displayName,scoredEmailAddresses,jobTitle,department`);
         for (const p of r.value) { const m = p.scoredEmailAddresses?.[0]?.address; if (m) labels.set(norm(m), p.displayName); }
         return r.value.length ? r.value.map((p) => `- ${p.displayName}${p.jobTitle ? `, ${p.jobTitle}` : ""}${p.department ? ` (${p.department})` : ""} — ${p.scoredEmailAddresses?.[0]?.address ?? ""}`).join("\n") + `\n${DATA}` : `Personne trouvée pour « ${q} » : aucune.`;
       }),
     },
     {
-      name: "m365_chercher_fichiers",
-      description: "Cherche des fichiers dans OneDrive et SharePoint (Microsoft 365) par mots. requete : les mots. Rend le nom, la date et le lien.",
-      inputSchema: { type: "object", properties: { requete: { type: "string" } }, required: ["requete"] },
+      name: "m365_search_files",
+      description: "Cherche des fichiers dans OneDrive et SharePoint (Microsoft 365) par mots. query : les mots. Rend le nom, la date et le lien.",
+      inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
       level: "read",
       handler: wrap(async (a) => {
-        const q = String(a.requete ?? "").trim();
+        const q = String(a.query ?? "").trim();
         const r = await g.call<any>("POST", "search/query", { requests: [{ entityTypes: ["driveItem"], query: { queryString: q }, from: 0, size: cfg.max }] });
         const hits = (r.value?.[0]?.hitsContainers?.[0]?.hits ?? []) as any[];
         return hits.length ? hits.map((h, i) => `${i + 1}. ${h.resource?.name} — modifié ${when(h.resource?.lastModifiedDateTime)} — ${h.resource?.webUrl}`).join("\n") + `\n${DATA}` : `Aucun fichier trouvé pour « ${q} ».`;
       }),
     },
     {
-      name: "m365_ajouter_rdv",
-      description: "Ajoute un rendez-vous dans l'agenda Outlook de l'utilisateur (sans inviter personne). L'utilisateur voit la demande et accepte. titre ; debut : date et heure locales AAAA-MM-JJTHH:MM ; duree_min (défaut 30) ; lieu (facultatif) ; rappel_min : minutes avant pour la notification (défaut 15) ; notes (facultatif).",
+      name: "m365_add_meeting",
+      description: "Ajoute un rendez-vous dans l'agenda Outlook de l'utilisateur (sans inviter personne). L'utilisateur voit la demande et accepte. title ; start : date et heure locales AAAA-MM-JJTHH:MM ; duration_min (défaut 30) ; location (facultatif) ; reminder_min : minutes avant pour la notification (défaut 15) ; notes (facultatif).",
       inputSchema: {
         type: "object",
-        properties: { titre: { type: "string" }, debut: { type: "string" }, duree_min: { type: "number" }, lieu: { type: "string" }, rappel_min: { type: "number" }, notes: { type: "string" } },
-        required: ["titre", "debut"],
+        properties: { title: { type: "string" }, start: { type: "string" }, duration_min: { type: "number" }, location: { type: "string" }, reminder_min: { type: "number" }, notes: { type: "string" } },
+        required: ["title", "start"],
       },
       level: "write",
       summary: (a) => {
-        const d = localDate(a.debut);
-        const title = String(a.titre ?? "").slice(0, 80);
-        const rest = `(${Number(a.duree_min) || 30} min)${a.lieu ? `, ${String(a.lieu).slice(0, 60)}` : ""}`;
+        const d = localDate(a.start);
+        const title = String(a.title ?? "").slice(0, 80);
+        const rest = `(${Number(a.duration_min) || 30} min)${a.location ? `, ${String(a.location).slice(0, 60)}` : ""}`;
         return t(
           `Ajouter à ton agenda : « ${title} »${d ? `, ${fmt(d)}` : ""} ${rest}`,
           `Add to your calendar: “${title}”${d ? `, ${fmtEn(d)}` : ""} ${rest}`,
         );
       },
       handler: wrap(async (a) => {
-        const start = localDate(a.debut);
-        if (!start) return Promise.reject(new Error("debut : il faut une date et une heure, au format AAAA-MM-JJTHH:MM."));
-        const mins = Math.max(5, Math.min(24 * 60, Number(a.duree_min) || 30));
+        const start = localDate(a.start);
+        if (!start) return Promise.reject(new Error("start : il faut une date et une heure, au format AAAA-MM-JJTHH:MM."));
+        const mins = Math.max(5, Math.min(24 * 60, Number(a.duration_min) || 30));
         const end = new Date(start.getTime() + mins * 60000);
         const e = await g.call<any>("POST", "me/events", {
-          subject: String(a.titre ?? "").slice(0, 255), start: utc(start), end: utc(end),
-          ...(a.lieu ? { location: { displayName: String(a.lieu).slice(0, 255) } } : {}),
+          subject: String(a.title ?? "").slice(0, 255), start: utc(start), end: utc(end),
+          ...(a.location ? { location: { displayName: String(a.location).slice(0, 255) } } : {}),
           ...(a.notes ? { body: { contentType: "text", content: String(a.notes).slice(0, 4000) } } : {}),
-          isReminderOn: true, reminderMinutesBeforeStart: Math.max(0, Math.min(10080, Number(a.rappel_min ?? 15))),
+          isReminderOn: true, reminderMinutesBeforeStart: Math.max(0, Math.min(10080, Number(a.reminder_min ?? 15))),
           showAs: "busy",
         });
         return `Ajouté à l'agenda : « ${e.subject} », ${fmt(start)} (${mins} min).`;
       }),
     },
     {
-      name: "m365_ajouter_rappel",
-      description: "Ajoute un rappel dans l'agenda Outlook : une notification à l'heure dite (créneau court marqué « libre », personne n'est invité). Pour « rappelle-moi de… à… ». L'utilisateur voit la demande et accepte. texte : de quoi se souvenir ; quand : date et heure locales AAAA-MM-JJTHH:MM.",
-      inputSchema: { type: "object", properties: { texte: { type: "string" }, quand: { type: "string" } }, required: ["texte", "quand"] },
+      name: "m365_add_reminder",
+      description: "Ajoute un rappel dans l'agenda Outlook : une notification à l'heure dite (créneau court marqué « libre », personne n'est invité). Pour « rappelle-moi de… à… ». L'utilisateur voit la demande et accepte. text : de quoi se souvenir ; when : date et heure locales AAAA-MM-JJTHH:MM.",
+      inputSchema: { type: "object", properties: { text: { type: "string" }, when: { type: "string" } }, required: ["text", "when"] },
       level: "write",
       summary: (a) => {
-        const d = localDate(a.quand);
-        const what = String(a.texte ?? "").slice(0, 80);
+        const d = localDate(a.when);
+        const what = String(a.text ?? "").slice(0, 80);
         return t(`Rappel dans ton agenda : « ${what} »${d ? `, ${fmt(d)}` : ""}`, `Reminder in your calendar: “${what}”${d ? `, ${fmtEn(d)}` : ""}`);
       },
       handler: wrap(async (a) => {
-        const at = localDate(a.quand);
-        if (!at) return Promise.reject(new Error("quand : il faut une date et une heure, au format AAAA-MM-JJTHH:MM."));
+        const at = localDate(a.when);
+        if (!at) return Promise.reject(new Error("when : il faut une date et une heure, au format AAAA-MM-JJTHH:MM."));
         if (at.getTime() < Date.now() - 60000) return Promise.reject(new Error("cette heure est déjà passée"));
         await g.call<any>("POST", "me/events", {
-          subject: `Rappel : ${String(a.texte ?? "").slice(0, 240)}`, start: utc(at), end: utc(new Date(at.getTime() + 15 * 60000)),
+          subject: `Rappel : ${String(a.text ?? "").slice(0, 240)}`, start: utc(at), end: utc(new Date(at.getTime() + 15 * 60000)),
           isReminderOn: true, reminderMinutesBeforeStart: 0, showAs: "free", categories: ["Floppy"],
         });
-        return `Rappel ajouté : « ${String(a.texte)} », ${fmt(at)}.`;
+        return `Rappel ajouté : « ${String(a.text)} », ${fmt(at)}.`;
       }),
     },
     ...teamsTools(g, cfg.max, labels),

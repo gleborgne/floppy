@@ -79,7 +79,7 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.on("panel:action", async (e, name, context) => {
     const panelWin = windows().panelWin();
     if (!panelWin || e.sender !== panelWin.webContents) return;
-    if (name === "ouvrir_url") {
+    if (name === "open_url") {
       try {
         const u = new URL(String(context?.url ?? ""));
         if (u.protocol === "https:" || u.protocol === "http:") await shell.openExternal(u.toString());

@@ -5,14 +5,14 @@ import { Scan, choice, dataText, dateText, daysPeriod, invalid, limit, matches, 
 
 const fields = {
   ...periodFields,
-  jours: { type: "integer", minimum: 1, maximum: 90, description: "Compatibilité : derniers N jours ; ne pas combiner avec une période précise. Défaut 14." },
-  personne: { type: "string", description: "Nom complet, adresse ou id d'un participant. Un prénom ambigu demande une précision." },
+  days: { type: "integer", minimum: 1, maximum: 90, description: "Compatibilité : derniers N jours ; ne pas combiner avec une période précise. Défaut 14." },
+  person: { type: "string", description: "Nom complet, adresse ou id d'un participant. Un prénom ambigu demande une précision." },
   conversation: { type: "string", description: "Id ou nom du groupe. En cas d'ambiguïté, demander lequel." },
-  type_conversation: { type: "string", enum: ["toutes", "privee", "groupe"] },
-  sens: { type: "string", enum: ["les_deux", "recus", "envoyes"], description: "recus : messages des autres ; envoyes : mes messages. Avec personne, recus ne conserve que ses messages." },
-  seulement_lui: { type: "boolean", description: "Ancien alias de sens=recus avec personne." },
-  contient: { type: "string", description: "Tous ces mots dans le texte ou les noms de pièces jointes, accents ignorés." },
-  avec_lien: { type: "boolean" }, avec_piece_jointe: { type: "boolean" }, mentions_moi: { type: "boolean" },
+  chat_type: { type: "string", enum: ["all", "private", "group"] },
+  direction: { type: "string", enum: ["both", "received", "sent"], description: "received : messages des autres ; sent : mes messages ; both par défaut. Avec person, received ne conserve que ses messages." },
+  only_them: { type: "boolean", description: "Ancien alias de direction=received avec person." },
+  contains: { type: "string", description: "Tous ces mots dans le texte ou les noms de pièces jointes, accents ignorés." },
+  with_link: { type: "boolean" }, with_attachment: { type: "boolean" }, mentions_me: { type: "boolean" },
   max: { type: "integer", minimum: 1, maximum: 50, description: "Limite d'affichage après filtrage ; pas une limite de recherche." },
 };
 const others = (c: any, me: string) => (c.members ?? []).filter((m: any) => m.userId !== me);
@@ -44,10 +44,10 @@ export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Te
   };
   const chooseChats = (all: any[], me: string, a: Record<string, unknown>) => {
     let selected = all, pid: string | undefined;
-    if (a.personne) {
+    if (a.person) {
       const people = new Map<string, any>();
-      for (const c of all) for (const m of others(c, me)) if (m.userId === a.personne || matches(`${m.displayName} ${m.email ?? ""}`, a.personne)) people.set(m.userId, m);
-      const exact = [...people.values()].filter((m) => m.userId === a.personne || [m.displayName, m.email].some((v) => v && norm(v) === norm(a.personne)));
+      for (const c of all) for (const m of others(c, me)) if (m.userId === a.person || matches(`${m.displayName} ${m.email ?? ""}`, a.person)) people.set(m.userId, m);
+      const exact = [...people.values()].filter((m) => m.userId === a.person || [m.displayName, m.email].some((v) => v && norm(v) === norm(a.person)));
       const candidates = exact.length ? exact : [...people.values()];
       if (candidates.length > 1) {
         const names = candidates.map((m) => `${m.displayName}${m.email ? ` (${m.email})` : ""}`).join(", ");
@@ -62,8 +62,8 @@ export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Te
       selected = exact.length ? exact : selected.filter((c) => matches(chatLabel(c, me, "fr"), a.conversation));
       if (selected.length > 1) return invalid(`Plusieurs conversations correspondent : ${selected.map((c) => `${chatLabel(c, me, "fr")} [id ${c.id}]`).join(", ")}. Laquelle ?`, `Several chats match: ${selected.map((c) => `${chatLabel(c, me, "en")} [id ${c.id}]`).join(", ")}. Which one?`);
     }
-    const type = choice(a, "type_conversation", ["toutes", "privee", "groupe"], "toutes");
-    if (type !== "toutes") selected = selected.filter((c) => type === "privee" ? c.chatType === "oneOnOne" : c.chatType === "group");
+    const type = choice(a, "chat_type", ["all", "private", "group"], "all");
+    if (type !== "all") selected = selected.filter((c) => type === "private" ? c.chatType === "oneOnOne" : c.chatType === "group");
     return { selected, pid };
   };
   const text = (m: any, lang: string) => {
@@ -74,19 +74,19 @@ export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Te
   const line = (m: any, me: string, lang: string) => `- ${dateText(new Date(m.createdDateTime), lang)} — ${m.from?.user?.id === me ? (lang === "fr" ? "moi" : "me") : m.from?.user?.displayName ?? m.from?.application?.displayName ?? "?"} : « ${text(m, lang)} »${mention(m, me) ? (lang === "fr" ? " (te mentionne)" : " (mentions you)") : ""} [message id ${m.id ?? "?"}]`;
   const isUnread = (c: any, m: any, me: string) => !c.viewpoint?.isHidden && m.from?.user?.id !== me && Date.parse(m.createdDateTime) > Date.parse(c.viewpoint?.lastMessageReadDateTime ?? "");
   const make = (kind: "list" | "search" | "unread" | "read"): ToolDef => ({
-    name: { list: "m365_conversations_teams", search: "m365_messages_teams", unread: "m365_teams_non_lus", read: "m365_lire_conversation_teams" }[kind],
+    name: { list: "m365_teams_chats", search: "m365_teams_messages", unread: "m365_teams_unread", read: "m365_read_teams_chat" }[kind],
     description: {
-      list: "Liste les conversations Teams privées et de groupe, filtrables par personne ou nom. Rend id, dernier message et état de lecture si connu. Pour chercher le contenu ou une période, utilise m365_messages_teams.",
-      search: "Cherche des messages Teams par période, personne, groupe, sens, texte, lien, pièce jointe ou mention. Tous les critères se combinent. Exemple : messages reçus de Sophie hier sur le budget ; liens partagés dans Projet Voix cette semaine. Personne facultative. Les résultats portent sur les discussions privées et de groupe, pas les canaux. N'affirme pas un total exhaustif si recherche partielle.",
-      unread: "Messages Teams actuellement non lus dans les discussions privées et de groupe, filtrables par période de création, personne, groupe et mentions. État de lecture inconnu signalé. Ne comprend pas les canaux ; pour eux utiliser m365_messages_canal et mentions_moi.",
-      read: "Lit une conversation Teams dont l'id vient d'un résultat précédent. Période, auteur, sens et mots-clés facultatifs. Rend les messages dans l'ordre avec auteur, date et id, pour résumer puis préciser la recherche.",
+      list: "Liste les conversations Teams privées et de groupe, filtrables par person ou conversation. Rend id, dernier message et état de lecture si connu. Pour chercher le contenu ou une période, utilise m365_teams_messages.",
+      search: "Cherche des messages Teams par période, person, conversation (groupe), chat_type (all/private/group), direction, contains (texte), with_link, with_attachment ou mentions_me. Tous les critères se combinent. Exemple : messages reçus de Sophie hier sur le budget ; liens partagés dans Projet Voix cette semaine. Personne facultative. Les résultats portent sur les discussions privées et de groupe, pas les canaux. N'affirme pas un total exhaustif si recherche partielle.",
+      unread: "Messages Teams actuellement non lus dans les discussions privées et de groupe, filtrables par période de création, personne, groupe et mentions (mentions_me). État de lecture inconnu signalé. Ne comprend pas les canaux ; pour eux utiliser m365_channel_messages et mentions_me.",
+      read: "Lit une conversation Teams dont l'id vient d'un résultat précédent. Période, direction et contains (mots-clés) facultatifs. Rend les messages dans l'ordre avec auteur, date et id, pour résumer puis préciser la recherche.",
     }[kind],
-    inputSchema: { type: "object", properties: kind === "list" ? { personne: fields.personne, conversation: fields.conversation, type_conversation: fields.type_conversation, max: fields.max } : { ...fields, ...(kind === "read" ? { id: { type: "string", description: "Id de la conversation déjà trouvée." } } : {}) }, ...(kind === "read" ? { required: ["id"] } : {}) },
+    inputSchema: { type: "object", properties: kind === "list" ? { person: fields.person, conversation: fields.conversation, chat_type: fields.chat_type, max: fields.max } : { ...fields, ...(kind === "read" ? { id: { type: "string", description: "Id de la conversation déjà trouvée." } } : {}) }, ...(kind === "read" ? { required: ["id"] } : {}) },
     level: "read",
     handler: safeHandler(async (a) => {
       const p = daysPeriod(a, kind === "read" ? 30 : kind === "unread" ? 90 : 14), scan = new Scan();
-      const sens = choice(a, "sens", ["les_deux", "recus", "envoyes"], a.seulement_lui ? "recus" : "les_deux");
-      if (a.seulement_lui && a.sens !== undefined && a.sens !== "recus") return invalid("seulement_lui contredit sens.", "seulement_lui conflicts with sens.");
+      const sens = choice(a, "direction", ["both", "received", "sent"], a.only_them ? "received" : "both");
+      if (a.only_them && a.direction !== undefined && a.direction !== "received") return invalid("only_them contredit direction.", "only_them conflicts with direction.");
       const me = (await g.get<{ id: string }>("me?$select=id")).id;
       const all = kind === "read" ? [await g.get<any>(`chats/${encodeURIComponent(String(a.id))}?$expand=members`)] : await loadChats(scan, me);
       const { selected, pid } = chooseChats(all, me, a);
@@ -114,12 +114,12 @@ export function teamsReadTools(g: GraphAuth, max: number, labels: Map<string, Te
           const at = Date.parse(m.createdDateTime), author = m.from?.user?.id;
           if (m.messageType !== "message" || m.deletedDateTime || at < start || at >= +p.end) continue;
           if (kind === "unread" && !isUnread(c, m, me)) continue;
-          if (sens === "envoyes" && author !== me || sens === "recus" && (author === me || pid && author !== pid)) continue;
-          if (!matches(text(m, "fr"), a.contient)) continue;
-          if (typeof a.avec_piece_jointe === "boolean" && Boolean(m.attachments?.length) !== a.avec_piece_jointe) continue;
+          if (sens === "sent" && author !== me || sens === "received" && (author === me || pid && author !== pid)) continue;
+          if (!matches(text(m, "fr"), a.contains)) continue;
+          if (typeof a.with_attachment === "boolean" && Boolean(m.attachments?.length) !== a.with_attachment) continue;
           const link = /https?:\/\//i.test(String(m.body?.content ?? ""));
-          if (typeof a.avec_lien === "boolean" && link !== a.avec_lien) continue;
-          if (typeof a.mentions_moi === "boolean" && mention(m, me) !== a.mentions_moi) continue;
+          if (typeof a.with_link === "boolean" && link !== a.with_link) continue;
+          if (typeof a.mentions_me === "boolean" && mention(m, me) !== a.mentions_me) continue;
           rows.push({ c, m });
         }
       }

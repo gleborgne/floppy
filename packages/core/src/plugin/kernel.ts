@@ -320,7 +320,7 @@ export class Kernel {
       audit: this.audit,
       log: (level, source, msg) => this.log(level, source, msg),
     });
-    // Outils « taches » et « lancer_tache » : redéclarés quand la liste des tâches change (description à jour).
+    // Outils « list_tasks » et « run_task » : redéclarés quand la liste des tâches change (description à jour).
     let offTaskTools = () => {};
     let taskKeys = "";
     const refreshTaskTools = () => {

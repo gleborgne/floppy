@@ -42,16 +42,16 @@ export function capabilitiesFor(v: RobotValues, st?: DaemonStatus, audioBridge =
   return caps;
 }
 
-const dirSchema = { type: "object", properties: { direction: { type: "string", enum: ["gauche", "droite", "haut", "bas", "devant"] } }, required: ["direction"] };
+const dirSchema = { type: "object", properties: { direction: { type: "string", enum: ["left", "right", "up", "down", "front"] } }, required: ["direction"] };
 const none = { type: "object", properties: {} };
 
 export const TOOLS: (BodyToolDecl & { gesture?: string })[] = [
   // Niveau « read » : un mouvement de tête est sans risque, pas besoin d'un accord à chaque hochement.
-  { name: "hocher_tete", description: "Reachy hoche la tête (oui).", inputSchema: none, level: "read", gesture: "nod" },
-  { name: "secouer_tete", description: "Reachy secoue la tête (non).", inputSchema: none, level: "read", gesture: "shake" },
-  { name: "regarder", description: "Reachy tourne la tête vers une direction.", inputSchema: dirSchema, level: "read" },
-  { name: "content", description: "Reachy remue les antennes de joie.", inputSchema: none, level: "read", gesture: "happy" },
-  { name: "danser", description: "Reachy danse quelques secondes.", inputSchema: none, level: "read", gesture: "dance" },
+  { name: "nod_head", description: "Reachy hoche la tête (oui).", inputSchema: none, level: "read", gesture: "nod" },
+  { name: "shake_head", description: "Reachy secoue la tête (non).", inputSchema: none, level: "read", gesture: "shake" },
+  { name: "look", description: "Reachy tourne la tête vers une direction (direction : left, right, up, down ou front).", inputSchema: dirSchema, level: "read" },
+  { name: "happy", description: "Reachy remue les antennes de joie.", inputSchema: none, level: "read", gesture: "happy" },
+  { name: "dance", description: "Reachy danse quelques secondes.", inputSchema: none, level: "read", gesture: "dance" },
 ];
 
 export class RobotLink {
@@ -185,9 +185,9 @@ export class RobotLink {
     const tool = TOOLS.find((t) => t.name === name);
     if (!tool) return reply(false, T(`Outil inconnu : ${name}.`, `Unknown tool: ${name}.`));
     let gesture = tool.gesture;
-    if (name === "regarder") {
+    if (name === "look") {
       gesture = DIRECTIONS[String(args.direction ?? "").toLowerCase()];
-      if (!gesture) return reply(false, T("Direction inconnue : gauche, droite, haut, bas ou devant.", "Unknown direction: left, right, up, down or front."));
+      if (!gesture) return reply(false, T("Direction inconnue : left, right, up, down ou front.", "Unknown direction: left, right, up, down or front."));
     }
     const ok = await this.play(gesture ?? "rest", "high");
     reply(ok, ok ? T("Fait.", "Done.") : T("Le robot n'a pas bougé (daemon injoignable).", "The robot did not move (daemon unreachable)."));

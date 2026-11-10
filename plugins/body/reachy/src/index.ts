@@ -68,7 +68,7 @@ const KIND: ItemKind = {
 
 const CAP_LABEL: Record<string, Text> = {
   emotion: { fr: "Émotions (tête, antennes)", en: "Emotions (head, antennas)" },
-  gesture: { fr: "Gestes : hocher la tête, danser…", en: "Gestures: nod, dance…" },
+  gesture: { fr: "Gestes : hocher la tête, dance…", en: "Gestures: nod, dance…" },
   approval: { fr: "Accord (demande signalée par un geste)", en: "Approval (request signalled by a gesture)" },
   voice: { fr: "Voix (micro et haut-parleur du robot)", en: "Voice (robot microphone and speaker)" },
 };

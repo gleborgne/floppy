@@ -83,7 +83,7 @@ describe("coder : Claude", () => {
     const t = await turn(sid, "tool");
     const toolEvs = t.filter((e) => e.type === "tool") as Extract<CoderEvent, { type: "tool" }>[];
     expect(toolEvs.map((e) => [e.id, e.name, e.status])).toEqual([
-      ["t1", "lister_reglages", "running"], ["t1", "lister_reglages", "done"], ["t2", "Read", "running"], ["t2", "Read", "failed"],
+      ["t1", "list_settings", "running"], ["t1", "list_settings", "done"], ["t2", "Read", "running"], ["t2", "Read", "failed"],
     ]);
     expect(toolEvs[1]!.output).toBe("voix : femme");
     expect(toolEvs[3]!.output).toBe("boum");
@@ -106,7 +106,7 @@ describe("coder : Claude", () => {
     const ra = textOf(await turn(r, "info"));
     expect(ra).toContain("--strict-mcp-config");
     // Recherche web permise par défaut (réglage assistant_web) ; aucun autre outil intégré.
-    expect(ra).toMatch(/--tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch,mcp__floppy__lister_reglages,mcp__floppy__changer_reglage,mcp__floppy__annuler_reglage,mcp__floppy__etat_plugins,mcp__floppy__lister_elements,mcp__floppy__activer_element,mcp__floppy__types_elements,mcp__floppy__ajouter_element/);
+    expect(ra).toMatch(/--tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch,mcp__floppy__list_settings,mcp__floppy__change_setting,mcp__floppy__undo_setting,mcp__floppy__plugin_status,mcp__floppy__list_items,mcp__floppy__toggle_item,mcp__floppy__list_item_types,mcp__floppy__add_item/);
     expect(ra).toContain("--permission-mode dontAsk");
     expect(ra).not.toContain("--permission-prompt-tool");
     expect(ra).toContain("--setting-sources project");
@@ -115,17 +115,17 @@ describe("coder : Claude", () => {
     const p = await open("claude", "plugin");
     const pa = textOf(await turn(p, "info"));
     expect(pa).toContain("--tools Read,Edit,Write,Glob,Grep");
-    expect(pa).toContain("--allowedTools mcp__floppy__doc_plugins,mcp__floppy__tester_plugin,mcp__floppy__recharger_plugins,mcp__floppy__etat_plugins,mcp__floppy__lister_reglages");
+    expect(pa).toContain("--allowedTools mcp__floppy__plugin_docs,mcp__floppy__test_plugin,mcp__floppy__reload_plugins,mcp__floppy__plugin_status,mcp__floppy__list_settings");
     expect(pa).toContain("--permission-prompt-tool mcp__floppy__permission");
     expect(pa).not.toContain("Bash");
     coderSvc.close(p);
   });
 
-  it("mode plugin : la consigne envoie l'agent vers le wiki (doc_plugins) avant d'écrire", () => {
+  it("mode plugin : la consigne envoie l'agent vers le wiki (plugin_docs) avant d'écrire", () => {
     const sys = systemPrompt("plugin", "Floppy", "C:/plugins");
-    expect(sys).toContain("Commence par appeler doc_plugins");
-    expect(sys).toMatch(/les outils de Floppy : doc_plugins, tester_plugin/);
-    expect(systemPrompt("settings", "Floppy", "C:/plugins")).not.toContain("doc_plugins");
+    expect(sys).toContain("Commence par appeler plugin_docs");
+    expect(sys).toMatch(/les outils de Floppy : plugin_docs, test_plugin/);
+    expect(systemPrompt("settings", "Floppy", "C:/plugins")).not.toContain("plugin_docs");
   });
 
   it("arrêt : tue le tour, puis le message suivant reprend la session (--resume)", async () => {
@@ -291,7 +291,7 @@ describe("coder : Codex", () => {
     const evs = await turn(sid, "bonjour");
     expect(textOf(evs)).toBe("Salut");
     const tl = evs.filter((e) => e.type === "tool") as Extract<CoderEvent, { type: "tool" }>[];
-    expect(tl.map((e) => [e.name, e.status])).toEqual([["lister_reglages", "running"], ["lister_reglages", "done"]]);
+    expect(tl.map((e) => [e.name, e.status])).toEqual([["list_settings", "running"], ["list_settings", "done"]]);
     expect(done(evs)).toMatchObject({ stopReason: "end" });
     // Deuxième tour sur le même fil.
     expect(textOf(await turn(sid, "encore"))).toBe("Salut");

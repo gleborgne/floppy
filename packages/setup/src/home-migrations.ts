@@ -3,6 +3,7 @@
 // fichier une fois, le code ne lit ensuite que les nouveaux noms (pas de « les deux noms pour toujours »).
 // Ajouter une étape : une entrée de plus (version suivante), idempotente, qui rapporte des noms de clés (jamais des valeurs).
 // Non migrés, par choix : l'audit (`audit.jsonl`) est un journal, les nouveaux enregistrements portent les nouveaux noms.
+import { TOOL_RENAMES, FIXED_SOURCES } from "./tool-names.ts";
 import { patchYaml, runHomeMigrations, yamlPluginEntries, YamlUnreadable, type MigrationEnv, type MigrationOptions, type MigrationReport, type MigrationStep, type YamlOp, type YamlStep } from "@floppy/core";
 
 /** Étape 1. Documents (`<home>/documents/*.md`) : la clé `titre:` de l'en-tête devient `title:`. */
@@ -349,8 +350,129 @@ const watchPreferences: MigrationStep = {
   },
 };
 
+// ---------------------------------------------------------------------------------------------------------------
+// Étapes 20 et suivantes : les noms d'outils (et de leurs arguments) passent en anglais. Un nom d'outil est écrit chez
+// l'utilisateur à quelques endroits seulement ; chacun a son étape, par chemin précis. Seuls les outils que Floppy
+// définit lui-même changent (voir `tool-names.ts`) : on lit le type du plugin qui porte l'entrée, jamais le nom seul.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Passe des opérations YAML sur floppy.yml (mêmes règles que l'étape de configuration : mise en forme gardée). */
+function patchFloppyYml(env: MigrationEnv, ops: readonly YamlOp[]): void {
+  if (!ops.length) return;
+  env.editText("floppy.yml", (text) => {
+    let patch: ReturnType<typeof patchYaml>;
+    try { patch = patchYaml(text, ops); } catch (e) {
+      if (e instanceof YamlUnreadable) { env.skip("floppy.yml", "unreadable"); return undefined; }
+      throw e;
+    }
+    if (!patch) return undefined;
+    for (const key of patch.conflicts) env.conflict("floppy.yml", key);
+    return patch.keys.length ? { text: patch.text, keys: patch.keys } : undefined;
+  });
+}
+
+/**
+ * Étape 20. Configuration (`<home>/floppy.yml`) : les outils nommés dans les autorisations ciblées
+ * (`approvals.toolRules[].tool`, selon la `source` = entrée du plugin) et l'outil de délégation du cerveau
+ * (`brain-aisdk` : `delegateTool: deleguer` devient `delegate`). Les listes `include` / `levels` / `exclude` des serveurs MCP
+ * (noms choisis par le serveur extérieur) ne sont jamais touchées.
+ */
+const toolsConfigYaml: MigrationStep = {
+  id: "tools-config-yaml",
+  version: 20,
+  label: "configuration : les noms d'outils de Floppy (toolRules, delegateTool) passent en anglais",
+  run(env) {
+    const text = env.read("floppy.yml");
+    if (text === undefined) return;
+    const ops: YamlOp[] = [];
+    let entries: { id: string; plugin: string }[];
+    try { entries = yamlPluginEntries(text); } catch { env.skip("floppy.yml", "unreadable"); return; }
+    const sources = new Map<string, string>(FIXED_SOURCES.map((s) => [s, s]));
+    for (const e of entries) sources.set(e.id, e.plugin);
+    for (const [source, type] of sources) {
+      const map = TOOL_RENAMES[type];
+      if (map) ops.push({ path: ["approvals", "toolRules", { key: "source", equals: source }], key: "tool", map });
+    }
+    ops.push({ path: ["plugins", { key: "plugin", equals: "brain-aisdk" }, "config"], key: "delegateTool", map: { deleguer: "delegate" } });
+    patchFloppyYml(env, ops);
+  },
+};
+
+/** Renomme les clés d'une table (ancien → nouveau) ; le nouveau gagne si les deux sont là. Rend les anciens noms changés. */
+function renameKeys(obj: Record<string, unknown>, map: Readonly<Record<string, string>>, where: string, conflict: (key: string) => void): string[] {
+  const changed: string[] = [];
+  for (const [from, to] of Object.entries(map)) {
+    if (!Object.hasOwn(obj, from)) continue;
+    if (Object.hasOwn(obj, to)) conflict(`${where}${from}`); else obj[to] = obj[from];
+    delete obj[from];
+    changed.push(`${where}${from}`);
+  }
+  return changed;
+}
+
+/**
+ * Étape 21. Éléments (`<home>/items/apps.json`) : les outils de chaque application (`children.<entrée>.<outil>` : interrupteur
+ * par outil ; `extra.tools.<entrée>[].name` : liste mémorisée). Seules les entrées dont le plugin est un plugin de Floppy qui
+ * définit l'outil sont touchées ; `items/tools.json` (serveurs MCP extérieurs) n'est jamais lu.
+ */
+const toolsItemsApps: MigrationStep = {
+  id: "tools-items-apps",
+  version: 21,
+  label: "éléments : les noms d'outils de Floppy dans items/apps.json (children, extra.tools) passent en anglais",
+  run(env) {
+    const owners = entryPlugins(env);
+    // Entrée inconnue (ni dans floppy.yml ni ajoutée) : par défaut, l'id du type (l'entrée « m365 » du plugin « m365 »).
+    const typeOf = (entry: string): string => owners.get(entry) ?? entry;
+    env.editJson("items/apps.json", (data) => {
+      const changed: string[] = [];
+      const conflict = (key: string) => env.conflict("items/apps.json", key);
+      if (isTable(data.children)) for (const [entry, kids] of Object.entries(data.children)) {
+        const map = TOOL_RENAMES[typeOf(entry)];
+        if (map && isTable(kids)) changed.push(...renameKeys(kids, map, "children.*.", conflict));
+      }
+      const extra = isTable(data.extra) ? data.extra : undefined;
+      if (extra && isTable(extra.tools)) for (const [entry, list] of Object.entries(extra.tools)) {
+        const map = TOOL_RENAMES[typeOf(entry)];
+        if (!map || !Array.isArray(list)) continue;
+        for (const tool of list) if (isTable(tool) && typeof tool.name === "string" && Object.hasOwn(map, tool.name)) { tool.name = map[tool.name]; changed.push("extra.tools.*.name"); }
+      }
+      return [...new Set(changed)];
+    });
+  },
+};
+
+/**
+ * Étape 22. Éléments « commande » (`<home>/items/<entrée du plugin tools>.json`) : l'emplacement de l'argument donné à l'outil
+ * dans la ligne de commande passe de `{texte}` à `{text}` (`added.<id>.values.args[]`, type `command`).
+ */
+const toolsCommandPlaceholder: MigrationStep = {
+  id: "tools-command-placeholder",
+  version: 22,
+  label: "éléments : l'emplacement {texte} des commandes devient {text}",
+  run(env) {
+    const owners = entryPlugins(env);
+    for (const file of env.list("items", ".json")) {
+      const entry = file.slice("items/".length, -".json".length);
+      if (owners.get(entry) !== "tools") continue;
+      env.editJson(file, (data) => {
+        let changed = false;
+        if (isTable(data.added)) for (const item of Object.values(data.added)) {
+          if (!isTable(item) || item.kind !== "command" || !isTable(item.values) || !Array.isArray(item.values.args)) continue;
+          item.values.args = item.values.args.map((a) => {
+            if (typeof a !== "string" || !a.includes("{texte}")) return a;
+            changed = true;
+            return a.split("{texte}").join("{text}");
+          });
+        }
+        return changed ? ["added.values.args"] : [];
+      });
+    }
+  },
+};
+
 /** Toutes les étapes, dans l'ordre. */
-export const HOME_MIGRATIONS: readonly MigrationStep[] = [documentTitle, onboardingLevel, onboardingSelection, settingsKeys, settingsValues, configYaml, itemFields, inboxTrust, watchPreferences];
+export const HOME_MIGRATIONS: readonly MigrationStep[] = [documentTitle, onboardingLevel, onboardingSelection, settingsKeys, settingsValues, configYaml, itemFields, inboxTrust, watchPreferences,
+  toolsConfigYaml, toolsItemsApps, toolsCommandPlaceholder];
 
 /** Passe les étapes en attente sur ce répertoire de travail (au démarrage, ou `floppy migrate`). Ne lève jamais. */
 export function migrateHome(home: string, opts: MigrationOptions = {}): MigrationReport[] {

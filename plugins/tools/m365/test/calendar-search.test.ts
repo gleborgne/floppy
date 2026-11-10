@@ -12,7 +12,7 @@ describe("agenda vocal", () => {
       expect(url.searchParams.get("startDateTime")).toBe(new Date("2026-11-11T12:00").toISOString());
       return url.searchParams.has("page") ? json({ value: [event("target", "2026-11-11T14:00", "2026-11-11T15:00")] }) : json({ value: [event("other", undefined, undefined, { subject: "Autre" })], "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendarView?page=2&startDateTime=" + encodeURIComponent(new Date("2026-11-11T12:00").toISOString()) });
     });
-    const result = await calendarTools(g, 8)[0]!.handler({ debut: "2026-11-11T12:00", fin: "2026-11-11T18:00", participant: "Sophie", organisateur: "Alex", sujet: "budget", lieu: "bleue", max: 1 }, {});
+    const result = await calendarTools(g, 8)[0]!.handler({ start: "2026-11-11T12:00", end: "2026-11-11T18:00", participant: "Sophie", organizer: "Alex", subject: "budget", location: "bleue", max: 1 }, {});
     expect(tr(result.text)).toContain("[id target]"); expect(tr(result.text)).not.toContain("[id other]");
     expect(tr(result.text)).toContain("sophie@contoso.test"); expect(tr(result.text)).toContain("https://contoso.test/meeting");
     expect(tr(result.text, "en")).toContain("attendees");
@@ -20,7 +20,7 @@ describe("agenda vocal", () => {
   it("prochain rendez-vous : exclut réunion commencée et annulation, filtre avant sélection", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-11T10:30"));
     const { g } = graphFixture(() => json({ value: [event("started"), event("cancelled", "2026-11-11T11:00", "2026-11-11T12:00", { isCancelled: true }), event("wrong", "2026-11-11T12:00", "2026-11-11T13:00", { subject: "Déjeuner" }), event("next", "2026-11-11T14:00", "2026-11-11T15:00")] }));
-    const result = await calendarTools(g, 8)[1]!.handler({ sujet: "budget", participant: "Sophie" }, {});
+    const result = await calendarTools(g, 8)[1]!.handler({ subject: "budget", participant: "Sophie" }, {});
     expect(tr(result.text)).toContain("[id next]");
     expect(tr(result.text)).not.toMatch(/\[id (started|wrong|cancelled)\]/);
   });
@@ -29,12 +29,12 @@ describe("agenda vocal", () => {
       expect(url.searchParams.get("endDateTime")).toBe(new Date("2026-03-31T00:00").toISOString());
       return json({ value: [] });
     });
-    expect((await calendarTools(g, 8)[0]!.handler({ date: "2026-03-28", jours: 3 }, {})).status).toBe("done");
+    expect((await calendarTools(g, 8)[0]!.handler({ date: "2026-03-28", days: 3 }, {})).status).toBe("done");
   });
   it("créneaux libres : réunions qui se chevauchent, marge, événements libres et refusés", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-08T15:00"));
     const { g } = graphFixture(() => json({ value: [event("one", "2026-11-11T10:00", "2026-11-11T11:00"), event("two", "2026-11-11T10:30", "2026-11-11T12:00"), event("free", "2026-11-11T13:00", "2026-11-11T14:00", { showAs: "free" }), event("declined", "2026-11-11T14:00", "2026-11-11T15:00", { responseStatus: { response: "declined" } })] }));
-    const result = await calendarTools(g, 8)[2]!.handler({ date: "2026-11-11", duree_min: 45, marge_min: 15 }, {});
+    const result = await calendarTools(g, 8)[2]!.handler({ date: "2026-11-11", duration_min: 45, margin_min: 15 }, {});
     expect(result.status).toBe("done");
     expect(tr(result.text)).toContain("09:00 → 11/11/2026 09:45");
     expect(tr(result.text)).toContain("12:15 → 11/11/2026 18:00");
@@ -47,9 +47,9 @@ describe("agenda vocal", () => {
     expect(tr((await tool.handler({ date: "2026-11-11" }, {})).text)).toContain("(0/0");
     expect(tr((await tool.handler({ date: "2026-11-14" }, {})).text)).toContain("(0/0");
     expect(tr((await tool.handler({ date: "2026-11-14", weekend: true }, {})).text)).toContain("09:00");
-    const afternoon = await tool.handler({ debut: "2026-11-12T14:00", fin: "2026-11-12T16:00" }, {});
+    const afternoon = await tool.handler({ start: "2026-11-12T14:00", end: "2026-11-12T16:00" }, {});
     expect(tr(afternoon.text)).toContain("14:00 → 12/11/2026 16:00");
-    for (const a of [{ heure_debut: "24:00" }, { heure_debut: "18:00", heure_fin: "09:00" }, { duree_min: 0 }, { marge_min: -1 }]) expect((await tool.handler(a, {})).status).toBe("failed");
+    for (const a of [{ start_time: "24:00" }, { start_time: "18:00", end_time: "09:00" }, { duration_min: 0 }, { margin_min: -1 }]) expect((await tool.handler(a, {})).status).toBe("failed");
   });
   it("ne garantit pas la disponibilité si le calendrier est partiel", async () => {
     let page = 0;

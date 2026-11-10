@@ -38,7 +38,7 @@ async function setup(opts: { receipt?: unknown; timeoutMs?: number; home?: strin
   const approvals: { id: string; summary: string }[] = [];
   k.bus.on("approval.request", r => { approvals.push(r); opts.before?.(wts); if (opts.autoApprove !== false) k.approvals.respond(r.id, true, "test"); });
   const sends = () => cli.mock.calls.filter(([a]) => a[1] === "send").map(([a]) => a);
-  const call = (meta: ToolCallMeta = {}) => k.tools.call("orca_envoyer_groupe", { nom: "Floppy", filtre: "termines", message: "Commit your work if needed." }, meta);
+  const call = (meta: ToolCallMeta = {}) => k.tools.call("orca_send_group", { name: "Floppy", filter: "finished", message: "Commit your work if needed." }, meta);
   const selectOnly = (indices: number[]) => { selected = indices.map(i => ({ w: wts[0]!, a: wts[0]!.agents![i]! })); };
   return { k, home, wts, terms, facts, problems, announce, cli, select, approvals, sends, call, selectOnly };
 }
@@ -64,7 +64,7 @@ it("un accord nomme les quatre tâches et la consigne exacte, sans considérer d
   await until(() => expect(s.announce).toHaveBeenCalled());
   expect(s.sends()).toHaveLength(3);
   expect(s.facts.some(f => f.paneKey === "t:d" && f.stage === "skipped" && f.reason === "state-changed")).toBe(true);
-  const status = await s.k.tools.call("orca_envois", {});
+  const status = await s.k.tools.call("orca_deliveries", {});
   expect(status.text).toContain("Alice"); expect(status.text).toContain("Dan"); expect(status.text).toContain("travail non vérifié");
 });
 
@@ -106,7 +106,7 @@ it.each(["gone", "replaced", "permission", "worker", "state"])("revalidation %s 
   });
   await s.call(); await until(() => expect(s.facts.some(f => f.stage === "skipped")).toBe(true));
   expect(s.sends()).toHaveLength(0);
-  expect((await s.k.tools.call("orca_envois", {})).text).toContain("Alice");
+  expect((await s.k.tools.call("orca_deliveries", {})).text).toContain("Alice");
 });
 
 it("un nouveau destinataire pendant l'accord ne rejoint pas la sélection figée", async () => {
@@ -144,18 +144,18 @@ it.each(["stop", "cancel"])("%s arrête la file sans interrompre l'agent", async
   const s = await setup(); const ac = new AbortController();
   await s.call({ signal: ac.signal }); await until(() => expect(s.sends()).toHaveLength(1));
   if (action === "stop") await s.k.stopAll();
-  if (action === "cancel") await s.k.tools.call("orca_annuler_envoi", { plan: s.facts[0]!.planId });
+  if (action === "cancel") await s.k.tools.call("orca_cancel_delivery", { plan: s.facts[0]!.planId });
   await until(() => expect(s.facts.filter(f => f.stage === "cancelled")).toHaveLength(4));
   expect(s.sends()).toHaveLength(1); expect(s.sends()[0]).not.toContain("--interrupt");
-  if (action === "cancel") expect((await s.k.tools.call("orca_envois", {})).text).toContain("dernière étape : entrée acceptée");
+  if (action === "cancel") expect((await s.k.tools.call("orca_deliveries", {})).text).toContain("dernière étape : entrée acceptée");
 });
 
 it("les conversations isolent statut et annulation ; arguments, diagnostics et fichier masquent la consigne", async () => {
   const s = await setup(); s.selectOnly([0]);
   await s.call({ origin: "body", session: "one" });
   await until(() => expect(s.sends()).toHaveLength(1));
-  expect((await s.k.tools.call("orca_envois", {}, { origin: "body", session: "two" })).text).not.toContain("Alice");
-  expect((await s.k.tools.call("orca_annuler_envoi", { plan: s.facts[0]!.planId }, { origin: "body", session: "two" })).status).toBe("failed");
+  expect((await s.k.tools.call("orca_deliveries", {}, { origin: "body", session: "two" })).text).not.toContain("Alice");
+  expect((await s.k.tools.call("orca_cancel_delivery", { plan: s.facts[0]!.planId }, { origin: "body", session: "two" })).status).toBe("failed");
   const all = JSON.stringify(s.k.audit.tail(100)) + JSON.stringify(s.facts) + readFileSync(join(s.home, "orca-deliveries.json"), "utf8");
   expect(all).not.toContain("Commit your work");
 });
@@ -166,7 +166,7 @@ it("redémarrage : résumés de 48h, cap 20, aucune consigne rejouée", async ()
   const recent = Array.from({ length: 25 }, (_, i) => ({ ...old, id: `plan-${i}`, at: Date.now(), recipients: [{ label: `Agent-${i}`, stage: "input_accepted" }] }));
   writeFileSync(join(home, "orca-deliveries.json"), JSON.stringify([old, ...recent]));
   const s = await setup({ home });
-  const r = await s.k.tools.call("orca_envois", {});
+  const r = await s.k.tools.call("orca_deliveries", {});
   expect(r.text).not.toContain("Old"); expect(r.text).not.toContain("Agent-0 :"); expect(r.text).toContain("Agent-24"); expect(r.text).toContain("aucun renvoi");
   expect(s.sends()).toHaveLength(0);
 });
@@ -179,10 +179,10 @@ it("lit les reçus réels imbriqués et les hôtes anciens", () => {
 it("deux accords simultanés gardent leurs destinataires et messages respectifs", async () => {
   const s = await setup({ autoApprove: false });
   s.selectOnly([0]);
-  const a = s.k.tools.call("orca_envoyer_groupe", { message: "Instruction Alice" }, { session: "a" });
+  const a = s.k.tools.call("orca_send_group", { message: "Instruction Alice" }, { session: "a" });
   await until(() => expect(s.approvals).toHaveLength(1));
   s.selectOnly([1]);
-  const b = s.k.tools.call("orca_envoyer_groupe", { message: "Instruction Bob" }, { session: "b" });
+  const b = s.k.tools.call("orca_send_group", { message: "Instruction Bob" }, { session: "b" });
   await until(() => expect(s.approvals).toHaveLength(2));
   expect(s.sends()).toHaveLength(0);
   expect(s.approvals[0]!.summary).toContain("Alice"); expect(s.approvals[0]!.summary).not.toContain("Bob");
@@ -231,9 +231,9 @@ it("le plan reste dans raw et le bilan parlé nomme les tâches sans UUID, chemi
   const raw = result.raw as { planId: string };
   expect(raw.planId).toMatch(/^[a-f0-9-]{36}$/);
   await until(() => expect(s.announce).toHaveBeenCalledTimes(1));
-  const status = await s.k.tools.call("orca_envois", {}, { session: "private-session" });
+  const status = await s.k.tools.call("orca_deliveries", {}, { session: "private-session" });
   const spoken = result.text + status.text + JSON.stringify(s.announce.mock.calls);
-  for (const secret of [raw.planId, requestId, "C:/shared", "r::", "t:a", "Commit your work", "orca_envois", "orca_envoyer"]) expect(spoken).not.toContain(secret);
+  for (const secret of [raw.planId, requestId, "C:/shared", "r::", "t:a", "Commit your work", "orca_deliveries", "orca_send"]) expect(spoken).not.toContain(secret);
   expect(spoken).toContain("Needs commit"); expect(spoken).toContain("Floppy");
   const audit = s.k.audit.tail(200).filter(row => row.kind === "orca.delivery");
   const text = JSON.stringify(audit);
@@ -268,7 +268,7 @@ it("l'accord d'annulation nomme les tâches et conserve les identifiants uniquem
   const s = await setup(); s.selectOnly([0]);
   const queued = await s.call();
   const planId = (queued.raw as { planId: string }).planId;
-  const cancelled = await s.k.tools.call("orca_annuler_envoi", { plan: planId });
+  const cancelled = await s.k.tools.call("orca_cancel_delivery", { plan: planId });
   expect(cancelled.status).toBe("done"); expect((cancelled.raw as { planId: string }).planId).toBe(planId);
   expect(s.approvals[1]!.summary).toContain("Needs commit");
   expect(s.approvals[1]!.summary).not.toContain(planId); expect(cancelled.text).not.toContain(planId);
@@ -325,7 +325,7 @@ it.each(["timeout", "unknown", "cancel"])("réconciliation %s : une fin attribua
   const a = s.wts[0]!.agents![0]! as unknown as Record<string, unknown>;
   a.turnEndedAt = Date.now() - 1000; a.turnEndDisposition = "identified";
   const first = await s.call(); await until(() => expect(s.facts.some(f => f.stage === "turn_started")).toBe(true));
-  if (scenario === "cancel") await s.k.tools.call("orca_annuler_envoi", { plan: (first.raw as { planId: string }).planId });
+  if (scenario === "cancel") await s.k.tools.call("orca_cancel_delivery", { plan: (first.raw as { planId: string }).planId });
   else if (scenario === "unknown") { const old = s.terms.splice(0); await until(() => expect(s.facts.some(f => f.stage === "unknown")).toBe(true)); s.terms.push(...old); }
   else await until(() => expect(s.facts.some(f => f.stage === "timeout")).toBe(true));
   s.selectOnly([1]);
@@ -375,7 +375,7 @@ it("une annulation concurrente au transport garde le verrou jusqu'au reçu tardi
   const original = s.cli.getMockImplementation()!;
   s.cli.mockImplementation(args => args[1] === "send" && args[3] === "term_a" ? late : original(args));
   const first = await s.call(); await until(() => expect(s.sends()).toHaveLength(1));
-  await Promise.all([s.k.tools.call("orca_annuler_envoi", { plan: (first.raw as { planId: string }).planId }), s.k.tools.call("orca_annuler_envoi", { plan: (first.raw as { planId: string }).planId })]);
+  await Promise.all([s.k.tools.call("orca_cancel_delivery", { plan: (first.raw as { planId: string }).planId }), s.k.tools.call("orca_cancel_delivery", { plan: (first.raw as { planId: string }).planId })]);
   const a = s.wts[0]!.agents![0]! as unknown as Record<string, unknown>;
   a.turnEndedAt = Date.now() + 1; a.turnEndDisposition = "identified";
   s.selectOnly([1]); await s.call();
@@ -390,10 +390,10 @@ it("une annulation concurrente au transport garde le verrou jusqu'au reçu tardi
 it("une preuve de verrou survit à l'éviction du plan parmi vingt résumés", async () => {
   const s = await setup({ receipt: { send: { accepted: true, prompt: { requestId: "durable", stages: ["turn_started"] } } } }); s.selectOnly([0]);
   const first = await s.call(); await until(() => expect(s.facts.some(f => f.stage === "turn_started")).toBe(true));
-  await s.k.tools.call("orca_annuler_envoi", { plan: (first.raw as { planId: string }).planId });
+  await s.k.tools.call("orca_cancel_delivery", { plan: (first.raw as { planId: string }).planId });
   s.selectOnly([1]);
   for (let i = 0; i < 21; i++) { await s.call(); await until(() => expect(s.facts.filter(f => f.paneKey === "t:b" && f.stage === "deferred")).toHaveLength(i + 1)); }
-  const status = await s.k.tools.call("orca_envois", {});
+  const status = await s.k.tools.call("orca_deliveries", {});
   expect(JSON.stringify(status.raw)).not.toContain((first.raw as { planId: string }).planId);
   const a = s.wts[0]!.agents![0]! as unknown as Record<string, unknown>;
   a.turnEndedAt = Date.now() + 1; a.turnEndDisposition = "identified";
@@ -410,7 +410,7 @@ it("annuler pendant la revalidation avant transport empêche l'envoi et libère 
   const original = s.cli.getMockImplementation()!;
   s.cli.mockImplementationOnce(() => listing);
   await until(() => expect(s.cli.mock.calls.filter(([args]) => args[1] === "list")).toHaveLength(2));
-  await s.k.tools.call("orca_annuler_envoi", { plan: (first.raw as { planId: string }).planId });
+  await s.k.tools.call("orca_cancel_delivery", { plan: (first.raw as { planId: string }).planId });
   resolve({ terminals: s.terms });
   s.cli.mockImplementation(original);
   s.selectOnly([1]); await s.call();

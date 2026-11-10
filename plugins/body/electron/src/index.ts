@@ -132,7 +132,7 @@ export default definePlugin<Config>({
       const opening = /^(?:(?:tu peux|peux-tu|pourrais-tu) )?(?:m'|me )?(?:ouvre|ouvrir|affiche|afficher)(?:[- ]moi)? (?:l'ecran (?:de |des |de tes )|la fenetre (?:de |des |de tes ))?(?:(?:les|tes|des) )?(?:reglages|parametres)(?: de floppy)?(?:,? s'il te plait)?[.!? ]*$/;
       // En anglais : « open the settings », « can you show me Floppy's settings please ».
       const openingEn = /^(?:(?:can you|could you|please) )?(?:open|show)(?: me)? (?:the |your |floppy'?s? )?(?:settings|preferences|options)(?: window| screen)?(?: of floppy)?(?:,? please)?[.!? ]*$/;
-      if (opening.test(text) || openingEn.test(text)) return { name: "ouvrir_reglages", args: {} };
+      if (opening.test(text) || openingEn.test(text)) return { name: "open_settings", args: {} };
       return next(input);
     });
     const pendingOpen = new Map<string, (ok: boolean, text?: Text) => void>();
@@ -142,19 +142,19 @@ export default definePlugin<Config>({
     };
     parent.on("message", onSettingsResult);
     ctx.tools.register([{
-      name: "ouvrir_reglages",
+      name: "open_settings",
       description: "Ouvre et affiche à l'écran la fenêtre des réglages de Floppy. Appelle cet outil quand l'utilisateur demande d'ouvrir les réglages ou les paramètres de Floppy. "
-        + "Avec `element`, ouvre directement la page de cet élément (un connecteur, une voix, un modèle…). "
+        + "Avec `item`, ouvre directement la page de cet élément (un connecteur, une voix, un modèle…). "
         + "Une action qui se fait par un bouton des réglages (installer le plugin Orca, se connecter à Microsoft 365, envoyer un mail de test…) ne se fait pas à la voix : "
         + "ouvre les réglages sur l'élément concerné et dis à l'utilisateur sur quel bouton cliquer.",
       inputSchema: {
         type: "object",
-        properties: { element: { type: "string", description: "Nom de l'élément tel qu'entendu (ex. « Orca », « Microsoft 365 »). Facultatif." } },
+        properties: { item: { type: "string", description: "Nom de l'élément tel qu'entendu (ex. « Orca », « Microsoft 365 »). Facultatif." } },
         additionalProperties: false,
       },
       level: "read",
       handler: async (args, meta) => {
-        const heard = typeof (args as { element?: unknown }).element === "string" ? (args as { element: string }).element.trim().slice(0, 100) : "";
+        const heard = typeof (args as { item?: unknown }).item === "string" ? (args as { item: string }).item.trim().slice(0, 100) : "";
         let found: FoundTarget | undefined;
         if (heard) { try { found = findSettingsTarget(await ctx.items.snapshot(), heard); } catch { /* réglages ouverts sans page précise */ } }
         return openWindow(meta, heard, found);
@@ -280,7 +280,7 @@ export default definePlugin<Config>({
           status: active ? "ok" : "off",
           ...(active ? { statusText: { fr: "utilisé", en: "in use" } } : {}),
           editable: false, removable: false, toggleable: !active,
-          // voice : « mets l'avatar chat » (outil utiliser_element) ; changer d'avatar est sans risque.
+          // voice : « mets l'avatar chat » (outil use_item) ; changer d'avatar est sans risque.
           actions: active ? [] : [{ id: "use", label: { fr: "Utiliser", en: "Use" }, voice: true }],
           aliases: [a.id],
         };

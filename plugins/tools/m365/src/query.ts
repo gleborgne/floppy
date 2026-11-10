@@ -5,10 +5,10 @@ import { norm } from "./util.ts";
 
 export const periodFields = {
   date: { type: "string", description: "Jour local AAAA-MM-JJ, aujourd'hui/today, hier/yesterday ou demain/tomorrow." },
-  debut: { type: "string", description: "Début inclus AAAA-MM-JJ ou AAAA-MM-JJTHH:MM local. Avec fin." },
-  fin: { type: "string", description: "Fin : jour inclus AAAA-MM-JJ ou heure exclue AAAA-MM-JJTHH:MM locale. Avec debut." },
-  depuis: { type: "string", description: "Depuis cette date ou heure locale jusqu'à maintenant. Exclusif des autres périodes." },
-  periode: { type: "string", enum: ["ce_matin", "cet_apres_midi", "cette_semaine", "semaine_derniere", "semaine_prochaine", "ce_mois"], description: "Période locale ; semaine du lundi au dimanche. Exclusif de date/debut/fin/depuis." },
+  start: { type: "string", description: "Début inclus AAAA-MM-JJ ou AAAA-MM-JJTHH:MM local. Avec end." },
+  end: { type: "string", description: "Fin : jour inclus AAAA-MM-JJ ou heure exclue AAAA-MM-JJTHH:MM locale. Avec start." },
+  since: { type: "string", description: "Depuis cette date ou heure locale jusqu'à maintenant. Exclusif des autres périodes." },
+  period: { type: "string", enum: ["this_morning", "this_afternoon", "this_week", "last_week", "next_week", "this_month"], description: "Période locale (this_morning, this_afternoon, this_week, last_week, next_week, this_month) ; semaine du lundi au dimanche. Exclusif de date/start/end/since." },
 };
 export type Period = { start: Date; end: Date };
 export function invalid(fr: string, en: string): never { throw new TextError(T(fr, en)); }
@@ -33,27 +33,27 @@ export function boundary(value: unknown): { date: Date; day: boolean } {
 }
 
 export function period(a: Record<string, unknown>): Period | undefined {
-  const modes = [a.date !== undefined, a.debut !== undefined || a.fin !== undefined, a.depuis !== undefined, a.periode !== undefined].filter(Boolean).length;
+  const modes = [a.date !== undefined, a.start !== undefined || a.end !== undefined, a.since !== undefined, a.period !== undefined].filter(Boolean).length;
   if (!modes) return undefined;
-  if (modes > 1) return invalid("Choisis une seule période : date, debut et fin, depuis, ou periode.", "Choose one period: date, debut and fin, depuis, or periode.");
+  if (modes > 1) return invalid("Choisis une seule période : date, start et end, since, ou period.", "Choose one period: date, start and end, since, or period.");
   let start: Date, end: Date;
-  if (a.depuis !== undefined) {
-    start = boundary(a.depuis).date; end = new Date();
-  } else if (a.periode !== undefined) {
+  if (a.since !== undefined) {
+    start = boundary(a.since).date; end = new Date();
+  } else if (a.period !== undefined) {
     start = new Date(); start.setHours(0, 0, 0, 0);
     end = new Date(start);
-    switch (a.periode) {
-      case "ce_matin": end.setHours(12); break;
-      case "cet_apres_midi": start.setHours(12); end.setHours(18); break;
-      case "cette_semaine": case "semaine_derniere": case "semaine_prochaine":
-        start.setDate(start.getDate() - (start.getDay() + 6) % 7 + (a.periode === "semaine_derniere" ? -7 : a.periode === "semaine_prochaine" ? 7 : 0));
+    switch (a.period) {
+      case "this_morning": end.setHours(12); break;
+      case "this_afternoon": start.setHours(12); end.setHours(18); break;
+      case "this_week": case "last_week": case "next_week":
+        start.setDate(start.getDate() - (start.getDay() + 6) % 7 + (a.period === "last_week" ? -7 : a.period === "next_week" ? 7 : 0));
         end = new Date(start); end.setDate(end.getDate() + 7); break;
-      case "ce_mois": start.setDate(1); end = new Date(start); end.setMonth(end.getMonth() + 1); break;
+      case "this_month": start.setDate(1); end = new Date(start); end.setMonth(end.getMonth() + 1); break;
       default: return invalid("Période inconnue.", "Unknown period.");
     }
   } else {
-    const lo = boundary(a.date ?? a.debut), hi = boundary(a.date ?? a.fin);
-    if (a.date !== undefined && !lo.day) return invalid("date doit désigner un jour ; utilise debut et fin pour des heures.", "date must specify a day; use debut and fin for times.");
+    const lo = boundary(a.date ?? a.start), hi = boundary(a.date ?? a.end);
+    if (a.date !== undefined && !lo.day) return invalid("date doit désigner un jour ; utilise start et end pour des heures.", "date must specify a day; use start and end for times.");
     start = lo.date; end = hi.date;
     if (hi.day) end.setDate(end.getDate() + 1);
   }
@@ -64,10 +64,10 @@ export function period(a: Record<string, unknown>): Period | undefined {
 export function daysPeriod(a: Record<string, unknown>, days: number, future = false): Period {
   const p = period(a);
   if (p) {
-    if (a.jours !== undefined) return invalid("Ne combine pas jours avec une période précise.", "Do not combine jours with a specific period.");
+    if (a.days !== undefined) return invalid("Ne combine pas days avec une période précise.", "Do not combine days with a specific period.");
     return p;
   }
-  const n = limit(a.jours, days, 90), start = new Date(), end = new Date(start);
+  const n = limit(a.days, days, 90), start = new Date(), end = new Date(start);
   if (future) { start.setHours(0, 0, 0, 0); end.setTime(start.getTime()); end.setDate(end.getDate() + n); }
   else start.setDate(start.getDate() - n);
   return { start, end };

@@ -1,7 +1,7 @@
 // Fenêtre de résultats : rendu d'une surface A2UI (v0.8, sous-ensemble).
 // Composants : Column, Row, List, Card, Text (usageHint h1..h5, body, caption), Button, Divider, Image.
 // Texte toujours en textContent (jamais de HTML venu du noyau ou du web). Images : https seulement.
-// Un bouton envoie son action (nom + contexte) au processus principal, qui décide (ex. ouvrir_url → http(s)).
+// Un bouton envoie son action (nom + contexte) au processus principal, qui décide (ex. open_url → http(s)).
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
 function str(v: string | A2uiValue | null | undefined): string {

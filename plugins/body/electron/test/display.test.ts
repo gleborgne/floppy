@@ -53,7 +53,7 @@ describe("réglages d'affichage", () => {
     } finally { await k.stopAll(); }
   });
 
-  it("ouvrir_reglages attend la confirmation de la fenêtre et transmet son échec", async () => {
+  it("open_settings attend la confirmation de la fenêtre et transmet son échec", async () => {
     const parent = new EventEmitter() as EventEmitter & { postMessage(m: unknown): void };
     let request: { type: string; reqId: string } | undefined;
     parent.postMessage = (m) => { const r = m as typeof request; if (r?.type === "settings.open") request = r; };
@@ -61,13 +61,13 @@ describe("réglages d'affichage", () => {
     const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron] });
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }] });
     try {
-      expect(k.tools.list().some((t) => t.name === "ouvrir_reglages")).toBe(true);
-      const result = k.tools.call("ouvrir_reglages", {});
+      expect(k.tools.list().some((t) => t.name === "open_settings")).toBe(true);
+      const result = k.tools.call("open_settings", {});
       await Promise.resolve(); await Promise.resolve();
       expect(request?.type).toBe("settings.open");
       parent.emit("message", { data: { type: "settings.open.result", reqId: request!.reqId, ok: false, text: "Chargement impossible" } });
       expect(await result).toMatchObject({ status: "failed", text: "Chargement impossible" });
-      const success = k.tools.call("ouvrir_reglages", {});
+      const success = k.tools.call("open_settings", {});
       await Promise.resolve(); await Promise.resolve();
       parent.emit("message", { data: { type: "settings.open.result", reqId: request!.reqId, ok: true } });
       expect(await success).toMatchObject({ status: "done" });

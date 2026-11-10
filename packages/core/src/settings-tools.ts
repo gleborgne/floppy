@@ -18,25 +18,25 @@ export function settingsTools(reg: SettingsRegistry): ToolDef[] {
   const keys = list.map((s) => s.key).join(", ") || "aucun";
   return [
     {
-      name: "lister_reglages",
+      name: "list_settings",
       description: "Liste tes réglages (voix, écoute, délégation…) avec leur valeur actuelle et les choix possibles.",
       inputSchema: { type: "object", properties: {} },
       level: "read",
       handler: async () => ({ status: "done", text: lines.join("\n") || "Aucun réglage." }),
     },
     {
-      name: "changer_reglage",
-      description: `Change un de tes réglages quand l'utilisateur le demande (« prends une voix de femme », « change de voix », « écoute plus longtemps »). Appelle-le tout de suite, sans rien dire avant et sans demander de confirmation : l'utilisateur peut dire « annule ». S'il ne précise pas la valeur, choisis-en une toi-même, différente de l'actuelle. cle : ${keys}. valeur : le choix, en clair. Réglages :\n${lines.join("\n")}\nLes droits d'accès (dossiers, comptes) ne se règlent jamais à la voix.`,
-      inputSchema: { type: "object", properties: { cle: { type: "string", enum: list.map((s) => s.key) }, valeur: { type: "string" } }, required: ["cle", "valeur"] },
+      name: "change_setting",
+      description: `Change un de tes réglages quand l'utilisateur le demande (« prends une voix de femme », « change de voix », « écoute plus longtemps »). Appelle-le tout de suite, sans rien dire avant et sans demander de confirmation : l'utilisateur peut dire « annule ». S'il ne précise pas la valeur, choisis-en une toi-même, différente de l'actuelle. key : ${keys}. value : le choix, en clair. Réglages :\n${lines.join("\n")}\nLes droits d'accès (dossiers, comptes) ne se règlent jamais à la voix.`,
+      inputSchema: { type: "object", properties: { key: { type: "string", enum: list.map((s) => s.key) }, value: { type: "string" } }, required: ["key", "value"] },
       level: "write",
       selfApproved: true,
       handler: async (a, meta) => {
-        const r = await reg.change(String(a.cle ?? ""), a.valeur, "voice", meta.origin);
+        const r = await reg.change(String(a.key ?? ""), a.value, "voice", meta.origin);
         return { status: r.ok ? "done" : isRefusal(r.text) ? "refused" : "failed", text: r.text };
       },
     },
     {
-      name: "annuler_reglage",
+      name: "undo_setting",
       description: "Annule le dernier changement de réglage (« annule », « remets comme avant »).",
       inputSchema: { type: "object", properties: {} },
       level: "write",

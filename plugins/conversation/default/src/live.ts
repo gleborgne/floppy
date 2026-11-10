@@ -15,7 +15,7 @@ interface Options {
   onState(state: BodyState): void; onPlaying(on: boolean): void; onIdle?(): void;
   /** Le modèle Live ne donne pas d'émotion : la conversation la devine dans le texte entendu (heard) et dit (reply). */
   onHeard?(text: string): void; onReply?(delta: string, timing: { body: string; id: string }): string | undefined;
-  /** Expérimental : le modèle dit son émotion par l'outil `exprimer_emotion` (moteurs à appels de fonctions). Relu à l'ouverture de chaque session. */
+  /** Expérimental : le modèle dit son émotion par l'outil `express_emotion` (moteurs à appels de fonctions). Relu à l'ouverture de chaque session. */
   emotionTool?(): boolean;
   /** Émotion dite par le modèle : à montrer calée sur le prochain bloc audio (même `timing` que `onReply`). */
   onModelEmotion?(e: { emotion: string; intensity?: number }, timing: { body: string; id: string }): void;

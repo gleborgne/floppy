@@ -72,15 +72,15 @@ describe("suivi Orca intégré au noyau", () => {
     expect(raw(await f.k.tools.call("orca_detail", {}, meta("chat"))).reason).toBe("no_context");
     expect(raw(await f.k.tools.call("orca_detail", {}, meta("voice", "another"))).reason).toBe("no_context");
     expect(f.tracking.snapshot().diagnostics?.some((e) => e.stage === "announcement.completed")).toBe(false);
-    expect(raw(await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta())).agent.label).toBe("Filtrage mails");
+    expect(raw(await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta())).agent.label).toBe("Filtrage mails");
   });
 
   it("une rafale de bulles garde groupe, ordre, focus et expiration de chaque origine", async () => {
     const f = await start();
-    const listed = raw(await f.k.tools.call("orca_agents", { limite: 2 }, meta())).references;
+    const listed = raw(await f.k.tools.call("orca_agents", { limit: 2 }, meta())).references;
     expect(listed).toHaveLength(2);
     await f.k.tools.call("orca_detail", { id: listed[0].identity }, meta());
-    await f.k.tools.call("orca_detail", { nom: "Réveil avatar" }, meta("chat"));
+    await f.k.tools.call("orca_detail", { name: "Réveil avatar" }, meta("chat"));
     const unrelated = agent("Autre mission");
     f.state.envelope.worktrees![0]!.agents!.push(unrelated);
     f.advance(); await f.tracking.refresh();
@@ -93,7 +93,7 @@ describe("suivi Orca intégré au noyau", () => {
       await f.presented(key, "chat", "display-scheduled");
     }
     expect(raw(await f.k.tools.call("orca_detail", {}, meta())).reference.identity).toBe(listed[0].identity);
-    expect(raw(await f.k.tools.call("orca_detail", { nom: "le deuxième" }, meta())).reference.identity).toBe(listed[1].identity);
+    expect(raw(await f.k.tools.call("orca_detail", { name: "le deuxième" }, meta())).reference.identity).toBe(listed[1].identity);
     expect(raw(await f.k.tools.call("orca_detail", {}, meta("chat"))).agent.label).toBe("Réveil avatar");
     f.advance(29 * 60_000);
     await f.presented(key, "voice", "display-scheduled");
@@ -157,11 +157,11 @@ describe("suivi Orca intégré au noyau", () => {
     const a = f.state.envelope.worktrees![0]!.agents![0]!;
     f.advance(); a.taskTitle = "Nouvelle mission"; a.state = "done";
     await f.tracking.refresh();
-    const detail = await f.k.tools.call("orca_detail", { nom: String(position + 1) }, meta());
+    const detail = await f.k.tools.call("orca_detail", { name: String(position + 1) }, meta());
     expect(raw(detail).reference).toMatchObject({ identity: firstId, label: "Nouvelle mission" });
     const approvals: string[] = [];
     f.k.bus.on("approval.request", (r) => { approvals.push(r.summary); f.k.approvals.respond(r.id, false, "test"); });
-    await f.k.tools.call("orca_envoyer_groupe", { nom: "lui", message: "Relisez le travail" }, meta());
+    await f.k.tools.call("orca_send_group", { name: "lui", message: "Relisez le travail" }, meta());
     expect(approvals).toHaveLength(1);
     expect(approvals[0]).toContain("Nouvelle mission");
     expect(approvals[0]).not.toContain("Filtrage mails");
@@ -183,16 +183,16 @@ describe("suivi Orca intégré au noyau", () => {
     await f.presented(key, "chat", "interrupted");
     await f.presented(key, "voice", "interrupted");
     expect(raw(await f.k.tools.call("orca_detail", {}, meta())).reason).toBe("no_context");
-    expect(raw(await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta())).agent.label).toBe("Filtrage mails");
+    expect(raw(await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta())).agent.label).toBe("Filtrage mails");
     await f.presented(key);
-    await f.k.tools.call("orca_detail", { nom: "Réveil avatar" }, meta());
+    await f.k.tools.call("orca_detail", { name: "Réveil avatar" }, meta());
     await f.presented(key, "voice", "interrupted");
     expect(raw(await f.k.tools.call("orca_detail", {}, meta())).agent.label).toBe("Réveil avatar");
   });
 
   it("les polls inchangés préservent la trace et bornent les écritures d'audit", async () => {
     const f = await start();
-    await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta());
+    await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta());
     const before = f.k.audit.tail(1000).filter((e) => e.kind === "orca").length;
     for (let n = 0; n < 100; n++) { f.advance(); await f.tracking.refresh(); }
     expect(f.k.audit.tail(1000).filter((e) => e.kind === "orca").length - before).toBeLessThanOrEqual(1);
@@ -207,12 +207,12 @@ describe("suivi Orca intégré au noyau", () => {
   it("liste chaque agent du même projet avec des références stables et des pages bornées", async () => {
     const f = await start();
     f.state.envelope.worktrees = [worktree(...Array.from({ length: 25 }, (_, i) => agent(`Mission ${String(i).padStart(2, "0")} ${"x".repeat(150)}`)))];
-    const first = await f.k.tools.call("orca_agents", { limite: 10 }, meta());
+    const first = await f.k.tools.call("orca_agents", { limit: 10 }, meta());
     expect(first.status).toBe("done");
     expect(first.text.length).toBeLessThanOrEqual(1500);
     expect(raw(first).agents.length).toBeGreaterThan(0);
     expect(raw(first).nextOffset).toBeGreaterThan(0);
-    const second = await f.k.tools.call("orca_agents", { offset: raw(first).nextOffset, limite: 10 }, meta());
+    const second = await f.k.tools.call("orca_agents", { offset: raw(first).nextOffset, limit: 10 }, meta());
     expect(raw(second).references[0].identity).not.toBe(raw(first).references[0].identity);
     expect(new Set(raw(first).references.map((r: any) => r.identity)).size).toBe(raw(first).references.length);
   });
@@ -220,7 +220,7 @@ describe("suivi Orca intégré au noyau", () => {
   it("filtre par projet, état et date sans transformer une fin inconnue en réussite", async () => {
     const f = await start();
     f.state.envelope.worktrees = [worktree(agent("Filtrage mails", "done"), agent("Réveil avatar", "waiting"))];
-    const list = await f.k.tools.call("orca_agents", { projet: "Floppy", filtre: "termines", depuis: "2026-11-08T11:00:00Z" }, meta());
+    const list = await f.k.tools.call("orca_agents", { project: "Floppy", filter: "finished", since: "2026-11-08T11:00:00Z" }, meta());
     expect(list.text).toContain("Filtrage mails");
     expect(list.text).not.toContain("Réveil avatar");
     expect(list.text).toContain("résultat inconnu");
@@ -231,21 +231,21 @@ describe("suivi Orca intégré au noyau", () => {
     const f = await start();
     const list = await f.k.tools.call("orca_agents", {}, meta());
     const refs = raw(list).references;
-    const second = await f.k.tools.call("orca_detail", { nom: "le deuxième" }, meta());
+    const second = await f.k.tools.call("orca_detail", { name: "le deuxième" }, meta());
     expect(raw(second).reference.identity).toBe(refs[1].identity);
     const follow = await f.k.tools.call("orca_detail", {}, meta());
     expect(raw(follow).reference.identity).toBe(refs[1].identity);
     expect((await f.k.tools.call("orca_detail", {}, meta("chat"))).status).toBe("failed");
     expect((await f.k.tools.call("orca_detail", {}, meta("voice", "new-session"))).status).toBe("failed");
-    const first = await f.k.tools.call("orca_detail", { nom: "1st" }, meta());
+    const first = await f.k.tools.call("orca_detail", { name: "1st" }, meta());
     expect(raw(first).reference.identity).toBe(refs[0].identity);
     expect(raw(await f.k.tools.call("orca_detail", { id: refs[2].identity }, meta())).reference.identity).toBe(refs[2].identity);
-    expect((await f.k.tools.call("orca_detail", { nom: "Floppy" }, meta())).status).toBe("failed");
+    expect((await f.k.tools.call("orca_detail", { name: "Floppy" }, meta())).status).toBe("failed");
   });
 
   it("une annonce silencieuse ne recible jamais un agent discuté", async () => {
     const f = await start();
-    await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta());
+    await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta());
     f.advance();
     f.state.envelope.worktrees![0]!.agents![1]!.state = "done";
     await f.tracking.refresh();
@@ -283,7 +283,7 @@ describe("suivi Orca intégré au noyau", () => {
 
   it("une annonce trop ancienne ne laisse jamais lui viser le focus précédent", async () => {
     const f = await start();
-    await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta());
+    await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta());
     f.advance(); f.state.envelope.worktrees![0]!.agents![1]!.state = "done";
     await f.tracking.refresh();
     await vi.waitFor(() => expect(f.announcements).toHaveLength(1));
@@ -294,7 +294,7 @@ describe("suivi Orca intégré au noyau", () => {
 
   it("agent disparu et référence expirée échouent sans repli vers celui qui attend", async () => {
     const f = await start();
-    await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta());
+    await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta());
     f.advance(); f.state.envelope.worktrees![0]!.agents!.shift();
     const missing = await f.k.tools.call("orca_detail", {}, meta());
     expect(raw(missing).reason).toBe("missing");
@@ -335,7 +335,8 @@ describe("suivi Orca intégré au noyau", () => {
     const f = await start();
     f.advance(); f.state.envelope.worktrees = [];
     await f.tracking.refresh();
-    const history = await f.k.tools.call("orca_historique", { nom: "Filtrage mails" }, meta());
+    const history = await f.k.tools.call("orca_history", { name: "Filtrage mails" }, meta());
+    expect(f.k.tools.list().map((t) => t.name).filter((n) => ["orca_historique", "orca_ecran", "orca_envoyer_groupe"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(history.status).toBe("done");
     expect(history.text).toContain("Filtrage mails");
     expect((await f.k.tools.call("orca_detail", {}, meta())).status).toBe("failed");
@@ -345,12 +346,12 @@ describe("suivi Orca intégré au noyau", () => {
     const f = await start();
     Object.assign(f.state.envelope.worktrees![0]!.agents![0]!, { state: "done", mainAgent: { state: "done", outcome: "failure" }, prompt: "Filtrer les courriers", lastAssistantMessage: "Les tests échouent", hasLivePty: false });
     f.advance();
-    const detail = await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta());
+    const detail = await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta());
     expect(detail.status).toBe("failed");
     const records = f.tracking.snapshot().agents;
     expect(records.find((r) => r.label === "Filtrage mails")).toMatchObject({ outcome: "failure", presence: "absent" });
     Object.assign(f.state.envelope.worktrees![0]!.agents![0]!, { hasLivePty: true }); f.advance();
-    const available = await f.k.tools.call("orca_detail", { nom: "Filtrage mails" }, meta());
+    const available = await f.k.tools.call("orca_detail", { name: "Filtrage mails" }, meta());
     expect(available.text).toContain("Filtrer les courriers");
     expect(available.text).toContain("échec");
     expect(available.text).toContain("cli");
@@ -367,7 +368,7 @@ describe("suivi Orca intégré au noyau", () => {
     await f.tracking.refresh();
     await f.k.stopAll();
     const next = await start({ home: f.home });
-    const history = await next.k.tools.call("orca_historique", { projet: "Floppy" }, meta());
+    const history = await next.k.tools.call("orca_history", { project: "Floppy" }, meta());
     expect(history.text).toContain("Filtrage mails");
     expect(history.text).toContain("Réveil avatar");
     expect(raw(history).events.some((e: any) => e.activity === "finished")).toBe(true);
@@ -377,10 +378,10 @@ describe("suivi Orca intégré au noyau", () => {
 
   it("un écran ne se rabat jamais sur le terminal d'un autre agent du même projet", async () => {
     const f = await start();
-    const wrong = await f.k.tools.call("orca_ecran", { nom: "Réveil avatar" }, meta());
+    const wrong = await f.k.tools.call("orca_screen", { name: "Réveil avatar" }, meta());
     expect(wrong.status).toBe("failed");
     expect(f.calls.some((args) => args[1] === "read")).toBe(false);
-    const right = await f.k.tools.call("orca_ecran", { nom: "Filtrage mails" }, meta());
+    const right = await f.k.tools.call("orca_screen", { name: "Filtrage mails" }, meta());
     expect(right.text).toContain("Question exacte");
   });
 
@@ -391,7 +392,7 @@ describe("suivi Orca intégré au noyau", () => {
     f.advance(); f.state.envelope.worktrees![0]!.agents!.shift();
     f.state.envelope.worktrees![0]!.agents!.push({ ...agent("Filtrage mails", "done"), paneKey: "tab:replacement" });
     const approvals = vi.fn(); f.k.bus.on("approval.request", approvals);
-    const result = await f.k.tools.call("orca_envoyer_groupe", { nom: "eux", filtre: "termines", message: "Faites le commit" }, meta());
+    const result = await f.k.tools.call("orca_send_group", { name: "eux", filter: "finished", message: "Faites le commit" }, meta());
     expect(result.status).toBe("failed");
     expect(approvals).not.toHaveBeenCalled();
     expect(f.calls.some((args) => args[1] === "send")).toBe(false);
@@ -399,7 +400,7 @@ describe("suivi Orca intégré au noyau", () => {
 
   it("recherche avec filtres CLI vérifiés et préserve les lacunes et le curseur", async () => {
     const f = await start();
-    const result = await f.k.tools.call("orca_recherche", { texte: "private-query-token", chemin: "C:/Notes", depuis: "2026-11-08T00:00:00Z", agent: "codex", cursor: "opaque" }, meta());
+    const result = await f.k.tools.call("orca_search", { text: "private-query-token", path: "C:/Notes", since: "2026-11-08T00:00:00Z", agent: "codex", cursor: "opaque" }, meta());
     expect(f.calls).toContainEqual(["search", "--query", "private-query-token", "--scope", "conversation", "--limit", "5", "--path", "C:/Notes", "--agent", "codex", "--since", "2026-11-08T00:00:00Z", "--cursor", "opaque"]);
     expect(result.text).toContain("partielle");
     expect(raw(result).nextCursor).toBe("opaque-cursor");
@@ -411,7 +412,7 @@ describe("suivi Orca intégré au noyau", () => {
   it("diagnostics privés, bornés et corrélés à l'appel sans prompt ni chemin", async () => {
     const f = await start();
     f.state.offline = true;
-    await f.k.tools.call("orca_agents", { projet: "private-project-token" }, { ...meta(), turn: "turn-a" });
+    await f.k.tools.call("orca_agents", { project: "private-project-token" }, { ...meta(), turn: "turn-a" });
     const result = await f.k.tools.call("orca_diagnostic", {});
     const serialized = JSON.stringify(raw(result));
     expect(serialized).not.toMatch(/private|prompt-token|secret/);

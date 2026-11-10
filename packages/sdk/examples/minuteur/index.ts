@@ -11,12 +11,12 @@ const plugin: UserPlugin = {
   },
 
   apply(ctx) {
-    let importance: "important" | "normal" = ctx.settings.saved<"important" | "normal">("minuteur_annonce") ?? "important";
+    let importance: "important" | "normal" = ctx.settings.saved<"important" | "normal">("minuteur_announce") ?? "important";
     let compteur = 0;
 
     ctx.settings.declare([
       {
-        key: "minuteur_annonce",
+        key: "minuteur_announce",
         label: { fr: "Annonce de fin de minuteur", en: "Timer end announcement" },
         description: { fr: "Dire la fin du minuteur à voix haute, ou seulement l'afficher.", en: "Say the end of the timer aloud, or only show it." },
         type: "enum",
@@ -34,7 +34,7 @@ const plugin: UserPlugin = {
 
     ctx.tools.register([
       {
-        name: "lancer_minuteur",
+        name: "start_timer",
         description: "Lance un minuteur. Quand il sonne, l'assistant prévient l'utilisateur. Paramètre : minutes (de 1 à 180).",
         inputSchema: { type: "object", properties: { minutes: { type: "number", minimum: 1, maximum: 180 } }, required: ["minutes"] },
         level: "write", // il change quelque chose chez l'utilisateur (un minuteur tourne)

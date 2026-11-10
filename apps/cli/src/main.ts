@@ -283,12 +283,12 @@ async function plugin(): Promise<number> {
     case "install": {
       const src = need("install <dossier | fichier.zip | https://…zip | dépôt git[#ref]>");
       // Chemin local : rendu absolu ici, le noyau n'a pas le même dossier courant que ce terminal.
-      const r = await callTool("installer_plugin", { source: /^[a-z+]+:\/\//i.test(src) || !existsSync(src.split("#")[0]!) ? src : resolve(src) });
+      const r = await callTool("install_plugin", { source: /^[a-z+]+:\/\//i.test(src) || !existsSync(src.split("#")[0]!) ? src : resolve(src) });
       console.log(tr(r.text as never, lang));
       return r.status === "done" ? 0 : 1;
     }
     case "list": {
-      const r = await callTool("plugins_tiers", {});
+      const r = await callTool("list_third_party_plugins", {});
       console.log(tr(r.text as never, lang));
       return 0;
     }
@@ -300,7 +300,7 @@ async function plugin(): Promise<number> {
       return data.ok ? 0 : 1;
     }
     case "remove": {
-      const r = await callTool("desinstaller_plugin", { id: need("remove <id>") });
+      const r = await callTool("uninstall_plugin", { id: need("remove <id>") });
       console.log(tr(r.text as never, lang));
       return r.status === "done" ? 0 : 1;
     }

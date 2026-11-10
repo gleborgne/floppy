@@ -17,10 +17,11 @@ describe("recherche web", () => {
     const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async (q) => { asked.push(q); return RES; })] });
     kernels.push(k);
     await k.applyConfig({ plugins: [{ id: "websearch", plugin: "websearch" }] });
-    const info = k.tools.list().find((t) => t.name === "chercher_web")!;
+    const info = k.tools.list().find((t) => t.name === "search_web")!;
     expect(info.level).toBe("read");
     expect(info.waitPhrase).toMatch(/cherche/);
-    const r = await k.tools.call("chercher_web", { question: "météo Paris demain" });
+    const r = await k.tools.call("search_web", { question: "météo Paris demain" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["chercher_web"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toContain("nuageux");
     expect(r.text).toContain("https://meteo.example/paris");
@@ -33,7 +34,7 @@ describe("recherche web", () => {
     const k = new Kernel({ logger: () => {}, plugins: [createWebsearchPlugin(async () => { throw new Error("Claude Code n'est pas installé"); })] });
     kernels.push(k);
     await k.applyConfig({ plugins: [{ id: "websearch", plugin: "websearch" }] });
-    const r = await k.tools.call("chercher_web", { question: "x" });
+    const r = await k.tools.call("search_web", { question: "x" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/pas installé/);
   });
@@ -49,7 +50,7 @@ describe("recherche web", () => {
     const comps = msgs[0].surfaceUpdate.components as { id: string; component: any }[];
     expect(msgs[1].beginRendering.root).toBe("root");
     const btn = comps.find((c) => c.component.Button)!;
-    expect(btn.component.Button.action).toEqual({ name: "ouvrir_url", context: [{ key: "url", value: { literalString: "https://meteo.example/paris" } }] });
+    expect(btn.component.Button.action).toEqual({ name: "open_url", context: [{ key: "url", value: { literalString: "https://meteo.example/paris" } }] });
   });
 
   it("conserve les dates de publication valides, laisse les dates inconnues absentes", () => {
@@ -76,7 +77,7 @@ describe("service search (slot)", () => {
     kernels.push(k);
     await k.applyConfig({ slots: { "watch.search": "websearch/claude" }, plugins: [{ id: "websearch", plugin: "websearch" }, { id: "u", plugin: "user" }] });
     // L'outil du cerveau est toujours là.
-    expect(k.tools.list().some((t) => t.name === "chercher_web")).toBe(true);
+    expect(k.tools.list().some((t) => t.name === "search_web")).toBe(true);
     const b = await ctxRef!.borrow<SearchService>("watch.search");
     expect(b!.service.cloud).toBe(true);
     expect(await b!.service.search("ia")).toEqual([
@@ -101,8 +102,8 @@ describe("recherche web en anglais", () => {
     await k.applyConfig({ plugins: [{ id: "websearch", plugin: "websearch" }] });
     await k.settings.change("assistant_language", "en", "ui");
     await k.idle();
-    expect(k.tools.list().find((t) => t.name === "chercher_web")!.waitPhrase).toBe("Let me look that up online, one moment.");
-    await k.tools.call("chercher_web", { question: "weather" });
+    expect(k.tools.list().find((t) => t.name === "search_web")!.waitPhrase).toBe("Let me look that up online, one moment.");
+    await k.tools.call("search_web", { question: "weather" });
     expect(langs).toEqual(["en"]);
   });
 

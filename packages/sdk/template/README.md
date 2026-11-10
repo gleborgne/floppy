@@ -8,7 +8,7 @@ Plugin for Floppy: says hello. *(Replace this text.)*
 
 ```sh
 floppy dev .             # lance Floppy avec ce plugin, rechargé à chaque sauvegarde
-floppy tool __KEY___bonjour '{"nom":"Ada"}'   # appelle l'outil sans passer par le modèle
+floppy tool __KEY___hello '{"name":"Ada"}'   # appelle l'outil sans passer par le modèle
 floppy plugin check .    # contrôles faits avant l'installation chez quelqu'un
 floppy plugin test .     # essai dans un noyau jetable
 ```

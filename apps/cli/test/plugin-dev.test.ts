@@ -41,14 +41,14 @@ describe("mode debug", () => {
     const { r, home } = await start(dir);
     expect(r.kernel.status().find((e) => e.id === "u-essai-dev")?.state).toBe("active");
     // Le wiki des plugins est là pour l'assistant IA (outil de lecture).
-    expect(r.kernel.tools.list().find((t) => t.name === "doc_plugins")?.level).toBe("read");
-    expect((await controlCall(home, "POST", "/tool", { name: "essai_dev_bonjour", args: { nom: "Ada" } })).data).toMatchObject({ status: "done", text: "Bonjour Ada !" });
+    expect(r.kernel.tools.list().find((t) => t.name === "plugin_docs")?.level).toBe("read");
+    expect((await controlCall(home, "POST", "/tool", { name: "essai_dev_hello", args: { name: "Ada" } })).data).toMatchObject({ status: "done", text: "Bonjour Ada !" });
     // Un appel d'outil inconnu ne casse rien.
     expect((await controlCall(home, "POST", "/tool", { name: "nexiste_pas", args: {} })).data.status).toBe("failed");
 
     const src = (await import("node:fs")).readFileSync(join(dir, "index.ts"), "utf8");
-    writeFileSync(join(dir, "index.ts"), src.replace("`Bonjour ${nom} !`", "`Coucou ${nom} !`"));
-    await until(async () => (await controlCall(home, "POST", "/tool", { name: "essai_dev_bonjour", args: { nom: "Ada" } })).data.text === "Coucou Ada !");
+    writeFileSync(join(dir, "index.ts"), src.replace("`Bonjour ${name} !`", "`Coucou ${name} !`"));
+    await until(async () => (await controlCall(home, "POST", "/tool", { name: "essai_dev_hello", args: { name: "Ada" } })).data.text === "Coucou Ada !");
     // Le mode debug ne s'éteint pas d'un réglage.
     await r.kernel.settings.change("plugin_essai_dev", false, "ui");
     expect(r.kernel.status().find((e) => e.id === "u-essai-dev")?.state).toBe("active");

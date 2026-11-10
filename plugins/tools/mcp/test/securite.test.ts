@@ -46,7 +46,7 @@ async function waitGone(pidFile: string, ms: number): Promise<boolean> {
 
 describe("commande : niveau et injection d'option", () => {
   const cmd = (extra: Record<string, unknown> = {}) => ({
-    label: "Écho", description: "Répète.", command: process.execPath, args: ["-e", "console.log('>' + process.argv[1])", "{texte}"], ...extra,
+    label: "Écho", description: "Répète.", command: process.execPath, args: ["-e", "console.log('>' + process.argv[1])", "{text}"], ...extra,
   });
 
   it("niveau par défaut = écriture ; lecture seulement si choisie", async () => {
@@ -64,11 +64,11 @@ describe("commande : niveau et injection d'option", () => {
     const s = await start();
     await s.run({ op: "add", kind: "command", values: cmd({ level: "read" }) });
     for (const texte of ["--output=x", "-rf", "  -x"]) {
-      const r = await s.k.tools.call("echo", { texte });
+      const r = await s.k.tools.call("echo", { text: texte });
       expect(r.status).toBe("failed");
       expect(r.text).toContain("commencer par « - »");
     }
-    expect(await s.k.tools.call("echo", { texte: "a-b" })).toMatchObject({ status: "done", text: ">a-b" });
+    expect(await s.k.tools.call("echo", { text: "a-b" })).toMatchObject({ status: "done", text: ">a-b" });
   });
 });
 

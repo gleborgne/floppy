@@ -1,5 +1,5 @@
 // Pont de la fenêtre de résultats (A2UI) : recevoir une surface, et signaler un clic sur un bouton.
-// La page ne peut rien faire d'autre : l'action « ouvrir_url » est vérifiée par le processus principal.
+// La page ne peut rien faire d'autre : l'action « open_url » est vérifiée par le processus principal.
 import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
 

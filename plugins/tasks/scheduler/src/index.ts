@@ -339,27 +339,27 @@ export function createSchedulerPlugin() {
 
       // Outil : « envoie la synthèse sur Telegram », « envoie-moi ça par mail ». Niveau « send » : accord à chaque fois.
       ctx.tools.register([{
-        name: "envoyer",
-        description: "Envoie un document (par défaut le dernier : la veille du jour, une réponse affichée…) sur un canal de l'utilisateur : Telegram, mail… « envoie la synthèse sur Telegram » → canal: telegram. « envoie-moi la veille par mail » → canal: mail, quoi: veille.",
+        name: "send_document",
+        description: "Envoie un document (par défaut le dernier : la veille du jour, une réponse affichée…) sur un canal de l'utilisateur : Telegram, mail… « envoie la synthèse sur Telegram » → channel: telegram. « envoie-moi la veille par mail » → channel: mail, what: veille.",
         inputSchema: {
           type: "object",
           properties: {
-            canal: { type: "string", description: "Nom du canal (« Telegram », « Gmail perso »…)." },
-            quoi: { type: "string", description: "Quel document : « dernier » (défaut), « veille », ou des mots du titre." },
+            channel: { type: "string", description: "Nom du canal (« Telegram », « Gmail perso »…)." },
+            what: { type: "string", description: "Quel document : « last » (défaut, le dernier), « veille », ou des mots du titre." },
           },
-          required: ["canal"],
+          required: ["channel"],
         },
         level: "send",
         summary: (a) => t(
-          `Envoyer ${a.quoi ? `« ${String(a.quoi)} »` : "le dernier document"} sur ${String(a.canal ?? "")}`,
-          `Send ${a.quoi ? `"${String(a.quoi)}"` : "the latest document"} to ${String(a.canal ?? "")}`,
+          `Envoyer ${a.what ? `« ${String(a.what)} »` : "le dernier document"} sur ${String(a.channel ?? "")}`,
+          `Send ${a.what ? `"${String(a.what)}"` : "the latest document"} to ${String(a.channel ?? "")}`,
         ),
         handler: async (a) => {
-          const { found } = resolve(String(a.canal ?? ""));
+          const { found } = resolve(String(a.channel ?? ""));
           if (!found.length) return { status: "failed", text: t(`Je ne connais pas ce canal. Canaux : ${tr(channelList(), "fr")}.`, `I don't know this channel. Channels: ${tr(channelList(), "en")}.`) };
           const docs = ctx.maybe("documents");
           if (!docs) return { status: "failed", text: t("Pas de documents à envoyer (plugin Documents absent).", "No documents to send (Documents plugin missing).") };
-          const q = norm(String(a.quoi ?? "dernier"));
+          const q = norm(String(a.what ?? "last"));
           const list = await docs.list({ max: 50 });
           const ref = !q || q === "dernier" || q === "derniere" || q === "last" || q === "latest" ? list[0]
             : list.find((d) => d.tags.some((t2) => norm(t2) === q)) ?? list.find((d) => q.split(" ").every((w) => norm(d.title).includes(w)));

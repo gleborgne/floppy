@@ -46,22 +46,22 @@ describe("outils", () => {
     expect(all).not.toContain("vide");
     expect(all).not.toContain("x".repeat(141));
     expect(all.length).toBeLessThanOrEqual(1520);
-    const run = (await k.tools.call("orca_agents", { filtre: "en_cours" })).text;
+    const run = (await k.tools.call("orca_agents", { filter: "running" })).text;
     expect(run).toContain("Migration");
     expect(run).not.toContain("Revue");
-    expect((await k.tools.call("orca_agents", { filtre: "termines" })).text).toContain("Revue");
-    const wait = (await k.tools.call("orca_agents", { filtre: "en_attente" })).text;
+    expect((await k.tools.call("orca_agents", { filter: "finished" })).text).toContain("Revue");
+    const wait = (await k.tools.call("orca_agents", { filter: "waiting" })).text;
     expect(wait).toContain("en attente");
     expect(wait).not.toContain("Migration");
   });
 
   it("orca_detail : recherche floue sans accents", async () => {
     const { k } = await start(data, { surveillance: false });
-    const r = (await k.tools.call("orca_detail", { nom: "EVALUATION" })).text;
+    const r = (await k.tools.call("orca_detail", { name: "EVALUATION" })).text;
     expect(r).toContain("Quelle option ?");
     expect(r).toContain("fais le truc");
-    expect((await k.tools.call("orca_detail", { nom: "migrat" })).text).toContain("dev-mcp");
-    expect((await k.tools.call("orca_detail", { nom: "zzz" })).text).toContain("Aucun agent");
+    expect((await k.tools.call("orca_detail", { name: "migrat" })).text).toContain("dev-mcp");
+    expect((await k.tools.call("orca_detail", { name: "zzz" })).text).toContain("Aucun agent");
   });
 });
 
@@ -200,7 +200,7 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     expect(it).toMatchObject({ id: "orca", enabled: true, status: "ok", removable: true });
     // Ses réglages sont montrés dans l'élément (« Configurer »), pas dans la rubrique.
     expect(it.settings).toEqual(["orca_notifications"]);
-    expect(it.children!.map((c) => c.id)).toEqual(["orca_envoyer", "orca_envoyer_groupe", "orca_envois", "orca_annuler_envoi", "orca_agents", "orca_detail", "orca_historique", "orca_diagnostic", "orca_ecran", "orca_recherche"]);
+    expect(it.children!.map((c) => c.id)).toEqual(["orca_send", "orca_send_group", "orca_deliveries", "orca_cancel_delivery", "orca_agents", "orca_detail", "orca_history", "orca_diagnostic", "orca_screen", "orca_search"]);
     await vi.waitFor(() => expect(data.calls).toBeGreaterThan(1));
 
     expect((await k.items.run({ op: "enable", provider: P, id: "orca", on: false }, "cli")).ok).toBe(true);
@@ -226,7 +226,7 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     const { k } = await start({ calls: 0, v: [] }, { surveillance: false });
     await k.items.run({ op: "child", provider: P, id: "orca", child: "orca_detail", on: false }, "cli");
     expect(k.tools.list().some((t) => t.name === "orca_detail")).toBe(false);
-    expect((await k.tools.call("orca_detail", { nom: "x" })).status).toBe("failed");
+    expect((await k.tools.call("orca_detail", { name: "x" })).status).toBe("failed");
     expect(k.tools.list().some((t) => t.name === "orca_agents")).toBe(true);
     for (const key of ["orca_notifications"]) {
       const s = k.settings.list().find((x) => x.key === key)!;
@@ -241,7 +241,7 @@ describe("Orca est une application (ajoutée ou retirée par l'utilisateur)", ()
     k.bus.on("approval.request", (r) => { asked.push(String(r.summary)); k.approvals.respond(r.id, false, "test"); });
     expect((await k.items.run({ op: "add", provider: P, kind: "orca", values: {} }, "voice")).ok).toBe(false);
     expect(asked).toEqual(["Ajouter Orca"]);
-    expect((await k.tools.call("ajouter_application", { nom: "orca" })).text).toMatch(/déjà ajouté/);
+    expect((await k.tools.call("add_app", { name: "orca" })).text).toMatch(/déjà ajouté/);
     expect(asked.length).toBe(1);
   });
 

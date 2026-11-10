@@ -115,7 +115,7 @@ describe("boutique des plugins tiers", () => {
     await store.approve("salut");
     await k.settings.change(settingKey("salut"), true, "ui");
     expect(k.status().find((e) => e.id === "u-salut")?.state).toBe("active");
-    const r = await k.tools.call("desinstaller_plugin", { id: "salut" });
+    const r = await k.tools.call("uninstall_plugin", { id: "salut" });
     expect(r.status).toBe("done");
     expect(existsSync(join(home, "plugins", "salut"))).toBe(false);
     expect(readLock(home).salut).toBeUndefined();
@@ -125,14 +125,15 @@ describe("boutique des plugins tiers", () => {
     expect(k.status().find((e) => e.id === "u-salut")).toBeUndefined();
   }, 30_000);
 
-  it("outils : installer_plugin rend le rapport ; plugins_tiers liste", async () => {
+  it("outils : install_plugin rend le rapport ; list_third_party_plugins liste", async () => {
     const { k } = setup();
     await k.applyConfig({ plugins: [], approvals: { write: "always" } });
-    const r = await k.tools.call("installer_plugin", { source: source() });
+    const r = await k.tools.call("install_plugin", { source: source() });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["installer_plugin", "plugins_tiers", "desinstaller_plugin"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toContain("Rien à signaler");
     expect(r.text).toContain("floppy plugin approve salut");
-    const l = await k.tools.call("plugins_tiers", {});
+    const l = await k.tools.call("list_third_party_plugins", {});
     expect(l.text).toContain("En attente");
     expect(l.text).toContain("salut");
   }, 30_000);

@@ -24,8 +24,8 @@ export { codexOverrides } from "./codex.ts";
 export { reviewArgs, runReview, REVIEW_SYSTEM, type ReviewAgent } from "./review.ts";
 
 const MAX_SESSIONS = 3;
-const REGLAGES_TOOLS = ["lister_reglages", "changer_reglage", "annuler_reglage", "etat_plugins", "lister_elements", "activer_element"];
-const PLUGIN_TOOLS = ["doc_plugins", "tester_plugin", "recharger_plugins", "etat_plugins", "lister_reglages"];
+const REGLAGES_TOOLS = ["list_settings", "change_setting", "undo_setting", "plugin_status", "list_items", "toggle_item"];
+const PLUGIN_TOOLS = ["plugin_docs", "test_plugin", "reload_plugins", "plugin_status", "list_settings"];
 
 const Config = z.object({
   /** Chemin du CLI Claude (défaut : trouvé dans le PATH). */

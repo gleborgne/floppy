@@ -44,14 +44,15 @@ describe("catalogue des éléments", () => {
     expect((await k.items.run({ op: "enable", provider: "fake", id: "a", on: false }, "voice")).ok).toBe(true);
 
     // Outil vocal : trouve par alias, dans n'importe quelle langue.
-    const t = await k.tools.call("activer_element", { nom: "alpha", actif: true });
+    const t = await k.tools.call("toggle_item", { name: "alpha", enabled: true });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["lister_elements", "activer_element", "utiliser_element", "ajouter_application"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(t.status).toBe("done");
     expect((await k.items.find("Model A")).length).toBe(1);
     await k.stopAll();
     expect((await k.items.snapshot()).length).toBe(0);
   });
 
-  it("utiliser_element : seulement les actions « use » marquées voice", async () => {
+  it("use_item : seulement les actions « use » marquées voice", async () => {
     let current = "tv";
     const used: string[] = [];
     const looks = [{ id: "tv", label: "Visage TV" }, { id: "pixelcat", label: { fr: "Chat pixel", en: "Pixel Cat" } }];
@@ -71,12 +72,12 @@ describe("catalogue des éléments", () => {
       },
     })] });
     await k.applyConfig({ plugins: [{ id: "l", plugin: "looks" }] });
-    const r = await k.tools.call("utiliser_element", { nom: "chat" });
+    const r = await k.tools.call("use_item", { name: "chat" });
     expect(r.status).toBe("done");
     expect(current).toBe("pixelcat");
-    expect((await k.tools.call("utiliser_element", { nom: "chat" })).text).toMatch(/déjà en service/);
+    expect((await k.tools.call("use_item", { name: "chat" })).text).toMatch(/déjà en service/);
     // Action sans la marque voice : refusée par l'outil et par le catalogue.
-    expect((await k.tools.call("utiliser_element", { nom: "qwen" })).text).toMatch(/ne se choisit pas à la voix/);
+    expect((await k.tools.call("use_item", { name: "qwen" })).text).toMatch(/ne se choisit pas à la voix/);
     expect((await k.items.run({ op: "action", provider: "models", id: "qwen", action: "use" }, "voice")).ok).toBe(false);
     expect(used).toEqual(["pixelcat"]);
     await k.stopAll();
@@ -157,33 +158,33 @@ describe("catalogue des applications", () => {
     k.bus.on("approval.request", (r) => { asked.push(String(r.summary)); k.approvals.respond(r.id, answer, "test"); });
 
     // « Tu sais te connecter à Orca ? » : Floppy la voit parmi ce qu'il peut ajouter.
-    expect((await k.tools.call("lister_elements", {})).text).toMatch(/À ajouter \(connectors[\s\S]*- Orca/);
+    expect((await k.tools.call("list_items", {})).text).toMatch(/À ajouter \(connectors[\s\S]*- Orca/);
 
     // Refusé : rien n'est ajouté.
-    expect((await k.tools.call("ajouter_application", { nom: "orque" })).status).toBe("refused");
+    expect((await k.tools.call("add_app", { name: "orque" })).status).toBe("refused");
     expect(asked).toEqual(["Ajouter Orca"]);
     expect(await k.items.provider("apps-connectors")!.list()).toEqual([]);
 
     // Accepté : ajouté avec les valeurs par défaut, ses outils arrivent.
     answer = true;
-    expect((await k.tools.call("ajouter_application", { nom: "Orca" })).status).toBe("done");
+    expect((await k.tools.call("add_app", { name: "Orca" })).status).toBe("done");
     const items = await k.items.provider("apps-connectors")!.list();
     expect(items.map((i) => [i.kind, i.values])).toEqual([["orca-x", { pollSeconds: 15 }]]);
     expect(k.tools.list().some((t) => t.name === "orca-x_outil")).toBe(true);
-    expect((await k.tools.call("lister_elements", {})).text).not.toMatch(/- Orca :/);
+    expect((await k.tools.call("list_items", {})).text).not.toMatch(/- Orca :/);
 
     // Une seule permise : pas de second ajout, pas de nouvelle question.
-    expect((await k.tools.call("ajouter_application", { nom: "orca" })).text).toMatch(/déjà ajouté et allumé/);
+    expect((await k.tools.call("add_app", { name: "orca" })).text).toMatch(/déjà ajouté et allumé/);
     expect(asked.length).toBe(2);
 
     // Champ obligatoire sans défaut : renvoyé vers la fenêtre, sans question.
-    const r = await k.tools.call("ajouter_application", { nom: "service à clé" });
+    const r = await k.tools.call("add_app", { name: "service à clé" });
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/fenêtre des réglages/);
     expect(asked.length).toBe(2);
 
     // Inconnu.
-    expect((await k.tools.call("ajouter_application", { nom: "Photoshop" })).status).toBe("failed");
+    expect((await k.tools.call("add_app", { name: "Photoshop" })).status).toBe("failed");
     await k.stopAll();
   });
 });

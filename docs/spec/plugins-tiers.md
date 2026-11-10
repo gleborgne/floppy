@@ -15,7 +15,7 @@ sequenceDiagram
   participant A as Agent (coder.review)
   participant K as Noyau
   participant P as Processus isolé
-  U->>S: floppy plugin install <source> (outil installer_plugin, niveau write)
+  U->>S: floppy plugin install <source> (outil install_plugin, niveau write)
   S->>S: copie dans <home>/plugins-pending/<id> (rien n'est exécuté)
   S->>C: contrôles automatiques
   S->>A: revue : code dans le message, aucun outil
@@ -70,7 +70,7 @@ Les commentaires sont retirés avant la recherche des motifs (les chaînes reste
 
 `apps/cli/src/plugins/review.ts` et `plugins/assistant/coder/src/review.ts`.
 
-- **Obligatoire.** Sans agent de code (Claude Code, Codex ou Antigravity), `installer_plugin` échoue. Rien n'est mis en attente.
+- **Obligatoire.** Sans agent de code (Claude Code, Codex ou Antigravity), `install_plugin` échoue. Rien n'est mis en attente.
 - Le relecteur est le service `coder`, méthode `review`. Le réglage `third_party_plugins_reviewer` (`auto`, `claude`, `codex`, `agy`, risque cli) choisit l'agent.
 - **Un tour, sans outil.** Le code est dans le message, entre deux bornes aléatoires (`FLOPPY-<24 hex>`) : il ne peut pas « fermer » le bloc. Le dossier de travail est vide et temporaire.
   - Claude : `-p --tools "" --strict-mcp-config --permission-mode dontAsk`.
@@ -97,7 +97,7 @@ Les commentaires sont retirés avant la recherche des motifs (les chaînes reste
 - `<home>/plugins/lock.json` garde, par plugin : source, type, ref, commit, empreinte, date, verdict, agent, résumé.
 - Le plugin installé est **désactivé**. L'activation est le réglage `plugin_<id>` habituel.
 - Une mise à jour est une nouvelle installation : nouvelle source ou nouveau commit, donc nouvelle empreinte et nouvelle revue.
-- `desinstaller_plugin` (niveau delete) :
+- `uninstall_plugin` (niveau delete) :
   - éteint d'abord `plugin_<id>`, pour qu'une réinstallation ne le rallume pas toute seule ;
   - supprime le dossier et l'entrée du verrou ;
   - retire aussi un plugin en attente.

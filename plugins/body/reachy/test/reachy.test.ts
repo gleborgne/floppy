@@ -99,7 +99,7 @@ describe("body-reachy", () => {
     await until(() => hub.sessions().length === 1);
     const s = hub.sessions()[0]!;
     expect(s.capabilities).toEqual(["emotion", "gesture", "approval"]);
-    expect(s.tools).toEqual(["hocher_tete", "secouer_tete", "regarder", "content", "danser"]);
+    expect(s.tools).toEqual(["nod_head", "shake_head", "look", "happy", "dance"]);
     const snap = (await k.items.snapshot()).find((p) => p.id === "reachy")!;
     expect(snap.items[0]).toMatchObject({ label: "Bureau", status: "ok", active: true });
   });
@@ -112,11 +112,12 @@ describe("body-reachy", () => {
     expect(fake.gotos[0]).toMatchObject({ antennas: [expect.closeTo(0.698, 2), expect.closeTo(-0.698, 2)], interpolation: "minjerk" });
     expect(fake.gotos[0].head_pose.z).toBeCloseTo(0.008, 5);
     const n = fake.gotos.length;
-    const r = await k.tools.call("regarder", { direction: "gauche" });
+    const r = await k.tools.call("look", { direction: "left" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["regarder", "content", "hocher_tete", "secouer_tete", "danser"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(fake.gotos.length).toBe(n + 1);
     expect(fake.gotos.at(-1).head_pose.yaw).toBeCloseTo(0.611, 2);
-    const bad = await k.tools.call("regarder", { direction: "ailleurs" });
+    const bad = await k.tools.call("look", { direction: "gauche" });
     expect(bad.status).toBe("failed");
   });
 
@@ -126,9 +127,9 @@ describe("body-reachy", () => {
     hub = k.service<BodyHub>("body")!;
     await add();
     await until(() => hub.sessions().length === 1);
-    const r = await k.tools.call("regarder", { direction: "left" });
+    const r = await k.tools.call("look", { direction: "left" });
     expect(r).toMatchObject({ status: "done", text: "Done." });
-    const bad = await k.tools.call("regarder", { direction: "ailleurs" });
+    const bad = await k.tools.call("look", { direction: "gauche" });
     expect(bad.text).toBe("Unknown direction: left, right, up, down or front.");
   });
 
@@ -137,7 +138,7 @@ describe("body-reachy", () => {
     await until(() => hub.sessions().length === 1);
     expect((await k.items.run({ op: "enable", provider: "reachy", id, on: false }, "ui")).ok).toBe(true);
     expect(hub.sessions()).toHaveLength(0);
-    expect(k.tools.list().some((t) => t.name === "danser")).toBe(false);
+    expect(k.tools.list().some((t) => t.name === "dance")).toBe(false);
     const snap = (await k.items.snapshot()).find((p) => p.id === "reachy")!;
     expect(snap.items[0]).toMatchObject({ enabled: false, status: "off" });
     await k.items.run({ op: "enable", provider: "reachy", id, on: true }, "ui");

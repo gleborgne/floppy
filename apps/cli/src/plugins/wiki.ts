@@ -1,5 +1,5 @@
 // Wiki des plugins (en anglais) : ce qu'un agent (l'assistant IA des réglages, mode « Créer un plugin ») doit savoir
-// pour écrire un plugin, servi par un outil de lecture (`doc_plugins`). Pourquoi un outil plutôt que des fichiers copiés :
+// pour écrire un plugin, servi par un outil de lecture (`plugin_docs`). Pourquoi un outil plutôt que des fichiers copiés :
 // - les pages suivent la version de Floppy (le kit copié dans <home>/plugins n'est jamais écrasé) ;
 // - certaines pages sont calculées maintenant : services qui tournent, outils existants ;
 // - les contrats des services sont lus dans leur code (packages/core/src/services.ts, packages/contracts/src) : jamais en retard ;
@@ -153,7 +153,7 @@ export function createWiki(o: WikiOptions) {
 
   const index = (): string => [
     "# Floppy plugin wiki",
-    "Read \"basics\" first, then the pages your task needs. Call doc_plugins with { page: \"<id>\" }.",
+    "Read \"basics\" first, then the pages your task needs. Call plugin_docs with { page: \"<id>\" }.",
     "",
     ...pages().map((p) => `- ${p.id}: ${p.title}${p.summary ? " — " + p.summary : ""}`),
   ].join("\n");
@@ -174,7 +174,7 @@ export function createWiki(o: WikiOptions) {
   };
 
   const tool: ToolDef = {
-    name: "doc_plugins",
+    name: "plugin_docs",
     description: "Wiki (en anglais) pour écrire un plugin Floppy : sans argument, le sommaire ; { page } pour lire une page (basics, tools, settings, services, contract-notify…, active-services, existing-tools, example-…) ; { search } pour chercher des mots.",
     inputSchema: {
       type: "object",

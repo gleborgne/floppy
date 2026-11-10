@@ -35,7 +35,7 @@ async function boot(protocol: AgentProtocol, timeout_s = 5, bindScoped = true) {
     { id: "test.delegate", service: "delegate", section: "brain", label: "Délégué" },
   ] }, async apply(ctx) { consumer = ctx; brain = await ctx.slot("test.main"); delegate = await ctx.slot("test.delegate"); } });
   const k = new Kernel({ home, logger: () => {}, audit, secrets, plugins: [mcp, plugin, probe] }); kernels.push(k);
-  k.tools.register("test", ["agenda", "lancer_travail_agent", "ouvrir_session_agent"].map((name) => ({ name, description: name,
+  k.tools.register("test", ["agenda", "start_agent_job", "open_agent_session"].map((name) => ({ name, description: name,
     inputSchema: { type: "object", properties: {} }, level: "read" as const, handler: async () => ({ status: "done" as const, text: "ok" }) })));
   await k.applyConfig({ slots: { "test.main": `agent/${protocol}`, "test.delegate": `agent/${protocol}` }, plugins: [
     { id: "mcp", plugin: "test-mcp" }, { id: "agent", plugin: `agent-${protocol}`, config: {
@@ -122,8 +122,8 @@ describe.each(["opencode", "pi", "omp", "hermes"] as const)("agent piloté %s", 
     expect(first.model ?? first.args[first.args.indexOf("--model") + 1]).toBe("provider/main");
     expect(b.scopes[0]!.closed).toBe(true);
     expect(b.scopes[0]!.tools).toContain("agenda");
-    expect(b.scopes[0]!.tools).not.toContain("lancer_travail_agent");
-    expect(b.scopes[0]!.tools).not.toContain("ouvrir_session_agent");
+    expect(b.scopes[0]!.tools).not.toContain("start_agent_job");
+    expect(b.scopes[0]!.tools).not.toContain("open_agent_session");
     const second = JSON.parse((await collect(b.delegate(), "difficile")).text);
     expect(second.model ?? second.args[second.args.indexOf("--model") + 1]).toBe("provider/delegate");
     const next = JSON.parse((await collect(b.brain().agent!, "suite")).text);

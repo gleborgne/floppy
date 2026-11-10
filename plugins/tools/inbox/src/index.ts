@@ -8,7 +8,7 @@
 //   ou choisi dans les Réglages (jamais à la voix). Avant, ses messages sont refusés (403). Un nouveau nom ou de
 //   nouveaux liens demandent un nouvel accord.
 // - Mode : l'app choisit `voice` (lu à voix haute ; l'ancienne valeur `voix` est encore acceptée) ou `info` (affiché) ; l'utilisateur garde le dernier mot.
-// - Outils : annonces_recentes (lecture), ouvrir_annonce (write : accord avant d'ouvrir le lien).
+// - Outils : list_recent_announcements (lecture), open_announcement (write : accord avant d'ouvrir le lien).
 // - Les liens s'ouvrent sans shell, et seulement avec un schéma déclaré par l'app (vu par l'utilisateur) ou https.
 import { join } from "node:path";
 import { z } from "zod";
@@ -178,7 +178,7 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
         let d: Decision;
         try {
           d = await ctx.approvals.check({
-            tool: "inbox_autoriser", args: { app: id, schemes: shown.schemes }, level: "write", override: "ask", signal: stop.signal,
+            tool: "inbox_allow", args: { app: id, schemes: shown.schemes }, level: "write", override: "ask", signal: stop.signal,
             summary: T(
               `J'ai reçu un message de l'application « ${shown.name} ». Autoriser ses annonces ?${links ? ` Elle pourra faire ouvrir ${links} et https.` : ""}`,
               `I got a message from the app “${shown.name}”. Allow its announcements?${links ? ` It will be able to open ${links} and https.` : ""}`),
@@ -315,8 +315,8 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
 
       ctx.tools.register([
         {
-          name: "annonces_recentes",
-          description: "Liste les dernières annonces reçues des applications de l'ordinateur (boîte aux lettres) qui proposent une action (ex. ouvrir une PR dans l'app qui l'a envoyée), numérotées de la plus récente (1) à la plus ancienne. À utiliser pour savoir de quoi parle « la deuxième », « celle de tout à l'heure », avant ouvrir_annonce.",
+          name: "list_recent_announcements",
+          description: "Liste les dernières annonces reçues des applications de l'ordinateur (boîte aux lettres) qui proposent une action (ex. ouvrir une PR dans l'app qui l'a envoyée), numérotées de la plus récente (1) à la plus ancienne. À utiliser pour savoir de quoi parle « la deuxième », « celle de tout à l'heure », avant open_announcement.",
           inputSchema: { type: "object", properties: {} },
           level: "read",
           handler: async (): Promise<ToolOutput> => {
@@ -327,17 +327,17 @@ export function createInboxPlugin(opts: InboxOptions = {}) {
           },
         },
         {
-          name: "ouvrir_annonce",
-          description: "Ouvre ce dont parle une annonce d'une application (boîte aux lettres) : lance son action, par exemple ouvrir la PR dans l'app qui l'a envoyée. À utiliser pour « ouvre-la », « montre-moi », « vas-y » juste après une annonce. numero : 1 = la plus récente (par défaut) ; voir annonces_recentes pour les autres.",
-          inputSchema: { type: "object", properties: { numero: { type: "number", description: "1 = la plus récente." } } },
+          name: "open_announcement",
+          description: "Ouvre ce dont parle une annonce d'une application (boîte aux lettres) : lance son action, par exemple ouvrir la PR dans l'app qui l'a envoyée. À utiliser pour « ouvre-la », « montre-moi », « vas-y » juste après une annonce. number : 1 = la plus récente (par défaut) ; voir list_recent_announcements pour les autres.",
+          inputSchema: { type: "object", properties: { number: { type: "number", description: "1 = la plus récente." } } },
           level: "write",
           summary: (args) => {
-            const r = pick(args.numero);
+            const r = pick(args.number);
             if (!r) return T("Ouvrir une annonce ?", "Open an announcement?");
             return { fr: `${tr(r.label, "fr")} — ${where(r.url)} (${r.name}) ?`, en: `${tr(r.label, "en")} — ${where(r.url)} (${r.name})?` };
           },
           handler: async (args): Promise<ToolOutput> => {
-            const r = pick(args.numero);
+            const r = pick(args.number);
             if (!r) return { status: "failed", text: T("Je n'ai pas d'annonce à ouvrir.", "I have no announcement to open.") };
             const url = usable(r);
             if (!url) return { status: "failed", text: T(`${r.name} n'est plus autorisée à faire ouvrir des liens.`, `${r.name} is no longer allowed to open links.`) };

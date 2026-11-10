@@ -116,16 +116,16 @@ describe("connecteurs : éléments", () => {
 describe("connecteur de type commande", () => {
   const cmd = (extra: Record<string, unknown> = {}) => ({
     label: "Écho texte", description: "Répète le texte.", command: process.execPath,
-    args: ["-e", "console.log('>' + process.argv[1])", "{texte}"], level: "read", ...extra,
+    args: ["-e", "console.log('>' + process.argv[1])", "{text}"], level: "read", ...extra,
   });
 
-  it("devient un outil : {texte} remplacé, sans shell", async () => {
+  it("devient un outil : {text} remplacé, sans shell", async () => {
     const s = await start();
     expect((await s.run({ op: "add", kind: "command", values: cmd() })).ok).toBe(true);
     expect(s.names()).toEqual(["echo_texte"]);
     const info = s.k.tools.list().find((t) => t.name === "echo_texte")!;
     expect(info.level).toBe("read");
-    const r = await s.k.tools.call("echo_texte", { texte: "salut & echo piraté" });
+    const r = await s.k.tools.call("echo_texte", { text: "salut & echo piraté" });
     expect(r).toMatchObject({ status: "done", text: ">salut & echo piraté" });
     expect(await s.item("echo-texte")).toMatchObject({ enabled: true, status: "ok", kind: "command" });
   });

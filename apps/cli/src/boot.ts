@@ -110,7 +110,7 @@ export async function boot(opts: BootOptions = {}): Promise<Running> {
     sandbox: { ...(process.env.FLOPPY_DEV_INSPECT === "1" ? { inspect: true } : {}), ...opts.sandbox },
   });
   const store = createPluginStore(kernel, { reload: () => userPlugins.reload(), enableKey: settingKey, logger: log, ...(opts.reviewer ? { reviewer: opts.reviewer } : {}) });
-  // Wiki des plugins (outil doc_plugins) : pour l'assistant IA qui écrit un plugin depuis la fenêtre des réglages.
+  // Wiki des plugins (outil plugin_docs) : pour l'assistant IA qui écrit un plugin depuis la fenêtre des réglages.
   const builtinManifests = plugins.map((p) => p.manifest);
   const offWiki = kernel.tools.register("plugins-wiki", [createWiki({ kernel, manifests: () => builtinManifests }).tool]);
   try { await userPlugins.reload(false); } catch (e) { log({ level: "error", source: "user-plugins", msg: String(e) }); }

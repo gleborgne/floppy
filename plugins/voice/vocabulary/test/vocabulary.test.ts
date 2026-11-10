@@ -32,7 +32,7 @@ async function start(options: { memory?: MemoryService; local?: boolean; automat
   const k = new Kernel({ home, logger: () => {}, plugins: [options.local ? localMemory : provider, vocabulary, probe] });
   kernels.push(k);
   await k.applyConfig({
-    approvals: { write: options.write ?? "ask", delete: "ask", toolRules: [{ source: "vocabulary", tool: "corriger_vocabulaire", level: "write", rule: "always" }] },
+    approvals: { write: options.write ?? "ask", delete: "ask", toolRules: [{ source: "vocabulary", tool: "correct_vocabulary", level: "write", rule: "always" }] },
     plugins: [
       { id: options.local ? "memory" : "test-memory", plugin: options.local ? "memory" : "test-memory" },
       { id: "vocabulary", plugin: "vocabulary", config: { automatic: options.automatic ?? true } },
@@ -40,7 +40,8 @@ async function start(options: { memory?: MemoryService; local?: boolean; automat
     ],
   });
   const observe = (text: string, session = "voice") => service.observe({ text, session, origin: "avatar" });
-  const call = (args: Record<string, unknown> = correction, session = "voice") => k.tools.call("corriger_vocabulaire", args, { session, origin: "avatar" });
+  const call = (args: Record<string, unknown> = correction, session = "voice") => k.tools.call("correct_vocabulary", args, { session, origin: "avatar" });
+  expect(k.tools.list().map((t) => t.name).filter((n) => ["lister_corrections", "corriger_vocabulaire", "oublier_correction"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
   return { k, service, observe, call, home };
 }
 
@@ -170,7 +171,7 @@ describe("vocabulaire : apprentissage explicite", () => {
   it("rejette une preuve périmée ou provenant d’un autre corps", async () => {
     const { k, observe, call } = await start();
     observe("Lis court team"); observe(correction.evidence.text);
-    expect((await k.tools.call("corriger_vocabulaire", correction, { session: "voice", origin: "telegram" })).status).toBe("failed");
+    expect((await k.tools.call("correct_vocabulary", correction, { session: "voice", origin: "telegram" })).status).toBe("failed");
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now + 11 * 60_000);
     expect((await call()).status).toBe("failed");
@@ -239,21 +240,21 @@ describe("vocabulaire : interprétation contextualisée", () => {
   it("liste et oublie exactement une correction après accord", async () => {
     const { k, observe, call, service } = await start();
     observe("Lis court team"); observe(correction.evidence.text); await call();
-    const listed = await k.tools.call("lister_corrections", {});
+    const listed = await k.tools.call("list_corrections", {});
     const [row] = JSON.parse(listed.text);
     k.bus.on("approval.request", (r) => k.approvals.respond(r.id, true, "test"));
-    expect((await k.tools.call("oublier_correction", { id: row.id })).status).toBe("done");
+    expect((await k.tools.call("forget_correction", { id: row.id })).status).toBe("done");
     expect((await service.resolve({ heard: correction.heard, scope })).status).toBe("none");
     expect((await call()).status).toBe("failed");
-    expect((await k.tools.call("oublier_correction", { id: row.id })).status).toBe("failed");
+    expect((await k.tools.call("forget_correction", { id: row.id })).status).toBe("failed");
   });
 
   it("un refus de suppression conserve la correction", async () => {
     const { k, observe, call, service } = await start();
     observe("Lis court team"); observe(correction.evidence.text); await call();
-    const [row] = JSON.parse((await k.tools.call("lister_corrections", {})).text);
+    const [row] = JSON.parse((await k.tools.call("list_corrections", {})).text);
     k.bus.on("approval.request", (r) => k.approvals.respond(r.id, false, "test"));
-    expect((await k.tools.call("oublier_correction", { id: row.id })).status).toBe("refused");
+    expect((await k.tools.call("forget_correction", { id: row.id })).status).toBe("refused");
     expect((await service.resolve({ heard: correction.heard, scope })).status).toBe("match");
   });
 
@@ -286,7 +287,7 @@ describe("vocabulaire : interprétation contextualisée", () => {
 
   it("signale un fournisseur historique sans corrections", async () => {
     const { k } = await start({ memory: { snapshot: () => ({ user: "", memory: "" }), record: () => {}, search: () => [] } });
-    expect((await k.tools.call("lister_corrections", {})).text).toContain("ne prend pas en charge");
+    expect((await k.tools.call("list_corrections", {})).text).toContain("ne prend pas en charge");
   });
 });
 
@@ -298,7 +299,7 @@ describe("vocabulaire : audit", () => {
     service.observe({ text: "Lis court team", session: "voice", origin: "avatar", turn: "t1" });
     service.observe({ text: correction.evidence.text, session: "voice", origin: "avatar", turn: "t2" });
     const meta = { session: "voice", origin: "avatar", turn: "t2" };
-    expect((await k.tools.call("corriger_vocabulaire", correction, meta)).status).toBe("done");
+    expect((await k.tools.call("correct_vocabulary", correction, meta)).status).toBe("done");
     await service.context({ heard: "court team", ...meta });
     await service.resolve({ heard: "court team", scope, ...meta });
     await service.resolve({ heard: "unknown", scope, ...meta });
@@ -310,7 +311,7 @@ describe("vocabulaire : audit", () => {
     expect(records.find((r) => r.event === "context.selected")).toMatchObject({ count: 1, availableCount: 1, truncated: false, candidates: [{ id: "c1", version: 1, hasAccount: true, hasContainer: true, scopeId: expect.any(String) }] });
     expect(records.filter((r) => r.event === "resolution.completed").map((r) => r.status)).toEqual(["match", "none"]);
     k.bus.on("approval.request", (r) => k.approvals.respond(r.id, true, "test"));
-    expect((await k.tools.call("oublier_correction", { id: "c1" }, meta)).status).toBe("done");
+    expect((await k.tools.call("forget_correction", { id: "c1" }, meta)).status).toBe("done");
     expect(events(k).find((r) => r.event === "correction.forgotten")).toMatchObject({ id: "c1", ...meta });
     const serialized = JSON.stringify(k.audit.tail(1000));
     for (const personal of [correction.heard, correction.canonical, correction.evidence.text, scope.account, scope.container]) expect(serialized).not.toContain(personal);
@@ -326,8 +327,8 @@ describe("vocabulaire : audit", () => {
     const forbidden = await start({ write: "never" });
     await forbidden.call();
     expect(events(forbidden.k).find((r) => r.event === "correction.rejected")).toMatchObject({ reason: "kernel-refused" });
-    expect(forbidden.k.audit.tail(100).find((r) => r.kind === "approval" && r.tool === "corriger_vocabulaire")).toMatchObject({ ok: false, reason: "policy-never" });
-    expect(forbidden.k.audit.tail(100).find((r) => r.kind === "tool" && r.tool === "corriger_vocabulaire")).toMatchObject({ status: "refused", args: { redacted: true } });
+    expect(forbidden.k.audit.tail(100).find((r) => r.kind === "approval" && r.tool === "correct_vocabulary")).toMatchObject({ ok: false, reason: "policy-never" });
+    expect(forbidden.k.audit.tail(100).find((r) => r.kind === "tool" && r.tool === "correct_vocabulary")).toMatchObject({ status: "refused", args: { redacted: true } });
   });
 
   it("donne une raison déterministe à chaque protection de preuve", async () => {
@@ -344,7 +345,7 @@ describe("vocabulaire : audit", () => {
       const { k, service } = await start();
       service.observe({ text: "Lis court team", session: "voice", origin: "avatar", turn: "t1" });
       service.observe({ text: correction.evidence.text, session: "voice", origin: "avatar", turn: "t2" });
-      await k.tools.call("corriger_vocabulaire", { ...correction, ...entry.args }, { session: "voice", origin: "avatar", turn: "t2", ...entry.meta });
+      await k.tools.call("correct_vocabulary", { ...correction, ...entry.args }, { session: "voice", origin: "avatar", turn: "t2", ...entry.meta });
       expect(events(k).findLast((r) => r.event === "correction.rejected")?.reason).toBe(entry.reason);
     }
     const { k, observe, call } = await start();

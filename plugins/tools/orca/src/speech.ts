@@ -9,7 +9,7 @@
 import { fold } from "@floppy/core";
 import type { OrcaAgent, OrcaWorktree } from "./index.ts";
 
-export type Kind = "en_cours" | "termines" | "en_attente" | "interrompu";
+export type Kind = "running" | "finished" | "waiting" | "interrupted";
 
 const ID_LIKE = /\b(worker-task|task|job|run)[_-]?[0-9a-f]{6,}\b|\b[0-9a-f]{7,40}\b/gi;
 const BRANCH_PREFIX = /^(master|main|dev|develop|feature|feat|fix|hotfix|env|release|wt|worktree)[-_/]+/i;
@@ -92,18 +92,18 @@ export function plainSentence(f: Facts): string {
       ? { success: "reports success", failure: "reports a failure", interruption: "was interrupted", unconfirmed: "has an unconfirmed result", unknown: "has an unknown result" }
       : { success: "déclare une réussite", failure: "signale un échec", interruption: "a été interrompu", unconfirmed: "a un résultat non confirmé", unknown: "a un résultat inconnu" };
     return f.lang === "en"
-      ? `On ${f.project}, ${f.label} ${f.kind === "en_attente" ? "is waiting for your answer" : states[f.outcome]}.`
-      : `Sur ${f.project}, ${f.label} ${f.kind === "en_attente" ? "attend ta réponse" : states[f.outcome]}.`;
+      ? `On ${f.project}, ${f.label} ${f.kind === "waiting" ? "is waiting for your answer" : states[f.outcome]}.`
+      : `Sur ${f.project}, ${f.label} ${f.kind === "waiting" ? "attend ta réponse" : states[f.outcome]}.`;
   }
   if (f.lang === "en") {
     const on = f.task ? `: ${f.task}` : "";
-    if (f.kind === "en_attente") return `On ${f.project}, your agent is waiting for your answer${on}.`;
-    if (f.kind === "interrompu") return `On ${f.project}, your agent was interrupted${on}.`;
+    if (f.kind === "waiting") return `On ${f.project}, your agent is waiting for your answer${on}.`;
+    if (f.kind === "interrupted") return `On ${f.project}, your agent was interrupted${on}.`;
     return `On ${f.project}, your agent is done${on}.`;
   }
   const about = f.task ? ` : ${lowerFirst(f.task)}` : "";
-  if (f.kind === "en_attente") return `Sur ${f.project}, ton agent attend ta réponse${about}.`;
-  if (f.kind === "interrompu") return `Sur ${f.project}, ton agent a été interrompu${about}.`;
+  if (f.kind === "waiting") return `Sur ${f.project}, ton agent attend ta réponse${about}.`;
+  if (f.kind === "interrupted") return `Sur ${f.project}, ton agent a été interrompu${about}.`;
   return `Sur ${f.project}, ton agent a fini${about}.`;
 }
 
@@ -133,11 +133,11 @@ export function waitingSentence(f: Facts, state?: string, toolName?: string | nu
 }
 
 const STATE_FR: Record<Kind, string> = {
-  en_cours: "travaille encore", termines: "a terminé", en_attente: "attend une réponse de l'utilisateur", interrompu: "a été interrompu",
+  running: "travaille encore", finished: "a terminé", waiting: "attend une réponse de l'utilisateur", interrupted: "a été interrompu",
 };
 
 const STATE_EN: Record<Kind, string> = {
-  en_cours: "is still working", termines: "has finished", en_attente: "is waiting for an answer from the user", interrompu: "was interrupted",
+  running: "is still working", finished: "has finished", waiting: "is waiting for an answer from the user", interrupted: "was interrupted",
 };
 
 export function llmPrompt(f: Facts): string {

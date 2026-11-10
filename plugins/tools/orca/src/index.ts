@@ -1,7 +1,7 @@
 // Plugin `orca` : outils Orca pour Floppy + surveillance des agents (initiatives quand un job se termine).
 // - orca_agents / orca_detail : lecture seule, à partir de `orca worktree ps --json`.
-// - orca_ecran : ce que montre le terminal d'un agent (`orca terminal read --screen`), lecture seule.
-// - orca_envoyer : transmettre une consigne à l'agent identifié, après accord du noyau.
+// - orca_screen : ce que montre le terminal d'un agent (`orca terminal read --screen`), lecture seule.
+// - orca_send : transmettre une consigne à l'agent identifié, après accord du noyau.
 // - Surveillance : on suit chaque agent (worktreeId + paneKey) ; passage « en cours » → autre état = une initiative.
 // - Recherche et envoi : texte dans un argument d'un exécutable direct, jamais dans un shell.
 import { z } from "zod";
@@ -169,17 +169,17 @@ const clip = (s: string, n: number): string => {
   return t.length > n ? t.slice(0, n - 1) + "…" : t;
 };
 
-type Kind = "en_cours" | "termines" | "en_attente" | "interrompu";
+type Kind = "running" | "finished" | "waiting" | "interrupted";
 const WAITING = /wait|block|permission|input|ask|question|approv/;
 
 export function kindOf(a: OrcaAgent): Kind {
   const s = norm(a.state ?? "");
-  if (s === "working") return "en_cours";
-  if (a.interrupted || /interrupt/.test(s)) return "interrompu";
-  if (WAITING.test(s)) return "en_attente";
-  return "termines";
+  if (s === "working") return "running";
+  if (a.interrupted || /interrupt/.test(s)) return "interrupted";
+  if (WAITING.test(s)) return "waiting";
+  return "finished";
 }
-const LABEL: Record<Kind, string> = { en_cours: "en cours", termines: "terminé", en_attente: "en attente", interrompu: "interrompu" };
+const LABEL: Record<Kind, string> = { running: "en cours", finished: "terminé", waiting: "en attente", interrupted: "interrompu" };
 
 const taskOf = (a: OrcaAgent): string => a.taskTitle || a.conversationName || a.displayName || "";
 const typeOf = (a: OrcaAgent): string => (a.agentType ? a.agentType[0]!.toUpperCase() + a.agentType.slice(1) : "Agent");
@@ -195,8 +195,8 @@ export function since(ts: number | undefined, now: number): string {
   return `depuis ${Math.floor(h / 24)} j`;
 }
 
-export function formatAgents(wts: OrcaWorktree[], filtre: string, now: number): string {
-  const wanted = ({ en_cours: ["en_cours"], termines: ["termines"], en_attente: ["en_attente", "interrompu"] } as Record<string, Kind[]>)[filtre];
+export function formatAgents(wts: OrcaWorktree[], filter: string, now: number): string {
+  const wanted = ({ running: ["running"], finished: ["finished"], waiting: ["waiting", "interrupted"] } as Record<string, Kind[]>)[filter];
   const blocks: string[] = [];
   for (const w of wts) {
     const agents = (w.agents ?? []).filter((a) => !wanted || wanted.includes(kindOf(a)));
@@ -261,7 +261,7 @@ export function matchAgents(wts: OrcaWorktree[], nom: string): Hit[] {
     if (s !== undefined) scored.push({ h: { w, a }, s });
   }
   const best = Math.min(...scored.map((x) => x.s));
-  const rank = (h: Hit): number => ({ en_attente: 0, interrompu: 1, en_cours: 2, termines: 3 })[kindOf(h.a)];
+  const rank = (h: Hit): number => ({ waiting: 0, interrupted: 1, running: 2, finished: 3 })[kindOf(h.a)];
   return scored.filter((x) => x.s === best).map((x) => x.h).sort((x, y) => rank(x) - rank(y));
 }
 
@@ -283,7 +283,7 @@ export function describeHit({ w, a }: Hit, now: number): string {
     pr ? `PR liée : ${clip(pr, 160)}` : "",
     w.comment ? `Note : ${clip(w.comment, 160)}` : "",
     a.prompt ? `Demande : « ${clip(a.prompt, 300)} »` : "",
-    k === "en_cours" && a.toolName ? `Action en cours : ${a.toolName}${a.toolInput ? ` « ${clip(a.toolInput, 200)} »` : ""}` : "",
+    k === "running" && a.toolName ? `Action en cours : ${a.toolName}${a.toolInput ? ` « ${clip(a.toolInput, 200)} »` : ""}` : "",
     a.lastAssistantMessage ? `Dernier message : « ${clip(a.lastAssistantMessage, 1500)} »` : "Pas de message de l'agent pour l'instant.",
   ].filter(Boolean).join("\n");
 }
@@ -366,7 +366,7 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
               return;
             }
             const lang = ctx.assistant.language === "en" ? "en" : "fr";
-            const f = { ...facts(enriched.w, enriched.a, event.activity === "waiting" ? "en_attente" : event.outcome === "interruption" ? "interrompu" : "termines", lang), label: event.label, outcome: event.outcome };
+            const f = { ...facts(enriched.w, enriched.a, event.activity === "waiting" ? "waiting" : event.outcome === "interruption" ? "interrupted" : "finished", lang), label: event.label, outcome: event.outcome };
             if (!ctx.alive || (notifications as Config["notifications"]) === "none") return;
             const ref = runtime.currentReferences().find((r) => r.identity === event.id) ?? { identity: event.id, label: event.label, project: event.project };
             const named = { ...f, label: ref.label };
@@ -403,10 +403,10 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
         ...groupSendTools({ ctx, cli, run: runtime.sync, direct, now, onDelivery: delivery, label: recipientLabel, persistenceDiagnostic: (event) => runtime.diagnostics.record("delivery.persistence", { reason: event.reason }), announce: (text) => {
           if (ctx.alive && notifications !== "none") ctx.emit("initiative", { source: "orca-delivery", key: `orca-delivery:${now()}:${++deliveryAnnouncement}`, text: tr(text, ctx.assistant.language), importance: notifications === "all" ? "important" : "normal" });
         }, select: (wts, args, meta) => {
-          const result = runtime.resolve(String(args.nom ?? "eux"), meta, true);
+          const result = runtime.resolve(String(args.name ?? "eux"), meta, true);
           if (!result.ok) return referenceFailure(result.reason, result.candidates);
-          if (args.filtre !== undefined && !["termines", "finished", "done", "tous", "all"].includes(String(args.filtre))) return nope("Précise le filtre des agents terminés ou tous.", "Specify finished agents or all as the filter.");
-          const refs = result.references.filter((r) => args.filtre === undefined || ["tous", "all"].includes(String(args.filtre)) || r.record.activity === "finished");
+          if (args.filter !== undefined && !["finished", "done", "all"].includes(String(args.filter))) return nope("Précise le filtre des agents terminés ou tous.", "Specify finished agents or all as the filter.");
+          const refs = result.references.filter((r) => args.filter === undefined || String(args.filter) === "all" || r.record.activity === "finished");
           const current = wts.flatMap((w) => (w.agents ?? []).map((a) => ({ w, a })));
           const selected = refs.map((r) => current.find((hit) => runtime.idOf(hit.w, hit.a) === r.identity));
           if (selected.some((hit) => !hit)) return referenceFailure("missing");
@@ -414,14 +414,14 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
         } }),
         ...trackingTools(runtime, () => ctx.assistant.language, now),
         {
-          name: "orca_ecran", level: "read",
+          name: "orca_screen", level: "read",
           description: "Lit le terminal exact d'un agent nommé/id, ordinal ou pronom de cette conversation. Aucun autre terminal du projet ne le remplace. Résume la question et les conséquences des choix sans agir.",
-          inputSchema: { type: "object", properties: { nom: { type: "string" }, id: { type: "string" } } },
-          auditArgs: (args) => ({ explicit: !!(args.nom || args.id) }),
+          inputSchema: { type: "object", properties: { name: { type: "string" }, id: { type: "string" } } },
+          auditArgs: (args) => ({ explicit: !!(args.name || args.id) }),
           handler: async (args, meta) => {
             try {
               const wts = await runtime.sync();
-              const hit = runtime.resolveTarget(wts, String(args.id ?? args.nom ?? ""), meta);
+              const hit = runtime.resolveTarget(wts, String(args.id ?? args.name ?? ""), meta);
               if (!("a" in hit)) return hit;
               const terms = (await cli(["terminal", "list"]) as { terminals?: OrcaTerminal[] } | undefined)?.terminals ?? [];
               const terminal = terminalFor(terms, hit.w, hit.a);
@@ -434,13 +434,13 @@ export function createOrcaPlugin(opts: OrcaOptions = {}) {
           },
         },
         {
-          name: "orca_recherche", level: "read",
-          description: "Recherche plein texte dans les conversations des agents sur l'hôte Orca sélectionné, pas tous les ordinateurs. texte : termes techniques probables (React, JSON), recent : plus récents d'abord ; chemin/depuis/agent/cursor filtrent ou paginent selon la CLI. Une absence de résultat ne prouve pas une absence de travail ; signale toute indexation ou couverture incomplète.",
-          inputSchema: { type: "object", properties: { texte: { type: "string" }, recent: { type: "boolean" }, chemin: { type: "string" }, depuis: { type: "string" }, agent: { type: "string" }, cursor: { type: "string" } }, required: ["texte"] },
-          auditArgs: (args) => ({ query: "redacted", pathFilter: !!args.chemin, agentFilter: !!args.agent, sinceFilter: !!args.depuis, paginated: !!args.cursor }),
+          name: "orca_search", level: "read",
+          description: "Recherche plein texte dans les conversations des agents sur l'hôte Orca sélectionné, pas tous les ordinateurs. text : termes techniques probables (React, JSON), recent : plus récents d'abord ; path/since/agent/cursor filtrent ou paginent selon la CLI. Une absence de résultat ne prouve pas une absence de travail ; signale toute indexation ou couverture incomplète.",
+          inputSchema: { type: "object", properties: { text: { type: "string" }, recent: { type: "boolean" }, path: { type: "string" }, since: { type: "string" }, agent: { type: "string" }, cursor: { type: "string" } }, required: ["text"] },
+          auditArgs: (args) => ({ query: "redacted", pathFilter: !!args.path, agentFilter: !!args.agent, sinceFilter: !!args.since, paginated: !!args.cursor }),
           handler: async (args) => {
-            const query = String(args.texte ?? "").trim();
-            const search = searchArgs(query, args.recent === true, { path: args.chemin, since: args.depuis, agent: args.agent, cursor: args.cursor });
+            const query = String(args.text ?? "").trim();
+            const search = searchArgs(query, args.recent === true, { path: args.path, since: args.since, agent: args.agent, cursor: args.cursor });
             if (!search) return nope("Précise les termes et des filtres valides (date ISO avec fuseau).", "Specify search terms and valid filters (ISO date with time zone).");
             if (!direct()) return nope("Recherche impossible : règle le chemin vers le programme Orca, sans script intermédiaire.", "Search unavailable: set the path to the Orca program, without an intermediate script.");
             try {

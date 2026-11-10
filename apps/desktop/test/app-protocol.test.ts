@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// Page de l'avatar : les noms anglais du protocole (documents, réglages d'affichage) et la frontière avec les outils
-// `placer_avatar` / `afficher_carte`, dont les arguments restent français jusqu'au lot des outils.
+// Page de l'avatar : les noms anglais du protocole (documents, réglages d'affichage) et les outils de l'avatar
+// `place_avatar` / `show_card` (arguments et valeurs en anglais, transmis tels quels à la fenêtre).
 import { afterEach, it, expect, vi } from "vitest";
 import { asPort, fakePort, mountApp } from "./app-harness.ts";
 
@@ -21,16 +21,16 @@ it("`document` et `documents` : titre et liste arrivent à la fenêtre sous leur
   expect(host.updateDocuments).toHaveBeenCalledWith([]);
 });
 
-it("`placer_avatar` : les arguments de l'outil (français) sont traduits en { corner, screen, target } pour la fenêtre", async () => {
+it("`place_avatar` : les arguments de l'outil { corner, screen, target } arrivent à la fenêtre ; valeurs sûres par défaut", async () => {
   vi.useFakeTimers();
   const host = hostStub();
   const f = await mountApp(host);
   const port = fakePort();
   f.app.protocol.connect(asPort(port));
   port.postMessage.mockClear();
-  await f.app.protocol.onMessage({ type: "tool.call", callId: "c1", name: "placer_avatar", args: { coin: "haut_gauche", ecran: 2, cible: "fenetre" } } as never);
+  await f.app.protocol.onMessage({ type: "tool.call", callId: "c1", name: "place_avatar", args: { corner: "top_left", screen: 2, target: "window" } } as never);
   expect(host.place).toHaveBeenLastCalledWith({ corner: "top_left", screen: 2, target: "window" });
-  await f.app.protocol.onMessage({ type: "tool.call", callId: "c2", name: "placer_avatar", args: {} } as never);
+  await f.app.protocol.onMessage({ type: "tool.call", callId: "c2", name: "place_avatar", args: {} } as never);
   expect(host.place).toHaveBeenLastCalledWith({ corner: undefined, screen: undefined, target: "screen" });
   expect(port.postMessage).toHaveBeenCalledWith({ j: expect.objectContaining({ type: "tool.result", callId: "c1", ok: true }) });
 });
@@ -178,4 +178,18 @@ it("conversation ouverte et visible : la bulle disparaît ; elle revient quand l
   expect(document.body.classList.contains("chatopen")).toBe(false);
   expect(f.bubble.classList.contains("hide")).toBe(false);       // la bulle reprend où elle en était
   expect(f.bubble.textContent).toContain("bonjour");
+});
+
+it("`show_card` : { title, lines } montrent la carte ; l'ancien nom d'outil n'existe plus", async () => {
+  vi.useFakeTimers();
+  const f = await mountApp(hostStub());
+  const port = fakePort();
+  f.app.protocol.connect(asPort(port));
+  port.postMessage.mockClear();
+  await f.app.protocol.onMessage({ type: "tool.call", callId: "c9", name: "show_card", args: { title: "Comparatif", lines: ["un", "deux"] } } as never);
+  expect(port.postMessage).toHaveBeenCalledWith({ j: expect.objectContaining({ type: "tool.result", callId: "c9", ok: true }) });
+  expect(document.body.textContent).toContain("Comparatif");
+  expect(document.body.textContent).toContain("deux");
+  await f.app.protocol.onMessage({ type: "tool.call", callId: "c10", name: "afficher_carte", args: { titre: "X" } } as never);
+  expect(port.postMessage).toHaveBeenCalledWith({ j: expect.objectContaining({ type: "tool.result", callId: "c10", ok: false }) });
 });

@@ -17,7 +17,7 @@ ws.on('message',(data,binary)=>{
   if(m.type==='reply.done'){
     clearTimeout(timer);
     const events=readFileSync(join(home,'audit.jsonl'),'utf8').trim().split('\n').map(l=>JSON.parse(l));
-    const action=events.find(e=>e.t>=since && e.kind==='tool' && e.tool==='ouvrir_reglages');
+    const action=events.find(e=>e.t>=since && e.kind==='tool' && e.tool==='open_settings');
     console.log(JSON.stringify({reply,tool:action?.tool,status:action?.status}));
     if(action?.status!=='done')process.exitCode=1;
     ws.close();

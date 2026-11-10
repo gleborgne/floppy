@@ -10,12 +10,12 @@ Floppy peut **envoyer** un résultat hors de l'ordinateur : la veille du jour da
 
 - **Un canal** = une destination réglée une fois (Réglages → **Notifications**) : « Telegram · Mon canal », « Gmail perso ».
 - **Envoyer automatiquement** : dans la fiche d'une tâche (Réglages → Tâches), « Envoyer … à » : un ou plusieurs canaux. À la voix : « Floppy, envoie ma veille sur Telegram » (accord demandé : c'est un envoi).
-- **Envoyer une fois** : « envoie la synthèse par mail » → outil `envoyer` (niveau `send` : accord à chaque fois).
+- **Envoyer une fois** : « envoie la synthèse par mail » → outil `send_document` (niveau `send` : accord à chaque fois).
 
 ```mermaid
 flowchart LR
   T["Tâche finie<br/>(événement task.done)"] --> R
-  V["Voix : outil envoyer"] --> R
+  V["Voix : outil send_document"] --> R
   R["Plugin Tâches<br/>réglage « Envoyer à »<br/>ctx.offers / ctx.borrowItem"] -- "{ title, markdown }" --> TG["notify-telegram<br/>Markdown → HTML Telegram<br/>découpé en messages de 4 000 car."]
   R --> M["notify-mail<br/>Markdown → mail HTML + texte<br/>SMTP (Gmail, Outlook…)"]
 ```
@@ -51,5 +51,5 @@ L'utilisateur veut, à terme, parler à Floppy sur Telegram. Ce sera un **corps*
 ## Sécurité
 
 - Choisir un canal pour une tâche **à la voix** demande l'accord (risque `ask`) ; arrêter d'envoyer est libre. Un clic dans la fenêtre vaut accord.
-- L'outil `envoyer` est de niveau `send` : accord à chaque envoi.
+- L'outil `send_document` est de niveau `send` : accord à chaque envoi.
 - Chaque envoi est noté dans le journal (`kind: notify`). Un envoi raté est signalé par une notification.

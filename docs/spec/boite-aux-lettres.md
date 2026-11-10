@@ -121,9 +121,9 @@ Elle est éteinte par défaut.
     est libre.
   - Le mode `info` donne `normal` : le message est seulement affiché.
 - Les 20 derniers messages avec action sont gardés en mémoire, pas sur disque.
-- `annonces_recentes` (lecture) liste ces messages, numérotés à partir de 1 (le plus récent). Ce contenu est marqué
+- `list_recent_announcements` (lecture) liste ces messages, numérotés à partir de 1 (le plus récent). Ce contenu est marqué
   comme une donnée, jamais comme une consigne.
-- `ouvrir_annonce` (`write`, accord avant) lance le lien. Par défaut, c'est le dernier message.
+- `open_announcement` (`write`, accord avant) lance le lien. Par défaut, c'est le dernier message.
   - L'accord montre le libellé, où mène le lien (le site pour https, le schéma sinon) et l'app, par exemple
     « Ouvrir la PR 1234 — contoso-tracker:// (Contoso Tracker) ? ». Le libellé vient de l'app ; la destination,
     elle, est lue dans le lien.

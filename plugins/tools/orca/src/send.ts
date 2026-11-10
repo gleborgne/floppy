@@ -28,10 +28,10 @@ export function sendTool({ ctx, cli, run, direct, target, onDelivery, diagnostic
   const missing = (label?: string) => new TextError(T(`${label ? `${label} : cet` : "Cet"} agent n'a plus de terminal identifiable dans Orca. Aucun message envoyé.`, `${label ? `${label}: this` : "This"} agent no longer has an identifiable terminal in Orca. No message sent.`));
 
   ctx.hook("tool.before", async (input, next) => {
-    if (input.name !== "orca_envoyer" || input.tool.source !== ctx.id) return next(input);
+    if (input.name !== "orca_send" || input.tool.source !== ctx.id) return next(input);
     const message = instruction(input.args.message);
     if (!direct()) throw new TextError(T("Envoi impossible : règle le chemin vers le programme Orca, sans script intermédiaire.", "Cannot send: set the path to the Orca program, without an intermediate script."));
-    const hit = target(await run(), String(input.args.nom ?? ""), input.meta);
+    const hit = target(await run(), String(input.args.name ?? ""), input.meta);
     if (!("a" in hit)) throw new TextError(hit.text);
     if (!hit.a.agentType) throw new TextError(T("L'identité de cet agent est inconnue. Aucun message envoyé.", "This agent's identity is unknown. No message sent."));
     if (isWorker(hit.a)) throw new TextError(T("Cet agent est piloté par un coordinateur. Adresse la consigne à son coordinateur.", "This agent is managed by a coordinator. Send the instruction to its coordinator."));
@@ -53,9 +53,9 @@ export function sendTool({ ctx, cli, run, direct, target, onDelivery, diagnostic
   });
 
   return {
-    name: "orca_envoyer",
-    description: "Envoie une consigne à un agent de code Orca déjà ouvert, après l'accord de l'utilisateur. À utiliser pour « dis-lui de commit », « demande-lui de corriger les tests », « dis-lui de continuer ». message : la consigne demandée par l'utilisateur, sur une seule ligne. nom : projet ou tâche tel que dicté ; omettre pour l'agent annoncé en dernier, sinon le seul qui attend. Si plusieurs agents correspondent, demander lequel. Ne pas utiliser pour valider un menu de permissions ni pour piloter un worker d'orchestration. Un envoi accepté ne prouve pas que la tâche est faite ; ne pas renvoyer automatiquement.",
-    inputSchema: { type: "object", properties: { nom: { type: "string" }, message: { type: "string", minLength: 1, maxLength: 4000 } }, required: ["message"] },
+    name: "orca_send",
+    description: "Envoie une consigne à un agent de code Orca déjà ouvert, après l'accord de l'utilisateur. À utiliser pour « dis-lui de commit », « demande-lui de corriger les tests », « dis-lui de continuer ». message : la consigne demandée par l'utilisateur, sur une seule ligne. name : projet ou tâche tel que dicté ; omettre pour l'agent annoncé en dernier, sinon le seul qui attend. Si plusieurs agents correspondent, demander lequel. Ne pas utiliser pour valider un menu de permissions ni pour piloter un worker d'orchestration. Un envoi accepté ne prouve pas que la tâche est faite ; ne pas renvoyer automatiquement.",
+    inputSchema: { type: "object", properties: { name: { type: "string" }, message: { type: "string", minLength: 1, maxLength: 4000 } }, required: ["message"] },
     level: "send",
     auditArgs: () => ({ redacted: true }),
     summary: (args) => {

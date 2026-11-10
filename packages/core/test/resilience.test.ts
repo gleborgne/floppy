@@ -74,7 +74,7 @@ describe("contexte fermé", () => {
     ctx.emit("x", 1);
     await k.applyConfig({ plugins: [{ id: "w", plugin: "w" }] });
     ctx.emit("x", 2);
-    await expect(ctx.tools.call("lister_reglages", {})).rejects.toThrow(/arrêté/);
+    await expect(ctx.tools.call("list_settings", {})).rejects.toThrow(/arrêté/);
     expect(await ctx.approvals.check({ tool: "t", args: {}, level: "write", summary: "?" })).toMatchObject({ ok: false, reason: "cancelled" });
     expect(seen).toEqual([1]);
     expect(logs.some((l) => l.includes("emit(x) après l'arrêt"))).toBe(true);

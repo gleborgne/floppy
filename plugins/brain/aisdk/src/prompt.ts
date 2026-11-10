@@ -1,5 +1,5 @@
 // Prompt du cerveau : variante v3c du prototype 4 (prototypes/ambiguity/src/prompts.ts), retenue le 5/11/2026.
-//   3 chemins « demander / déléguer / faire » + exemples courts ; `deleguer` appelé sans phrase d'attente
+//   3 chemins « demander / déléguer / faire » + exemples courts ; `delegate` appelé sans phrase d'attente
 //   (le noyau la dit) ; pas d'outil demander_precision.
 // Mesuré (31 demandes neuves, 3 passages) : questions 100 %, délégation 100 %, fausse délégation 0 %, contrôles 92 %.
 // Ajouts du noyau : nom, langue, date et forme (voix / texte) venant de la config ; émotion ; mémoire.
@@ -90,7 +90,7 @@ export function delegateDescription(model: string): string {
     + "OBLIGATOIRE pour : calcul en plusieurs étapes (durées, temps libre, pourcentages, budget, frais), rédaction longue "
     + "(mail détaillé, ordre du jour, compte rendu, traduction), code ou script, analyse, comparaison, plan, synthèse qui croise plusieurs sources. "
     + "Jamais pour une simple lecture ni pour une action claire. "
-    + "tache : la demande complète de l'utilisateur, avec tout le contexte utile.";
+    + "task : la demande complète de l'utilisateur, avec tout le contexte utile.";
 }
 
 export function buildPrompt(p: PromptInput): string {
@@ -107,9 +107,9 @@ export function buildPrompt(p: PromptInput): string {
   const names = (p.tools ?? []).map((t) => t.name);
   const has = (n: string) => names.includes(n);
   // Les exemples et les consignes ne citent que des outils réellement visibles : un outil désactivé n'est jamais mentionné.
-  const exSettings = has("changer_reglage") ? "« change de voix » → changer_reglage tout de suite (une autre voix que l'actuelle), puis « C'est fait. »\n" : "";
-  const ruleSettings = has("changer_reglage") ? "Tes réglages (voix, écoute…) : appelle changer_reglage tout de suite, sans rien dire avant ni demander de confirmation ; si la valeur manque, choisis-la toi-même." : "";
-  const ruleDocument = has("afficher_document") ? "\nRéponse longue (liste, tableau, comparaison, plusieurs liens) : appelle afficher_document avec un document Markdown, puis dis une seule phrase courte de résumé, sans lire le document." : "";
+  const exSettings = has("change_setting") ? "« change de voix » → change_setting tout de suite (une autre voix que l'actuelle), puis « C'est fait. »\n" : "";
+  const ruleSettings = has("change_setting") ? "Tes réglages (voix, écoute…) : appelle change_setting tout de suite, sans rien dire avant ni demander de confirmation ; si la valeur manque, choisis-la toi-même." : "";
+  const ruleDocument = has("show_document") ? "\nRéponse longue (liste, tableau, comparaison, plusieurs liens) : appelle show_document avec un document Markdown, puis dis une seule phrase courte de résumé, sans lire le document." : "";
   const toolsLine = names.length
     ? `Tes outils : ${names.join(", ")}. N'invente jamais ces informations : appelle l'outil, puis réponds avec son résultat. N'annonce pas une action, fais-la.`
     : "Tu n'as aucun outil pour l'instant : si une demande en exige un, dis simplement que tu ne peux pas le faire.";
@@ -172,9 +172,9 @@ function buildPromptEn(p: PromptInput): string {
   const d = p.delegateTool;
   const names = (p.tools ?? []).map((t) => t.name);
   const has = (n: string) => names.includes(n);
-  const exSettings = has("changer_reglage") ? "\"change your voice\" → changer_reglage right away (a different voice from the current one), then \"Done.\"\n" : "";
-  const ruleSettings = has("changer_reglage") ? "Your settings (voice, listening…): call changer_reglage right away, without saying anything first or asking for confirmation; if the value is missing, choose it yourself." : "";
-  const ruleDocument = has("afficher_document") ? "\nLong answer (list, table, comparison, several links): call afficher_document with a Markdown document, then say a single short summary sentence, without reading the document." : "";
+  const exSettings = has("change_setting") ? "\"change your voice\" → change_setting right away (a different voice from the current one), then \"Done.\"\n" : "";
+  const ruleSettings = has("change_setting") ? "Your settings (voice, listening…): call change_setting right away, without saying anything first or asking for confirmation; if the value is missing, choose it yourself." : "";
+  const ruleDocument = has("show_document") ? "\nLong answer (list, table, comparison, several links): call show_document with a Markdown document, then say a single short summary sentence, without reading the document." : "";
   const toolsLine = names.length
     ? `Your tools: ${names.join(", ")}. Never make up this information: call the tool, then answer with its result. Don't announce an action, do it.`
     : "You have no tools for now: if a request needs one, simply say you can't do it.";

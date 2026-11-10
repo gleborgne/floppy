@@ -490,7 +490,7 @@ describe("Live : émotion dite par le modèle (outil)", () => {
     const run = vi.spyOn(f.ctx.tools, "call");
     try {
       await f.live.start(0, 5);
-      call(f, { emotion: "joy", intensite: "forte" }, 0);
+      call(f, { emotion: "joy", intensity: "strong" }, 0);
       expect(f.session.toolResult).toHaveBeenCalledWith("e1", EMOTION_TOOL, { status: "done", text: "ok" });
       expect(run).not.toHaveBeenCalled();
       expect(f.modelEmotion).not.toHaveBeenCalled(); // pas de bloc audio encore : rien ne bouge
@@ -507,8 +507,8 @@ describe("Live : émotion dite par le modèle (outil)", () => {
       await f.live.start(0, 5);
       const seen: (number | undefined)[] = [];
       let generation = 0;
-      for (const level of ["legere", "normale", undefined, "forte"] as const) {
-        call(f, { emotion: "happy", ...(level ? { intensite: level } : {}) }, generation, `i${generation}`);
+      for (const level of ["light", "normal", undefined, "strong"] as const) {
+        call(f, { emotion: "happy", ...(level ? { intensity: level } : {}) }, generation, `i${generation}`);
         audio(f, generation);
         seen.push(f.modelEmotion.mock.calls.at(-1)![0].intensity);
         f.emit({ type: "generation_done" });

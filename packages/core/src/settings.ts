@@ -6,7 +6,7 @@
 //     ask   = demande d'accord avant (ex. activer un service cloud) ;
 //     cli   = jamais à la voix : CLI ou clic seulement (ex. tout ce qui touche aux droits).
 // - Les valeurs choisies sont gardées dans <home>/settings.json et reprises au démarrage.
-// - Le cerveau a 3 outils internes : lister_reglages, changer_reglage, annuler_reglage. Le contrôle du risque est
+// - Le cerveau a 3 outils internes : list_settings, change_setting, undo_setting. Le contrôle du risque est
 //   fait ICI, par le code (le modèle ne peut pas le contourner) ; chaque changement est journalisé.
 import { fold } from "@floppy/protocol";
 import { readJsonFile, writeJsonAtomic } from "./util/files.ts";
@@ -235,7 +235,7 @@ export class SettingsRegistry {
     if (via === "voice" && risk === "ask") {
       // override « ask » : `approvals.write: always` ne dispense pas de demander l'accord.
       const d = await this.approvals.check({
-        tool: "changer_reglage", args: { cle: def.key, valeur: value }, level: "write", override: "ask",
+        tool: "change_setting", args: { key: def.key, value }, level: "write", override: "ask",
         summary: T(`${tr(def.label, "fr")} : ${this.label(def, before, "fr")} → ${this.label(def, value, "fr")}`, `${tr(def.label, "en")}: ${this.label(def, before, "en")} → ${this.label(def, value, "en")}`),
         ...(origin ? { origin } : {}),
       });

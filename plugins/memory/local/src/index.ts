@@ -1,7 +1,7 @@
 // Plugin `memory` : mémoire inspirée de Hermes (voir docs/spec/memoire-skills-ton-langue.md).
 // - USER.md (profil) et MEMORY.md (notes de l'assistant) : petits, lisibles, toujours dans le prompt.
-// - Historique des conversations dans SQLite FTS5 (node:sqlite), consulté par l'outil chercher_historique.
-// - Écriture par l'outil `memoriser`, niveau write : elle passe par l'accord.
+// - Historique des conversations dans SQLite FTS5 (node:sqlite), consulté par l'outil search_history.
+// - Écriture par l'outil `remember`, niveau write : elle passe par l'accord.
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -19,7 +19,7 @@ const Config = z.object({
 });
 type Config = z.infer<typeof Config>;
 
-const FILES = { utilisateur: "USER.md", notes: "MEMORY.md" } as const;
+const FILES = { user: "USER.md", notes: "MEMORY.md" } as const;
 type Which = keyof typeof FILES;
 
 const lineOf = (current: string): string[] => current.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim());
@@ -40,11 +40,11 @@ export const hashOf = (s: string): string => createHash("sha256").update(s).dige
 export function applyEdit(current: string, action: string, texte: string, ancien?: string): string {
   const lines = lineOf(current);
   const bullet = (s: string) => (s.startsWith("- ") ? s : `- ${s}`);
-  if (action === "ajouter") return [...lines, bullet(texte.trim())].join("\n") + "\n";
-  if (action !== "supprimer" && action !== "remplacer") throw new TextError(T(`Action inconnue : ${action}`, `Unknown action: ${action}`));
+  if (action === "add") return [...lines, bullet(texte.trim())].join("\n") + "\n";
+  if (action !== "delete" && action !== "replace") throw new TextError(T(`Action inconnue : ${action}`, `Unknown action: ${action}`));
   const idx = findLine(current, ancien ?? texte).index;
-  if (action === "supprimer") lines.splice(idx, 1);
-  else if (action === "remplacer") lines[idx] = bullet(texte.trim());
+  if (action === "delete") lines.splice(idx, 1);
+  else if (action === "replace") lines[idx] = bullet(texte.trim());
   return lines.length ? lines.join("\n") + "\n" : "";
 }
 
@@ -65,7 +65,7 @@ export default definePlugin<Config>({
     const path = (w: Which) => join(dir, FILES[w]);
     for (const w of Object.keys(FILES) as Which[]) if (!existsSync(path(w))) writeFileAtomic(path(w), "");
     const read = (w: Which) => readFileSync(path(w), "utf8");
-    const limit = (w: Which) => (w === "utilisateur" ? cfg.userLimit : cfg.memoryLimit);
+    const limit = (w: Which) => (w === "user" ? cfg.userLimit : cfg.memoryLimit);
 
     const db = new DatabaseSync(join(dir, "history.db"));
     ctx.effect(() => db.close());
@@ -79,7 +79,7 @@ export default definePlugin<Config>({
     const service: MemoryService = {
       ...corrections,
       snapshot: (options) => storeOperation(report, "snapshot", () => {
-        options?.signal?.throwIfAborted(); return { user: read("utilisateur"), memory: read("notes") };
+        options?.signal?.throwIfAborted(); return { user: read("user"), memory: read("notes") };
       }, undefined, options, true),
       record: (e, options) => storeOperation(report, "history.record", () => {
         options?.signal?.throwIfAborted(); insert.run(e.text, new Date().toISOString(), e.session, e.role, e.origin ?? "");
@@ -96,44 +96,44 @@ export default definePlugin<Config>({
 
     // Empreinte du fichier au moment de la demande d'accord, par appel (même arguments) : l'écriture la compare.
     const seen = new Map<string, string>();
-    const argsKey = (a: Record<string, unknown>): string => JSON.stringify([a.fichier, a.action, a.texte, a.ancien ?? null]);
+    const argsKey = (a: Record<string, unknown>): string => JSON.stringify([a.file, a.action, a.text, a.old ?? null]);
 
     ctx.tools.register([
       {
-        name: "memoriser",
-        description: "Retient durablement une information. fichier : « utilisateur » (profil, préférences de l'utilisateur) ou « notes » (tes notes de travail, leçons). action : ajouter, remplacer (ancien = texte de la ligne à remplacer) ou supprimer. À utiliser quand l'utilisateur dit « souviens-toi », « retiens », « oublie ».",
+        name: "remember",
+        description: "Retient durablement une information. file : « user » (profil, préférences de l'utilisateur) ou « notes » (tes notes de travail, leçons). action : add (ajouter), replace (remplacer ; old = texte de la ligne à remplacer) ou delete (supprimer). text : le texte à retenir. À utiliser quand l'utilisateur dit « souviens-toi », « retiens », « oublie ».",
         inputSchema: {
           type: "object",
           properties: {
-            fichier: { type: "string", enum: ["utilisateur", "notes"] },
-            action: { type: "string", enum: ["ajouter", "remplacer", "supprimer"] },
-            texte: { type: "string" },
-            ancien: { type: "string" },
+            file: { type: "string", enum: ["user", "notes"] },
+            action: { type: "string", enum: ["add", "replace", "delete"] },
+            text: { type: "string" },
+            old: { type: "string" },
           },
-          required: ["fichier", "action", "texte"],
+          required: ["file", "action", "text"],
         },
         level: "write",
         summary: (a) => {
-          const w = (a.fichier === "utilisateur" ? "utilisateur" : "notes") as Which;
+          const w = (a.file === "user" ? "user" : "notes") as Which;
           const file = FILES[w];
-          const texte = String(a.texte ?? "");
+          const texte = String(a.text ?? "");
           const cur = read(w);
           seen.set(argsKey(a), hashOf(cur)); // le fichier tel qu'il était quand l'accord a été demandé
-          if (a.action === "ajouter") return T(`Retenir dans ${file} : « ${texte} »`, `Remember in ${file}: “${texte}”`);
+          if (a.action === "add") return T(`Retenir dans ${file} : « ${texte} »`, `Remember in ${file}: “${texte}”`);
           try {
-            const { line } = findLine(cur, String(a.ancien ?? texte));
-            return a.action === "supprimer"
+            const { line } = findLine(cur, String(a.old ?? texte));
+            return a.action === "delete"
               ? T(`Oublier dans ${file} la ligne : « ${line} »`, `Forget this line in ${file}: “${line}”`)
               : T(`Dans ${file}, remplacer « ${line} » par « ${texte} »`, `In ${file}, replace “${line}” with “${texte}”`);
           } catch {
-            const old = String(a.ancien ?? texte);
-            return a.action === "supprimer"
+            const old = String(a.old ?? texte);
+            return a.action === "delete"
               ? T(`Oublier dans ${file} (ligne introuvable) : « ${old} »`, `Forget in ${file} (line not found): “${old}”`)
               : T(`Remplacer dans ${file} (ligne introuvable) : « ${old} »`, `Replace in ${file} (line not found): “${old}”`);
           }
         },
         handler: async (a, meta) => {
-          const w = (a.fichier === "utilisateur" ? "utilisateur" : "notes") as Which;
+          const w = (a.file === "user" ? "user" : "notes") as Which;
           const before = read(w);
           const approved = seen.get(argsKey(a));
           seen.delete(argsKey(a));
@@ -141,7 +141,7 @@ export default definePlugin<Config>({
             return { status: "failed", text: T(`${FILES[w]} a changé depuis ta demande d'accord : rien n'a été écrit. Recommence.`, `${FILES[w]} changed since approval was requested: nothing was written. Try again.`) };
           }
           let next: string;
-          try { next = applyEdit(before, String(a.action), String(a.texte ?? ""), a.ancien ? String(a.ancien) : undefined); }
+          try { next = applyEdit(before, String(a.action), String(a.text ?? ""), a.old ? String(a.old) : undefined); }
           catch (e) { return { status: "failed", text: errorText(e) }; }
           if (next.length > limit(w)) {
             return { status: "failed", text: T(`Mémoire pleine (${next.length}/${limit(w)} caractères). Résume ou supprime d'abord des lignes.`, `Memory is full (${next.length}/${limit(w)} characters). Summarize or remove some lines first.`) };
@@ -151,12 +151,12 @@ export default definePlugin<Config>({
         },
       },
       {
-        name: "chercher_historique",
-        description: "Cherche dans les conversations passées avec l'utilisateur (mots-clés). Utile pour « qu'est-ce que je t'avais dit sur… ».",
-        inputSchema: { type: "object", properties: { requete: { type: "string" }, limite: { type: "number" } }, required: ["requete"] },
+        name: "search_history",
+        description: "Cherche dans les conversations passées avec l'utilisateur. query : mots-clés ; limit : nombre de résultats (5 par défaut). Utile pour « qu'est-ce que je t'avais dit sur… ».",
+        inputSchema: { type: "object", properties: { query: { type: "string" }, limit: { type: "number" } }, required: ["query"] },
         level: "read",
         handler: async (a, meta) => {
-          const rows = await service.search(String(a.requete ?? ""), Number(a.limite ?? 5), meta);
+          const rows = await service.search(String(a.query ?? ""), Number(a.limit ?? 5), meta);
           if (!rows.length) return { status: "done", text: T("Rien trouvé dans l'historique.", "Nothing found in history.") };
           const lines = (user: string) => rows.map((r) => `${r.t.slice(0, 16)} ${r.role === "user" ? user : "Assistant"} : ${r.text}`).join("\n");
           return { status: "done", text: T(lines("Utilisateur"), lines("User")) };

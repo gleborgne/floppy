@@ -228,8 +228,8 @@ describe("admission du pont", () => {
     expect(got).toHaveLength(2);
     expect(got[1]).toMatchObject({ outcome: "future-outcome" });
     expect(got[1]).not.toHaveProperty("privateField");
-    for (const outcome of [undefined, "failure", "unconfirmed", "unknown", "superseded"]) expect(kindOfEvent("done", outcome)).not.toBe("termines");
-    expect(kindOfEvent("done", "success")).toBe("termines");
+    for (const outcome of [undefined, "failure", "unconfirmed", "unknown", "superseded"]) expect(kindOfEvent("done", outcome)).not.toBe("finished");
+    expect(kindOfEvent("done", "success")).toBe("finished");
     expect(validBridgeEvent({ kind: "hello" })).toBe(true);
     expect(validBridgeEvent(envelope(1, { mainAgent: { state: "working", stateStartedAt: -1 } }))).toBe(true);
   });

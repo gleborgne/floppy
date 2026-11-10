@@ -130,7 +130,7 @@ describe("audit du stockage mémoire", () => {
   it("journalise une écriture Markdown avec uniquement le nom de fichier fixe", async () => {
     const { k, events } = await start();
     await k.applyConfig({ approvals: { write: "always" }, plugins: [{ id: "memory-local", plugin: "memory" }] });
-    const result = await k.tools.call("memoriser", { fichier: "notes", action: "ajouter", texte: "private history" }, correlation);
+    const result = await k.tools.call("remember", { file: "notes", action: "add", text: "private history" }, correlation);
     expect(result.status).toBe("done");
     expect(events().filter((e) => e.operation === "markdown.edit")).toMatchObject([
       { ...correlation, callId: expect.any(String), status: "done", count: 1, file: "MEMORY.md" },

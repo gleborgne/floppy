@@ -49,7 +49,7 @@ A plugin can be stopped or reloaded at any time. Everything it starts must stop:
 
 ## Logs
 
-- `ctx.log("info" | "warn" | "error" | "debug", message, data?)`: messages for the developer (shown by `tester_plugin`).
+- `ctx.log("info" | "warn" | "error" | "debug", message, data?)`: messages for the developer (shown by `test_plugin`).
 - `ctx.audit.write({ kind: "<id>.<what>", ... })`: a record of what the plugin did. Never a secret.
 
 ## Errors

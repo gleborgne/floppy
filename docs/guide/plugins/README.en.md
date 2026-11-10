@@ -19,7 +19,7 @@ floppy dev my-plugin                 # starts Floppy with this plugin
 In another terminal:
 
 ```sh
-floppy tool my_plugin_bonjour '{"nom":"Ada"}' --home my-plugin/.floppy-dev
+floppy tool my_plugin_hello '{"name":"Ada"}' --home my-plugin/.floppy-dev
 floppy chat --home my-plugin/.floppy-dev     # talk to Floppy with the keyboard
 ```
 
@@ -172,7 +172,7 @@ Other commands: `floppy plugin list`, `floppy plugin approve <id>`, `floppy plug
 ## Let the AI assistant write the plugin
 
 In the Settings window, AI assistant section, choose "Create a plugin" and describe what you want.
-The agent (Claude Code or Codex) first reads the plugin wiki with the `doc_plugins` tool: the rules, the recipes, the exact contracts of Floppy's services, what is running now.
+The agent (Claude Code or Codex) first reads the plugin wiki with the `plugin_docs` tool: the rules, the recipes, the exact contracts of Floppy's services, what is running now.
 You see every file it writes before it is written. It tests the plugin, then you turn it on with a click.
 
 You can read the wiki yourself too: [`packages/sdk/wiki`](../../../packages/sdk/wiki).

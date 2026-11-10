@@ -33,7 +33,7 @@ async function setup(opts: { home?: string; at?: number; state?: string; stateAt
   if (opts.bridge) await until(() => expect(existsSync(join(home, "orca-bridge.json"))).toBe(true));
   const file = join(home, "orca-checkout-protection.json");
   const locks = () => (JSON.parse(readFileSync(file, "utf8")) as { locks: { settled: boolean; observedWorking: boolean; workingStartedAt?: number; oldTurnEndedAt?: number }[] }).locks;
-  const single = (nom = "Bob") => k.tools.call("orca_envoyer", { nom, message: "Private instruction" });
+  const single = (nom = "Bob") => k.tools.call("orca_send", { name: nom, message: "Private instruction" });
   const sends = () => cli.mock.calls.filter(([a]) => a[1] === "send").map(([a]) => a);
   const lists = () => cli.mock.calls.filter(([a]) => a[1] === "list").length;
   const bob = () => rows[0]!.agents![0]!;
@@ -276,20 +276,20 @@ it("un transport pending puis son ancien callback après arrêt ne libèrent pas
 });
 
 it("la libération par collecte ne rejoue pas un groupe annulé, mais autorise une nouvelle consigne", async () => {
-  const s = await setup(); await s.k.tools.call("orca_agents", { projet: "Floppy", filtre: "termines" });
-  const group = await s.k.tools.call("orca_envoyer_groupe", { message: "Private group instruction" });
+  const s = await setup(); await s.k.tools.call("orca_agents", { project: "Floppy", filter: "finished" });
+  const group = await s.k.tools.call("orca_send_group", { message: "Private group instruction" });
   expect(group.status).toBe("done"); await until(() => expect(s.sends()).toHaveLength(1));
   const first = s.sends()[0]![3]!, name = first.slice("term_".length), other = name === "Bob" ? "Alice" : "Bob";
   const recipient = s.rows[0]!.agents!.find(a => a.displayName === name)!;
-  await s.k.tools.call("orca_annuler_envoi", { plan: (group.raw as { planId: string }).planId });
+  await s.k.tools.call("orca_cancel_delivery", { plan: (group.raw as { planId: string }).planId });
   s.advance(); s.set("working", s.time(), recipient); await s.poll(); s.advance(); s.set("done", s.time(), recipient); await s.poll();
   expect(s.locks()).toHaveLength(0); expect(s.sends()).toHaveLength(1);
   expect((await s.single(other)).status).toBe("done"); expect(s.sends().map(a => a[3])).toEqual([first, `term_${other}`]);
 });
 
 it("un groupe actif progresse grâce au runtime et sa trace de fin conserve l'état réellement observé", async () => {
-  const s = await setup(); await s.k.tools.call("orca_agents", { projet: "Floppy", filtre: "termines" });
-  await s.k.tools.call("orca_envoyer_groupe", { message: "Private group instruction" });
+  const s = await setup(); await s.k.tools.call("orca_agents", { project: "Floppy", filter: "finished" });
+  await s.k.tools.call("orca_send_group", { message: "Private group instruction" });
   await until(() => expect(s.sends()).toHaveLength(1));
   const name = s.sends()[0]![3]!.slice("term_".length), recipient = s.rows[0]!.agents!.find(a => a.displayName === name)!;
   s.advance(); s.set("working", s.time(), recipient); await s.poll();

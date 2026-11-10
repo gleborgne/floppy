@@ -10,7 +10,7 @@
 // Oui → entrée `u-<id>` ajoutée au noyau (setExtraEntries). Le choix est gardé par le registre des réglages.
 //
 // SÉCURITÉ : importer ou tester un plugin personnel EXÉCUTE son code avec tous les droits du processus.
-// C'est pourquoi `recharger_plugins` et `tester_plugin` sont de niveau « write » (accord demandé par défaut).
+// C'est pourquoi `reload_plugins` et `test_plugin` sont de niveau « write » (accord demandé par défaut).
 //
 // Plugin distribué (dossier avec floppy-plugin.json, voir plugins/format.ts) : jamais importé ici. Il tourne dans un
 // processus Node isolé (plugins/sandbox.ts). S'il a été installé par la boutique (plugins/store.ts), son empreinte est
@@ -382,7 +382,7 @@ export function createUserPlugins(kernel: Kernel, opts: UserPluginsOptions): Use
 
   const tools: ToolDef[] = [
     {
-      name: "etat_plugins",
+      name: "plugin_status",
       description: "Liste les plugins (livrés avec l'app et ajoutés par l'utilisateur) avec leur état, les erreurs de chargement des plugins utilisateur et s'ils sont activés.",
       inputSchema: { type: "object", properties: {} },
       level: "read",
@@ -397,7 +397,7 @@ export function createUserPlugins(kernel: Kernel, opts: UserPluginsOptions): Use
       },
     },
     {
-      name: "recharger_plugins",
+      name: "reload_plugins",
       description: "Relit le dossier des plugins utilisateur après une modification de fichiers : ajoute les nouveaux, recharge ceux qui ont changé, signale les erreurs. Un plugin n'est jamais activé par cet outil (c'est un réglage).",
       inputSchema: { type: "object", properties: {} },
       // « write », pas « read » : importer un plugin exécute son code (accès complet à la machine).
@@ -409,7 +409,7 @@ export function createUserPlugins(kernel: Kernel, opts: UserPluginsOptions): Use
       },
     },
     {
-      name: "tester_plugin",
+      name: "test_plugin",
       description: "Essaie un plugin utilisateur dans un noyau jetable, sans toucher à l'assistant : état final, erreur, services manquants, outils et réglages déclarés, journal. Durée maximale 10 s.",
       inputSchema: { type: "object", properties: { id: { type: "string", description: "id du plugin (nom du dossier)" } }, required: ["id"] },
       // « write » : apply() est exécuté pour de vrai (processus, fichiers, réseau possibles).

@@ -182,7 +182,7 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
         ctx.effect(off);
       }
 
-      /** Quel document veut dire « quoi » : « dernier », une date, « aujourd'hui », un tag ou des mots du titre (français ou anglais). */
+      /** Quel document veut dire `what` : « last » (« dernier »), une date, « aujourd'hui », un tag ou des mots du titre (français ou anglais). */
       const find = async (quoi: string): Promise<DocRef | undefined> => {
         const all = await service.list();
         const q = norm(quoi);
@@ -210,12 +210,12 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
 
       ctx.tools.register([
         {
-          name: "afficher_document",
-          description: "Montre une réponse longue (liste, tableau, comparaison, plusieurs liens) dans une fenêtre, en Markdown, et la range dans les documents. titre : court. markdown : le contenu complet (titres, listes, tableaux, liens [texte](https://...)). Ensuite, dis UNE seule phrase courte de résumé : ne lis pas le document.",
-          inputSchema: { type: "object", properties: { titre: { type: "string" }, markdown: { type: "string" } }, required: ["titre", "markdown"] },
+          name: "show_document",
+          description: "Montre une réponse longue (liste, tableau, comparaison, plusieurs liens) dans une fenêtre, en Markdown, et la range dans les documents. title : court. markdown : le contenu complet (titres, listes, tableaux, liens [texte](https://...)). Ensuite, dis UNE seule phrase courte de résumé : ne lis pas le document.",
+          inputSchema: { type: "object", properties: { title: { type: "string" }, markdown: { type: "string" } }, required: ["title", "markdown"] },
           level: "read",
           handler: async (a, meta) => {
-            const title = String(a.titre ?? "").trim(); // argument de l'outil : renommé avec les outils
+            const title = String(a.title ?? "").trim();
             const markdown = String(a.markdown ?? "").trim();
             if (!markdown) return { status: "failed", text: "Document vide." };
             const ref = await service.save({ title: title || "Document", markdown, source: "floppy", tags: ["reponse"] });
@@ -227,12 +227,12 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
           },
         },
         {
-          name: "ouvrir_document",
-          description: "Rouvre un ancien document dans la fenêtre. quoi : « dernier », une date (2026-11-06, aujourd'hui, hier), un tag (« veille ») ou des mots du titre.",
-          inputSchema: { type: "object", properties: { quoi: { type: "string" } }, required: ["quoi"] },
+          name: "open_document",
+          description: "Rouvre un ancien document dans la fenêtre. what : « last » (le dernier), une date (2026-11-06, today, yesterday), un tag (« veille ») ou des mots du titre.",
+          inputSchema: { type: "object", properties: { what: { type: "string" } }, required: ["what"] },
           level: "read",
           handler: async (a, meta) => {
-            const x = await find(String(a.quoi ?? ""));
+            const x = await find(String(a.what ?? ""));
             if (!x) {
               const recent = (await service.list({ max: 5 })).map(fmt).join("\n");
               return { status: "failed", text: `Aucun document ne correspond.${recent ? `\nLes derniers :\n${recent}` : " Il n'y a encore aucun document."}` };
@@ -243,7 +243,7 @@ export function createDocumentsPlugin(opts: DocumentsOptions = {}) {
           },
         },
         {
-          name: "lister_documents",
+          name: "list_documents",
           description: "Liste les derniers documents rangés (titre et date). tag : pour filtrer (par exemple « veille »).",
           inputSchema: { type: "object", properties: { tag: { type: "string" } } },
           level: "read",

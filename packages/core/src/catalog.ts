@@ -132,7 +132,7 @@ export interface ItemInfo {
   /**
    * Boutons propres à l'élément (« Utiliser », « Tester la voix »…). play : l'action rend un son (OpResult.audio) ;
    * la fenêtre la montre en bouton rond « lecture » au début de la ligne.
-   * voice : permise à la voix (outil utiliser_element, action « use »). Seulement pour un choix sans risque et qu'on
+   * voice : permise à la voix (outil use_item, action « use »). Seulement pour un choix sans risque et qu'on
    * défait de la même façon (l'avatar affiché), jamais pour ajouter, télécharger ou supprimer.
    */
   actions?: { id: string; label: Text; play?: boolean; voice?: boolean }[];
@@ -378,7 +378,7 @@ export class CatalogRegistry {
           if (via === "voice") {
             const cloud = kind.cloud ? T(" (données dans le cloud)", " (data goes to the cloud)") : undefined;
             const d = await this.approvals.check({
-              tool: "ajouter_application", args: { provider: o.provider, type: o.kind }, level: "write", override: "ask",
+              tool: "add_app", args: { provider: o.provider, type: o.kind }, level: "write", override: "ask",
               summary: T(`Ajouter ${tr(kind.label, "fr")}${cloud ? tr(cloud, "fr") : ""}`, `Add ${tr(kind.label, "en")}${cloud ? tr(cloud, "en") : ""}`), ...(origin ? { origin } : {}),
             });
             if (!d.ok) return { ok: false, text: T("Refusé par l'utilisateur. Rien n'a changé. Ne le retente pas.", "Refused by the user. Nothing changed. Do not try again.") };
@@ -406,7 +406,7 @@ export class CatalogRegistry {
             if (item.cloud) {
               // override « ask » : la règle « write: always » ne dispense pas de demander pour le cloud.
               const d = await this.approvals.check({
-                tool: "activer_element", args: { provider: o.provider, item: o.id }, level: "write", override: "ask",
+                tool: "toggle_item", args: { provider: o.provider, item: o.id }, level: "write", override: "ask",
                 summary: T(`Activer ${tr(item.label, "fr")} (données dans le cloud)`, `Turn on ${tr(item.label, "en")} (data goes to the cloud)`), ...(origin ? { origin } : {}),
               });
               if (!d.ok) return { ok: false, text: T("Refusé par l'utilisateur. Rien n'a changé. Ne le retente pas.", "Refused by the user. Nothing changed. Do not try again.") };

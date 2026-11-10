@@ -45,15 +45,16 @@ async function start(opts: { approve?: boolean; maxConcurrent?: number; home?: s
     { id: "a", plugin: "test-agent" }, ...(opts.duplicate ? [{ id: "b", plugin: "test-agent" }] : []),
     { id: "docs", plugin: "test-docs" }, { id: "jobs", plugin: "agent-jobs", config: { maxConcurrent: opts.maxConcurrent ?? 3 } },
   ] });
-  const list = async () => JSON.parse((await k.tools.call("travaux_agents", {})).text) as { id: string; state: string; document?: string }[];
+  const list = async () => JSON.parse((await k.tools.call("list_agent_jobs", {})).text) as { id: string; state: string; document?: string }[];
   return { k, home, received, notices, documents, list, consumer: () => consumer!, writes: () => writes };
 }
 
 describe("missions nommées et suivies", () => {
   it("découverte dynamique, alias et modèle ponctuel ; origine conservée ; écriture reste soumise à accord", async () => {
     const b = await start();
-    expect(JSON.parse((await b.k.tools.call("lister_agents", {})).text)).toContainEqual(expect.objectContaining({ id: "a/test", delegation: true, tracked: true }));
-    const r = await b.k.tools.call("deleguer_agent", { agent: "essai", modele: "provider/opus", consigne: "WRITE" }, { origin: "avatar" });
+    expect(JSON.parse((await b.k.tools.call("list_agents", {})).text)).toContainEqual(expect.objectContaining({ id: "a/test", delegation: true, tracked: true }));
+    const r = await b.k.tools.call("delegate_to_agent", { agent: "essai", model: "provider/opus", instruction: "WRITE" }, { origin: "avatar" });
+    expect(b.k.tools.list().map((t) => t.name).filter((n) => ["lister_agents", "deleguer_agent", "lancer_travail_agent", "travaux_agents", "arreter_travail_agent"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r).toMatchObject({ status: "done", text: "résultat provider/opus" });
     expect(b.received[0]).toMatchObject({ model: "provider/opus", origin: "avatar" });
     expect(b.writes()).toBe(1);
@@ -62,38 +63,38 @@ describe("missions nommées et suivies", () => {
 
   it("accord refusé : aucun agent emprunté et aucune mission exécutée", async () => {
     const b = await start({ approve: false });
-    const r = await b.k.tools.call("lancer_travail_agent", { agent: "test", consigne: "x" });
+    const r = await b.k.tools.call("start_agent_job", { agent: "test", instruction: "x" });
     expect(r.status).toBe("refused"); expect(b.received).toEqual([]); expect(await b.list()).toEqual([]);
   });
 
   it("travail rendu immédiatement puis résultat durable, document et notification", async () => {
     const b = await start();
-    const r = await b.k.tools.call("lancer_travail_agent", { agent: "a/test", consigne: "rapport", modele: "opus" });
+    const r = await b.k.tools.call("start_agent_job", { agent: "a/test", instruction: "rapport", model: "opus" });
     expect(r.status).toBe("done");
     await vi.waitFor(async () => expect((await b.list())[0]!.state).toBe("done"));
     const job = (await b.list())[0]!;
     expect(job.document).toBe("doc"); expect(b.documents).toEqual(["résultat opus"]); expect(b.notices).toHaveLength(1);
-    const result = JSON.parse((await b.k.tools.call("travaux_agents", { id: job.id })).text);
+    const result = JSON.parse((await b.k.tools.call("list_agent_jobs", { id: job.id })).text);
     expect(result).toMatchObject({ instruction: "rapport", result: "résultat opus", state: "done" });
     expect(JSON.parse(readFileSync(join(b.home, "workspaces", "agent-jobs", "jobs.json"), "utf8"))[0]).toMatchObject({ state: "done" });
   });
 
   it("limite de concurrence, annulation et échec n'annoncent jamais un succès", async () => {
     const b = await start({ maxConcurrent: 1 });
-    await b.k.tools.call("lancer_travail_agent", { agent: "test", consigne: "HANG" });
-    expect((await b.k.tools.call("lancer_travail_agent", { agent: "test", consigne: "x" })).status).toBe("failed");
+    await b.k.tools.call("start_agent_job", { agent: "test", instruction: "HANG" });
+    expect((await b.k.tools.call("start_agent_job", { agent: "test", instruction: "x" })).status).toBe("failed");
     const id = (await b.list())[0]!.id;
-    await b.k.tools.call("arreter_travail_agent", { id });
+    await b.k.tools.call("stop_agent_job", { id });
     await vi.waitFor(async () => expect((await b.list())[0]!.state).toBe("cancelled"));
-    await b.k.tools.call("lancer_travail_agent", { agent: "test", consigne: "FAIL" });
+    await b.k.tools.call("start_agent_job", { agent: "test", instruction: "FAIL" });
     await vi.waitFor(async () => expect((await b.list())[1]!.state).toBe("failed"));
     expect(b.documents).toEqual([]);
   });
 
   it("deux profils du même agent : nom ambigu refusé, identifiant complet accepté", async () => {
     const b = await start({ duplicate: true });
-    expect((await b.k.tools.call("deleguer_agent", { agent: "test", consigne: "x" })).status).toBe("failed");
-    expect((await b.k.tools.call("deleguer_agent", { agent: "a/test", consigne: "x" })).status).toBe("done");
+    expect((await b.k.tools.call("delegate_to_agent", { agent: "test", instruction: "x" })).status).toBe("failed");
+    expect((await b.k.tools.call("delegate_to_agent", { agent: "a/test", instruction: "x" })).status).toBe("done");
     expect(b.received).toHaveLength(1);
   });
 

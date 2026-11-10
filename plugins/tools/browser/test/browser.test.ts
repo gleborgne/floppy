@@ -17,16 +17,17 @@ describe("plugin navigateur", () => {
   it("ouvre une adresse http(s) après accord ; refuse les autres schémas", async () => {
     const { k, opened } = await start();
     k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, true, "test"); });
-    expect((await k.tools.call("ouvrir_url", { url: "https://dev.azure.com/x/_git/r/pullrequest/1" })).status).toBe("done");
+    expect((await k.tools.call("open_url", { url: "https://dev.azure.com/x/_git/r/pullrequest/1" })).status).toBe("done");
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["ouvrir_url"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(opened).toEqual(["https://dev.azure.com/x/_git/r/pullrequest/1"]);
-    expect((await k.tools.call("ouvrir_url", { url: "file:///C:/Windows/system32/calc.exe" })).status).toBe("failed");
-    expect((await k.tools.call("ouvrir_url", { url: "javascript:alert(1)" })).status).toBe("failed");
+    expect((await k.tools.call("open_url", { url: "file:///C:/Windows/system32/calc.exe" })).status).toBe("failed");
+    expect((await k.tools.call("open_url", { url: "javascript:alert(1)" })).status).toBe("failed");
     expect(opened.length).toBe(1);
   });
 
   it("sans accord demandé : niveau lecture", async () => {
     const { k } = await start({ ask: false });
-    expect(k.tools.list().find((t) => t.name === "ouvrir_url")!.level).toBe("read");
+    expect(k.tools.list().find((t) => t.name === "open_url")!.level).toBe("read");
   });
 
   it("est une application de la rubrique Connecteurs, qu'on peut retirer", async () => {
@@ -34,7 +35,7 @@ describe("plugin navigateur", () => {
     const P = "apps-connectors";
     expect(k.items.provider(P)!.kinds!.map((x) => x.id)).toEqual(["browser"]);
     await k.items.run({ op: "remove", provider: P, id: "browser" }, "ui");
-    expect(k.tools.list().some((t) => t.name === "ouvrir_url")).toBe(false);
+    expect(k.tools.list().some((t) => t.name === "open_url")).toBe(false);
   });
 
   it("checkUrl", () => {

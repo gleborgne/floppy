@@ -25,46 +25,46 @@ describe("garde-fou contre les fausses actions", () => {
 });
 
 describe("buildPrompt : outils visibles", () => {
-  const tools = [{ name: "changer_reglage" }, { name: "agenda_du_jour" }];
+  const tools = [{ name: "change_setting" }, { name: "agenda_du_jour" }];
   it("ne cite que les outils visibles", () => {
-    const s = buildPrompt({ ...base, tools, delegateTool: "deleguer" });
-    expect(s).toContain("Tes outils : changer_reglage, agenda_du_jour.");
-    expect(s).toContain("changer_reglage tout de suite");
+    const s = buildPrompt({ ...base, tools, delegateTool: "delegate" });
+    expect(s).toContain("Tes outils : change_setting, agenda_du_jour.");
+    expect(s).toContain("change_setting tout de suite");
   });
   it("un outil désactivé n'est jamais mentionné (ni connecteur codé en dur)", () => {
-    const s = buildPrompt({ ...base, tools: [{ name: "agenda_du_jour" }], delegateTool: "deleguer" });
-    for (const w of ["changer_reglage", "ouvrir_reglages", "ouvrir_url", "orca_agents", "etat_build", "envoyer_mail", "Azure DevOps", "Obsidian", "Orca"]) expect(s).not.toContain(w);
+    const s = buildPrompt({ ...base, tools: [{ name: "agenda_du_jour" }], delegateTool: "delegate" });
+    for (const w of ["change_setting", "open_settings", "open_url", "ouvrir_url", "orca_agents", "etat_build", "envoyer_mail", "Azure DevOps", "Obsidian", "Orca"]) expect(s).not.toContain(w);
     expect(buildPrompt({ ...base, tools: [] })).toContain("aucun outil");
   });
-  it("la règle des documents n'apparaît que si afficher_document est visible", () => {
-    expect(buildPrompt({ ...base, tools: [{ name: "afficher_document" }] })).toContain("appelle afficher_document");
-    expect(buildPrompt({ ...base, tools: [{ name: "agenda_du_jour" }] })).not.toContain("afficher_document");
+  it("la règle des documents n'apparaît que si show_document est visible", () => {
+    expect(buildPrompt({ ...base, tools: [{ name: "show_document" }] })).toContain("appelle show_document");
+    expect(buildPrompt({ ...base, tools: [{ name: "agenda_du_jour" }] })).not.toContain("show_document");
   });
   it("garde les trois chemins demander / déléguer / faire", () => {
-    const s = buildPrompt({ ...base, tools, delegateTool: "deleguer" });
+    const s = buildPrompt({ ...base, tools, delegateTool: "delegate" });
     expect(s).toMatch(/1\. DEMANDER[\s\S]*2\. DÉLÉGUER[\s\S]*3\. FAIRE/);
-    expect(s).toContain("appelle deleguer tout de suite");
+    expect(s).toContain("appelle delegate tout de suite");
   });
 });
 
 import { claimState as claim } from "../src/index.ts";
 import { promptLang, readPhrases, waitPhrases, READ_PHRASES, WAIT_PHRASES, WAIT_PHRASES_EN } from "../src/prompt.ts";
 describe("buildPrompt : langue de l'assistant", () => {
-  const tools = [{ name: "changer_reglage" }, { name: "afficher_document" }];
+  const tools = [{ name: "change_setting" }, { name: "show_document" }];
   it("français par défaut (sans langue ou langue inconnue), inchangé", () => {
-    const fr = buildPrompt({ ...base, tools, delegateTool: "deleguer" });
-    expect(buildPrompt({ ...base, tools, delegateTool: "deleguer", lang: "fr" })).toBe(fr);
-    expect(buildPrompt({ ...base, tools, delegateTool: "deleguer", lang: "de" })).toBe(fr);
+    const fr = buildPrompt({ ...base, tools, delegateTool: "delegate" });
+    expect(buildPrompt({ ...base, tools, delegateTool: "delegate", lang: "fr" })).toBe(fr);
+    expect(buildPrompt({ ...base, tools, delegateTool: "delegate", lang: "de" })).toBe(fr);
     expect(fr).toContain("Réponds en français");
   });
   it("anglais : mêmes chemins, mêmes outils, réponses en anglais", () => {
-    const s = buildPrompt({ ...base, tools, delegateTool: "deleguer", lang: "en", emotions: true, tone: "dry and factual" });
+    const s = buildPrompt({ ...base, tools, delegateTool: "delegate", lang: "en", emotions: true, tone: "dry and factual" });
     expect(s).toContain("You are Floppy");
     expect(s).toContain("Answer in English");
     expect(s).toMatch(/1\. ASK[\s\S]*2\. DELEGATE[\s\S]*3\. DO/);
-    expect(s).toContain("call deleguer right away");
-    expect(s).toContain("Your tools: changer_reglage, afficher_document.");
-    expect(s).toContain("call afficher_document");
+    expect(s).toContain("call delegate right away");
+    expect(s).toContain("Your tools: change_setting, show_document.");
+    expect(s).toContain("call show_document");
     expect(s).toContain("Tone: dry and factual.");
     expect(s).toContain("[happy]");
     expect(s).not.toMatch(/Réponds|Tes outils|\[content\]/);

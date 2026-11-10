@@ -17,7 +17,7 @@ describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
         f.provide("llm", { model: "cli", agent: { name: "cli", keepsHistory: true, reset() {}, async *run(input) {
           requests.push(input);
           if (input.text.startsWith("Non")) {
-            const result = await c.tools.call("corriger_vocabulaire", { heard: "court team", canonical: "Core Team", scope: { domain: "m365.teams", account: "contoso", container: "engineering" }, evidence: { text: input.text } }, { session: input.session, origin: input.origin, turn: input.turn });
+            const result = await c.tools.call("correct_vocabulary", { heard: "court team", canonical: "Core Team", scope: { domain: "m365.teams", account: "contoso", container: "engineering" }, evidence: { text: input.text } }, { session: input.session, origin: input.origin, turn: input.turn });
             expect(result.status).toBe("done");
           }
           yield { type: "text", delta: "Compris." };
@@ -27,7 +27,7 @@ describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
     let brain!: BrainService, memory!: MemoryService;
     const probe = definePlugin({ manifest: { id: "probe", version: "0", licence: "MIT", inject: ["brain", "memory"] }, apply(c) { brain = c.get("brain"); memory = c.get("memory"); } });
     const k = new Kernel({ logger() {}, home: mkdtempSync(join(tmpdir(), "memory-integration-")), plugins: [localMemory, vocabulary, fake, aisdk, probe] });
-    await k.applyConfig({ approvals: { toolRules: [{ source: "vocabulary", tool: "corriger_vocabulaire", level: "write", rule: "always" }] }, plugins: [
+    await k.applyConfig({ approvals: { toolRules: [{ source: "vocabulary", tool: "correct_vocabulary", level: "write", rule: "always" }] }, plugins: [
       { id: "memory", plugin: "memory" }, { id: "vocabulary", plugin: "vocabulary" }, { id: "cli", plugin: "cli" }, { id: "brain", plugin: "brain-aisdk" }, { id: "probe", plugin: "probe" },
     ] });
     const run = async (text: string) => { for await (const _ of brain.run({ text, session: "avatar", origin: "avatar", mode: "voice" })) { /* vider */ } };
@@ -44,7 +44,7 @@ describe("mémoire et vocabulaire réels avec un cerveau CLI simulé", () => {
       await run("Lis court team");
       expect(currentMemory()).toContain('"heard":"court team"');
       expect(currentMemory()).toContain('"canonical":"Core Team"');
-      const forgetting = k.tools.call("oublier_correction", { id: saved[0]!.id }, { session: "avatar", origin: "avatar" });
+      const forgetting = k.tools.call("forget_correction", { id: saved[0]!.id }, { session: "avatar", origin: "avatar" });
       await vi.waitFor(() => expect(k.approvals.pending()).toHaveLength(1));
       k.approvals.respond(k.approvals.pending()[0]!.id, true, "test");
       expect((await forgetting).status).toBe("done");

@@ -5,7 +5,7 @@ import type { ToolInfo } from "@floppy/core";
 import { PROMPT_EMOTIONS_EN } from "@floppy/toolkit";
 import { INTENSITY_LIGHT, INTENSITY_STRONG, type Emotion } from "@floppy/protocol";
 
-export const EMOTION_TOOL = "exprimer_emotion";
+export const EMOTION_TOOL = "express_emotion";
 
 /** Déclaration donnée au modèle Live (description lue seulement par lui : en français). */
 export function emotionToolInfo(): ToolInfo {
@@ -14,7 +14,7 @@ export function emotionToolInfo(): ToolInfo {
     description: "Montre ton émotion sur le visage et dans la voix, en silence. À appeler quand ton émotion est claire, au plus une fois par réponse, avant ou pendant que tu parles. Ne la mentionne jamais à l'oral.",
     inputSchema: { type: "object", properties: {
       emotion: { type: "string", enum: [...PROMPT_EMOTIONS_EN], description: "Ton émotion." },
-      intensite: { type: "string", enum: ["legere", "normale", "forte"], description: "Facultatif : normale par défaut." },
+      intensity: { type: "string", enum: ["light", "normal", "strong"], description: "Facultatif : normal par défaut." },
     }, required: ["emotion"] },
     level: "read", source: "live",
   };
@@ -24,7 +24,7 @@ export function emotionToolInfo(): ToolInfo {
 export function parseEmotionCall(args: Record<string, unknown>): { emotion: Emotion; intensity?: number } | undefined {
   const emotion = String(args.emotion ?? "").trim().toLowerCase();
   if (!(PROMPT_EMOTIONS_EN as readonly string[]).includes(emotion)) return undefined;
-  const level = String(args.intensite ?? "").trim().toLowerCase();
-  const intensity = level === "forte" ? INTENSITY_STRONG : level === "legere" ? INTENSITY_LIGHT : undefined;
+  const level = String(args.intensity ?? "").trim().toLowerCase();
+  const intensity = level === "strong" ? INTENSITY_STRONG : level === "light" ? INTENSITY_LIGHT : undefined;
   return intensity === undefined ? { emotion: emotion as Emotion } : { emotion: emotion as Emotion, intensity };
 }

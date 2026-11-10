@@ -155,17 +155,18 @@ describe("registre des tâches", () => {
   it("une entrée désactivée n'a plus de tâche ; les outils suivent la liste", async () => {
     k = new Kernel({ logger: quiet, plugins: [digest([])] });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }] });
-    expect(k.tools.list().map((t) => t.name)).toEqual(expect.arrayContaining(["taches", "lancer_tache"]));
+    expect(k.tools.list().map((t) => t.name)).toEqual(expect.arrayContaining(["list_tasks", "run_task"]));
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest", disabled: true }] });
     expect(k.tasks.list()).toEqual([]);
-    expect(k.tools.list().map((t) => t.name)).not.toContain("lancer_tache");
+    expect(k.tools.list().map((t) => t.name)).not.toContain("run_task");
   });
 
-  it("lancer_tache (voix) lance en arrière-plan, par le nom de la tâche", async () => {
+  it("run_task (voix) lance en arrière-plan, par le nom de la tâche", async () => {
     const j: string[] = [];
     k = new Kernel({ logger: quiet, plugins: [digest(j)] });
     await k.applyConfig({ plugins: [{ id: "veille", plugin: "digest" }], approvals: { write: "always" } });
-    const r = await k.tools.call("lancer_tache", { tache: "veille du jour" });
+    const r = await k.tools.call("run_task", { task: "veille du jour" });
+    expect(k.tools.list().map((t) => t.name).filter((n) => ["taches", "lancer_tache"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
     expect(r.status).toBe("done");
     expect(r.text).toMatch(/lancée/);
     await new Promise((res) => setTimeout(res, 50));

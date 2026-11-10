@@ -35,7 +35,7 @@ flowchart TB
 
 Le cerveau et le moteur sont **empruntés** (`ctx.borrow`) pendant le passage seulement : rien ne tourne entre deux veilles.
 
-Un plugin de recherche sert deux fois : il donne un **outil** à Floppy (`chercher_web`, `chercher_searxng`) et un **service** `search` à la Veille.
+Un plugin de recherche sert deux fois : il donne un **outil** à Floppy (`search_web`, `search_searxng`) et un **service** `search` à la Veille.
 
 ## La rubrique Veille (fenêtre des réglages)
 
@@ -49,7 +49,7 @@ Fichier `<home>\veille\preferences.json`, lisible et modifiable à la main : par
 
 Configuration (`floppy.yml`, `config:` du plugin) : `interests.<id>` avec `name`, `description`, `feeds`, `queries`, `max` ; `threshold`, `batch`, `maxToModel`, `windowDays`. Les éléments ajoutés dans les réglages (`items/<entrée>.json`) ont le type `interest` et les mêmes champs. Anciens noms (`interets`, `nom`, `flux`, `requetes`, `seuil`, `lot`, `maxVersModele`, `fenetreJours`, type `interet`) : étapes `config-yaml` et `items-fields`.
 
-| Tu dis | Outil `veille_avis` | Effet |
+| Tu dis | Outil `watch_feedback` | Effet |
 |---|---|---|
 | « le 3 ne m'intéresse pas » | `article: 3, avis: moins` | exemple « pas aimé » pour ce sujet |
 | « plus d'articles sur llama.cpp » | `sujet, avis: plus` | dans `likes` |
@@ -57,9 +57,9 @@ Configuration (`floppy.yml`, `config:` du plugin) : `interests.<id>` avec `name`
 | « plus jamais de crypto » | `sujet, avis: jamais` | dans `banned` (retiré avant le modèle) |
 | « en fait la crypto ça va » | `sujet, avis: oublier` | retiré des listes |
 
-Autres outils : `veille_interets` (liste ; donne aussi les titres numérotés du dernier digest), `veille_article` (détail d'un article par son numéro ou par des mots du sujet, « l'article sur le TTS » ; sans rien, la liste des titres ; pour l'ouvrir avec `ouvrir_url`), `veille_modifier_interet` (ajouter, modifier ou retirer un sujet, avec accord). « Modifier » ajoute ou retire des flux et des recherches, remplace la description ou renomme ; la demande d'accord dit ce qui change (« Modifier le centre d'intérêt « IA locale » (+ recherches : llama.cpp) »).
+Autres outils : `watch_interests` (liste ; donne aussi les titres numérotés du dernier digest), `watch_article` (détail d'un article par son numéro ou par des mots du sujet, « l'article sur le TTS » ; sans rien, la liste des titres ; pour l'ouvrir avec `open_url`), `watch_edit_interest` (ajouter, modifier ou retirer un sujet, avec accord). « Modifier » ajoute ou retire des flux et des recherches, remplace la description ou renomme ; la demande d'accord dit ce qui change (« Modifier le centre d'intérêt « IA locale » (+ recherches : llama.cpp) »).
 
-**Jamais de centre d'intérêt vide.** Sans flux ni recherche (à la voix, dans la fenêtre, ou après avoir tout retiré), le nom du centre d'intérêt devient sa recherche web : « ajoute un centre d'intérêt sur l'IA locale » cherche « IA locale ». Floppy le dit, et prévient si aucun moteur de recherche n'est choisi. « Fais ma veille maintenant » passe par l'outil du noyau `lancer_tache`.
+**Jamais de centre d'intérêt vide.** Sans flux ni recherche (à la voix, dans la fenêtre, ou après avoir tout retiré), le nom du centre d'intérêt devient sa recherche web : « ajoute un centre d'intérêt sur l'IA locale » cherche « IA locale ». Floppy le dit, et prévient si aucun moteur de recherche n'est choisi. « Fais ma veille maintenant » passe par l'outil du noyau `run_task`.
 
 ## Données
 

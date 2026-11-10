@@ -314,12 +314,12 @@ export function createOrcaRuntime({ ctx, cli, run, now, onChanges }: OrcaRuntime
 export type OrcaRuntime = ReturnType<typeof createOrcaRuntime>;
 
 export function filterAgent(record: ActivityAgentRecord, args: Record<string, unknown>, now: number): boolean {
-  const project = String(args.projet ?? args.project ?? "");
+  const project = String(args.project ?? "");
   if (project && !normalized(`${record.project} ${record.workspaceLabel ?? ""}`).includes(normalized(project))) return false;
-  const status = String(args.filtre ?? "tous");
-  if (status === "en_cours" && record.activity !== "working" || status === "en_attente" && record.activity !== "waiting" || status === "termines" && record.activity !== "finished" || status === "interrompu" && record.outcome !== "interruption") return false;
-  if (args.depuis !== undefined) {
-    const since = typeof args.depuis === "number" ? args.depuis : Date.parse(String(args.depuis));
+  const status = String(args.filter ?? "all");
+  if (status === "running" && record.activity !== "working" || status === "waiting" && record.activity !== "waiting" || status === "finished" && record.activity !== "finished" || status === "interrupted" && record.outcome !== "interruption") return false;
+  if (args.since !== undefined) {
+    const since = typeof args.since === "number" ? args.since : Date.parse(String(args.since));
     if (!Number.isFinite(since) || since > now || record.observedAt < since) return false;
   }
   return true;

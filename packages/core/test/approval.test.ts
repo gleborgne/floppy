@@ -29,7 +29,7 @@ describe("Accords", () => {
       expect(k.approvals.respond(r.id, true, "avatar")).toBe(true);
       expect(k.approvals.respond(r.id, false, "telegram")).toBe(false);
     });
-    const d = await k.approvals.check({ tool: "ouvrir_url", args: { url: "https://x" }, level: "write", summary: "Ouvrir x ?" });
+    const d = await k.approvals.check({ tool: "open_url", args: { url: "https://x" }, level: "write", summary: "Ouvrir x ?" });
     expect(d).toEqual({ ok: true, reason: "user", by: "avatar" });
     expect(closed).toEqual([expect.objectContaining({ ok: true, by: "avatar" })]);
   });

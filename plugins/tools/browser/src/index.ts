@@ -1,7 +1,7 @@
 // Plugin `browser` : ouvrir une adresse web dans le navigateur. C'est une « application » : l'utilisateur
 // l'ajoute ou la retire dans Réglages → Connecteurs (manifest.addable).
 //
-// - Un seul outil : ouvrir_url. Seulement http et https (pas de file:, javascript:, etc.).
+// - Un seul outil : open_url. Seulement http et https (pas de file:, javascript:, etc.).
 // - Par défaut, chaque ouverture demande l'accord (niveau write). L'utilisateur peut l'enlever dans le formulaire.
 // - Navigateur : celui de Windows par défaut, ou un programme choisi (Edge, Chrome, Firefox…).
 // - Lancé sans shell : l'adresse ne peut pas devenir une commande.
@@ -72,7 +72,7 @@ export function createBrowserPlugin(opener: Opener = defaultOpener) {
     config: Config,
     apply(ctx, cfg) {
       ctx.tools.register([{
-        name: "ouvrir_url",
+        name: "open_url",
         description: "Ouvre une adresse web (http ou https) dans le navigateur de l'utilisateur. Utilise-le dès qu'on te demande d'ouvrir une page, un lien, une PR, un ticket ou un build : ne dis jamais que tu ne peux pas ouvrir une page. Fais l'adresse web avec les informations des autres outils.",
         inputSchema: { type: "object", properties: { url: { type: "string", description: "Adresse complète, http ou https." } }, required: ["url"] },
         level: cfg.ask ? "write" : "read",

@@ -14,7 +14,7 @@ sequenceDiagram
   participant A as Avatar (corps)
   participant P as Fenêtre de résultats
   U->>B: « Floppy, quel temps demain à Paris ? »
-  B->>W: chercher_web(question)
+  B->>W: search_web(question)
   Note over B: phrase d'attente dite tout de suite<br/>(« Je cherche ça sur internet, une seconde. »)
   W->>C: claude -p … --tools WebSearch (ou codex --search exec, lecture seule)
   C-->>W: JSON { reponse, resultats[] }
@@ -44,7 +44,7 @@ Plutôt que des cartes sur l'avatar, les résultats longs s'ouvrent dans une **f
   h1 à h5, body, caption), `Button`, `Divider`, `Image` (https seulement).
 - Le texte est toujours mis en `textContent` (jamais de HTML). CSP stricte. La fenêtre n'a qu'un pont : recevoir une
   surface, envoyer une action.
-- Action d'un bouton : `ouvrir_url` → le processus principal vérifie `http(s)` et ouvre le navigateur (le clic est
+- Action d'un bouton : `open_url` → le processus principal vérifie `http(s)` et ouvre le navigateur (le clic est
   le consentement).
 - Un corps sans écran (Reachy) ne reçoit pas de fenêtre : la réponse est seulement dite.
 

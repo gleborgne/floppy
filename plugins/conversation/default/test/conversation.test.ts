@@ -293,8 +293,8 @@ const fakeBrain = definePlugin({
         } else if (/explique/.test(input.text)) {
           yield { type: "text", delta: "La lumière change de direction.\n\nTu veux un exemple ?" };
         } else if (/ouvre|open/.test(input.text)) {
-          const r = await ctx.tools.call("ouvrir_url", { url: "https://example.org" }, { origin: input.origin ?? "" });
-          yield { type: "tool.result", name: "ouvrir_url", status: r.status };
+          const r = await ctx.tools.call("open_url", { url: "https://example.org" }, { origin: input.origin ?? "" });
+          yield { type: "tool.result", name: "open_url", status: r.status };
           yield { type: "text", delta: r.status === "done" ? "C'est ouvert." : "D'accord, je ne l'ouvre pas." };
         } else {
           yield { type: "emotion", emotion: "happy" };
@@ -398,7 +398,7 @@ describe("émotion qui s'apaise sur les phrases suivantes", () => {
   });
 });
 
-const urlTool: BodyToolDecl = { name: "ouvrir_url", description: "Ouvre une URL", inputSchema: { type: "object", properties: { url: { type: "string" } } }, level: "write" };
+const urlTool: BodyToolDecl = { name: "open_url", description: "Ouvre une URL", inputSchema: { type: "object", properties: { url: { type: "string" } } }, level: "write" };
 
 describe("textes", () => {
   it("mot d'activation, oui/non, découpe en phrases", () => {
@@ -760,9 +760,9 @@ describe("conversation (2 corps)", () => {
   });
 
   it("débrancher un corps retire ses outils corps, sans casser les autres", async () => {
-    expect(k.tools.list().map((t) => t.name)).toContain("ouvrir_url");
+    expect(k.tools.list().map((t) => t.name)).toContain("open_url");
     avatar.leave();
-    expect(k.tools.list().map((t) => t.name)).not.toContain("ouvrir_url");
+    expect(k.tools.list().map((t) => t.name)).not.toContain("open_url");
     chat.send({ type: "text", text: "ça va ?" });
     await vi.waitFor(() => expect(chat.of("reply.done")).toHaveLength(1));
   });

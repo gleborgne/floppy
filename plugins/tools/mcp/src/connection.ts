@@ -85,33 +85,33 @@ export function clipOut(s: string): string {
 }
 
 /** Erreur (en français, pour le modèle) si `texte` remplirait tout un argument en commençant par « - » : injection d'option. */
-export function texteError(args: string[], texte: string): string | undefined {
-  if (args.includes("{texte}") && texte.trimStart().startsWith("-")) {
+export function textError(args: string[], texte: string): string | undefined {
+  if (args.includes("{text}") && texte.trimStart().startsWith("-")) {
     return "Le texte ne doit pas commencer par « - » (il serait pris pour une option de la commande). Reformule sans tiret au début.";
   }
   return undefined;
 }
 
-/** Remplace `{texte}` dans chaque argument (sans shell : pas d'injection possible). */
+/** Remplace `{text}` dans chaque argument (sans shell : pas d'injection possible). */
 export function fillArgs(args: string[], texte: string): string[] {
-  return args.map((a) => a.split("{texte}").join(texte));
+  return args.map((a) => a.split("{text}").join(texte));
 }
 
 function commandTool(spec: Spec, id: string, exec: Context["exec"] | undefined): { tool: RawTool; run: Opened["call"] } {
   const name = toolNameOf(spec.label ?? id);
-  const takesText = spec.args.some((a) => a.includes("{texte}"));
+  const takesText = spec.args.some((a) => a.includes("{text}"));
   const timeout = Math.max(1, spec.timeoutS ?? 30) * 1000;
   const tool: RawTool = {
     name,
     description: spec.description || `Lance la commande ${spec.command}.`,
     inputSchema: takesText
-      ? { type: "object", properties: { texte: { type: "string", description: "Texte donné à la commande." } }, required: ["texte"] }
+      ? { type: "object", properties: { text: { type: "string", description: "Texte donné à la commande." } }, required: ["text"] }
       : { type: "object", properties: {} },
     level: spec.level ?? "write", // sans choix explicite : avec accord
   };
   const run: Opened["call"] = (_n, args, signal) => new Promise<ToolOutput>((ok) => {
-    const texte = typeof args.texte === "string" ? args.texte : "";
-    const bad = texteError(spec.args, texte);
+    const texte = typeof args.text === "string" ? args.text : "";
+    const bad = textError(spec.args, texte);
     if (bad) return ok({ status: "failed", text: bad });
     if (!exec) return ok({ status: "failed", text: T("Commande indisponible (plugin arrêté).", "Command unavailable (plugin stopped).") });
     // Par ctx.exec : sans shell, avec un délai, arrêtée avec le plugin.

@@ -152,20 +152,21 @@ export default {
     expect((await kernel.settings.change("plugin_syntaxe", true, "ui")).ok).toBe(false); // activation impossible
     expect((await kernel.settings.change("plugin_bon", true, "ui")).ok).toBe(true);
     expect(kernel.status().find((e) => e.id === "u-bon")?.state).toBe("active");
-    const etat = await kernel.tools.call("etat_plugins", {});
+    const etat = await kernel.tools.call("plugin_status", {});
     expect(etat.text).toContain("syntaxe : erreur");
     expect(etat.text).toContain("bon : chargé ; activé");
   });
 
-  it("recharger_plugins et tester_plugin passent par le noyau (niveau write)", async () => {
+  it("reload_plugins et test_plugin passent par le noyau (niveau write)", async () => {
     const { kernel } = setup({ "bon": src("bon", "ok") });
     const levels = Object.fromEntries(kernel.tools.list().map((t) => [t.name, t.level]));
-    expect(levels).toMatchObject({ etat_plugins: "read", recharger_plugins: "write", tester_plugin: "write" });
+    expect(levels).toMatchObject({ plugin_status: "read", reload_plugins: "write", test_plugin: "write" });
     await kernel.applyConfig({ plugins: [], approvals: { write: "always" } });
-    expect((await kernel.tools.call("recharger_plugins", {})).text).toBe("bon : ajouté");
+    expect((await kernel.tools.call("reload_plugins", {})).text).toBe("bon : ajouté");
+    expect(kernel.tools.list().map((t) => t.name).filter((n) => ["etat_plugins", "recharger_plugins", "tester_plugin"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
   });
 
-  it("tester_plugin rapporte outils, journal et erreurs sans toucher au noyau", async () => {
+  it("test_plugin rapporte outils, journal et erreurs sans toucher au noyau", async () => {
     const { kernel } = setup({
       "bon": src("bon", "ok", `, inject: ["absent"]`),
       "libre": src("libre", "ok"),
@@ -173,17 +174,17 @@ export default {
       "casse": "export default {{{",
     });
     await kernel.applyConfig({ plugins: [], approvals: { write: "always" } });
-    const libre = await kernel.tools.call("tester_plugin", { id: "libre" });
+    const libre = await kernel.tools.call("test_plugin", { id: "libre" });
     expect(libre.status).toBe("done");
     expect(libre.text).toContain("hello_libre [read]");
     expect(libre.text).toContain("salut");
-    const attente = await kernel.tools.call("tester_plugin", { id: "bon" });
+    const attente = await kernel.tools.call("test_plugin", { id: "bon" });
     expect(attente.text).toContain("Services manquants (attente) : absent");
-    const plante = await kernel.tools.call("tester_plugin", { id: "plante" });
+    const plante = await kernel.tools.call("test_plugin", { id: "plante" });
     expect(plante.status).toBe("failed");
     expect(plante.text).toContain("boum");
-    expect((await kernel.tools.call("tester_plugin", { id: "casse" })).text).toContain("import impossible");
-    expect((await kernel.tools.call("tester_plugin", { id: "../x" })).status).toBe("failed");
+    expect((await kernel.tools.call("test_plugin", { id: "casse" })).text).toContain("import impossible");
+    expect((await kernel.tools.call("test_plugin", { id: "../x" })).status).toBe("failed");
     // Le vrai noyau n'a rien reçu.
     expect(kernel.tools.has("hello_libre")).toBe(false);
     expect(kernel.status()).toEqual([]);

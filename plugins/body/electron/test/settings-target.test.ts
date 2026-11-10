@@ -36,7 +36,7 @@ describe("trouver l'élément des réglages", () => {
   });
 });
 
-describe("ouvrir_reglages sur un élément", () => {
+describe("open_settings sur un élément", () => {
   afterEach(() => { delete proc.parentPort; });
 
   it("envoie la page à la fenêtre et dit les boutons ; élément introuvable : réglages ouverts quand même", async () => {
@@ -62,11 +62,12 @@ describe("ouvrir_reglages sur un élément", () => {
     const k = new Kernel({ host: proc.parentPort as never, logger: () => {}, plugins: [bodyHub, bodyElectron, fake] });
     await k.applyConfig({ plugins: [{ id: "body", plugin: "body-hub" }, { id: "bodyel", plugin: "body-electron" }, { id: "faux", plugin: "faux-orca" }] });
     try {
-      const r = await k.tools.call("ouvrir_reglages", { element: "orka" });
+      const r = await k.tools.call("open_settings", { item: "orka" });
+      expect(k.tools.list().map((t) => t.name).filter((n) => ["ouvrir_reglages"].includes(n))).toEqual([]); // les anciens noms français n'existent plus
       expect(requests.at(-1)?.target).toEqual({ section: "connectors", provider: "apps-test", id: "orca" });
       expect(r).toMatchObject({ status: "done" });
       expect(JSON.stringify(r)).toContain("« Installer dans Orca »");
-      const none = await k.tools.call("ouvrir_reglages", { element: "Telegram" });
+      const none = await k.tools.call("open_settings", { item: "Telegram" });
       expect(requests.at(-1)?.target).toBeUndefined();
       expect(JSON.stringify(none)).toContain("Telegram");
       await vi.waitFor(() => expect(requests).toHaveLength(2));

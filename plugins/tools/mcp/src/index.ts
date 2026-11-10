@@ -40,7 +40,7 @@ const ServerConfig = z.object({
   disabled: z.boolean().default(false),
   /** Si présent, seuls ces outils (noms ou motifs avec `*`) sont exposés. Appliqué avant `exclude`. */
   include: z.array(z.string()).optional(),
-  /** Outils du serveur à ne pas exposer (ex. un faux ouvrir_url quand un corps fournit le vrai). */
+  /** Outils du serveur à ne pas exposer (ex. un faux ouvrir_url d'un serveur de test quand un corps fournit le vrai open_url). */
   exclude: z.array(z.string()).default([]),
 }).refine((s) => Boolean(s.command) !== Boolean(s.url), { message: "un serveur a soit `command`, soit `url`" });
 

@@ -30,15 +30,15 @@ async function setup(opts: { home?: string; receipt?: unknown; timeoutMs?: numbe
       for (const w of wts) for (const a of w.agents ?? []) if (a.displayName === name) return { w, a };
       return { status: "failed", text: "Agent absent" };
     } });
-    const group = () => groupSendTools({ ctx, cli, run, direct: () => true, protection: { storage: opts.storage }, pollMs: 3, timeoutMs: opts.timeoutMs ?? 1000, onDelivery: f => facts.push(f), select: (wts, args) => wts.flatMap(w => (w.agents ?? []).filter(a => String(args.nom).split(",").includes(a.displayName!)).map(a => ({ w, a }))) });
+    const group = () => groupSendTools({ ctx, cli, run, direct: () => true, protection: { storage: opts.storage }, pollMs: 3, timeoutMs: opts.timeoutMs ?? 1000, onDelivery: f => facts.push(f), select: (wts, args) => wts.flatMap(w => (w.agents ?? []).filter(a => String(args.name).split(",").includes(a.displayName!)).map(a => ({ w, a }))) });
     ctx.tools.register(opts.reverse ? [...group(), single()] : [single(), ...group()]);
   } })] });
   kernels.push(k);
   await k.applyConfig({ plugins: [{ id: "test", plugin: "send-test" }] });
   const approvals: { id: string; summary: string }[] = [];
   k.bus.on("approval.request", e => { approvals.push(e); if (opts.approve !== false) k.approvals.respond(e.id, true, "test"); });
-  const single = (name = "Bob", meta: ToolCallMeta = {}) => k.tools.call("orca_envoyer", { nom: name, message: "Private instruction do not persist" }, meta);
-  const group = (name = "Alice,Bob", meta: ToolCallMeta = {}) => k.tools.call("orca_envoyer_groupe", { nom: name, message: "Private group instruction do not persist" }, meta);
+  const single = (name = "Bob", meta: ToolCallMeta = {}) => k.tools.call("orca_send", { name: name, message: "Private instruction do not persist" }, meta);
+  const group = (name = "Alice,Bob", meta: ToolCallMeta = {}) => k.tools.call("orca_send_group", { name: name, message: "Private group instruction do not persist" }, meta);
   const sends = () => cli.mock.calls.filter(([a]) => a[1] === "send");
   const stateFile = join(home, "orca-checkout-protection.json");
   const state = () => JSON.parse(readFileSync(stateFile, "utf8")) as { blocked: boolean; locks: Record<string, unknown>[] };
@@ -190,14 +190,14 @@ it("les factories dans des contextes distincts partagent le même registre et su
   ] }); kernels.push(k);
   k.bus.on("approval.request", e => k.approvals.respond(e.id, true, "test"));
   await k.applyConfig({ plugins: [{ id: "one", plugin: "one" }, { id: "many", plugin: "many" }] });
-  await k.tools.call("orca_envoyer", { nom: "Alice", message: "Private instruction" });
-  await k.tools.call("orca_envoyer_groupe", { message: "Private group" });
+  await k.tools.call("orca_send", { name: "Alice", message: "Private instruction" });
+  await k.tools.call("orca_send_group", { message: "Private group" });
   await until(() => expect(facts.some(f => f.stage === "deferred")).toBe(true));
   expect(cli.mock.calls.filter(([a]) => a[1] === "send")).toHaveLength(1);
   await k.applyConfig({ plugins: [{ id: "one", plugin: "one", disabled: true }, { id: "many", plugin: "many" }] });
   const a = rows[0]!.agents![0]! as unknown as Record<string, unknown>;
   a.turnEndedAt = Date.now() + 1; a.turnEndDisposition = "identified";
-  await k.tools.call("orca_envoyer_groupe", { message: "New private group" });
+  await k.tools.call("orca_send_group", { message: "New private group" });
   await until(() => expect(cli.mock.calls.filter(([a]) => a[1] === "send")).toHaveLength(2));
   expect(cli.mock.calls.filter(([a]) => a[1] === "send")[1]![0][3]).toBe("term_b");
 });
@@ -250,7 +250,7 @@ it.each(["unknown", "timeout", "cancel"])("redémarrage après %s : aucune libé
   const s = await setup({ receipt: scenario === "unknown" ? {} : started, timeoutMs: 25 });
   if (scenario === "unknown") await s.single("Alice");
   else { const result = await s.group("Alice"); await until(() => expect(s.sends()).toHaveLength(1));
-    if (scenario === "cancel") await s.k.tools.call("orca_annuler_envoi", { plan: (result.raw as { planId: string }).planId });
+    if (scenario === "cancel") await s.k.tools.call("orca_cancel_delivery", { plan: (result.raw as { planId: string }).planId });
     else await until(() => expect(s.facts.some(f => f.stage === "timeout")).toBe(true));
   }
   await s.k.stopAll();

@@ -1,7 +1,7 @@
 // Plugin `websearch` : recherche sur internet avec l'abonnement Claude ou Codex de l'utilisateur (pas de clé d'API).
 // C'est une « application » : l'utilisateur l'ajoute ou la retire dans Réglages → Connecteurs (manifest.addable).
 //
-// - Outil `chercher_web(question)` : lance le CLI choisi en mode non interactif, avec SEULEMENT la recherche web
+// - Outil `search_web(question)` : lance le CLI choisi en mode non interactif, avec SEULEMENT la recherche web
 //   (Claude : outil WebSearch, et WebFetch si « lire les pages » ; Codex : --search, bac à sable en lecture seule).
 //   Aucun shell, aucun fichier, aucun MCP. La question est un argument, jamais une ligne de commande.
 // - C'est lent (15 à 25 s) : l'outil a une phrase d'attente, dite dès que le cerveau le choisit.
@@ -174,7 +174,7 @@ export function resultsA2ui(question: string, r: SearchResult, engine: string, l
       add(`t${i}`, { Text: { text: lit(x.titre), usageHint: "h4" } }),
       add(`s${i}`, { Text: { text: lit(x.source || new URL(x.url).host), usageHint: "caption" } }),
       ...(x.resume ? [add(`r${i}`, { Text: { text: lit(x.resume), usageHint: "body" } })] : []),
-      add(`b${i}`, { Button: { child: add(`bl${i}`, { Text: { text: lit(L("Ouvrir", "Open")) } }), primary: i === 0, action: { name: "ouvrir_url", context: [{ key: "url", value: lit(x.url) }] } } }),
+      add(`b${i}`, { Button: { child: add(`bl${i}`, { Text: { text: lit(L("Ouvrir", "Open")) } }), primary: i === 0, action: { name: "open_url", context: [{ key: "url", value: lit(x.url) }] } } }),
     ];
     add(`col${i}`, { Column: { children: { explicitList: kids } } });
     top.push(add(`c${i}`, { Card: { child: `col${i}` } }));
@@ -240,7 +240,7 @@ export function createWebsearchPlugin(searcher: Searcher = cliSearcher) {
         },
       });
       ctx.tools.register([{
-        name: "chercher_web",
+        name: "search_web",
         description: "Cherche sur internet (actualité, météo, horaires, prix, documentation, tout ce qui n'est pas dans tes autres outils). Lent (15 à 25 s). Ensuite, dis la réponse en une ou deux phrases ; les liens s'affichent dans une fenêtre, ne les lis pas à voix haute. question : la question complète, en clair.",
         inputSchema: { type: "object", properties: { question: { type: "string" } }, required: ["question"] },
         level: "read",

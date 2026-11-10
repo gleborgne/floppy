@@ -14,33 +14,33 @@ const plugin: UserPlugin = {
 
   apply(ctx) {
     // Un réglage : sa clé commence par l'id du plugin (tirets remplacés par « _ »).
-    let poli = ctx.settings.saved<boolean>("__KEY___poli") ?? true;
+    let polite = ctx.settings.saved<boolean>("__KEY___polite") ?? true;
     ctx.settings.declare([
       {
-        key: "__KEY___poli",
+        key: "__KEY___polite",
         label: { fr: "Réponse polie", en: "Polite answer" },
         description: { fr: "Dire « Bonjour » plutôt que « Salut ».", en: "Say “Hello” rather than “Hi”." },
         type: "boolean",
         section: "general",
         group: { fr: "__ID__", en: "__ID__" },
         risk: "free",
-        get: () => poli,
-        set: (v) => { poli = v === true; },
+        get: () => polite,
+        set: (v) => { polite = v === true; },
       },
     ]);
 
     // Un outil : le modèle l'appelle quand sa description correspond à la demande.
     ctx.tools.register([
       {
-        name: "__KEY___bonjour",
-        description: "Dit bonjour à quelqu'un. Paramètre : nom.",
-        inputSchema: { type: "object", properties: { nom: { type: "string", maxLength: 60 } }, required: ["nom"] },
+        name: "__KEY___hello",
+        description: "Dit bonjour à quelqu'un. Paramètre : name.",
+        inputSchema: { type: "object", properties: { name: { type: "string", maxLength: 60 } }, required: ["name"] },
         level: "read", // lit seulement : aucun accord demandé
         handler: async (args) => {
           // Les arguments viennent d'un modèle : on les vérifie.
-          const nom = String(args.nom ?? "").trim().slice(0, 60);
-          if (!nom) return { status: "failed", text: { fr: "Il manque le nom.", en: "The name is missing." } };
-          return { status: "done", text: poli ? { fr: `Bonjour ${nom} !`, en: `Hello ${nom}!` } : { fr: `Salut ${nom}.`, en: `Hi ${nom}.` } };
+          const name = String(args.name ?? "").trim().slice(0, 60);
+          if (!name) return { status: "failed", text: { fr: "Il manque le nom.", en: "The name is missing." } };
+          return { status: "done", text: polite ? { fr: `Bonjour ${name} !`, en: `Hello ${name}!` } : { fr: `Salut ${name}.`, en: `Hi ${name}.` } };
         },
       },
     ]);

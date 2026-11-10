@@ -248,14 +248,14 @@ export function groupSendTools(deps: GroupSendDeps): ToolDef[] {
   };
   ctx.hook("tool.before", async (input, next) => {
     if (input.tool.source !== ctx.id) return next(input);
-    if (input.name === "orca_annuler_envoi") {
+    if (input.name === "orca_cancel_delivery") {
       const p = plans.get(String(input.args.plan));
       if (!p || p.owner !== owner(input.meta)) throw new TextError(T("Plan introuvable dans cette conversation.", "Plan not found in this conversation."));
       const args = { ...input.args };
       cancellations.set(args, p);
       try { return await next({ ...input, args }); } finally { cancellations.delete(args); }
     }
-    if (input.name !== "orca_envoyer_groupe") return next(input);
+    if (input.name !== "orca_send_group") return next(input);
     input.meta.signal?.throwIfAborted();
     const message = instruction(input.args.message);
     if (!direct()) throw new TextError(T("Règle le chemin du programme Orca sans script intermédiaire.", "Set the path to the Orca program without an intermediate script."));
@@ -288,9 +288,9 @@ export function groupSendTools(deps: GroupSendDeps): ToolDef[] {
     } finally { frozen.delete(args); }
   });
   return [{
-    name: "orca_envoyer_groupe", level: "send",
-    description: "Transmet une consigne identique à une sélection nommée d'agents Orca terminés, après UN accord collectif qui nomme chaque agent, tâche et projet. nom : projet/groupe ou référence précédente ; filtre : termines. Aucun worker piloté, menu de permission, agent en cours ou cible ambiguë. Les agents d'un même dossier passent après la fin observée du tour précédent. Consulter orca_envois pour les résultats ; ne jamais renvoyer sur silence.",
-    inputSchema: { type: "object", properties: { message: { type: "string", minLength: 1, maxLength: 4000 }, nom: { type: "string" }, filtre: { type: "string" } }, required: ["message"] },
+    name: "orca_send_group", level: "send",
+    description: "Transmet une consigne identique à une sélection nommée d'agents Orca terminés, après UN accord collectif qui nomme chaque agent, tâche et projet. name : projet/groupe ou référence précédente ; filter : finished (agents terminés, par défaut) ou all. Aucun worker piloté, menu de permission, agent en cours ou cible ambiguë. Les agents d'un même dossier passent après la fin observée du tour précédent. Consulter orca_deliveries pour les résultats ; ne jamais renvoyer sur silence.",
+    inputSchema: { type: "object", properties: { message: { type: "string", minLength: 1, maxLength: 4000 }, name: { type: "string" }, filter: { type: "string" } }, required: ["message"] },
     auditArgs: () => ({ redacted: true }),
     summary: args => {
       const p = frozen.get(args)!;
@@ -313,7 +313,7 @@ export function groupSendTools(deps: GroupSendDeps): ToolDef[] {
       return { status: "done", text: T(`Consigne mise en file pour ${p.recipients.map(r => r.label).join(" ; ")}. Aucun résultat du travail encore confirmé.`, `Instruction queued for ${p.recipients.map(r => r.label).join("; ")}. No work result confirmed yet.`), raw: rawPlan(snapshots().find(s => s.id === p.id)!) };
     },
   }, {
-    name: "orca_envois", level: "read", description: "Liste les envois de cette conversation, nommés par agent/tâche/projet, avec leur étape exacte. Une fin de tour ne prouve jamais qu'un commit a réussi.",
+    name: "orca_deliveries", level: "read", description: "Liste les envois de cette conversation, nommés par agent/tâche/projet, avec leur étape exacte. Une fin de tour ne prouve jamais qu'un commit a réussi.",
     auditArgs: () => ({ redacted: true }),
     inputSchema: { type: "object", properties: { plan: { type: "string" } } },
     handler: async (args, meta) => {
@@ -321,7 +321,7 @@ export function groupSendTools(deps: GroupSendDeps): ToolDef[] {
       return { status: "done", text: rows.length ? T(rows.map(p => describe(p).fr).join("\n\n"), rows.map(p => describe(p).en).join("\n\n")) : T("Aucun plan d'envoi dans cette conversation.", "No delivery plan in this conversation."), raw: { plans: rows.map(rawPlan) } };
     },
   }, {
-    name: "orca_annuler_envoi", level: "write", description: "Annule les envois encore en file de ce plan. N'interrompt jamais un agent ayant reçu la consigne et n'annule pas son travail.",
+    name: "orca_cancel_delivery", level: "write", description: "Annule les envois encore en file de ce plan. N'interrompt jamais un agent ayant reçu la consigne et n'annule pas son travail.",
     auditArgs: () => ({ redacted: true }),
     summary: args => {
       const names = cancellations.get(args)?.recipients.map(r => r.label).join(" ; ");

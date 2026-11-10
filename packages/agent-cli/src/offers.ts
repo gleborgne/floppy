@@ -5,7 +5,7 @@ import type { AgentService } from "@floppy/contracts";
 import { agentCommand } from "./command.ts";
 
 /** Une mission ne peut pas en ouvrir d'autres ni ouvrir un terminal pour contourner ses outils. */
-export const agentTools = (ctx: Context) => ctx.tools.list().filter((t) => !["deleguer_agent", "lancer_travail_agent", "ouvrir_session_agent"].includes(t.name));
+export const agentTools = (ctx: Context) => ctx.tools.list().filter((t) => !["delegate_to_agent", "start_agent_job", "open_agent_session"].includes(t.name));
 
 export interface AgentDefinition {
   id: string;

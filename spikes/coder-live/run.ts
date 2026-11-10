@@ -39,7 +39,7 @@ console.log("réglage assistant_claude_model =", k.settings.value("assistant_cla
 c.close(s1);
 
 const s2 = await c.start({ agent: "claude", mode: "plugin" });
-await turn(s2, "Crée un plugin « salut » avec un seul outil dire_bonjour (niveau read) qui répond « Bonjour ! ». Puis teste-le avec tester_plugin.", true);
+await turn(s2, "Crée un plugin « salut » avec un seul outil dire_bonjour (niveau read) qui répond « Bonjour ! ». Puis teste-le avec test_plugin.", true);
 const f = join(home, "plugins", "salut", "index.ts");
 console.log("\nfichier créé :", existsSync(f), existsSync(f) ? "\n" + readFileSync(f, "utf8").slice(0, 700) : "");
 c.close(s2);

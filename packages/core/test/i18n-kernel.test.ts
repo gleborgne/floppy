@@ -37,10 +37,10 @@ describe("noyau bilingue", () => {
     await k.idle();
     expect((await k.tools.call("effacer", {})).text).toMatch(/^Action forbidden by the configuration/);
     expect((await k.tools.call("inexistant", {})).text).toBe("Unknown tool: inexistant");
-    expect((await k.tools.call("lister_reglages", {})).text).toContain("partage");
+    expect((await k.tools.call("list_settings", {})).text).toContain("partage");
 
     // Refus à la voix, en anglais : reconnu comme un refus (pas un échec).
-    const call = k.tools.call("changer_reglage", { cle: "partage", valeur: "yes" });
+    const call = k.tools.call("change_setting", { key: "partage", value: "yes" });
     await new Promise((r) => setTimeout(r, 10));
     const req = k.approvals.pending()[0]!;
     expect(req.summary).toBe("Sharing: no → yes");

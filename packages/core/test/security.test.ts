@@ -90,7 +90,7 @@ describe("3. annuler un réglage ne contourne pas le risque", () => {
   it("un réglage « cli » changé par la CLI ne s'annule pas à la voix", async () => {
     const k = await bootSettings();
     expect((await k.settings.change("dossier", "docs", "cli")).ok).toBe(true);
-    const r = await k.tools.call("annuler_reglage", {});
+    const r = await k.tools.call("undo_setting", {});
     expect(r.status).toBe("failed");
     expect(r.text).toMatch(/CLI/);
     expect(k.settings.value("dossier")).toBe("docs");
@@ -105,7 +105,7 @@ describe("3. annuler un réglage ne contourne pas le risque", () => {
     expect((await k.settings.change("cloud", "oui", "cli")).ok).toBe(true);
     const asked: string[] = [];
     k.bus.on("approval.request", (r) => { asked.push(r.summary); k.approvals.respond(r.id, false, "t"); });
-    const r = await k.tools.call("annuler_reglage", {});
+    const r = await k.tools.call("undo_setting", {});
     expect(asked).toHaveLength(1);
     expect(r.text).toMatch(/Refusé/);
     expect(k.settings.value("cloud")).toBe(true);
@@ -116,7 +116,7 @@ describe("3. annuler un réglage ne contourne pas le risque", () => {
     const k = await bootSettings();
     await k.settings.change("cloud", "oui", "cli");
     k.bus.on("approval.request", (r) => { k.approvals.respond(r.id, true, "t"); });
-    expect((await k.tools.call("annuler_reglage", {})).status).toBe("done");
+    expect((await k.tools.call("undo_setting", {})).status).toBe("done");
     expect(k.settings.value("cloud")).toBe(false);
     await k.stopAll();
   });
@@ -233,10 +233,10 @@ describe("7. bus : une promesse rejetée d'un abonné ne plante pas", () => {
   });
 });
 
-describe("8. lister_elements : rubriques dynamiques", () => {
+describe("8. list_items : rubriques dynamiques", () => {
   it("l'enum suit les rubriques du registre", async () => {
     const k = await bootItems();
-    const tool = k.tools.list().find((t) => t.name === "lister_elements")!;
+    const tool = k.tools.list().find((t) => t.name === "list_items")!;
     expect(JSON.stringify(tool.inputSchema)).toContain("brain");
     expect(JSON.stringify(tool.inputSchema)).not.toContain("avatars");
     await k.stopAll();

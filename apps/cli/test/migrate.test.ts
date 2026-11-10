@@ -36,7 +36,7 @@ describe("floppy migrate", () => {
       "  onboarding.json : level",
       "[onboarding-selection] premier lancement : les niveaux (`level`, `brain`) laissent place au choix par rôle (`selection`) — 1 fichier(s) à modifier",
       "  onboarding.json : level",
-      ...["settings-keys", "settings-values", "config-yaml", "items-fields", "inbox-trust", "watch-preferences"].map((id) => `[${id}] rien à changer`),
+      ...["settings-keys", "settings-values", "config-yaml", "items-fields", "inbox-trust", "watch-preferences", "tools-config-yaml", "tools-items-apps", "tools-command-placeholder"].map((id) => `[${id}] rien à changer`),
       "Rien n'a été modifié. Pour appliquer (après une sauvegarde du dossier) : floppy migrate --apply",
     ]);
     expect(r.lines.join("\n")).not.toMatch(/hybride"|secret-body|Veille du jour/);

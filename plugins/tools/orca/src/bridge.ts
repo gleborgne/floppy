@@ -36,12 +36,12 @@ export interface BridgeEvent {
 /** États d'un événement Orca : working, blocked, waiting, done (+ outcome du agent principal). */
 export function kindOfEvent(state: unknown, outcome: unknown): Kind {
   const s = String(state ?? "").toLowerCase();
-  if (s === "working") return "en_cours";
-  if (s === "blocked" || s === "waiting") return "en_attente";
-  if (outcome === "interruption" || outcome === "cancellation") return "interrompu";
-  if (s === "done" && outcome === "success") return "termines";
+  if (s === "working") return "running";
+  if (s === "blocked" || s === "waiting") return "waiting";
+  if (outcome === "interruption" || outcome === "cancellation") return "interrupted";
+  if (s === "done" && outcome === "success") return "finished";
   // Compatibilité du Kind : aucune panne ni fin non confirmée ne devient un succès.
-  return "interrompu";
+  return "interrupted";
 }
 
 export interface BridgeDiagnostic {
